@@ -405,6 +405,29 @@
   font-size: 0.76rem;
   color: #94a3b8;
   padding-top: 12px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 7px;
+  line-height: 1.4;
+}
+
+.lp-footer-credit {
+  color: #64748b;
+  font-weight: 600;
+}
+
+.lp-footer-credit strong {
+  display: inline-flex;
+  align-items: center;
+  margin-left: 4px;
+  padding: 3px 9px;
+  border: 1px solid rgba(37, 99, 235, 0.18);
+  border-radius: 999px;
+  background: linear-gradient(135deg, rgba(239, 246, 255, 0.96), rgba(219, 234, 254, 0.9));
+  color: #1d4ed8;
+  font-weight: 800;
+  box-shadow: 0 6px 16px rgba(37, 99, 235, 0.12);
 }
 
 /* ═══════════════════════════════════════════════════════════

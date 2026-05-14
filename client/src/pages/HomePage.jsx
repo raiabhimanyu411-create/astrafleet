@@ -427,7 +427,12 @@ export function HomePage() {
             </form>
           </div>
 
-          <footer className="lp-footer">© 2025 AstraFleet. All rights reserved.</footer>
+          <footer className="lp-footer">
+            <span>© 2025 AstraFleet. All rights reserved.</span>
+            <span className="lp-footer-credit">
+              Designed and developed by <strong>Devmora Technology</strong>
+            </span>
+          </footer>
         </div>
       </div>
     </div>
