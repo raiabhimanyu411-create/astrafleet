@@ -1,0 +1,24 @@
+import api from "./axios";
+
+export const getAdminDashboard = () => api.get("/api/admin/overview");
+export const getDrivers = () => api.get("/api/admin/drivers");
+export const getTrips = () => api.get("/api/admin/trips");
+export const getInvoices = () => api.get("/api/admin/billing");
+export const getBillingFormData = () => api.get("/api/admin/billing/form-data");
+export const getInvoiceById = (id) => api.get(`/api/admin/billing/${id}`);
+export const createInvoice = (data) => api.post("/api/admin/billing", data);
+export const updateInvoice = (id, data) => api.put(`/api/admin/billing/${id}`, data);
+export const updateInvoiceStatus = (id, data) => api.patch(`/api/admin/billing/${id}/status`, data);
+export const deleteInvoice = (id) => api.delete(`/api/admin/billing/${id}`);
+export const getTrackingVehicleById = (id) => api.get(`/api/admin/tracking/vehicles/${id}`);
+export const updateTrackingVehicle = (id, data) => api.patch(`/api/admin/tracking/vehicles/${id}`, data);
+export const getTripFormData = () => api.get("/api/admin/trips/form-data");
+export const getAdminTripById = (id) => api.get(`/api/admin/trips/${id}`);
+export const createAdminTrip = (data) => api.post("/api/admin/trips", data);
+export const updateAdminTrip = (id, data) => api.put(`/api/admin/trips/${id}`, data);
+export const updateAdminTripStatus = (id, data) => api.patch(`/api/admin/trips/${id}/status`, data);
+export const deleteAdminTrip = (id) => api.delete(`/api/admin/trips/${id}`);
+export const getRoutes = () => api.get("/api/admin/routes");
+export const createRoute = (data) => api.post("/api/admin/routes", data);
+export const updateRoute = (id, data) => api.put(`/api/admin/routes/${id}`, data);
+export const deleteRoute = (id) => api.delete(`/api/admin/routes/${id}`);

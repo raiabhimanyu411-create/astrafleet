@@ -1,0 +1,32 @@
+const express = require("express");
+const router = express.Router();
+const adminController = require("../controllers/adminController");
+
+router.get("/notifications", adminController.getNotifications);
+router.get("/overview", adminController.getOverview);
+router.get("/drivers", adminController.getDrivers);
+router.get("/finance", adminController.getFinance);
+router.get("/billing", adminController.getBilling);
+router.get("/billing/form-data", adminController.getBillingFormData);
+router.get("/billing/:id", adminController.getInvoiceById);
+router.post("/billing", adminController.createInvoice);
+router.put("/billing/:id", adminController.updateInvoice);
+router.patch("/billing/:id/status", adminController.updateInvoiceStatus);
+router.delete("/billing/:id", adminController.deleteInvoice);
+router.get("/tracking", adminController.getTracking);
+router.get("/tracking/vehicles/:id", adminController.getTrackingVehicleById);
+router.patch("/tracking/vehicles/:id", adminController.updateTrackingVehicle);
+router.get("/alerts", adminController.getAlerts);
+router.get("/routes", adminController.listRoutes);
+router.post("/routes", adminController.createRoute);
+router.put("/routes/:id", adminController.updateRoute);
+router.delete("/routes/:id", adminController.deleteRoute);
+router.get("/trips/form-data", adminController.getTripFormData);
+router.get("/trips/:id", adminController.getTripById);
+router.get("/trips", adminController.getTrips);
+router.post("/trips", adminController.createTrip);
+router.put("/trips/:id", adminController.updateTrip);
+router.patch("/trips/:id/status", adminController.updateTripStatus);
+router.delete("/trips/:id", adminController.deleteTrip);
+
+module.exports = router;

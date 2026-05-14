@@ -1,0 +1,16 @@
+{
+  "name": "astra-fleet",
+  "private": true,
+  "version": "1.0.0",
+  "scripts": {
+    "dev": "concurrently -n client,backend -c cyan,yellow \"npm run dev --prefix client\" \"npm run dev --prefix backend\"",
+    "client": "npm run dev --prefix client",
+    "backend": "npm run dev --prefix backend",
+    "install:all": "npm install --prefix client && npm install --prefix backend",
+    "build": "npm run build --prefix client",
+    "start": "npm run start --prefix backend"
+  },
+  "devDependencies": {
+    "concurrently": "^9.2.1"
+  }
+}
