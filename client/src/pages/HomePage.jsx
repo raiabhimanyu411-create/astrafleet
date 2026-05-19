@@ -277,6 +277,25 @@ function IconLogin() {
   );
 }
 
+function IconAlertCircle({ color = "currentColor" }) {
+  return (
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" className="lp-alert-icon">
+      <circle cx="8" cy="8" r="7" stroke={color} strokeWidth="1.5" fill="none" />
+      <line x1="8" y1="5" x2="8" y2="8.5" stroke={color} strokeWidth="1.6" strokeLinecap="round" />
+      <circle cx="8" cy="11" r="0.8" fill={color} />
+    </svg>
+  );
+}
+
+function IconCheckCircle({ color = "currentColor" }) {
+  return (
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" className="lp-alert-icon">
+      <circle cx="8" cy="8" r="7" stroke={color} strokeWidth="1.5" fill="none" />
+      <path d="M5 8.2 L7 10.2 L11 6" stroke={color} strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" fill="none" />
+    </svg>
+  );
+}
+
 
 const features = [
   { Icon: IconFleet, label: "Fleet\nManagement" },
@@ -552,8 +571,18 @@ export function HomePage() {
                 </div>
               )}
 
-              {error && <p className="lp-error">{error}</p>}
-              {success && <p className="lp-success">{success}</p>}
+              {error && (
+                <div className="lp-alert lp-error" role="alert">
+                  <IconAlertCircle color="#b91c1c" />
+                  <span>{error}</span>
+                </div>
+              )}
+              {success && (
+                <div className="lp-alert lp-success" role="status">
+                  <IconCheckCircle color="#15803d" />
+                  <span>{success}</span>
+                </div>
+              )}
 
               {/* Login btn */}
               <button type="submit" className="lp-login-btn" disabled={loading}>

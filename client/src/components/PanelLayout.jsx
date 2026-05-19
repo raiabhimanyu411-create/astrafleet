@@ -1,10 +1,5 @@
+import { useEffect, useRef, useState } from "react";
 import { NavLink } from "react-router-dom";
-
-const defaultHeaderLinks = [
-  { to: "/", label: "Home" },
-  { to: "/admin", label: "Admin" },
-  { to: "/driver", label: "Driver" }
-];
 
 const defaultScopeNote = {
   eyebrow: "Current scope",
@@ -14,7 +9,7 @@ const defaultScopeNote = {
 
 function AstraLogo() {
   return (
-    <svg width="28" height="28" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <svg width="30" height="30" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
       <rect width="48" height="48" rx="13" fill="#2563eb" />
       <path
         d="M24 11L37 33H11L24 11Z"
@@ -28,6 +23,16 @@ function AstraLogo() {
   );
 }
 
+function HamburgerIcon() {
+  return (
+    <svg width="18" height="14" viewBox="0 0 18 14" fill="none">
+      <rect width="18" height="2" rx="1" fill="currentColor" />
+      <rect y="6" width="14" height="2" rx="1" fill="currentColor" />
+      <rect y="12" width="18" height="2" rx="1" fill="currentColor" />
+    </svg>
+  );
+}
+
 export function PanelLayout({
   badge,
   title,
@@ -35,18 +40,65 @@ export function PanelLayout({
   highlights,
   menu,
   roleLabel,
-  headerLinks = defaultHeaderLinks,
   headerContent,
   scopeNote = defaultScopeNote,
   children
 }) {
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const sidebarRef = useRef(null);
+
+  useEffect(() => {
+    if (!sidebarOpen) return;
+    function handleKey(e) {
+      if (e.key === "Escape") setSidebarOpen(false);
+    }
+    document.addEventListener("keydown", handleKey);
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.removeEventListener("keydown", handleKey);
+      document.body.style.overflow = "";
+    };
+  }, [sidebarOpen]);
+
   return (
     <div className="panel-shell">
-      <aside className="panel-sidebar">
+      {/* Mobile top bar */}
+      <div className="mobile-topbar">
+        <div className="mobile-topbar-brand">
+          <AstraLogo />
+          <span>AstraFleet</span>
+        </div>
+        <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+          {headerContent}
+          <button
+            className="hamburger-btn"
+            onClick={() => setSidebarOpen(true)}
+            aria-label="Open menu"
+            type="button"
+          >
+            <HamburgerIcon />
+          </button>
+        </div>
+      </div>
+
+      {/* Overlay */}
+      {sidebarOpen && (
+        <div
+          className="sidebar-overlay"
+          onClick={() => setSidebarOpen(false)}
+          aria-hidden="true"
+        />
+      )}
+
+      {/* Sidebar */}
+      <aside
+        ref={sidebarRef}
+        className={`panel-sidebar${sidebarOpen ? " open" : ""}`}
+      >
         <div className="brand-stack">
           <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
             <AstraLogo />
-            <span style={{ fontWeight: 800, fontSize: "1rem", letterSpacing: "-0.01em" }}>AstraFleet</span>
+            <span style={{ fontWeight: 800, fontSize: "1rem", letterSpacing: "-0.015em" }}>AstraFleet</span>
           </div>
           <h2>{roleLabel}</h2>
           <p>Role-specific workspace for focused fleet operations.</p>
@@ -55,11 +107,16 @@ export function PanelLayout({
         <nav className="sidebar-nav">
           {menu.map((item) => (
             item.to ? (
-              <NavLink end={item.end} key={item.to} to={item.to}>
+              <NavLink
+                end={item.end}
+                key={item.to}
+                to={item.to}
+                onClick={() => setSidebarOpen(false)}
+              >
                 {item.label}
               </NavLink>
             ) : (
-              <a key={item.href} href={item.href}>
+              <a key={item.href} href={item.href} onClick={() => setSidebarOpen(false)}>
                 {item.label}
               </a>
             )
@@ -73,25 +130,18 @@ export function PanelLayout({
         </div>
       </aside>
 
+      {/* Main content */}
       <main className="panel-main">
         <header className="panel-header" id="overview">
           <div>
             <span className="section-chip">{badge}</span>
             <h1>{title}</h1>
-            <p>{description}</p>
+            {description && <p>{description}</p>}
           </div>
 
-          {headerContent ? (
+          {headerContent && (
             <div className="header-actions">{headerContent}</div>
-          ) : headerLinks.length > 0 ? (
-            <div className="header-actions">
-              {headerLinks.map((link) => (
-                <NavLink className="header-link" key={link.to} to={link.to}>
-                  {link.label}
-                </NavLink>
-              ))}
-            </div>
-          ) : null}
+          )}
         </header>
 
         {highlights && highlights.length > 0 && (
