@@ -32,6 +32,7 @@ const menuAccessKey = {
 export function AdminWorkspaceLayout({ badge, title, description, highlights, children }) {
   const navigate = useNavigate();
   const session = getAuthSession();
+  const isEmployee = session?.role === "employee";
   const visibleMenu = session?.role === "employee"
     ? adminMenu.filter((item) => session.accessModules?.includes(menuAccessKey[item.to]))
     : adminMenu;
@@ -48,17 +49,17 @@ export function AdminWorkspaceLayout({ badge, title, description, highlights, ch
       description={description}
       highlights={highlights}
       menu={visibleMenu}
-      roleLabel={session?.role === "employee" ? "Employee workspace" : "Admin workspace"}
+      roleLabel={isEmployee ? "Employee workspace" : "Admin workspace"}
       scopeNote={{
-        eyebrow: session?.role === "employee" ? "Granted scope" : "Admin scope",
-        title: session?.role === "employee" ? "Assigned TMS access" : "Transport control tower",
-        description: session?.role === "employee"
+        eyebrow: isEmployee ? "Granted scope" : "Admin scope",
+        title: isEmployee ? "Assigned TMS access" : "Transport control tower",
+        description: isEmployee
           ? "Only admin-approved modules are visible in this workspace."
           : "Monitor driver operations, route planning, billing, and GPS movement from one workspace."
       }}
       headerContent={(
         <>
-          <NotificationBell fetchUrl="/api/admin/notifications" />
+          {!isEmployee && <NotificationBell fetchUrl="/api/admin/notifications" />}
           <button className="header-action-button danger" onClick={handleLogout} type="button">
             Logout
           </button>

@@ -86,6 +86,19 @@ export function AdminPanel() {
                 <StatusPill tone={employee.tone}>{employee.status}</StatusPill>
               </div>
             ))}
+            {!loading && (data?.employeeRequests || []).length === 0 && (
+              <div className="data-row">
+                <div>
+                  <strong>No employee access requests</strong>
+                  <p>New self-registrations will appear here for admin approval.</p>
+                </div>
+                <div>
+                  <span>Queue clear</span>
+                  <p>Access control is up to date</p>
+                </div>
+                <StatusPill tone="success">Clear</StatusPill>
+              </div>
+            )}
           </div>
         </article>
 

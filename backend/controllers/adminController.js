@@ -1780,6 +1780,11 @@ exports.updateEmployeeAccess = async (req, res) => {
   const cleanModules = Array.isArray(accessModules)
     ? accessModules.filter((module) => employeeModules.has(module))
     : [];
+  const savedModules = approvalStatus === "rejected" ? [] : Array.from(new Set(cleanModules));
+
+  if (approvalStatus === "active" && savedModules.length === 0) {
+    return res.status(400).json({ message: "Select at least one page before approving employee login." });
+  }
 
   try {
     await ensureEmployeeAuthSchema();
@@ -1787,14 +1792,14 @@ exports.updateEmployeeAccess = async (req, res) => {
       `UPDATE users
        SET approval_status = ?, access_modules = ?
        WHERE id = ? AND role='employee'`,
-      [approvalStatus, JSON.stringify(cleanModules), id]
+      [approvalStatus, JSON.stringify(savedModules), id]
     );
 
     if (result.affectedRows === 0) {
       return res.status(404).json({ message: "Employee not found." });
     }
 
-    res.json({ message: "Employee access updated.", approvalStatus, accessModules: cleanModules });
+    res.json({ message: "Employee access updated.", approvalStatus, accessModules: savedModules });
   } catch (error) {
     res.status(500).json({ message: "Employee access update error", error: error.message });
   }

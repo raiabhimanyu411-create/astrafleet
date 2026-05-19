@@ -17,6 +17,12 @@ const moduleLabels = {
   alerts: "Alerts"
 };
 
+function sameModules(a = [], b = []) {
+  const left = [...a].sort().join("|");
+  const right = [...b].sort().join("|");
+  return left === right;
+}
+
 function EmployeeAccessCard({ employee, modules, onSaved }) {
   const [approvalStatus, setApprovalStatus] = useState(employee.approvalStatus);
   const [accessModules, setAccessModules] = useState(employee.accessModules || []);
@@ -30,6 +36,8 @@ function EmployeeAccessCard({ employee, modules, onSaved }) {
   }, [employee.approvalStatus, employee.accessModules]);
 
   function toggleModule(module) {
+    setSuccess("");
+    setError("");
     setAccessModules((current) => (
       current.includes(module)
         ? current.filter((item) => item !== module)
@@ -44,7 +52,7 @@ function EmployeeAccessCard({ employee, modules, onSaved }) {
     setSaving(true);
     try {
       await updateEmployeeAccess(employee.id, { approvalStatus, accessModules });
-      await onSaved();
+      await onSaved(employee.id);
       setSuccess("Access saved. Employee should log out and log in again to get the updated pages.");
     } catch (err) {
       setError(err.response?.data?.message || "Could not update employee access.");
@@ -54,6 +62,10 @@ function EmployeeAccessCard({ employee, modules, onSaved }) {
   }
 
   const tone = approvalStatus === "active" ? "success" : approvalStatus === "rejected" ? "danger" : "warning";
+  const hasUnsavedChanges = approvalStatus !== employee.approvalStatus || !sameModules(accessModules, employee.accessModules);
+  const activeAccessText = accessModules.length
+    ? accessModules.map((module) => moduleLabels[module] || module).join(", ")
+    : "No pages selected";
 
   return (
     <article className="content-card employee-access-card">
@@ -79,8 +91,16 @@ function EmployeeAccessCard({ employee, modules, onSaved }) {
 
       <form className="employee-access-controls" onSubmit={handleSave}>
         <label className="af-field">
-          <span className="af-label">Approval</span>
-          <select className="af-select" value={approvalStatus} onChange={(e) => setApprovalStatus(e.target.value)}>
+          <span className="af-label">Approval status</span>
+          <select
+            className="af-select"
+            value={approvalStatus}
+            onChange={(e) => {
+              setApprovalStatus(e.target.value);
+              setSuccess("");
+              setError("");
+            }}
+          >
             <option value="pending">Pending review</option>
             <option value="active">Approve login</option>
             <option value="rejected">Reject access</option>
@@ -89,6 +109,7 @@ function EmployeeAccessCard({ employee, modules, onSaved }) {
 
         <div>
           <span className="af-label">Allowed pages</span>
+          <p className="employee-access-summary">{activeAccessText}</p>
           <div className="module-check-grid">
             {modules.map((module) => (
               <label className="module-check" key={module}>
@@ -105,9 +126,12 @@ function EmployeeAccessCard({ employee, modules, onSaved }) {
 
         {error && <p className="lp-error">{error}</p>}
         {success && <p className="lp-success">{success}</p>}
+        {hasUnsavedChanges && !success && !error && (
+          <p className="employee-unsaved-note">Unsaved changes are ready to apply.</p>
+        )}
 
         <button className="header-action-button" disabled={saving} type="submit">
-          {saving ? "Saving..." : "Save access"}
+          {saving ? "Saving..." : hasUnsavedChanges ? "Save changes" : "Save access"}
         </button>
       </form>
     </article>
@@ -121,7 +145,7 @@ export function AdminEmployeesPage() {
 
   function load() {
     setLoading(true);
-    getEmployees()
+    return getEmployees()
       .then((res) => {
         setData(res.data);
         setError("");
@@ -161,9 +185,10 @@ export function AdminEmployeesPage() {
       </section>
 
       {!loading && (data?.employees || []).length === 0 && (
-        <article className="content-card">
+        <article className="content-card employee-empty-state">
+          <span className="card-label">No requests</span>
           <strong>No employee registrations yet.</strong>
-          <p className="employee-meta">New employee signups will appear here for admin approval.</p>
+          <p className="employee-meta">New employee signups will appear here for admin approval and page assignment.</p>
         </article>
       )}
     </AdminWorkspaceLayout>

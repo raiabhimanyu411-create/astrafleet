@@ -317,7 +317,7 @@ export function HomePage() {
     setSuccess("");
     setLoading(true);
     try {
-      const { data } = await api.post("/api/auth/login", { email, password });
+      const { data } = await api.post("/api/auth/login", { email: email.trim().toLowerCase(), password });
 
       if (data.role === "driver") {
         try {
@@ -357,16 +357,19 @@ export function HomePage() {
     setLoading(true);
     try {
       const { data } = await api.post("/api/auth/employees/register", {
-        name,
-        email,
+        name: name.trim(),
+        email: email.trim().toLowerCase(),
         password,
-        phone,
+        phone: phone.trim(),
         department,
-        jobTitle
+        jobTitle: jobTitle.trim()
       });
       setSuccess(data.message || "Registration submitted. Admin approval is required.");
       setMode("login");
       setPassword("");
+      setName("");
+      setPhone("");
+      setJobTitle("");
     } catch (err) {
       setError(err.response?.data?.error || "Unable to submit registration. Please try again.");
     } finally {

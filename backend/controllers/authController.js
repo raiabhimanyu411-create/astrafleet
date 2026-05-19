@@ -78,10 +78,19 @@ async function login(req, res) {
 }
 
 async function registerEmployee(req, res) {
-  const { name, email, password, phone, department, jobTitle } = req.body;
+  const name = String(req.body.name || "").trim();
+  const email = String(req.body.email || "").trim().toLowerCase();
+  const password = String(req.body.password || "");
+  const phone = String(req.body.phone || "").trim();
+  const department = String(req.body.department || "").trim();
+  const jobTitle = String(req.body.jobTitle || "").trim();
 
   if (!name || !email || !password || !department || !jobTitle) {
     return res.status(400).json({ error: "Name, email, password, department, and job title are required." });
+  }
+
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    return res.status(400).json({ error: "Enter a valid work email address." });
   }
 
   if (password.length < 6) {

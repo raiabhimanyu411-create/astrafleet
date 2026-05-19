@@ -1,4 +1,4 @@
-import { Navigate, Route, Routes } from "react-router-dom";
+import { Navigate, Route, Routes, useLocation } from "react-router-dom";
 import "./App.css";
 import { AdminAlertsPage } from "./pages/admin/AdminAlertsPage";
 import { AdminBillingPage } from "./pages/admin/AdminBillingPage";
@@ -75,7 +75,8 @@ function ProtectedRoute({ role, moduleKey, children }) {
 }
 
 function AdminOrEmployeeRoute({ children }) {
-  const path = window.location.pathname;
+  const location = useLocation();
+  const path = location.pathname;
   const matched = Object.entries(routeAccess).find(([prefix]) => path === prefix || path.startsWith(`${prefix}/`));
   return <ProtectedRoute role={matched ? undefined : "admin"} moduleKey={matched?.[1]}>{children}</ProtectedRoute>;
 }
