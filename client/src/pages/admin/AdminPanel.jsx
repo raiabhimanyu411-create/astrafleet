@@ -8,6 +8,7 @@ import { usePanelData } from "../../hooks/usePanelData";
 import { AdminWorkspaceLayout } from "./AdminWorkspaceLayout";
 
 const moduleLinks = {
+  "Employee Access Control": "/admin/employees",
   "Driver Management": "/admin/drivers",
   "Finance Management": "/admin/finance",
   "Trip / Route Planning": "/admin/trips",
@@ -62,6 +63,32 @@ export function AdminPanel() {
       </section>
 
       <section className="content-grid">
+        <article className="content-card">
+          <div className="section-head">
+            <div>
+              <span className="card-label">Employee access</span>
+              <h2>Registration approvals</h2>
+            </div>
+            <StatusPill tone="warning">Admin controlled</StatusPill>
+          </div>
+
+          <div className="data-rows">
+            {(data?.employeeRequests || []).map((employee) => (
+              <div className="data-row" key={employee.id}>
+                <div>
+                  <strong>{employee.name}</strong>
+                  <p>{employee.email} · {employee.identity}</p>
+                </div>
+                <div>
+                  <span>{employee.department}</span>
+                  <p>{employee.access.length ? employee.access.join(", ") : "No access yet"}</p>
+                </div>
+                <StatusPill tone={employee.tone}>{employee.status}</StatusPill>
+              </div>
+            ))}
+          </div>
+        </article>
+
         <article className="content-card">
           <div className="section-head">
             <div>

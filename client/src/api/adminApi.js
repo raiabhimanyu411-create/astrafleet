@@ -1,6 +1,8 @@
 import api from "./axios";
 
 export const getAdminDashboard = () => api.get("/api/admin/overview");
+export const getEmployees = () => api.get("/api/admin/employees");
+export const updateEmployeeAccess = (id, data) => api.patch(`/api/admin/employees/${id}/access`, data);
 export const getDrivers = () => api.get("/api/admin/drivers");
 export const getTrips = () => api.get("/api/admin/trips");
 export const getInvoices = () => api.get("/api/admin/billing");

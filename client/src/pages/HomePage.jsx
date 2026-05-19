@@ -286,10 +286,16 @@ const features = [
 ];
 
 export function HomePage() {
+  const [mode, setMode] = useState("login");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [name, setName] = useState("");
+  const [phone, setPhone] = useState("");
+  const [department, setDepartment] = useState("finance");
+  const [jobTitle, setJobTitle] = useState("");
   const [showPass, setShowPass] = useState(false);
   const [error, setError] = useState("");
+  const [success, setSuccess] = useState("");
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
 
@@ -300,12 +306,15 @@ export function HomePage() {
       navigate("/admin", { replace: true });
     } else if (session?.role === "driver") {
       navigate("/driver", { replace: true });
+    } else if (session?.role === "employee") {
+      navigate(session.accessModules?.[0] ? `/admin/${session.accessModules[0]}` : "/", { replace: true });
     }
   }, [navigate]);
 
   async function handleSubmit(e) {
     e.preventDefault();
     setError("");
+    setSuccess("");
     setLoading(true);
     try {
       const { data } = await api.post("/api/auth/login", { email, password });
@@ -320,10 +329,46 @@ export function HomePage() {
         }
       }
 
-      saveAuthSession({ id: data.id, name: data.name, role: data.role });
-      navigate(data.role === "admin" ? "/admin" : "/driver");
+      saveAuthSession({
+        id: data.id,
+        name: data.name,
+        role: data.role,
+        accessModules: data.accessModules || [],
+        approvalStatus: data.approvalStatus
+      });
+      if (data.role === "admin") {
+        navigate("/admin");
+      } else if (data.role === "employee") {
+        navigate(data.accessModules?.[0] ? `/admin/${data.accessModules[0]}` : "/");
+      } else {
+        navigate("/driver");
+      }
     } catch (err) {
       setError(err.response?.data?.error || "Unable to connect to server. Please try again.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function handleRegister(e) {
+    e.preventDefault();
+    setError("");
+    setSuccess("");
+    setLoading(true);
+    try {
+      const { data } = await api.post("/api/auth/employees/register", {
+        name,
+        email,
+        password,
+        phone,
+        department,
+        jobTitle
+      });
+      setSuccess(data.message || "Registration submitted. Admin approval is required.");
+      setMode("login");
+      setPassword("");
+    } catch (err) {
+      setError(err.response?.data?.error || "Unable to submit registration. Please try again.");
     } finally {
       setLoading(false);
     }
@@ -378,11 +423,94 @@ export function HomePage() {
 
           <div className="lp-form-wrap">
             <div className="lp-form-head">
-              <h1>Welcome Back</h1>
-              <p>Login to your AstraFleet TMS account</p>
+              <h1>{mode === "login" ? "Welcome Back" : "Employee Registration"}</h1>
+              <p>{mode === "login" ? "Login to your AstraFleet TMS account" : "Create your TMS login and wait for admin access"}</p>
             </div>
 
-            <form className="lp-form" onSubmit={handleSubmit}>
+            <div className="lp-role-tabs">
+              <button
+                type="button"
+                className={`lp-role-tab${mode === "login" ? " active" : ""}`}
+                onClick={() => {
+                  setMode("login");
+                  setError("");
+                  setSuccess("");
+                }}
+              >
+                Login
+              </button>
+              <button
+                type="button"
+                className={`lp-role-tab${mode === "register" ? " active" : ""}`}
+                onClick={() => {
+                  setMode("register");
+                  setError("");
+                  setSuccess("");
+                }}
+              >
+                Employee register
+              </button>
+            </div>
+
+            <form className="lp-form" onSubmit={mode === "login" ? handleSubmit : handleRegister}>
+              {mode === "register" && (
+                <>
+                  <div className="lp-field">
+                    <label>Full Name</label>
+                    <div className="lp-input-wrap">
+                      <span className="lp-input-icon"><IconPerson /></span>
+                      <input
+                        type="text"
+                        placeholder="Enter your full name"
+                        value={name}
+                        onChange={(e) => setName(e.target.value)}
+                        required
+                      />
+                    </div>
+                  </div>
+
+                  <div className="lp-field">
+                    <label>Work Area</label>
+                    <div className="lp-input-wrap">
+                      <select value={department} onChange={(e) => setDepartment(e.target.value)} required>
+                        <option value="finance">Finance</option>
+                        <option value="trips">Dispatch planning</option>
+                        <option value="jobs">Job management</option>
+                        <option value="billing">Billing</option>
+                        <option value="tracking">Live tracking</option>
+                        <option value="drivers">Driver management</option>
+                        <option value="vehicles">Vehicle management</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  <div className="lp-field">
+                    <label>Job Title</label>
+                    <div className="lp-input-wrap">
+                      <input
+                        type="text"
+                        placeholder="e.g. Finance executive"
+                        value={jobTitle}
+                        onChange={(e) => setJobTitle(e.target.value)}
+                        required
+                      />
+                    </div>
+                  </div>
+
+                  <div className="lp-field">
+                    <label>Phone</label>
+                    <div className="lp-input-wrap">
+                      <input
+                        type="tel"
+                        placeholder="Enter phone number"
+                        value={phone}
+                        onChange={(e) => setPhone(e.target.value)}
+                      />
+                    </div>
+                  </div>
+                </>
+              )}
+
               {/* Email */}
               <div className="lp-field">
                 <label>Email Address</label>
@@ -393,6 +521,7 @@ export function HomePage() {
                     placeholder="Enter your email"
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
+                    required
                   />
                 </div>
               </div>
@@ -407,22 +536,26 @@ export function HomePage() {
                     placeholder="Enter your password"
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
+                    required
                   />
                   <IconEye show={showPass} onClick={() => setShowPass(!showPass)} />
                 </div>
               </div>
 
               {/* Forgot */}
-              <div className="lp-forgot">
-                <a href="#">Forgot Password?</a>
-              </div>
+              {mode === "login" && (
+                <div className="lp-forgot">
+                  <a href="#">Forgot Password?</a>
+                </div>
+              )}
 
               {error && <p className="lp-error">{error}</p>}
+              {success && <p className="lp-success">{success}</p>}
 
               {/* Login btn */}
               <button type="submit" className="lp-login-btn" disabled={loading}>
                 <IconLogin />
-                {loading ? "Logging in…" : "Login"}
+                {loading ? "Please wait..." : mode === "login" ? "Login" : "Submit for admin approval"}
               </button>
             </form>
           </div>

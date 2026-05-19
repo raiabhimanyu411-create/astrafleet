@@ -265,7 +265,8 @@
   pointer-events: none;
 }
 
-.lp-input-wrap input {
+.lp-input-wrap input,
+.lp-input-wrap select {
   width: 100%;
   padding: 12px 42px;
   border: 1.5px solid #e2e8f0;
@@ -281,7 +282,8 @@
   color: #cbd5e1;
 }
 
-.lp-input-wrap input:focus {
+.lp-input-wrap input:focus,
+.lp-input-wrap select:focus {
   border-color: #3b82f6;
   box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.12);
 }
@@ -323,6 +325,17 @@
   font-size: 0.85rem;
   font-weight: 500;
   border: 1px solid #fecaca;
+}
+
+.lp-success {
+  margin: 0;
+  padding: 10px 14px;
+  background: #dcfce7;
+  color: #166534;
+  border-radius: 8px;
+  font-size: 0.85rem;
+  font-weight: 500;
+  border: 1px solid #86efac;
 }
 
 .lp-login-btn {
@@ -874,6 +887,55 @@
 .data-row p      { font-size: 0.78rem; color: #64748b; margin: 3px 0 0; }
 .data-row span   { display: block; font-size: 0.88rem; font-weight: 600; }
 .compact .data-row { grid-template-columns: minmax(0, 1fr) 130px auto; }
+
+.employee-access-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+.employee-access-card {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.employee-meta {
+  margin: 5px 0 0;
+  font-size: 0.8rem;
+  color: #64748b;
+}
+
+.employee-profile-row {
+  grid-template-columns: minmax(0, 1fr) 130px;
+}
+
+.employee-access-controls {
+  display: grid;
+  gap: 14px;
+}
+
+.module-check-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.module-check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 38px;
+  padding: 8px 10px;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  background: #f8fafc;
+  color: #334155;
+  font-size: 0.8rem;
+  font-weight: 600;
+}
 
 /* ── Alert Stack ─────────────────────────────────────── */
 
@@ -1809,8 +1871,13 @@
   }
 
   .content-grid,
+  .employee-access-grid,
   .highlight-row {
     grid-template-columns: 1fr;
+  }
+
+  .module-check-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .driver-command-strip {
@@ -1847,7 +1914,12 @@
   }
 
   .data-row,
-  .compact .data-row {
+  .compact .data-row,
+  .employee-profile-row {
+    grid-template-columns: 1fr;
+  }
+
+  .module-check-grid {
     grid-template-columns: 1fr;
   }
 

@@ -1,4 +1,5 @@
 const db = require("../db/connection");
+const { ensureEmployeeAuthSchema, employeeModules, parseAccessModules } = require("./authController");
 
 function severityTone(s) {
   return s === "critical" || s === "high" ? "danger" : s === "medium" ? "warning" : "neutral";
@@ -1421,7 +1422,14 @@ exports.getTripById = async (req, res) => {
 exports.getNotifications = async (req, res) => {
   try {
     await ensureDriverOpsSchema();
+    await ensureEmployeeAuthSchema();
 
+    const [employeeRows] = await db.query(
+      `SELECT id, name, department, job_title
+       FROM users
+       WHERE role='employee' AND approval_status='pending'
+       ORDER BY created_at DESC LIMIT 5`
+    );
     const [failedRows] = await db.query(
       `SELECT t.id, t.trip_code, t.failed_delivery_reason, d.full_name
        FROM trips t
@@ -1451,6 +1459,13 @@ exports.getNotifications = async (req, res) => {
     );
 
     const notifications = [
+      ...employeeRows.map(r => ({
+        id: `employee-${r.id}`,
+        type: "info",
+        title: `Employee access request: ${r.name}`,
+        body: `${r.job_title || "Employee"} requested ${r.department || "TMS"} access.`,
+        link: "/admin/employees"
+      })),
       ...failedRows.map(r => ({
         id: `failed-${r.id}`,
         type: "danger",
@@ -1490,11 +1505,19 @@ exports.getNotifications = async (req, res) => {
 exports.getOverview = async (req, res) => {
   try {
     await ensureTrailerSchema();
+    await ensureEmployeeAuthSchema();
 
     const [[drivers]] = await db.query("SELECT COUNT(*) AS total FROM drivers");
     const [[vehicles]] = await db.query("SELECT COUNT(*) AS total FROM vehicles");
     const [[trips]] = await db.query("SELECT COUNT(*) AS total FROM trips");
     const [[invoices]] = await db.query("SELECT COUNT(*) AS total FROM invoices");
+    const [employeeRows] = await db.query(
+      `SELECT id, name, email, employee_code, department, job_title, approval_status, access_modules
+       FROM users
+       WHERE role='employee'
+       ORDER BY approval_status='pending' DESC, created_at DESC
+       LIMIT 6`
+    );
     const [driverQueueRows] = await db.query(
       `SELECT full_name, employee_code, shift_status, compliance_status, onboarding_status
        FROM drivers
@@ -1590,6 +1613,11 @@ exports.getOverview = async (req, res) => {
       ],
       modules: [
         {
+          title: "Employee Access Control",
+          description: "Approve employee registrations and assign finance, dispatch, jobs, tracking, or billing access.",
+          path: "/admin/employees"
+        },
+        {
           title: "Driver Management",
           description: "Driver onboarding, document expiry, shift readiness, and trip allocation approvals.",
           path: "/admin/drivers"
@@ -1625,6 +1653,16 @@ exports.getOverview = async (req, res) => {
           path: "/admin/alerts"
         }
       ],
+      employeeRequests: employeeRows.map(e => ({
+        id: e.id,
+        name: e.name,
+        email: e.email,
+        identity: `${e.employee_code || "No code"} · ${e.job_title || "Role pending"}`,
+        department: e.department || "Not selected",
+        status: e.approval_status,
+        access: parseAccessModules(e.access_modules),
+        tone: e.approval_status === "active" ? "success" : e.approval_status === "rejected" ? "danger" : "warning"
+      })),
       driverQueue: driverQueueRows.map(d => ({
         name: d.full_name,
         assignment: `${d.employee_code} · ${d.shift_status.replace("_", " ")}`,
@@ -1668,5 +1706,96 @@ exports.getOverview = async (req, res) => {
       message: "Dashboard data error",
       error: error.message
     });
+  }
+};
+
+exports.getEmployees = async (_req, res) => {
+  try {
+    await ensureEmployeeAuthSchema();
+
+    const [rows] = await db.query(
+      `SELECT id, name, email, employee_code, phone, department, job_title,
+              approval_status, access_modules, created_at
+       FROM users
+       WHERE role='employee'
+       ORDER BY approval_status='pending' DESC, created_at DESC`
+    );
+
+    const employees = rows.map(e => ({
+      id: e.id,
+      name: e.name,
+      email: e.email,
+      employeeCode: e.employee_code,
+      phone: e.phone,
+      department: e.department,
+      jobTitle: e.job_title,
+      approvalStatus: e.approval_status,
+      accessModules: parseAccessModules(e.access_modules),
+      createdAt: fmtDate(e.created_at)
+    }));
+
+    const counts = employees.reduce((acc, item) => {
+      acc.total += 1;
+      acc[item.approvalStatus] = (acc[item.approvalStatus] || 0) + 1;
+      return acc;
+    }, { total: 0, pending: 0, active: 0, rejected: 0 });
+
+    res.json({
+      header: {
+        badge: "Employee access control",
+        title: "Admin-controlled employee permissions",
+        description: "Approve employee registrations and decide which TMS workspaces each employee can handle."
+      },
+      highlights: [
+        "Employees register themselves with login credentials and work details.",
+        "Admin reviews every request before the employee can log in.",
+        "Approved employees only see the pages assigned by admin."
+      ],
+      stats: [
+        { label: "Employee requests", value: counts.total, description: "All employee accounts.", change: "Live from users", tone: "neutral" },
+        { label: "Waiting approval", value: counts.pending, description: "New registrations needing admin action.", change: "Admin action", tone: "warning" },
+        { label: "Active employees", value: counts.active, description: "Can log in to assigned pages.", change: "Access granted", tone: "success" },
+        { label: "Rejected", value: counts.rejected, description: "Blocked from employee login.", change: "Access denied", tone: "danger" }
+      ],
+      modules: Array.from(employeeModules),
+      employees
+    });
+  } catch (error) {
+    res.status(500).json({ message: "Employees data error", error: error.message });
+  }
+};
+
+exports.updateEmployeeAccess = async (req, res) => {
+  const id = Number(req.params.id);
+  const { approvalStatus, accessModules } = req.body;
+
+  if (!id) {
+    return res.status(400).json({ message: "Valid employee id is required." });
+  }
+
+  if (!["pending", "active", "rejected"].includes(approvalStatus)) {
+    return res.status(400).json({ message: "Valid approval status is required." });
+  }
+
+  const cleanModules = Array.isArray(accessModules)
+    ? accessModules.filter((module) => employeeModules.has(module))
+    : [];
+
+  try {
+    await ensureEmployeeAuthSchema();
+    const [result] = await db.execute(
+      `UPDATE users
+       SET approval_status = ?, access_modules = ?
+       WHERE id = ? AND role='employee'`,
+      [approvalStatus, JSON.stringify(cleanModules), id]
+    );
+
+    if (result.affectedRows === 0) {
+      return res.status(404).json({ message: "Employee not found." });
+    }
+
+    res.json({ message: "Employee access updated.", approvalStatus, accessModules: cleanModules });
+  } catch (error) {
+    res.status(500).json({ message: "Employee access update error", error: error.message });
   }
 };

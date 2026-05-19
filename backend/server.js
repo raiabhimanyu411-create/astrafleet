@@ -35,8 +35,8 @@ app.get("/api/health", (_req, res) => {
     status: "ok",
     service: "Astra Fleet backend",
     port: PORT,
-    activeRoles: ["Admin", "Driver"],
-    scope: "Admin + Driver only",
+    activeRoles: ["Admin", "Employee", "Driver"],
+    scope: "Admin-controlled employee access + Driver operations",
     timestamp: new Date().toISOString()
   });
 });

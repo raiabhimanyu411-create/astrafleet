@@ -5,7 +5,13 @@ CREATE TABLE IF NOT EXISTS users (
   name       VARCHAR(100) NOT NULL,
   email      VARCHAR(150) NOT NULL UNIQUE,
   password   VARCHAR(255) NOT NULL,
-  role       ENUM('admin', 'driver') NOT NULL DEFAULT 'driver',
+  role       ENUM('admin', 'driver', 'employee') NOT NULL DEFAULT 'driver',
+  employee_code VARCHAR(40) DEFAULT NULL,
+  phone      VARCHAR(30) DEFAULT NULL,
+  department VARCHAR(80) DEFAULT NULL,
+  job_title  VARCHAR(120) DEFAULT NULL,
+  access_modules JSON DEFAULT NULL,
+  approval_status ENUM('pending', 'active', 'rejected') NOT NULL DEFAULT 'active',
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 ) ENGINE=InnoDB;
 

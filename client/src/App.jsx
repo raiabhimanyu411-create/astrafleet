@@ -4,6 +4,7 @@ import { AdminAlertsPage } from "./pages/admin/AdminAlertsPage";
 import { AdminBillingPage } from "./pages/admin/AdminBillingPage";
 import { AdminDriversPage } from "./pages/admin/AdminDriversPage";
 import { AdminFinancePage } from "./pages/admin/AdminFinancePage";
+import { AdminEmployeesPage } from "./pages/admin/AdminEmployeesPage";
 import { AdminPanel } from "./pages/admin/AdminPanel";
 import { AdminTrackingPage } from "./pages/admin/AdminTrackingPage";
 import { AdminTripAssignPage } from "./pages/admin/AdminTripAssignPage";
@@ -28,18 +29,55 @@ import { DriverPanel } from "./pages/driver/DriverPanel";
 import { HomePage } from "./pages/HomePage";
 import { getAuthSession } from "./utils/authSession";
 
-function ProtectedRoute({ role, children }) {
+const routeAccess = {
+  "/admin/jobs": "jobs",
+  "/admin/customers": "customers",
+  "/admin/trips": "trips",
+  "/admin/drivers": "drivers",
+  "/admin/vehicles": "vehicles",
+  "/admin/finance": "finance",
+  "/admin/billing": "billing",
+  "/admin/tracking": "tracking",
+  "/admin/alerts": "alerts"
+};
+
+function firstEmployeePath(session) {
+  const firstModule = session?.accessModules?.[0];
+  return firstModule ? `/admin/${firstModule}` : "/";
+}
+
+function ProtectedRoute({ role, moduleKey, children }) {
   const session = getAuthSession();
 
   if (!session) {
     return <Navigate replace to="/" />;
   }
 
+  if (session.role === "admin") {
+    return children;
+  }
+
   if (role && session.role !== role) {
-    return <Navigate replace to={session.role === "admin" ? "/admin" : "/driver"} />;
+    if (session.role === "employee") {
+      return <Navigate replace to={firstEmployeePath(session)} />;
+    }
+    return <Navigate replace to={session.role === "driver" ? "/driver" : "/"} />;
+  }
+
+  if (session.role === "employee") {
+    const allowed = moduleKey && session.accessModules?.includes(moduleKey);
+    if (!allowed) {
+      return <Navigate replace to={firstEmployeePath(session)} />;
+    }
   }
 
   return children;
+}
+
+function AdminOrEmployeeRoute({ children }) {
+  const path = window.location.pathname;
+  const matched = Object.entries(routeAccess).find(([prefix]) => path === prefix || path.startsWith(`${prefix}/`));
+  return <ProtectedRoute role={matched ? undefined : "admin"} moduleKey={matched?.[1]}>{children}</ProtectedRoute>;
 }
 
 function App() {
@@ -55,229 +93,237 @@ function App() {
         )}
       />
       <Route
-        path="/admin/drivers"
+        path="/admin/employees"
         element={(
           <ProtectedRoute role="admin">
-            <DriversListPage />
+            <AdminEmployeesPage />
           </ProtectedRoute>
+        )}
+      />
+      <Route
+        path="/admin/drivers"
+        element={(
+          <AdminOrEmployeeRoute>
+            <DriversListPage />
+          </AdminOrEmployeeRoute>
         )}
       />
       <Route
         path="/admin/drivers/new"
         element={(
-          <ProtectedRoute role="admin">
+          <AdminOrEmployeeRoute>
             <DriverFormPage />
-          </ProtectedRoute>
+          </AdminOrEmployeeRoute>
         )}
       />
       <Route
         path="/admin/drivers/:id"
         element={(
-          <ProtectedRoute role="admin">
+          <AdminOrEmployeeRoute>
             <DriverDetailPage />
-          </ProtectedRoute>
+          </AdminOrEmployeeRoute>
         )}
       />
       <Route
         path="/admin/drivers/:id/edit"
         element={(
-          <ProtectedRoute role="admin">
+          <AdminOrEmployeeRoute>
             <DriverFormPage />
-          </ProtectedRoute>
+          </AdminOrEmployeeRoute>
         )}
       />
       <Route
         path="/admin/vehicles"
         element={(
-          <ProtectedRoute role="admin">
+          <AdminOrEmployeeRoute>
             <VehiclesListPage />
-          </ProtectedRoute>
+          </AdminOrEmployeeRoute>
         )}
       />
       <Route
         path="/admin/vehicles/new"
         element={(
-          <ProtectedRoute role="admin">
+          <AdminOrEmployeeRoute>
             <VehicleFormPage />
-          </ProtectedRoute>
+          </AdminOrEmployeeRoute>
         )}
       />
       <Route
         path="/admin/vehicles/:id"
         element={(
-          <ProtectedRoute role="admin">
+          <AdminOrEmployeeRoute>
             <VehicleDetailPage />
-          </ProtectedRoute>
+          </AdminOrEmployeeRoute>
         )}
       />
       <Route
         path="/admin/vehicles/:id/edit"
         element={(
-          <ProtectedRoute role="admin">
+          <AdminOrEmployeeRoute>
             <VehicleFormPage />
-          </ProtectedRoute>
+          </AdminOrEmployeeRoute>
         )}
       />
       <Route
         path="/admin/finance"
         element={(
-          <ProtectedRoute role="admin">
+          <AdminOrEmployeeRoute>
             <AdminFinancePage />
-          </ProtectedRoute>
+          </AdminOrEmployeeRoute>
         )}
       />
       <Route
         path="/admin/trips"
         element={(
-          <ProtectedRoute role="admin">
+          <AdminOrEmployeeRoute>
             <AdminTripsPage />
-          </ProtectedRoute>
+          </AdminOrEmployeeRoute>
         )}
       />
       <Route
         path="/admin/trips/assign"
         element={(
-          <ProtectedRoute role="admin">
+          <AdminOrEmployeeRoute>
             <AdminTripAssignPage />
-          </ProtectedRoute>
+          </AdminOrEmployeeRoute>
         )}
       />
       <Route
         path="/admin/trips/:id"
         element={(
-          <ProtectedRoute role="admin">
+          <AdminOrEmployeeRoute>
             <AdminTripDetailPage />
-          </ProtectedRoute>
+          </AdminOrEmployeeRoute>
         )}
       />
       <Route
         path="/admin/trips/:id/edit"
         element={(
-          <ProtectedRoute role="admin">
+          <AdminOrEmployeeRoute>
             <AdminTripAssignPage />
-          </ProtectedRoute>
+          </AdminOrEmployeeRoute>
         )}
       />
       <Route
         path="/admin/billing"
         element={(
-          <ProtectedRoute role="admin">
+          <AdminOrEmployeeRoute>
             <AdminBillingPage />
-          </ProtectedRoute>
+          </AdminOrEmployeeRoute>
         )}
       />
       <Route
         path="/admin/billing/new"
         element={(
-          <ProtectedRoute role="admin">
+          <AdminOrEmployeeRoute>
             <InvoiceFormPage />
-          </ProtectedRoute>
+          </AdminOrEmployeeRoute>
         )}
       />
       <Route
         path="/admin/billing/:id"
         element={(
-          <ProtectedRoute role="admin">
+          <AdminOrEmployeeRoute>
             <InvoiceDetailPage />
-          </ProtectedRoute>
+          </AdminOrEmployeeRoute>
         )}
       />
       <Route
         path="/admin/billing/:id/edit"
         element={(
-          <ProtectedRoute role="admin">
+          <AdminOrEmployeeRoute>
             <InvoiceFormPage />
-          </ProtectedRoute>
+          </AdminOrEmployeeRoute>
         )}
       />
       <Route
         path="/admin/tracking"
         element={(
-          <ProtectedRoute role="admin">
+          <AdminOrEmployeeRoute>
             <AdminTrackingPage />
-          </ProtectedRoute>
+          </AdminOrEmployeeRoute>
         )}
       />
       <Route
         path="/admin/tracking/vehicles/:id"
         element={(
-          <ProtectedRoute role="admin">
+          <AdminOrEmployeeRoute>
             <TrackingVehicleDetailPage />
-          </ProtectedRoute>
+          </AdminOrEmployeeRoute>
         )}
       />
       <Route
         path="/admin/alerts"
         element={(
-          <ProtectedRoute role="admin">
+          <AdminOrEmployeeRoute>
             <AdminAlertsPage />
-          </ProtectedRoute>
+          </AdminOrEmployeeRoute>
         )}
       />
       {/* Jobs */}
       <Route
         path="/admin/jobs"
         element={(
-          <ProtectedRoute role="admin">
+          <AdminOrEmployeeRoute>
             <JobsListPage />
-          </ProtectedRoute>
+          </AdminOrEmployeeRoute>
         )}
       />
       <Route
         path="/admin/jobs/new"
         element={(
-          <ProtectedRoute role="admin">
+          <AdminOrEmployeeRoute>
             <JobFormPage />
-          </ProtectedRoute>
+          </AdminOrEmployeeRoute>
         )}
       />
       <Route
         path="/admin/jobs/:id"
         element={(
-          <ProtectedRoute role="admin">
+          <AdminOrEmployeeRoute>
             <JobDetailPage />
-          </ProtectedRoute>
+          </AdminOrEmployeeRoute>
         )}
       />
       <Route
         path="/admin/jobs/:id/edit"
         element={(
-          <ProtectedRoute role="admin">
+          <AdminOrEmployeeRoute>
             <JobFormPage />
-          </ProtectedRoute>
+          </AdminOrEmployeeRoute>
         )}
       />
       {/* Customers */}
       <Route
         path="/admin/customers"
         element={(
-          <ProtectedRoute role="admin">
+          <AdminOrEmployeeRoute>
             <CustomersListPage />
-          </ProtectedRoute>
+          </AdminOrEmployeeRoute>
         )}
       />
       <Route
         path="/admin/customers/new"
         element={(
-          <ProtectedRoute role="admin">
+          <AdminOrEmployeeRoute>
             <CustomerFormPage />
-          </ProtectedRoute>
+          </AdminOrEmployeeRoute>
         )}
       />
       <Route
         path="/admin/customers/:id"
         element={(
-          <ProtectedRoute role="admin">
+          <AdminOrEmployeeRoute>
             <CustomerDetailPage />
-          </ProtectedRoute>
+          </AdminOrEmployeeRoute>
         )}
       />
       <Route
         path="/admin/customers/:id/edit"
         element={(
-          <ProtectedRoute role="admin">
+          <AdminOrEmployeeRoute>
             <CustomerFormPage />
-          </ProtectedRoute>
+          </AdminOrEmployeeRoute>
         )}
       />
       <Route

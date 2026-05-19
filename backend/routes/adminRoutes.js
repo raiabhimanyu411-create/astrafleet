@@ -4,6 +4,8 @@ const adminController = require("../controllers/adminController");
 
 router.get("/notifications", adminController.getNotifications);
 router.get("/overview", adminController.getOverview);
+router.get("/employees", adminController.getEmployees);
+router.patch("/employees/:id/access", adminController.updateEmployeeAccess);
 router.get("/drivers", adminController.getDrivers);
 router.get("/finance", adminController.getFinance);
 router.get("/billing", adminController.getBilling);
