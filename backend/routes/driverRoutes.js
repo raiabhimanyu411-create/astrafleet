@@ -22,6 +22,7 @@ router.get("/",                          d.listDrivers);
 router.get("/:id",                       d.getDriverById);
 router.post("/",                         d.createDriver);
 router.put("/:id",                       d.updateDriver);
+router.delete("/:id",                    d.deleteDriver);
 router.post("/:id/documents",            d.addDocument);
 router.put("/:id/documents/:docId",      d.updateDocument);
 router.delete("/:id/documents/:docId",   d.deleteDocument);

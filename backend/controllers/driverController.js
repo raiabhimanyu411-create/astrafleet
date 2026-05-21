@@ -1298,6 +1298,29 @@ exports.updateDriver = async (req, res) => {
   }
 };
 
+// DELETE /api/drivers/:id
+exports.deleteDriver = async (req, res) => {
+  const conn = await db.getConnection();
+  try {
+    const { id } = req.params;
+
+    const [[driver]] = await conn.query(`SELECT id, user_id FROM drivers WHERE id = ?`, [id]);
+    if (!driver) return res.status(404).json({ message: "Driver not found." });
+
+    await conn.beginTransaction();
+    await conn.query(`UPDATE trips SET driver_id = NULL WHERE driver_id = ?`, [id]);
+    await conn.query(`DELETE FROM drivers WHERE id = ?`, [id]);
+    await conn.commit();
+
+    res.json({ message: "Driver deleted." });
+  } catch (err) {
+    await conn.rollback();
+    res.status(500).json({ message: "Driver delete error", error: err.message });
+  } finally {
+    conn.release();
+  }
+};
+
 // POST /api/drivers/:id/documents
 exports.addDocument = async (req, res) => {
   try {

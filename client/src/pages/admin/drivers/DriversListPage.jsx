@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { getDrivers } from "../../../api/driverApi";
+import { deleteDriver, getDrivers } from "../../../api/driverApi";
 import { StatCard } from "../../../components/StatCard";
 import { StateNotice } from "../../../components/StateNotice";
 import { StatusPill } from "../../../components/StatusPill";
@@ -44,13 +44,35 @@ export function DriversListPage() {
   const [search, setSearch]               = useState("");
   const [filterCompliance, setFilterCompliance] = useState("");
   const [filterShift, setFilterShift]           = useState("");
+  const [deletingId, setDeletingId]             = useState(null);
 
-  useEffect(() => {
-    getDrivers()
+  function load() {
+    setLoading(true);
+    return getDrivers()
       .then(r => setData(r.data))
       .catch(() => setError("Could not load drivers. Please refresh."))
       .finally(() => setLoading(false));
+  }
+
+  useEffect(() => {
+    load();
   }, []);
+
+  async function handleDelete(driver) {
+    const label = driver.fullName || "this driver";
+    if (!window.confirm(`Are you sure you want to delete ${label}? Their assigned jobs will become unassigned.`)) return;
+
+    setError("");
+    setDeletingId(driver.id);
+    try {
+      await deleteDriver(driver.id);
+      await load();
+    } catch (err) {
+      setError(err?.response?.data?.message || "Driver could not be deleted. Please try again.");
+    } finally {
+      setDeletingId(null);
+    }
+  }
 
   const filtered = (data?.drivers || []).filter(d => {
     if (filterCompliance && d.complianceStatus !== filterCompliance) return false;
@@ -113,7 +135,7 @@ export function DriversListPage() {
           <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.85rem" }}>
             <thead>
               <tr style={{ background: "#f8fafc", borderBottom: "1px solid #e2e8f0" }}>
-                {["Driver", "Contact", "Depot", "Licence expiry", "Medical", "CPC", "Tacho", "Trips", "Shift", "Compliance", ""].map(h => (
+                {["Driver", "Contact", "Depot", "Licence expiry", "Medical", "CPC", "Tacho", "Trips", "Shift", "Compliance", "Actions"].map(h => (
                   <th key={h} style={{ padding: "11px 14px", textAlign: "left", fontWeight: 700, color: "#475569", fontSize: "0.71rem", textTransform: "uppercase", letterSpacing: "0.05em", whiteSpace: "nowrap" }}>
                     {h}
                   </th>
@@ -181,6 +203,15 @@ export function DriversListPage() {
                         onClick={() => navigate(`/admin/drivers/${d.id}/edit`)}
                       >
                         Edit
+                      </button>
+                      <button
+                        className="header-action-button danger"
+                        style={{ height: 28, padding: "0 10px", fontSize: "0.76rem" }}
+                        type="button"
+                        disabled={deletingId === d.id}
+                        onClick={() => handleDelete(d)}
+                      >
+                        {deletingId === d.id ? "Deleting..." : "Delete"}
                       </button>
                     </div>
                   </td>

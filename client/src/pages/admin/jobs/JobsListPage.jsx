@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { deleteAdminTrip } from "../../../api/adminApi";
 import { getJobs } from "../../../api/jobApi";
 import { StatCard } from "../../../components/StatCard";
 import { StateNotice } from "../../../components/StateNotice";
@@ -34,6 +35,7 @@ export function JobsListPage() {
   const [search, setSearch]     = useState("");
   const [filterStatus, setFilterStatus]     = useState("");
   const [filterPriority, setFilterPriority] = useState("");
+  const [deletingId, setDeletingId]         = useState(null);
 
   function load() {
     setLoading(true);
@@ -42,7 +44,7 @@ export function JobsListPage() {
     if (filterPriority) params.priority = filterPriority;
     if (search)         params.search   = search;
 
-    getJobs(params)
+    return getJobs(params)
       .then(r => setData(r.data))
       .catch(() => setError("Could not load jobs. Please refresh."))
       .finally(() => setLoading(false));
@@ -53,6 +55,22 @@ export function JobsListPage() {
   function handleSearch(e) {
     e.preventDefault();
     load();
+  }
+
+  async function handleDelete(job) {
+    const label = job.code || "this job";
+    if (!window.confirm(`Are you sure you want to delete ${label}? This action cannot be undone.`)) return;
+
+    setError("");
+    setDeletingId(job.id);
+    try {
+      await deleteAdminTrip(job.id);
+      await load();
+    } catch (err) {
+      setError(err?.response?.data?.message || "Job could not be deleted. Please try again.");
+    } finally {
+      setDeletingId(null);
+    }
   }
 
   const jobs = data?.jobs || [];
@@ -201,6 +219,15 @@ export function JobsListPage() {
                         onClick={() => navigate(`/admin/jobs/${job.id}/edit`)}
                       >
                         Edit
+                      </button>
+                      <button
+                        className="header-action-button danger"
+                        style={{ height: 28, padding: "0 10px", fontSize: "0.76rem" }}
+                        type="button"
+                        disabled={deletingId === job.id}
+                        onClick={() => handleDelete(job)}
+                      >
+                        {deletingId === job.id ? "Deleting..." : "Delete"}
                       </button>
                     </div>
                   </td>
