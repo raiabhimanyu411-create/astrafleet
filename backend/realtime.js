@@ -16,7 +16,19 @@ function emitDriverLocationUpdate(payload) {
   });
 }
 
+function chatRoom(driverId) {
+  return `driver-chat:${driverId}`;
+}
+
+function emitDriverChatMessage(message) {
+  if (!io || !message?.driverId) return;
+  io.to("admin-chat").emit("driver-chat:message", message);
+  io.to(chatRoom(message.driverId)).emit("driver-chat:message", message);
+}
+
 module.exports = {
+  chatRoom,
+  emitDriverChatMessage,
   emitDriverLocationUpdate,
   getRealtimeServer,
   setRealtimeServer

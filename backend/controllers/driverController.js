@@ -1,5 +1,5 @@
 const db = require("../db/connection");
-const { emitDriverLocationUpdate } = require("../realtime");
+const { emitDriverChatMessage, emitDriverLocationUpdate } = require("../realtime");
 
 function fmtDate(d) {
   if (!d) return "—";
@@ -8,6 +8,9 @@ function fmtDate(d) {
 function fmtDateTime(d) {
   if (!d) return "—";
   return new Date(d).toLocaleString("en-GB", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" });
+}
+function isoDateTime(d) {
+  return d ? new Date(d).toISOString() : null;
 }
 function fmtAmount(n) {
   if (n == null) return "—";
@@ -763,19 +766,24 @@ exports.getMyMessages = async (req, res) => {
       `SELECT * FROM driver_messages WHERE driver_id=? ORDER BY sent_at DESC LIMIT 30`,
       [driver.id]
     );
-    await db.query(`UPDATE driver_messages SET is_read=1 WHERE driver_id=? AND is_read=0`, [driver.id]);
+    await db.query(
+      `UPDATE driver_messages SET is_read=1 WHERE driver_id=? AND sender_role <> 'driver' AND is_read=0`,
+      [driver.id]
+    );
 
-    const unreadCount = messages.filter(m => !m.is_read).length;
+    const unreadCount = messages.filter(m => m.sender_role !== "driver" && !m.is_read).length;
     res.json({
       unreadCount,
-      messages: messages.map(m => ({
+      messages: messages.reverse().map(m => ({
         id: m.id,
+        driverId: driver.id,
         senderRole: m.sender_role,
         senderName: m.sender_name || (m.sender_role === "driver" ? driver.full_name : "Dispatch"),
         body: m.body,
         tripId: m.trip_id,
         isRead: Boolean(m.is_read),
-        at: fmtDateTime(m.sent_at)
+        at: fmtDateTime(m.sent_at),
+        sentAt: isoDateTime(m.sent_at)
       }))
     });
   } catch (err) {
@@ -806,7 +814,22 @@ exports.sendMyMessage = async (req, res) => {
       tripId: tripId || null
     });
 
-    res.status(201).json({ message: "Message sent to dispatch.", id: result.insertId });
+    const [[created]] = await db.query(`SELECT * FROM driver_messages WHERE id=?`, [result.insertId]);
+    const message = {
+      id: created.id,
+      driverId: driver.id,
+      driverName: driver.full_name,
+      senderRole: created.sender_role,
+      senderName: created.sender_name || driver.full_name,
+      body: created.body,
+      tripId: created.trip_id,
+      isRead: Boolean(created.is_read),
+      at: fmtDateTime(created.sent_at),
+      sentAt: isoDateTime(created.sent_at)
+    };
+    emitDriverChatMessage(message);
+
+    res.status(201).json({ message: "Message sent to dispatch.", id: result.insertId, chatMessage: message });
   } catch (err) {
     res.status(500).json({ message: "Message send error", error: err.message });
   }

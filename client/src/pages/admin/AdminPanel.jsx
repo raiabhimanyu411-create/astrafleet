@@ -6,6 +6,7 @@ import { StateNotice } from "../../components/StateNotice";
 import { StatusPill } from "../../components/StatusPill";
 import { usePanelData } from "../../hooks/usePanelData";
 import { AdminWorkspaceLayout } from "./AdminWorkspaceLayout";
+import { DriverChatWidget } from "./DriverChatWidget";
 
 const moduleLinks = {
   "Employee Access Control": "/admin/employees",
@@ -55,6 +56,8 @@ export function AdminPanel() {
       }
     >
       <StateNotice loading={loading} error={error} />
+
+      <DriverChatWidget />
 
       <section className="stats-grid">
         {(data?.stats || []).map((item) => (

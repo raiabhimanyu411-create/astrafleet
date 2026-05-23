@@ -16,6 +16,7 @@ import {
   updateDriverJobStatus,
   updateDriverLocation
 } from "../../api/driverApi";
+import { getRealtimeSocket } from "../../api/realtime";
 import { NotificationBell } from "../../components/NotificationBell";
 import { PanelLayout } from "../../components/PanelLayout";
 import { StatCard } from "../../components/StatCard";
@@ -292,6 +293,26 @@ export function DriverPanel() {
     const msgTimer   = setInterval(() => loadMessages(), 60000);
     return () => { clearInterval(panelTimer); clearInterval(msgTimer); };
   }, [userId]);
+
+  useEffect(() => {
+    const driverId = data?.driver?.id;
+    if (!driverId) return undefined;
+
+    const socket = getRealtimeSocket();
+    function handleChatMessage(message) {
+      if (Number(message.driverId) !== Number(driverId)) return;
+      setMessages(prev => prev.some(item => item.id === message.id) ? prev : [...prev, message]);
+    }
+
+    socket.connect();
+    socket.emit("driver-chat:join", driverId);
+    socket.on("driver-chat:message", handleChatMessage);
+
+    return () => {
+      socket.off("driver-chat:message", handleChatMessage);
+      socket.emit("driver-chat:leave", driverId);
+    };
+  }, [data?.driver?.id]);
 
   useEffect(() => {
     if (!userId) return undefined;
@@ -1129,7 +1150,7 @@ export function DriverPanel() {
         <div className="section-head">
           <div>
             <span className="card-label">In-app messaging</span>
-            <h2>Driver ↔ Dispatch</h2>
+            <h2>Driver ↔ Admin support</h2>
           </div>
           <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
             <button className="header-action-button" type="button" onClick={loadMessages}>Refresh</button>
@@ -1139,7 +1160,7 @@ export function DriverPanel() {
         <div className="message-thread">
           {msgLoading && <p className="driver-empty">Loading messages...</p>}
           {!msgLoading && messages.length === 0 && (
-            <p className="driver-empty">No messages yet. Send one below to contact dispatch.</p>
+            <p className="driver-empty">No messages yet. Send one below to contact admin support.</p>
           )}
           {messages.map(msg => (
             <div key={msg.id} className={`message-bubble ${msg.senderRole === "driver" ? "outgoing" : "incoming"}`}>
@@ -1154,7 +1175,7 @@ export function DriverPanel() {
             className="af-input"
             value={newMessage}
             onChange={e => setNewMessage(e.target.value)}
-            placeholder="Type a message to dispatch..."
+            placeholder="Type a message to admin support..."
             rows={2}
           />
           <button
@@ -1163,7 +1184,7 @@ export function DriverPanel() {
             disabled={!newMessage.trim() || msgSending}
             style={{ width: "auto" }}
           >
-            {msgSending ? "Sending..." : "Send to dispatch"}
+            {msgSending ? "Sending..." : "Send to admin"}
           </button>
         </form>
       </section>

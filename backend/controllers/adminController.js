@@ -1,5 +1,6 @@
 const db = require("../db/connection");
 const { ensureEmployeeAuthSchema, employeeModules, parseAccessModules } = require("./authController");
+const { emitDriverChatMessage } = require("../realtime");
 
 function severityTone(s) {
   return s === "critical" || s === "high" ? "danger" : s === "medium" ? "warning" : "neutral";
@@ -8,6 +9,15 @@ function severityTone(s) {
 function fmtDate(d) {
   if (!d) return "—";
   return new Date(d).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" });
+}
+
+function fmtDateTime(d) {
+  if (!d) return "—";
+  return new Date(d).toLocaleString("en-GB", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" });
+}
+
+function isoDateTime(d) {
+  return d ? new Date(d).toISOString() : null;
 }
 
 function rawDate(d) {
@@ -45,6 +55,7 @@ function trailerStatusForTrip(status) {
 let driverOpsSchemaReady = false;
 let vehicleGpsSchemaReady = false;
 let trailerSchemaReady = false;
+let driverChatSchemaReady = false;
 
 async function addColumnIfMissing(table, column, definition) {
   const [rows] = await db.query(`SHOW COLUMNS FROM ${table} LIKE ?`, [column]);
@@ -106,6 +117,39 @@ async function ensureTrailerSchema() {
   );
   await addColumnIfMissing("trips", "trailer_id", "INT DEFAULT NULL");
   trailerSchemaReady = true;
+}
+
+async function ensureDriverChatSchema() {
+  if (driverChatSchemaReady) return;
+  await db.query(
+    `CREATE TABLE IF NOT EXISTS driver_messages (
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      driver_id INT NOT NULL,
+      sender_role ENUM('driver','admin','dispatch') NOT NULL DEFAULT 'driver',
+      sender_name VARCHAR(120) DEFAULT NULL,
+      body TEXT NOT NULL,
+      trip_id INT DEFAULT NULL,
+      is_read TINYINT(1) NOT NULL DEFAULT 0,
+      sent_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      CONSTRAINT fk_msg_driver FOREIGN KEY (driver_id) REFERENCES drivers (id) ON DELETE CASCADE
+    ) ENGINE=InnoDB`
+  );
+  driverChatSchemaReady = true;
+}
+
+function mapChatMessage(row, driverName = "Driver") {
+  return {
+    id: row.id,
+    driverId: row.driver_id,
+    driverName,
+    senderRole: row.sender_role,
+    senderName: row.sender_name || (row.sender_role === "driver" ? driverName : "Admin"),
+    body: row.body,
+    tripId: row.trip_id,
+    isRead: Boolean(row.is_read),
+    at: fmtDateTime(row.sent_at),
+    sentAt: isoDateTime(row.sent_at)
+  };
 }
 
 function driverStatusDisplay(status) {
@@ -201,6 +245,109 @@ exports.getDrivers = async (req, res) => {
     });
   } catch (error) {
     res.status(500).json({ message: "Drivers data error", error: error.message });
+  }
+};
+
+exports.getDriverChats = async (_req, res) => {
+  try {
+    await ensureDriverChatSchema();
+    const [rows] = await db.query(
+      `SELECT d.id, d.employee_code, d.full_name, d.phone, d.shift_status, d.compliance_status,
+              last_msg.id AS last_message_id,
+              last_msg.sender_role AS last_sender_role,
+              last_msg.sender_name AS last_sender_name,
+              last_msg.body AS last_body,
+              last_msg.sent_at AS last_sent_at,
+              COALESCE(unread.unread_count, 0) AS unread_count
+       FROM drivers d
+       LEFT JOIN (
+         SELECT m.*
+         FROM driver_messages m
+         JOIN (
+           SELECT driver_id, MAX(id) AS id
+           FROM driver_messages
+           GROUP BY driver_id
+         ) latest ON latest.id = m.id
+       ) last_msg ON last_msg.driver_id = d.id
+       LEFT JOIN (
+         SELECT driver_id, COUNT(*) AS unread_count
+         FROM driver_messages
+         WHERE sender_role='driver' AND is_read=0
+         GROUP BY driver_id
+       ) unread ON unread.driver_id = d.id
+       ORDER BY COALESCE(last_msg.sent_at, d.created_at) DESC, d.full_name ASC`
+    );
+
+    res.json({
+      drivers: rows.map(r => ({
+        id: r.id,
+        employeeCode: r.employee_code,
+        fullName: r.full_name,
+        phone: r.phone || "—",
+        shiftStatus: r.shift_status,
+        complianceStatus: r.compliance_status,
+        unreadCount: Number(r.unread_count) || 0,
+        lastMessage: r.last_message_id ? {
+          id: r.last_message_id,
+          senderRole: r.last_sender_role,
+          senderName: r.last_sender_name || (r.last_sender_role === "driver" ? r.full_name : "Admin"),
+          body: r.last_body,
+          at: fmtDateTime(r.last_sent_at),
+          sentAt: isoDateTime(r.last_sent_at)
+        } : null
+      }))
+    });
+  } catch (error) {
+    res.status(500).json({ message: "Driver chats error", error: error.message });
+  }
+};
+
+exports.getDriverChatMessages = async (req, res) => {
+  try {
+    await ensureDriverChatSchema();
+    const { id } = req.params;
+    const [[driver]] = await db.query(`SELECT id, full_name FROM drivers WHERE id=?`, [id]);
+    if (!driver) return res.status(404).json({ message: "Driver not found." });
+
+    const [messages] = await db.query(
+      `SELECT * FROM driver_messages WHERE driver_id=? ORDER BY sent_at DESC LIMIT 60`,
+      [id]
+    );
+    await db.query(
+      `UPDATE driver_messages SET is_read=1 WHERE driver_id=? AND sender_role='driver' AND is_read=0`,
+      [id]
+    );
+
+    res.json({
+      driver: { id: driver.id, name: driver.full_name },
+      messages: messages.reverse().map(m => mapChatMessage(m, driver.full_name))
+    });
+  } catch (error) {
+    res.status(500).json({ message: "Driver chat fetch error", error: error.message });
+  }
+};
+
+exports.sendDriverChatMessage = async (req, res) => {
+  try {
+    await ensureDriverChatSchema();
+    const { id } = req.params;
+    const { body, senderName } = req.body;
+    if (!body?.trim()) return res.status(400).json({ message: "Message body required." });
+
+    const [[driver]] = await db.query(`SELECT id, full_name FROM drivers WHERE id=?`, [id]);
+    if (!driver) return res.status(404).json({ message: "Driver not found." });
+
+    const [result] = await db.query(
+      `INSERT INTO driver_messages (driver_id, sender_role, sender_name, body, is_read) VALUES (?, 'admin', ?, ?, 0)`,
+      [id, senderName || "Admin", body.trim().slice(0, 1000)]
+    );
+    const [[created]] = await db.query(`SELECT * FROM driver_messages WHERE id=?`, [result.insertId]);
+    const message = mapChatMessage(created, driver.full_name);
+    emitDriverChatMessage(message);
+
+    res.status(201).json({ message: "Message sent to driver.", chatMessage: message });
+  } catch (error) {
+    res.status(500).json({ message: "Driver chat send error", error: error.message });
   }
 };
 

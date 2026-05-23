@@ -11,7 +11,7 @@ const customerRoutes = require("./routes/customerRoutes");
 const jobRoutes      = require("./routes/jobRoutes");
 const driverRoutes   = require("./routes/driverRoutes");
 const vehicleRoutes  = require("./routes/vehicleRoutes");
-const { setRealtimeServer } = require("./realtime");
+const { chatRoom, setRealtimeServer } = require("./realtime");
 
 const app = express();
 const PORT = process.env.PORT || 5001;
@@ -61,6 +61,22 @@ io.on("connection", (socket) => {
 
   socket.on("admin-tracking:leave", () => {
     socket.leave("admin-tracking");
+  });
+
+  socket.on("admin-chat:join", () => {
+    socket.join("admin-chat");
+  });
+
+  socket.on("admin-chat:leave", () => {
+    socket.leave("admin-chat");
+  });
+
+  socket.on("driver-chat:join", (driverId) => {
+    if (driverId) socket.join(chatRoom(driverId));
+  });
+
+  socket.on("driver-chat:leave", (driverId) => {
+    if (driverId) socket.leave(chatRoom(driverId));
   });
 });
 

@@ -4,6 +4,7 @@ import { deleteDriver, getDrivers } from "../../../api/driverApi";
 import { StatCard } from "../../../components/StatCard";
 import { StateNotice } from "../../../components/StateNotice";
 import { StatusPill } from "../../../components/StatusPill";
+import { DriverChatWidget } from "../DriverChatWidget";
 import { AdminWorkspaceLayout } from "../AdminWorkspaceLayout";
 
 const COMPLIANCE_OPTIONS = [
@@ -74,6 +75,10 @@ export function DriversListPage() {
     }
   }
 
+  function handleChat(driver) {
+    window.dispatchEvent(new CustomEvent("admin-driver-chat:select", { detail: { driverId: driver.id } }));
+  }
+
   const filtered = (data?.drivers || []).filter(d => {
     if (filterCompliance && d.complianceStatus !== filterCompliance) return false;
     if (filterShift      && d.shiftStatus      !== filterShift)      return false;
@@ -101,6 +106,8 @@ export function DriversListPage() {
       ]}
     >
       <StateNotice loading={loading} error={error} />
+
+      <DriverChatWidget compact />
 
       <section className="stats-grid">
         {(data?.stats || []).map(item => (
@@ -188,6 +195,14 @@ export function DriversListPage() {
                   </td>
                   <td style={{ padding: "11px 14px" }} onClick={e => e.stopPropagation()}>
                     <div style={{ display: "flex", gap: 5 }}>
+                      <button
+                        className="header-action-button"
+                        style={{ height: 28, padding: "0 10px", fontSize: "0.76rem" }}
+                        type="button"
+                        onClick={() => handleChat(d)}
+                      >
+                        Chat
+                      </button>
                       <button
                         className="header-action-button"
                         style={{ height: 28, padding: "0 10px", fontSize: "0.76rem" }}
