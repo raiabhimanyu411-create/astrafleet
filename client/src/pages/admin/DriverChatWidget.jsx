@@ -171,7 +171,7 @@ export function DriverChatWidget({ compact = false }) {
             {!threadLoading && selectedDriver && messages.length === 0 && (
               <p className="driver-empty">No chat yet. Send the first support message.</p>
             )}
-            {!selectedDriver && <p className="driver-empty">Driver list se Chat button select karo.</p>}
+            {!selectedDriver && <p className="driver-empty">Select the Chat button from the driver list.</p>}
             {messages.map(msg => (
               <div key={msg.id} className={`message-bubble ${msg.senderRole === "driver" ? "incoming" : "outgoing"}`}>
                 <span className="message-meta">{msg.senderName} · {msg.at}</span>
