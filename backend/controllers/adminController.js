@@ -355,17 +355,25 @@ exports.getFinance = async (req, res) => {
   try {
     const [[counts]] = await db.query(
       `SELECT COUNT(*) as total,
-        SUM(payment_status='overdue') as overdue,
-        SUM(payment_status IN ('pending','sent')) as pending,
-        SUM(payment_status='paid') as paid
+        COALESCE(SUM(payment_status='overdue'), 0) as overdue,
+        COALESCE(SUM(payment_status IN ('pending','sent')), 0) as pending,
+        COALESCE(SUM(payment_status='paid'), 0) as paid
+       FROM invoices`
+    );
+    const [[position]] = await db.query(
+      `SELECT
+        COALESCE(SUM(CASE WHEN payment_status != 'paid' THEN amount_gbp ELSE 0 END), 0) as receivable,
+        COALESCE(SUM(CASE WHEN payment_status = 'overdue' THEN amount_gbp ELSE 0 END), 0) as overdue_amount,
+        COALESCE((SELECT SUM(amount_gbp) FROM vendor_payouts WHERE payout_status != 'paid'), 0) as payable,
+        COALESCE((SELECT SUM(amount_gbp) FROM vendor_payouts WHERE payout_status = 'hold'), 0) as held_payouts
        FROM invoices`
     );
     const [collectionRows] = await db.query(
-      `SELECT invoice_no, client_name, amount_gbp, due_date, payment_status
+      `SELECT id, invoice_no, client_name, amount_gbp, due_date, payment_status
        FROM invoices WHERE payment_status != 'paid' ORDER BY due_date ASC LIMIT 8`
     );
     const [payoutRows] = await db.query(
-      `SELECT payout_reference, vendor_name, lane_code, amount_gbp, due_date, payout_status
+      `SELECT id, payout_reference, vendor_name, lane_code, amount_gbp, due_date, payout_status, notes
        FROM vendor_payouts ORDER BY due_date ASC LIMIT 8`
     );
     const [noteRows] = await db.query(
@@ -393,20 +401,35 @@ exports.getFinance = async (req, res) => {
         { label: "Pending collection", value: counts.pending, description: "Sent or pending payment.", change: "Live from database", tone: "warning" },
         { label: "Settled", value: counts.paid, description: "Paid invoices this period.", change: "Live from database", tone: "success" }
       ],
+      cashPosition: [
+        { label: "Receivable open", value: fmtAmount(position.receivable), description: "Unpaid customer invoices.", tone: "warning" },
+        { label: "Payable open", value: fmtAmount(position.payable), description: "Vendor payouts not yet paid.", tone: "neutral" },
+        { label: "Net cash position", value: fmtAmount(Number(position.receivable) - Number(position.payable)), description: "Open receivables minus open payouts.", tone: Number(position.receivable) >= Number(position.payable) ? "success" : "danger" },
+        { label: "Overdue exposure", value: fmtAmount(position.overdue_amount), description: "Past-due customer balance.", tone: "danger" }
+      ],
       collections: collectionRows.map(r => ({
+        id: r.id,
         reference: r.invoice_no,
         counterparty: r.client_name,
+        amountValue: Number(r.amount_gbp || 0),
         amount: fmtAmount(r.amount_gbp),
+        dueDate: rawDate(r.due_date),
         due: `Due ${fmtDate(r.due_date)}`,
         status: r.payment_status,
         tone: payTone[r.payment_status] || "neutral"
       })),
       payouts: payoutRows.map(r => ({
+        id: r.id,
         reference: r.payout_reference,
-        counterparty: `${r.vendor_name} · ${r.lane_code}`,
+        vendorName: r.vendor_name,
+        laneCode: r.lane_code || "",
+        counterparty: `${r.vendor_name}${r.lane_code ? ` · ${r.lane_code}` : ""}`,
+        amountValue: Number(r.amount_gbp || 0),
         amount: fmtAmount(r.amount_gbp),
+        dueDate: rawDate(r.due_date),
         due: `Due ${fmtDate(r.due_date)}`,
         status: r.payout_status,
+        notes: r.notes || "",
         tone: outTone[r.payout_status] || "neutral"
       })),
       cashNotes: noteRows.map(r => ({
@@ -417,6 +440,89 @@ exports.getFinance = async (req, res) => {
     });
   } catch (error) {
     res.status(500).json({ message: "Finance data error", error: error.message });
+  }
+};
+
+exports.createPayout = async (req, res) => {
+  try {
+    const { payout_reference, vendor_name, lane_code, amount_gbp, due_date, payout_status, notes } = req.body;
+    if (!payout_reference || !vendor_name || !amount_gbp || !due_date) {
+      return res.status(400).json({ message: "payout_reference, vendor_name, amount_gbp, and due_date are required." });
+    }
+
+    const valid = ["scheduled", "processing", "paid", "hold"];
+    const status = payout_status || "scheduled";
+    if (!valid.includes(status)) return res.status(400).json({ message: "Invalid payout status." });
+
+    const [result] = await db.query(
+      `INSERT INTO vendor_payouts
+        (payout_reference, vendor_name, lane_code, amount_gbp, due_date, payout_status, notes)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      [payout_reference, vendor_name, lane_code || null, amount_gbp, due_date, status, notes || null]
+    );
+
+    res.status(201).json({ message: "Payout created.", id: result.insertId });
+  } catch (error) {
+    if (error.code === "ER_DUP_ENTRY") {
+      return res.status(409).json({ message: "Payout reference already exists." });
+    }
+    res.status(500).json({ message: "Payout create error", error: error.message });
+  }
+};
+
+exports.updatePayout = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { payout_reference, vendor_name, lane_code, amount_gbp, due_date, payout_status, notes } = req.body;
+    if (!payout_reference || !vendor_name || !amount_gbp || !due_date) {
+      return res.status(400).json({ message: "payout_reference, vendor_name, amount_gbp, and due_date are required." });
+    }
+
+    const valid = ["scheduled", "processing", "paid", "hold"];
+    const status = payout_status || "scheduled";
+    if (!valid.includes(status)) return res.status(400).json({ message: "Invalid payout status." });
+
+    const [result] = await db.query(
+      `UPDATE vendor_payouts SET
+        payout_reference=?, vendor_name=?, lane_code=?, amount_gbp=?, due_date=?, payout_status=?, notes=?
+       WHERE id=?`,
+      [payout_reference, vendor_name, lane_code || null, amount_gbp, due_date, status, notes || null, id]
+    );
+
+    if (result.affectedRows === 0) return res.status(404).json({ message: "Payout not found." });
+    res.json({ message: "Payout updated." });
+  } catch (error) {
+    if (error.code === "ER_DUP_ENTRY") {
+      return res.status(409).json({ message: "Payout reference already exists." });
+    }
+    res.status(500).json({ message: "Payout update error", error: error.message });
+  }
+};
+
+exports.updatePayoutStatus = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { payout_status } = req.body;
+    const valid = ["scheduled", "processing", "paid", "hold"];
+    if (!valid.includes(payout_status)) return res.status(400).json({ message: "Invalid payout status." });
+
+    const [result] = await db.query("UPDATE vendor_payouts SET payout_status=? WHERE id=?", [payout_status, id]);
+    if (result.affectedRows === 0) return res.status(404).json({ message: "Payout not found." });
+
+    res.json({ message: "Payout status updated." });
+  } catch (error) {
+    res.status(500).json({ message: "Payout status update error", error: error.message });
+  }
+};
+
+exports.deletePayout = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const [result] = await db.query("DELETE FROM vendor_payouts WHERE id=?", [id]);
+    if (result.affectedRows === 0) return res.status(404).json({ message: "Payout not found." });
+    res.json({ message: "Payout deleted." });
+  } catch (error) {
+    res.status(500).json({ message: "Payout delete error", error: error.message });
   }
 };
 

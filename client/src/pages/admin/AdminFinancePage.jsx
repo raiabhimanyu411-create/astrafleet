@@ -1,11 +1,161 @@
+import { useMemo, useState } from "react";
+import { useNavigate } from "react-router-dom";
+import {
+  createPayout,
+  deletePayout,
+  updateInvoiceStatus,
+  updatePayout,
+  updatePayoutStatus
+} from "../../api/adminApi";
 import { StatCard } from "../../components/StatCard";
 import { StateNotice } from "../../components/StateNotice";
 import { StatusPill } from "../../components/StatusPill";
 import { usePanelData } from "../../hooks/usePanelData";
 import { AdminWorkspaceLayout } from "./AdminWorkspaceLayout";
 
+const emptyPayout = {
+  payout_reference: "",
+  vendor_name: "",
+  lane_code: "",
+  amount_gbp: "",
+  due_date: "",
+  payout_status: "scheduled",
+  notes: ""
+};
+
+function matchesDate(itemDate, from, to) {
+  if (from && itemDate < from) return false;
+  if (to && itemDate > to) return false;
+  return true;
+}
+
+function exportCsv(name, rows) {
+  const csv = rows
+    .map(row => row.map(value => `"${String(value ?? "").replaceAll('"', '""')}"`).join(","))
+    .join("\n");
+  const url = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = name;
+  link.click();
+  URL.revokeObjectURL(url);
+}
+
 export function AdminFinancePage() {
-  const { data, error, loading } = usePanelData("/api/admin/finance");
+  const { data, error, loading, refetch } = usePanelData("/api/admin/finance");
+  const navigate = useNavigate();
+  const [search, setSearch] = useState("");
+  const [invoiceStatus, setInvoiceStatus] = useState("");
+  const [payoutStatus, setPayoutStatus] = useState("");
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
+  const [form, setForm] = useState(emptyPayout);
+  const [editingId, setEditingId] = useState(null);
+  const [saving, setSaving] = useState(false);
+  const [actionError, setActionError] = useState("");
+
+  const collections = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    return (data?.collections || []).filter(item => {
+      if (invoiceStatus && item.status !== invoiceStatus) return false;
+      if (!matchesDate(item.dueDate, dateFrom, dateTo)) return false;
+      if (!q) return true;
+      return item.reference.toLowerCase().includes(q) || item.counterparty.toLowerCase().includes(q);
+    });
+  }, [data, dateFrom, dateTo, invoiceStatus, search]);
+
+  const payouts = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    return (data?.payouts || []).filter(item => {
+      if (payoutStatus && item.status !== payoutStatus) return false;
+      if (!matchesDate(item.dueDate, dateFrom, dateTo)) return false;
+      if (!q) return true;
+      return (
+        item.reference.toLowerCase().includes(q) ||
+        item.vendorName.toLowerCase().includes(q) ||
+        item.laneCode.toLowerCase().includes(q)
+      );
+    });
+  }, [data, dateFrom, dateTo, payoutStatus, search]);
+
+  function resetForm() {
+    setForm(emptyPayout);
+    setEditingId(null);
+    setActionError("");
+  }
+
+  function startEdit(item) {
+    setEditingId(item.id);
+    setForm({
+      payout_reference: item.reference,
+      vendor_name: item.vendorName,
+      lane_code: item.laneCode,
+      amount_gbp: item.amountValue,
+      due_date: item.dueDate,
+      payout_status: item.status,
+      notes: item.notes || ""
+    });
+    setActionError("");
+  }
+
+  async function handleInvoiceStatus(id, payment_status) {
+    setActionError("");
+    try {
+      await updateInvoiceStatus(id, { payment_status });
+      refetch(false);
+    } catch (err) {
+      setActionError(err?.response?.data?.message || "Invoice status could not be updated.");
+    }
+  }
+
+  async function handlePayoutStatus(id, status) {
+    setActionError("");
+    try {
+      await updatePayoutStatus(id, { payout_status: status });
+      refetch(false);
+    } catch (err) {
+      setActionError(err?.response?.data?.message || "Payout status could not be updated.");
+    }
+  }
+
+  async function handleDeletePayout(item) {
+    if (!window.confirm(`Delete payout ${item.reference}?`)) return;
+    setActionError("");
+    try {
+      await deletePayout(item.id);
+      if (editingId === item.id) resetForm();
+      refetch(false);
+    } catch (err) {
+      setActionError(err?.response?.data?.message || "Payout could not be deleted.");
+    }
+  }
+
+  async function handleSubmit(e) {
+    e.preventDefault();
+    setSaving(true);
+    setActionError("");
+    try {
+      if (editingId) {
+        await updatePayout(editingId, form);
+      } else {
+        await createPayout(form);
+      }
+      resetForm();
+      refetch(false);
+    } catch (err) {
+      setActionError(err?.response?.data?.message || "Payout could not be saved.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  function exportFinance() {
+    exportCsv("finance-register.csv", [
+      ["Type", "Reference", "Counterparty", "Amount GBP", "Due date", "Status"],
+      ...collections.map(item => ["Receivable", item.reference, item.counterparty, item.amountValue, item.dueDate, item.status]),
+      ...payouts.map(item => ["Payout", item.reference, item.counterparty, item.amountValue, item.dueDate, item.status])
+    ]);
+  }
 
   return (
     <AdminWorkspaceLayout
@@ -17,12 +167,57 @@ export function AdminFinancePage() {
       }
       highlights={data?.highlights || []}
     >
+      <div className="finance-command-bar">
+        <button className="header-action-button" type="button" onClick={() => refetch(false)}>Refresh</button>
+        <button className="header-action-button" type="button" onClick={exportFinance}>Export CSV</button>
+      </div>
+
       <StateNotice loading={loading} error={error} />
+
+      {actionError && (
+        <div className="state-card error" style={{ marginBottom: 16 }}>
+          <span className="state-dot error" />
+          <div><strong>Action error</strong><p>{actionError}</p></div>
+        </div>
+      )}
 
       <section className="stats-grid">
         {(data?.stats || []).map((item) => (
           <StatCard item={item} key={item.label} />
         ))}
+      </section>
+
+      <section className="stats-grid inline finance-position-grid">
+        {(data?.cashPosition || []).map((item) => (
+          <StatCard item={{ ...item, change: "Calculated live" }} key={item.label} />
+        ))}
+      </section>
+
+      <section className="content-card finance-filter-card">
+        <input
+          className="af-input"
+          placeholder="Search invoice, customer, payout, vendor, or lane..."
+          value={search}
+          onChange={e => setSearch(e.target.value)}
+        />
+        <select className="af-select" value={invoiceStatus} onChange={e => setInvoiceStatus(e.target.value)}>
+          <option value="">All invoice statuses</option>
+          <option value="draft">Draft</option>
+          <option value="sent">Sent</option>
+          <option value="pending">Pending</option>
+          <option value="overdue">Overdue</option>
+          <option value="paid">Paid</option>
+          <option value="hold">Hold</option>
+        </select>
+        <select className="af-select" value={payoutStatus} onChange={e => setPayoutStatus(e.target.value)}>
+          <option value="">All payout statuses</option>
+          <option value="scheduled">Scheduled</option>
+          <option value="processing">Processing</option>
+          <option value="paid">Paid</option>
+          <option value="hold">Hold</option>
+        </select>
+        <input className="af-input" type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} />
+        <input className="af-input" type="date" value={dateTo} onChange={e => setDateTo(e.target.value)} />
       </section>
 
       <section className="content-grid">
@@ -35,20 +230,33 @@ export function AdminFinancePage() {
             <StatusPill tone="warning">Pound collections</StatusPill>
           </div>
 
-          <div className="data-rows compact">
-            {(data?.collections || []).map((item) => (
-              <div className="data-row" key={item.reference}>
-                <div>
-                  <strong>{item.reference}</strong>
-                  <p>{item.counterparty}</p>
+          <div className="data-rows compact finance-list">
+            {collections.map((item) => (
+              <div className="data-row finance-row" key={item.reference}>
+                <button className="finance-row-main" type="button" onClick={() => navigate(`/admin/billing/${item.id}`)}>
+                  <div>
+                    <strong>{item.reference}</strong>
+                    <p>{item.counterparty}</p>
+                  </div>
+                  <div>
+                    <span>{item.amount}</span>
+                    <p>{item.due}</p>
+                  </div>
+                </button>
+                <div className="finance-row-actions">
+                  <StatusPill tone={item.tone}>{item.status}</StatusPill>
+                  {item.status !== "paid" && (
+                    <button className="header-action-button" type="button" onClick={() => handleInvoiceStatus(item.id, "paid")}>Mark paid</button>
+                  )}
+                  {item.status !== "hold" && (
+                    <button className="header-action-button" type="button" onClick={() => handleInvoiceStatus(item.id, "hold")}>Hold</button>
+                  )}
                 </div>
-                <div>
-                  <span>{item.amount}</span>
-                  <p>{item.due}</p>
-                </div>
-                <StatusPill tone={item.tone}>{item.status}</StatusPill>
               </div>
             ))}
+            {!loading && collections.length === 0 && (
+              <p className="finance-empty">{search || invoiceStatus || dateFrom || dateTo ? "No receivables match your filters." : "No open receivables. Customer collections are clear."}</p>
+            )}
           </div>
         </article>
 
@@ -61,25 +269,96 @@ export function AdminFinancePage() {
             <StatusPill tone="neutral">Treasury desk</StatusPill>
           </div>
 
-          <div className="data-rows compact">
-            {(data?.payouts || []).map((item) => (
-              <div className="data-row" key={item.reference}>
-                <div>
-                  <strong>{item.reference}</strong>
-                  <p>{item.counterparty}</p>
+          <div className="data-rows compact finance-list">
+            {payouts.map((item) => (
+              <div className="data-row finance-row" key={item.reference}>
+                <button className="finance-row-main" type="button" onClick={() => startEdit(item)}>
+                  <div>
+                    <strong>{item.reference}</strong>
+                    <p>{item.counterparty}</p>
+                  </div>
+                  <div>
+                    <span>{item.amount}</span>
+                    <p>{item.due}</p>
+                  </div>
+                </button>
+                <div className="finance-row-actions">
+                  <StatusPill tone={item.tone}>{item.status}</StatusPill>
+                  {item.status !== "processing" && (
+                    <button className="header-action-button" type="button" onClick={() => handlePayoutStatus(item.id, "processing")}>Process</button>
+                  )}
+                  {item.status !== "paid" && (
+                    <button className="header-action-button" type="button" onClick={() => handlePayoutStatus(item.id, "paid")}>Mark paid</button>
+                  )}
                 </div>
-                <div>
-                  <span>{item.amount}</span>
-                  <p>{item.due}</p>
-                </div>
-                <StatusPill tone={item.tone}>{item.status}</StatusPill>
               </div>
             ))}
+            {!loading && payouts.length === 0 && (
+              <p className="finance-empty">{search || payoutStatus || dateFrom || dateTo ? "No payouts match your filters." : "No vendor payouts yet. Add a settlement to start the queue."}</p>
+            )}
           </div>
         </article>
       </section>
 
       <section className="content-grid">
+        <article className="content-card">
+          <div className="section-head">
+            <div>
+              <span className="card-label">Payout control</span>
+              <h2>{editingId ? "Edit vendor payout" : "Add vendor payout"}</h2>
+            </div>
+            {editingId && <button className="header-action-button" type="button" onClick={resetForm}>New payout</button>}
+          </div>
+
+          <form className="af-form" onSubmit={handleSubmit}>
+            <div className="af-grid-2">
+              <label className="af-field">
+                <span className="af-label">Reference</span>
+                <input className="af-input" value={form.payout_reference} onChange={e => setForm(prev => ({ ...prev, payout_reference: e.target.value.toUpperCase() }))} placeholder="e.g. PAY-240" required />
+              </label>
+              <label className="af-field">
+                <span className="af-label">Vendor</span>
+                <input className="af-input" value={form.vendor_name} onChange={e => setForm(prev => ({ ...prev, vendor_name: e.target.value }))} placeholder="Vendor or supplier name" required />
+              </label>
+              <label className="af-field">
+                <span className="af-label">Lane code</span>
+                <input className="af-input" value={form.lane_code} onChange={e => setForm(prev => ({ ...prev, lane_code: e.target.value.toUpperCase() }))} placeholder="e.g. LON-MAN" />
+              </label>
+              <label className="af-field">
+                <span className="af-label">Amount (£)</span>
+                <input className="af-input" type="number" min="0" step="0.01" value={form.amount_gbp} onChange={e => setForm(prev => ({ ...prev, amount_gbp: e.target.value }))} required />
+              </label>
+              <label className="af-field">
+                <span className="af-label">Due date</span>
+                <input className="af-input" type="date" value={form.due_date} onChange={e => setForm(prev => ({ ...prev, due_date: e.target.value }))} required />
+              </label>
+              <label className="af-field">
+                <span className="af-label">Status</span>
+                <select className="af-select" value={form.payout_status} onChange={e => setForm(prev => ({ ...prev, payout_status: e.target.value }))}>
+                  <option value="scheduled">Scheduled</option>
+                  <option value="processing">Processing</option>
+                  <option value="paid">Paid</option>
+                  <option value="hold">Hold</option>
+                </select>
+              </label>
+            </div>
+            <label className="af-field">
+              <span className="af-label">Notes</span>
+              <textarea className="af-input" style={{ minHeight: 76, resize: "vertical" }} value={form.notes} onChange={e => setForm(prev => ({ ...prev, notes: e.target.value }))} placeholder="Settlement notes, approval detail, exception reason..." />
+            </label>
+            <div className="af-actions">
+              {editingId && (
+                <button className="header-action-button danger" type="button" onClick={() => handleDeletePayout({ id: editingId, reference: form.payout_reference })}>
+                  Delete
+                </button>
+              )}
+              <button className="af-submit-btn" type="submit" disabled={saving}>
+                {saving ? "Saving..." : editingId ? "Update payout" : "Create payout"}
+              </button>
+            </div>
+          </form>
+        </article>
+
         <article className="content-card">
           <div className="section-head">
             <div>
@@ -99,6 +378,9 @@ export function AdminFinancePage() {
                 </div>
               </div>
             ))}
+            {!loading && (data?.cashNotes || []).length === 0 && (
+              <p className="finance-empty">No finance actions right now. Alerts from the control room will appear here.</p>
+            )}
           </div>
         </article>
       </section>
