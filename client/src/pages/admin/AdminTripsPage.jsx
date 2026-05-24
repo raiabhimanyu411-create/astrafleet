@@ -1,6 +1,6 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { createRoute, deleteRoute, getRoutes, updateRoute } from "../../api/adminApi";
+import { createRoute, deleteRoute, getRoutes, updateRoute, updateAdminTripStatus } from "../../api/adminApi";
 import { StatCard } from "../../components/StatCard";
 import { StateNotice } from "../../components/StateNotice";
 import { StatusPill } from "../../components/StatusPill";
@@ -16,6 +16,18 @@ const emptyRoute = {
   standard_eta_hours: "",
   status: "planned"
 };
+
+function exportCsv(name, rows) {
+  const csv = rows
+    .map(row => row.map(value => `"${String(value ?? "").replaceAll('"', '""')}"`).join(","))
+    .join("\n");
+  const url = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = name;
+  link.click();
+  URL.revokeObjectURL(url);
+}
 
 function RouteMaster() {
   const [data, setData] = useState(null);
@@ -213,8 +225,78 @@ function RouteMaster() {
 }
 
 export function AdminTripsPage() {
-  const { data, error, loading } = usePanelData("/api/admin/trips");
+  const { data, error, loading, refetch } = usePanelData("/api/admin/trips");
   const navigate = useNavigate();
+  const [search, setSearch] = useState("");
+  const [status, setStatus] = useState("");
+  const [risk, setRisk] = useState("");
+  const [busyId, setBusyId] = useState(null);
+  const [actionError, setActionError] = useState("");
+
+  const trips = useMemo(() => {
+    const query = search.trim().toLowerCase();
+    return (data?.routes || []).filter(trip => {
+      if (status && trip.status !== status) return false;
+      if (risk === "assignment" && !trip.assignmentGap) return false;
+      if (risk === "eta" && !trip.etaRisk) return false;
+      if (risk === "blocked" && trip.status !== "blocked") return false;
+      if (!query) return true;
+      return (
+        trip.trip.toLowerCase().includes(query) ||
+        trip.lane.toLowerCase().includes(query) ||
+        trip.driver.toLowerCase().includes(query) ||
+        trip.vehicle.toLowerCase().includes(query) ||
+        trip.trailer.toLowerCase().includes(query)
+      );
+    });
+  }, [data, risk, search, status]);
+
+  const hasFilters = Boolean(search || status || risk);
+
+  const visibleStats = useMemo(() => [
+    { label: "Visible trips", value: trips.length, description: "After current filters.", change: "Filtered", tone: "neutral" },
+    { label: "Open trips", value: trips.filter(trip => !["completed", "blocked"].includes(trip.status)).length, description: "Still moving through dispatch.", change: "Live queue", tone: "warning" },
+    { label: "Assignment gaps", value: trips.filter(trip => trip.assignmentGap).length, description: "Missing driver, truck, or trolley.", change: "Fleet desk", tone: "danger" },
+    { label: "Visible value", value: `£${trips.reduce((sum, trip) => sum + Number(trip.freightValue || 0), 0).toLocaleString("en-GB", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`, description: "Freight value in view.", change: "GBP", tone: "success" }
+  ], [trips]);
+
+  function clearFilters() {
+    setSearch("");
+    setStatus("");
+    setRisk("");
+  }
+
+  async function setTripStatus(trip, nextStatus) {
+    setActionError("");
+    setBusyId(trip.id);
+    try {
+      await updateAdminTripStatus(trip.id, { status: nextStatus });
+      refetch(false);
+    } catch (err) {
+      setActionError(err?.response?.data?.message || "Trip status could not be updated.");
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  function exportTrips() {
+    exportCsv("dispatch-trips.csv", [
+      ["Trip", "Lane", "Driver", "Vehicle", "Trolley", "Departure", "ETA", "Priority", "Status", "Freight GBP", "Risk"],
+      ...trips.map(trip => [
+        trip.trip,
+        trip.lane,
+        trip.driver,
+        trip.vehicle,
+        trip.trailer,
+        trip.departureRaw,
+        trip.etaRaw,
+        trip.priority,
+        trip.status,
+        trip.freightValue,
+        [trip.assignmentGap ? "Assignment gap" : "", trip.etaRisk ? "ETA risk" : "", trip.status === "blocked" ? "Blocked" : ""].filter(Boolean).join("; ")
+      ])
+    ]);
+  }
 
   return (
     <AdminWorkspaceLayout
@@ -226,7 +308,9 @@ export function AdminTripsPage() {
       }
       highlights={data?.highlights || []}
     >
-      <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 16 }}>
+      <div className="finance-command-bar">
+        <button className="header-action-button" type="button" onClick={() => refetch(false)}>Refresh</button>
+        <button className="header-action-button" type="button" onClick={exportTrips}>Export CSV</button>
         <button
           className="af-submit-btn"
           type="button"
@@ -238,10 +322,95 @@ export function AdminTripsPage() {
 
       <StateNotice loading={loading} error={error} />
 
+      {actionError && (
+        <div className="state-card error" style={{ marginBottom: 16 }}>
+          <span className="state-dot error" />
+          <div><strong>Action error</strong><p>{actionError}</p></div>
+        </div>
+      )}
+
       <section className="stats-grid">
         {(data?.stats || []).map((item) => (
           <StatCard item={item} key={item.label} />
         ))}
+      </section>
+
+      <section className="stats-grid inline finance-position-grid">
+        {(data?.dispatchHealth || []).map((item) => (
+          <StatCard item={item} key={item.label} />
+        ))}
+      </section>
+
+      <section className="content-grid">
+        <article className="content-card">
+          <div className="section-head">
+            <div>
+              <span className="card-label">Dispatch control</span>
+              <h2>Visible trip workload</h2>
+            </div>
+            <StatusPill tone="neutral">Filtered view</StatusPill>
+          </div>
+          <div className="billing-workflow-grid">
+            {visibleStats.map(item => (
+              <button className="billing-workflow-tile" key={item.label} type="button" onClick={() => {
+                if (item.label === "Assignment gaps") setRisk("assignment");
+                if (item.label === "Open trips") setStatus("");
+              }}>
+                <span>{item.label}</span>
+                <strong>{item.value}</strong>
+                <p>{item.description}</p>
+              </button>
+            ))}
+          </div>
+        </article>
+
+        <article className="content-card">
+          <div className="section-head">
+            <div>
+              <span className="card-label">Dispatch exceptions</span>
+              <h2>Trips needing action</h2>
+            </div>
+            <StatusPill tone="warning">Ops review</StatusPill>
+          </div>
+          <div className="alert-stack">
+            {trips.filter(trip => trip.assignmentGap || trip.etaRisk || trip.status === "blocked").slice(0, 6).map(trip => (
+              <div className="alert-card" key={trip.id} onClick={() => navigate(`/admin/trips/${trip.id}`)} style={{ cursor: "pointer" }}>
+                <div className={`alert-bar ${trip.status === "blocked" || trip.etaRisk ? "danger" : "warning"}`} />
+                <div>
+                  <strong>{trip.trip}</strong>
+                  <p>{trip.status === "blocked" ? "Blocked trip requires resolution." : trip.etaRisk ? `ETA risk on ${trip.lane}.` : "Driver, truck, or trolley assignment is missing."}</p>
+                </div>
+              </div>
+            ))}
+            {!loading && trips.filter(trip => trip.assignmentGap || trip.etaRisk || trip.status === "blocked").length === 0 && (
+              <p className="finance-empty">No dispatch exceptions right now. Assignment gaps, blocked trips, and ETA risk will appear here.</p>
+            )}
+          </div>
+        </article>
+      </section>
+
+      <section className="content-card dispatch-filter-card">
+        <input
+          className="af-input"
+          placeholder="Search trip, lane, driver, truck, or trolley..."
+          value={search}
+          onChange={e => setSearch(e.target.value)}
+        />
+        <select className="af-select" value={status} onChange={e => setStatus(e.target.value)}>
+          <option value="">All statuses</option>
+          <option value="planned">Planned</option>
+          <option value="loading">Loading</option>
+          <option value="active">Active</option>
+          <option value="blocked">Blocked</option>
+          <option value="completed">Completed</option>
+        </select>
+        <select className="af-select" value={risk} onChange={e => setRisk(e.target.value)}>
+          <option value="">All risk states</option>
+          <option value="assignment">Assignment gaps</option>
+          <option value="eta">ETA risk</option>
+          <option value="blocked">Blocked trips</option>
+        </select>
+        <button className="header-action-button" disabled={!hasFilters} type="button" onClick={clearFilters}>Clear filters</button>
       </section>
 
       <section className="content-grid">
@@ -254,28 +423,57 @@ export function AdminTripsPage() {
             <StatusPill tone="neutral">Route desk</StatusPill>
           </div>
 
-          <div className="data-rows">
-            {(data?.routes || []).map((item) => (
+          <div className="data-rows compact finance-list">
+            {trips.map((item) => (
               <div
-                className="data-row"
+                className="data-row finance-row dispatch-row"
                 key={item.trip}
-                onClick={() => item.id && navigate(`/admin/trips/${item.id}`)}
-                style={item.id ? { cursor: "pointer" } : {}}
               >
-                <div>
-                  <strong>{item.trip}</strong>
-                  <p>{item.lane}</p>
-                </div>
-                <div>
-                  <span>{item.schedule}</span>
-                  <p>{item.vehicle} · {item.trailer}</p>
-                </div>
-                <StatusPill tone={item.tone}>{item.status}</StatusPill>
-                <button className="header-action-button" style={{ height: 28, padding: "0 9px", fontSize: "0.76rem" }} type="button" onClick={(e) => { e.stopPropagation(); navigate(`/admin/trips/${item.id}/edit`); }}>
-                  Edit
+                <button
+                  className="finance-row-main dispatch-row-main"
+                  type="button"
+                  onClick={() => item.id && navigate(`/admin/trips/${item.id}`)}
+                >
+                  <div>
+                    <strong>{item.trip}</strong>
+                    <p>{item.lane}</p>
+                  </div>
+                  <div>
+                    <span>{item.freight}</span>
+                    <p>{item.priority} · {item.driverJobStatus}</p>
+                  </div>
+                  <div>
+                    <span>{item.driver}</span>
+                    <p>{item.vehicle} · {item.trailer}</p>
+                  </div>
+                  <div>
+                    <span>{item.schedule}</span>
+                    <p>ETA {item.eta}{item.etaRisk ? " · ETA risk" : ""}</p>
+                  </div>
                 </button>
+                <div className="finance-row-actions">
+                  <StatusPill tone={item.tone}>{item.status}</StatusPill>
+                  {item.status === "planned" && (
+                    <button className="header-action-button" disabled={busyId === item.id} type="button" onClick={() => setTripStatus(item, "loading")}>Load</button>
+                  )}
+                  {["planned", "loading"].includes(item.status) && (
+                    <button className="header-action-button" disabled={busyId === item.id} type="button" onClick={() => setTripStatus(item, "active")}>Start</button>
+                  )}
+                  {["active", "loading"].includes(item.status) && (
+                    <button className="header-action-button" disabled={busyId === item.id} type="button" onClick={() => setTripStatus(item, "completed")}>Complete</button>
+                  )}
+                  {item.status !== "blocked" && item.status !== "completed" && (
+                    <button className="header-action-button danger" disabled={busyId === item.id} type="button" onClick={() => setTripStatus(item, "blocked")}>Block</button>
+                  )}
+                  <button className="header-action-button" type="button" onClick={() => navigate(`/admin/trips/${item.id}/edit`)}>
+                    Edit
+                  </button>
+                </div>
               </div>
             ))}
+            {!loading && trips.length === 0 && (
+              <p className="finance-empty">{hasFilters ? "No trips match your filters." : "No dispatch trips yet. Assign the first trip."}</p>
+            )}
           </div>
         </article>
 

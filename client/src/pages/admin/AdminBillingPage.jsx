@@ -1,30 +1,123 @@
 import { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { deleteInvoice, updateInvoiceStatus } from "../../api/adminApi";
 import { StatCard } from "../../components/StatCard";
 import { StateNotice } from "../../components/StateNotice";
 import { StatusPill } from "../../components/StatusPill";
 import { usePanelData } from "../../hooks/usePanelData";
 import { AdminWorkspaceLayout } from "./AdminWorkspaceLayout";
 
+function matchesDate(itemDate, from, to) {
+  if (from && itemDate < from) return false;
+  if (to && itemDate > to) return false;
+  return true;
+}
+
+function exportCsv(name, rows) {
+  const csv = rows
+    .map(row => row.map(value => `"${String(value ?? "").replaceAll('"', '""')}"`).join(","))
+    .join("\n");
+  const url = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = name;
+  link.click();
+  URL.revokeObjectURL(url);
+}
+
 export function AdminBillingPage() {
-  const { data, error, loading } = usePanelData("/api/admin/billing");
+  const { data, error, loading, refetch } = usePanelData("/api/admin/billing");
   const navigate = useNavigate();
   const [search, setSearch] = useState("");
   const [status, setStatus] = useState("");
   const [pod, setPod] = useState("");
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
+  const [actionError, setActionError] = useState("");
+  const hasFilters = Boolean(search || status || pod || dateFrom || dateTo);
 
   const invoices = useMemo(() => {
+    const query = search.trim().toLowerCase();
     return (data?.invoices || []).filter(inv => {
-      const query = search.toLowerCase();
       if (status && inv.status !== status) return false;
       if (pod && inv.podVerified !== (pod === "verified")) return false;
+      if (!matchesDate(inv.dueDate, dateFrom, dateTo)) return false;
       if (!query) return true;
       return (
         inv.invoice.toLowerCase().includes(query) ||
-        inv.client.toLowerCase().includes(query)
+        inv.client.toLowerCase().includes(query) ||
+        inv.tripCode.toLowerCase().includes(query) ||
+        inv.lane.toLowerCase().includes(query)
       );
     });
-  }, [data, pod, search, status]);
+  }, [data, dateFrom, dateTo, pod, search, status]);
+
+  const workflow = useMemo(() => {
+    const rows = data?.invoices || [];
+    return [
+      { label: "Draft", value: rows.filter(inv => inv.status === "draft").length, tone: "neutral" },
+      { label: "Ready to send", value: rows.filter(inv => inv.podVerified && ["draft", "pending"].includes(inv.status)).length, tone: "success" },
+      { label: "POD needed", value: rows.filter(inv => !inv.podVerified).length, tone: "warning" },
+      { label: "Payment risk", value: rows.filter(inv => ["overdue", "hold"].includes(inv.status)).length, tone: "danger" }
+    ];
+  }, [data]);
+
+  async function updateStatus(id, payment_status) {
+    setActionError("");
+    try {
+      await updateInvoiceStatus(id, { payment_status });
+      refetch(false);
+    } catch (err) {
+      setActionError(err?.response?.data?.message || "Invoice status could not be updated.");
+    }
+  }
+
+  async function togglePod(item) {
+    setActionError("");
+    try {
+      await updateInvoiceStatus(item.id, { pod_verified: !item.podVerified });
+      refetch(false);
+    } catch (err) {
+      setActionError(err?.response?.data?.message || "POD status could not be updated.");
+    }
+  }
+
+  async function removeInvoice(item) {
+    if (!window.confirm(`Delete invoice ${item.invoice}?`)) return;
+    setActionError("");
+    try {
+      await deleteInvoice(item.id);
+      refetch(false);
+    } catch (err) {
+      setActionError(err?.response?.data?.message || "Invoice could not be deleted.");
+    }
+  }
+
+  function exportInvoices() {
+    exportCsv("billing-register.csv", [
+      ["Invoice", "Client", "Amount GBP", "Issued", "Due", "Status", "POD verified", "Trip", "Lane", "Notes"],
+      ...invoices.map(inv => [
+        inv.invoice,
+        inv.client,
+        inv.amountValue,
+        inv.issuedAt,
+        inv.dueDate,
+        inv.status,
+        inv.podVerified ? "Yes" : "No",
+        inv.tripCode,
+        inv.lane,
+        inv.notes
+      ])
+    ]);
+  }
+
+  function clearFilters() {
+    setSearch("");
+    setStatus("");
+    setPod("");
+    setDateFrom("");
+    setDateTo("");
+  }
 
   return (
     <AdminWorkspaceLayout
@@ -36,7 +129,9 @@ export function AdminBillingPage() {
       }
       highlights={data?.highlights || []}
     >
-      <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 16 }}>
+      <div className="finance-command-bar">
+        <button className="header-action-button" type="button" onClick={() => refetch(false)}>Refresh</button>
+        <button className="header-action-button" type="button" onClick={exportInvoices}>Export CSV</button>
         <button className="af-submit-btn" type="button" onClick={() => navigate("/admin/billing/new")}>
           + Create invoice
         </button>
@@ -44,8 +139,21 @@ export function AdminBillingPage() {
 
       <StateNotice loading={loading} error={error} />
 
+      {actionError && (
+        <div className="state-card error" style={{ marginBottom: 16 }}>
+          <span className="state-dot error" />
+          <div><strong>Action error</strong><p>{actionError}</p></div>
+        </div>
+      )}
+
       <section className="stats-grid">
         {(data?.stats || []).map((item) => (
+          <StatCard item={item} key={item.label} />
+        ))}
+      </section>
+
+      <section className="stats-grid inline finance-position-grid">
+        {(data?.amountSummary || []).map((item) => (
           <StatCard item={item} key={item.label} />
         ))}
       </section>
@@ -54,60 +162,24 @@ export function AdminBillingPage() {
         <article className="content-card">
           <div className="section-head">
             <div>
-              <span className="card-label">Invoice register</span>
-              <h2>Customer billing records</h2>
+              <span className="card-label">Billing workflow</span>
+              <h2>Invoice control board</h2>
             </div>
-            <StatusPill tone="warning">Pound invoices</StatusPill>
+            <StatusPill tone="neutral">Live queue</StatusPill>
           </div>
 
-          <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 14 }}>
-            <input
-              className="af-input"
-              style={{ margin: 0, flex: "1 1 220px" }}
-              placeholder="Search invoice or client..."
-              value={search}
-              onChange={e => setSearch(e.target.value)}
-            />
-            <select className="af-select" style={{ margin: 0, width: 160 }} value={status} onChange={e => setStatus(e.target.value)}>
-              <option value="">All statuses</option>
-              <option value="draft">Draft</option>
-              <option value="sent">Sent</option>
-              <option value="pending">Pending</option>
-              <option value="overdue">Overdue</option>
-              <option value="paid">Paid</option>
-              <option value="hold">Hold</option>
-            </select>
-            <select className="af-select" style={{ margin: 0, width: 170 }} value={pod} onChange={e => setPod(e.target.value)}>
-              <option value="">All POD states</option>
-              <option value="verified">POD verified</option>
-              <option value="pending">POD pending</option>
-            </select>
-          </div>
-
-          <div className="data-rows compact">
-            {invoices.map((item) => (
-              <div
-                className="data-row"
-                key={item.id}
-                style={{ cursor: "pointer" }}
-                onClick={() => navigate(`/admin/billing/${item.id}`)}
-              >
-                <div>
-                  <strong>{item.invoice}</strong>
-                  <p>{item.client}</p>
-                </div>
-                <div>
-                  <span>{item.amount}</span>
-                  <p>{item.note}</p>
-                </div>
-                <StatusPill tone={item.tone}>{item.status}</StatusPill>
-              </div>
+          <div className="billing-workflow-grid">
+            {workflow.map(item => (
+              <button className="billing-workflow-tile" key={item.label} type="button" onClick={() => {
+                if (item.label === "Draft") setStatus("draft");
+                if (item.label === "POD needed") setPod("pending");
+                if (item.label === "Payment risk") setStatus("overdue");
+              }}>
+                <span>{item.label}</span>
+                <strong>{item.value}</strong>
+                <StatusPill tone={item.tone}>Review</StatusPill>
+              </button>
             ))}
-            {!loading && invoices.length === 0 && (
-              <p style={{ color: "#94a3b8", fontSize: "0.86rem", margin: 0 }}>
-                {search || status || pod ? "No invoices match your filters." : "No invoices yet. Create your first invoice."}
-              </p>
-            )}
           </div>
         </article>
 
@@ -130,8 +202,90 @@ export function AdminBillingPage() {
                 </div>
               </div>
             ))}
+            {!loading && (data?.blockers || []).length === 0 && (
+              <p className="finance-empty">No billing blockers right now. POD and payment exceptions will appear here.</p>
+            )}
           </div>
         </article>
+      </section>
+
+      <section className="content-card finance-filter-card billing-filter-card">
+        <input
+          className="af-input"
+          placeholder="Search invoice, client, trip, or lane..."
+          value={search}
+          onChange={e => setSearch(e.target.value)}
+        />
+        <select className="af-select" value={status} onChange={e => setStatus(e.target.value)}>
+          <option value="">All statuses</option>
+          <option value="draft">Draft</option>
+          <option value="sent">Sent</option>
+          <option value="pending">Pending</option>
+          <option value="overdue">Overdue</option>
+          <option value="paid">Paid</option>
+          <option value="hold">Hold</option>
+        </select>
+        <select className="af-select" value={pod} onChange={e => setPod(e.target.value)}>
+          <option value="">All POD states</option>
+          <option value="verified">POD verified</option>
+          <option value="pending">POD pending</option>
+        </select>
+        <input className="af-input" type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} />
+        <input className="af-input" type="date" value={dateTo} onChange={e => setDateTo(e.target.value)} />
+        <button className="header-action-button" type="button" onClick={clearFilters} disabled={!hasFilters}>Clear filters</button>
+      </section>
+
+      <section className="content-card">
+        <div className="section-head">
+          <div>
+            <span className="card-label">Invoice register</span>
+            <h2>Customer billing records</h2>
+          </div>
+          <StatusPill tone="warning">{invoices.length} visible</StatusPill>
+        </div>
+
+        <div className="data-rows compact finance-list">
+          {invoices.map((item) => (
+            <div className="data-row finance-row billing-row" key={item.id}>
+              <button className="finance-row-main billing-row-main" type="button" onClick={() => navigate(`/admin/billing/${item.id}`)}>
+                <div>
+                  <strong>{item.invoice}</strong>
+                  <p>{item.client} · {item.tripCode || "No trip link"}</p>
+                </div>
+                <div>
+                  <span>{item.amount}</span>
+                  <p>Issued {item.issued} · Due {item.dueLabel}</p>
+                </div>
+                <div>
+                  <span>{item.podVerified ? "POD verified" : "POD pending"}</span>
+                  <p>{item.lane}</p>
+                </div>
+              </button>
+              <div className="finance-row-actions">
+                <StatusPill tone={item.tone}>{item.status}</StatusPill>
+                <button className="header-action-button" type="button" onClick={() => togglePod(item)}>
+                  {item.podVerified ? "POD pending" : "Verify POD"}
+                </button>
+                {item.status !== "sent" && item.status !== "paid" && (
+                  <button className="header-action-button" type="button" onClick={() => updateStatus(item.id, "sent")}>Send</button>
+                )}
+                {item.status !== "hold" && item.status !== "paid" && (
+                  <button className="header-action-button" type="button" onClick={() => updateStatus(item.id, "hold")}>Hold</button>
+                )}
+                {item.status !== "paid" && (
+                  <button className="header-action-button" type="button" onClick={() => updateStatus(item.id, "paid")}>Mark paid</button>
+                )}
+                <button className="header-action-button" type="button" onClick={() => navigate(`/admin/billing/${item.id}/edit`)}>Edit</button>
+                <button className="header-action-button danger" type="button" onClick={() => removeInvoice(item)}>Delete</button>
+              </div>
+            </div>
+          ))}
+          {!loading && invoices.length === 0 && (
+            <p className="finance-empty">
+              {hasFilters ? "No invoices match your filters." : "No invoices yet. Create your first invoice."}
+            </p>
+          )}
+        </div>
       </section>
     </AdminWorkspaceLayout>
   );

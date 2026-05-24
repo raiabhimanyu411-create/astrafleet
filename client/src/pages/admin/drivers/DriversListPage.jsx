@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { deleteDriver, getDrivers } from "../../../api/driverApi";
 import { StatCard } from "../../../components/StatCard";
@@ -8,49 +8,54 @@ import { DriverChatWidget } from "../DriverChatWidget";
 import { AdminWorkspaceLayout } from "../AdminWorkspaceLayout";
 
 const COMPLIANCE_OPTIONS = [
-  { value: "",        label: "All compliance" },
-  { value: "clear",   label: "Clear" },
-  { value: "review",  label: "Review" },
+  { value: "", label: "All compliance" },
+  { value: "clear", label: "Clear" },
+  { value: "review", label: "Review" },
   { value: "blocked", label: "Blocked" }
 ];
 
 const SHIFT_OPTIONS = [
-  { value: "",         label: "All shift status" },
-  { value: "ready",    label: "Ready" },
-  { value: "on_trip",  label: "On trip" },
-  { value: "rest",     label: "Rest" },
-  { value: "review",   label: "Review" }
+  { value: "", label: "All shift status" },
+  { value: "ready", label: "Ready" },
+  { value: "on_trip", label: "On trip" },
+  { value: "rest", label: "Rest" },
+  { value: "review", label: "Review" }
 ];
 
+function exportCsv(name, rows) {
+  const csv = rows
+    .map(row => row.map(value => `"${String(value ?? "").replaceAll('"', '""')}"`).join(","))
+    .join("\n");
+  const url = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = name;
+  link.click();
+  URL.revokeObjectURL(url);
+}
+
 function ExpiryBadge({ label, tone }) {
-  const colors = {
-    success: { bg: "#dcfce7", color: "#15803d" },
-    warning: { bg: "#fef3c7", color: "#b45309" },
-    danger:  { bg: "#fee2e2", color: "#b91c1c" },
-    neutral: { bg: "#f1f5f9", color: "#475569" }
-  };
-  const style = colors[tone] || colors.neutral;
-  return (
-    <span style={{ ...style, padding: "2px 7px", borderRadius: 999, fontSize: "0.72rem", fontWeight: 700, whiteSpace: "nowrap" }}>
-      {label}
-    </span>
-  );
+  return <StatusPill tone={tone}>{label}</StatusPill>;
 }
 
 export function DriversListPage() {
   const navigate = useNavigate();
-  const [data, setData]                   = useState(null);
-  const [loading, setLoading]             = useState(true);
-  const [error, setError]                 = useState("");
-  const [search, setSearch]               = useState("");
+  const [data, setData] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [search, setSearch] = useState("");
   const [filterCompliance, setFilterCompliance] = useState("");
-  const [filterShift, setFilterShift]           = useState("");
-  const [deletingId, setDeletingId]             = useState(null);
+  const [filterShift, setFilterShift] = useState("");
+  const [riskFilter, setRiskFilter] = useState("");
+  const [deletingId, setDeletingId] = useState(null);
 
   function load() {
     setLoading(true);
     return getDrivers()
-      .then(r => setData(r.data))
+      .then(r => {
+        setData(r.data);
+        setError("");
+      })
       .catch(() => setError("Could not load drivers. Please refresh."))
       .finally(() => setLoading(false));
   }
@@ -61,7 +66,7 @@ export function DriversListPage() {
 
   async function handleDelete(driver) {
     const label = driver.fullName || "this driver";
-    if (!window.confirm(`Are you sure you want to delete ${label}? Their assigned jobs will become unassigned.`)) return;
+    if (!window.confirm(`Delete ${label}? Their assigned jobs will become unassigned.`)) return;
 
     setError("");
     setDeletingId(driver.id);
@@ -79,35 +84,85 @@ export function DriversListPage() {
     window.dispatchEvent(new CustomEvent("admin-driver-chat:select", { detail: { driverId: driver.id } }));
   }
 
-  const filtered = (data?.drivers || []).filter(d => {
-    if (filterCompliance && d.complianceStatus !== filterCompliance) return false;
-    if (filterShift      && d.shiftStatus      !== filterShift)      return false;
-    if (search) {
-      const q = search.toLowerCase();
-      return (
-        d.fullName.toLowerCase().includes(q)     ||
-        d.employeeCode.toLowerCase().includes(q) ||
-        (d.phone || "").includes(q)              ||
-        (d.email || "").toLowerCase().includes(q)
-      );
-    }
-    return true;
-  });
+  const drivers = useMemo(() => {
+    return (data?.drivers || []).filter(d => {
+      if (filterCompliance && d.complianceStatus !== filterCompliance) return false;
+      if (filterShift && d.shiftStatus !== filterShift) return false;
+      if (riskFilter === "docs" && !d.docRisk) return false;
+      if (riskFilter === "messages" && Number(d.unreadMessages || 0) === 0) return false;
+      if (riskFilter === "open_trips" && Number(d.openTrips || 0) === 0) return false;
+      if (riskFilter === "onboarding" && !["new", "docs_pending"].includes(d.onboardingStatus)) return false;
+      if (search) {
+        const q = search.toLowerCase();
+        return (
+          d.fullName.toLowerCase().includes(q) ||
+          d.employeeCode.toLowerCase().includes(q) ||
+          (d.phone || "").includes(q) ||
+          (d.email || "").toLowerCase().includes(q) ||
+          (d.homeDepot || "").toLowerCase().includes(q)
+        );
+      }
+      return true;
+    });
+  }, [data, filterCompliance, filterShift, riskFilter, search]);
+
+  const visibleStats = useMemo(() => [
+    { label: "Visible drivers", value: drivers.length, description: "After current filters.", change: "Filtered", tone: "neutral" },
+    { label: "Ready now", value: drivers.filter(d => d.shiftStatus === "ready" && d.complianceStatus === "clear").length, description: "Clear and ready for dispatch.", change: "Assignable", tone: "success" },
+    { label: "Needs review", value: drivers.filter(d => d.complianceStatus !== "clear" || d.docRisk).length, description: "Compliance or document risk.", change: "Check docs", tone: "danger" },
+    { label: "Unread chats", value: drivers.reduce((sum, d) => sum + Number(d.unreadMessages || 0), 0), description: "Messages from drivers.", change: "Support desk", tone: "warning" }
+  ], [drivers]);
+
+  const hasFilters = Boolean(search || filterCompliance || filterShift || riskFilter);
+
+  function clearFilters() {
+    setSearch("");
+    setFilterCompliance("");
+    setFilterShift("");
+    setRiskFilter("");
+  }
+
+  function exportDrivers() {
+    exportCsv("drivers-register.csv", [
+      ["Driver", "Code", "Phone", "Email", "Depot", "Shift", "Compliance", "Trips", "Open trips", "Docs", "Unread messages", "Licence", "Medical", "CPC", "Tacho"],
+      ...drivers.map(d => [
+        d.fullName,
+        d.employeeCode,
+        d.phone,
+        d.email,
+        d.homeDepot,
+        d.shiftStatus,
+        d.complianceStatus,
+        d.totalTrips,
+        d.openTrips,
+        d.totalDocs,
+        d.unreadMessages,
+        d.licenceExpiry,
+        d.medicalExpiry,
+        d.cpcExpiry,
+        d.tachoExpiry
+      ])
+    ]);
+  }
 
   return (
     <AdminWorkspaceLayout
       badge="Driver management"
       title="Drivers"
-      description="Manage driver profiles, UK compliance documents, licences, and shift status."
+      description="Manage driver profiles, UK compliance documents, licences, shift status, and live support."
       highlights={[
-        "Colour-coded expiry badges show licence, medical, CPC, and tacho card status at a glance.",
-        "Filter by compliance or shift status to quickly find drivers needing attention.",
-        "Click any driver to view full profile, documents, and trip history."
+        "Driver health shows document risk, onboarding gaps, unread chats, and dispatch readiness.",
+        "Filter by compliance, shift, document risk, or open trips to find drivers needing attention.",
+        "The support console keeps driver messages connected to the same operations workspace."
       ]}
     >
-      <StateNotice loading={loading} error={error} />
+      <div className="finance-command-bar">
+        <button className="header-action-button" type="button" onClick={load}>Refresh</button>
+        <button className="header-action-button" type="button" onClick={exportDrivers}>Export CSV</button>
+        <button className="af-submit-btn" type="button" onClick={() => navigate("/admin/drivers/new")}>+ Add driver</button>
+      </div>
 
-      <DriverChatWidget compact />
+      <StateNotice loading={loading} error={error} />
 
       <section className="stats-grid">
         {(data?.stats || []).map(item => (
@@ -115,127 +170,131 @@ export function DriversListPage() {
         ))}
       </section>
 
-      {/* Toolbar */}
-      <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 16, flexWrap: "wrap" }}>
+      <section className="stats-grid inline finance-position-grid">
+        {(data?.driverHealth || []).map(item => (
+          <StatCard key={item.label} item={item} />
+        ))}
+      </section>
+
+      <section className="content-grid">
+        <article className="content-card">
+          <div className="section-head">
+            <div>
+              <span className="card-label">Driver readiness</span>
+              <h2>Visible driver workload</h2>
+            </div>
+            <StatusPill tone="neutral">Filtered view</StatusPill>
+          </div>
+          <div className="billing-workflow-grid">
+            {visibleStats.map(item => (
+              <button className="billing-workflow-tile" key={item.label} type="button" onClick={() => {
+                if (item.label === "Needs review") setRiskFilter("docs");
+                if (item.label === "Unread chats") setRiskFilter("messages");
+              }}>
+                <span>{item.label}</span>
+                <strong>{item.value}</strong>
+                <p>{item.description}</p>
+              </button>
+            ))}
+          </div>
+        </article>
+
+        <article className="content-card">
+          <div className="section-head">
+            <div>
+              <span className="card-label">Driver exceptions</span>
+              <h2>Compliance and support watch</h2>
+            </div>
+            <StatusPill tone="warning">Ops review</StatusPill>
+          </div>
+          <div className="alert-stack">
+            {drivers.filter(d => d.docRisk || d.complianceStatus !== "clear" || d.unreadMessages > 0).slice(0, 6).map(d => (
+              <div className="alert-card" key={d.id} onClick={() => navigate(`/admin/drivers/${d.id}`)} style={{ cursor: "pointer" }}>
+                <div className={`alert-bar ${d.complianceStatus === "blocked" || d.docRisk ? "danger" : "warning"}`} />
+                <div>
+                  <strong>{d.fullName}</strong>
+                  <p>{d.unreadMessages > 0 ? `${d.unreadMessages} unread driver message${d.unreadMessages === 1 ? "" : "s"}.` : d.docRisk ? "Document renewal or expiry needs review." : `Compliance status is ${d.complianceStatus}.`}</p>
+                </div>
+              </div>
+            ))}
+            {!loading && drivers.filter(d => d.docRisk || d.complianceStatus !== "clear" || d.unreadMessages > 0).length === 0 && (
+              <p className="finance-empty">No driver exceptions right now. Document risks, review status, and unread messages will appear here.</p>
+            )}
+          </div>
+        </article>
+      </section>
+
+      <DriverChatWidget compact />
+
+      <section className="content-card driver-filter-card">
         <input
           className="af-input"
-          style={{ margin: 0, flex: 1, minWidth: 200, maxWidth: 280 }}
           type="text"
-          placeholder="Search by name, code or phone..."
+          placeholder="Search by name, code, phone, email, or depot..."
           value={search}
           onChange={e => setSearch(e.target.value)}
         />
-        <select className="af-select" style={{ width: 160, margin: 0 }} value={filterCompliance} onChange={e => setFilterCompliance(e.target.value)}>
+        <select className="af-select" value={filterCompliance} onChange={e => setFilterCompliance(e.target.value)}>
           {COMPLIANCE_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
         </select>
-        <select className="af-select" style={{ width: 160, margin: 0 }} value={filterShift} onChange={e => setFilterShift(e.target.value)}>
+        <select className="af-select" value={filterShift} onChange={e => setFilterShift(e.target.value)}>
           {SHIFT_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
         </select>
-        <button className="af-submit-btn" type="button" onClick={() => navigate("/admin/drivers/new")}>
-          + Add driver
-        </button>
-      </div>
+        <select className="af-select" value={riskFilter} onChange={e => setRiskFilter(e.target.value)}>
+          <option value="">All risk states</option>
+          <option value="docs">Document risk</option>
+          <option value="messages">Unread messages</option>
+          <option value="open_trips">Open trips</option>
+          <option value="onboarding">Onboarding queue</option>
+        </select>
+        <button className="header-action-button" disabled={!hasFilters} type="button" onClick={clearFilters}>Clear filters</button>
+      </section>
 
-      {/* Table */}
-      <div className="content-card" style={{ padding: 0, overflow: "hidden" }}>
-        <div style={{ overflowX: "auto" }}>
-          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.85rem" }}>
-            <thead>
-              <tr style={{ background: "#f8fafc", borderBottom: "1px solid #e2e8f0" }}>
-                {["Driver", "Contact", "Depot", "Licence expiry", "Medical", "CPC", "Tacho", "Trips", "Shift", "Compliance", "Actions"].map(h => (
-                  <th key={h} style={{ padding: "11px 14px", textAlign: "left", fontWeight: 700, color: "#475569", fontSize: "0.71rem", textTransform: "uppercase", letterSpacing: "0.05em", whiteSpace: "nowrap" }}>
-                    {h}
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {filtered.length === 0 && !loading && (
-                <tr>
-                  <td colSpan={11} style={{ padding: "40px", textAlign: "center", color: "#94a3b8", fontSize: "0.88rem" }}>
-                    {search || filterCompliance || filterShift ? "No drivers match your filters." : "No drivers yet. Add your first driver."}
-                  </td>
-                </tr>
-              )}
-              {filtered.map((d, i) => (
-                <tr
-                  key={d.id}
-                  style={{ borderBottom: i < filtered.length - 1 ? "1px solid #e2e8f0" : "none", background: "#fff", cursor: "pointer", transition: "background 120ms" }}
-                  onClick={() => navigate(`/admin/drivers/${d.id}`)}
-                  onMouseEnter={e => e.currentTarget.style.background = "#f8fafc"}
-                  onMouseLeave={e => e.currentTarget.style.background = "#fff"}
-                >
-                  <td style={{ padding: "11px 14px" }}>
-                    <strong style={{ display: "block", fontWeight: 600, color: "#0f172a" }}>{d.fullName}</strong>
-                    <span style={{ fontSize: "0.76rem", color: "#94a3b8", fontFamily: "monospace" }}>{d.employeeCode}</span>
-                  </td>
-                  <td style={{ padding: "11px 14px" }}>
-                    <span style={{ display: "block", color: "#334155", fontSize: "0.83rem" }}>{d.phone}</span>
-                    <span style={{ fontSize: "0.76rem", color: "#64748b" }}>{d.email}</span>
-                  </td>
-                  <td style={{ padding: "11px 14px", color: "#64748b", fontSize: "0.83rem" }}>{d.homeDepot}</td>
-                  <td style={{ padding: "11px 14px" }}>
-                    <ExpiryBadge label={d.licenceExpiry} tone={d.licenceExpiryTone} />
-                  </td>
-                  <td style={{ padding: "11px 14px" }}>
-                    <ExpiryBadge label={d.medicalExpiry} tone={d.medicalExpiryTone} />
-                  </td>
-                  <td style={{ padding: "11px 14px" }}>
-                    <ExpiryBadge label={d.cpcExpiry !== "—" ? d.cpcExpiry : "N/A"} tone={d.cpcExpiry !== "—" ? d.cpcExpiryTone : "neutral"} />
-                  </td>
-                  <td style={{ padding: "11px 14px" }}>
-                    <ExpiryBadge label={d.tachoExpiry !== "—" ? d.tachoExpiry : "N/A"} tone={d.tachoExpiry !== "—" ? d.tachoExpiryTone : "neutral"} />
-                  </td>
-                  <td style={{ padding: "11px 14px", textAlign: "center", fontWeight: 700, color: "#0f172a" }}>{d.totalTrips}</td>
-                  <td style={{ padding: "11px 14px" }}>
-                    <StatusPill tone={d.shiftTone}>{d.shiftStatus.replace("_", " ")}</StatusPill>
-                  </td>
-                  <td style={{ padding: "11px 14px" }}>
-                    <StatusPill tone={d.complianceTone}>{d.complianceStatus}</StatusPill>
-                  </td>
-                  <td style={{ padding: "11px 14px" }} onClick={e => e.stopPropagation()}>
-                    <div style={{ display: "flex", gap: 5 }}>
-                      <button
-                        className="header-action-button"
-                        style={{ height: 28, padding: "0 10px", fontSize: "0.76rem" }}
-                        type="button"
-                        onClick={() => handleChat(d)}
-                      >
-                        Chat
-                      </button>
-                      <button
-                        className="header-action-button"
-                        style={{ height: 28, padding: "0 10px", fontSize: "0.76rem" }}
-                        type="button"
-                        onClick={() => navigate(`/admin/drivers/${d.id}`)}
-                      >
-                        View
-                      </button>
-                      <button
-                        className="header-action-button"
-                        style={{ height: 28, padding: "0 10px", fontSize: "0.76rem" }}
-                        type="button"
-                        onClick={() => navigate(`/admin/drivers/${d.id}/edit`)}
-                      >
-                        Edit
-                      </button>
-                      <button
-                        className="header-action-button danger"
-                        style={{ height: 28, padding: "0 10px", fontSize: "0.76rem" }}
-                        type="button"
-                        disabled={deletingId === d.id}
-                        onClick={() => handleDelete(d)}
-                      >
-                        {deletingId === d.id ? "Deleting..." : "Delete"}
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+      <section className="content-card">
+        <div className="section-head">
+          <div>
+            <span className="card-label">Driver register</span>
+            <h2>Profiles, documents and dispatch readiness</h2>
+          </div>
+          <StatusPill tone={drivers.length ? "success" : "neutral"}>{drivers.length} visible</StatusPill>
         </div>
-      </div>
+
+        <div className="data-rows compact finance-list">
+          {drivers.map(d => (
+            <div className="data-row finance-row driver-row" key={d.id}>
+              <button className="finance-row-main driver-row-main" type="button" onClick={() => navigate(`/admin/drivers/${d.id}`)}>
+                <div>
+                  <strong>{d.fullName}</strong>
+                  <p>{d.employeeCode} · {d.phone} · {d.homeDepot}</p>
+                </div>
+                <div>
+                  <span>{d.totalTrips} trips</span>
+                  <p>{d.openTrips} open · {d.totalDocs} docs</p>
+                </div>
+                <div className="driver-doc-strip">
+                  <ExpiryBadge label={`Licence ${d.licenceExpiry}`} tone={d.licenceExpiryTone} />
+                  <ExpiryBadge label={`Medical ${d.medicalExpiry}`} tone={d.medicalExpiryTone} />
+                  <ExpiryBadge label={`CPC ${d.cpcExpiry}`} tone={d.cpcExpiryTone} />
+                  <ExpiryBadge label={`Tacho ${d.tachoExpiry}`} tone={d.tachoExpiryTone} />
+                </div>
+              </button>
+              <div className="finance-row-actions">
+                {d.unreadMessages > 0 && <StatusPill tone="danger">{d.unreadMessages} unread</StatusPill>}
+                <StatusPill tone={d.shiftTone}>{d.shiftStatus.replace("_", " ")}</StatusPill>
+                <StatusPill tone={d.complianceTone}>{d.complianceStatus}</StatusPill>
+                <button className="header-action-button" type="button" onClick={() => handleChat(d)}>Chat</button>
+                <button className="header-action-button" type="button" onClick={() => navigate(`/admin/drivers/${d.id}/edit`)}>Edit</button>
+                <button className="header-action-button danger" type="button" disabled={deletingId === d.id} onClick={() => handleDelete(d)}>
+                  {deletingId === d.id ? "Deleting..." : "Delete"}
+                </button>
+              </div>
+            </div>
+          ))}
+          {!loading && drivers.length === 0 && (
+            <p className="finance-empty">{hasFilters ? "No drivers match your filters." : "No drivers yet. Add your first driver."}</p>
+          )}
+        </div>
+      </section>
     </AdminWorkspaceLayout>
   );
 }

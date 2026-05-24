@@ -4,35 +4,94 @@ function fmtDate(d) {
   if (!d) return "—";
   return new Date(d).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" });
 }
+function fmtAmount(n) {
+  return n != null
+    ? `£${Number(n).toLocaleString("en-GB", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+    : "—";
+}
+
+let customerSchemaReady = false;
+
+async function addColumnIfMissing(table, column, definition) {
+  const [rows] = await db.query(`SHOW COLUMNS FROM ${table} LIKE ?`, [column]);
+  if (rows.length === 0) {
+    try {
+      await db.query(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`);
+    } catch (error) {
+      if (error.code !== "ER_DUP_FIELDNAME") throw error;
+    }
+  }
+}
+
+async function ensureCustomerSchema() {
+  if (customerSchemaReady) return;
+  await addColumnIfMissing("trips", "customer_id", "INT DEFAULT NULL");
+  customerSchemaReady = true;
+}
 
 exports.listCustomers = async (req, res) => {
   try {
+    await ensureCustomerSchema();
+
     const [[counts]] = await db.query(
       `SELECT COUNT(*) as total,
-        SUM(account_status='active') as active,
-        SUM(account_status='suspended') as suspended,
-        SUM(created_at >= DATE_SUB(NOW(), INTERVAL 30 DAY)) as new_this_month
+        COALESCE(SUM(account_status='active'), 0) as active,
+        COALESCE(SUM(account_status='suspended'), 0) as suspended,
+        COALESCE(SUM(account_status='closed'), 0) as closed,
+        COALESCE(SUM(created_at >= DATE_SUB(NOW(), INTERVAL 30 DAY)), 0) as new_this_month
        FROM customers`
+    );
+    const [[totals]] = await db.query(
+      `SELECT
+        COALESCE(SUM(i.amount_gbp), 0) as billed,
+        COALESCE(SUM(CASE WHEN i.payment_status='paid' THEN i.amount_gbp ELSE 0 END), 0) as paid,
+        COALESCE(SUM(CASE WHEN i.payment_status!='paid' THEN i.amount_gbp ELSE 0 END), 0) as outstanding,
+        COALESCE(SUM(CASE WHEN i.payment_status='overdue' THEN i.amount_gbp ELSE 0 END), 0) as overdue
+       FROM invoices i`
     );
 
     const [rows] = await db.query(
       `SELECT c.id, c.company_name, c.contact_name, c.email, c.phone,
               c.postcode, c.payment_terms_days, c.account_status, c.created_at,
-              COUNT(DISTINCT t.id)  AS total_trips,
-              COUNT(DISTINCT i.id)  AS total_invoices
+              COALESCE(t.total_trips, 0) AS total_trips,
+              COALESCE(t.last_trip_at, NULL) AS last_trip_at,
+              COALESCE(i.total_invoices, 0) AS total_invoices,
+              COALESCE(i.billed_amount, 0) AS billed_amount,
+              COALESCE(i.outstanding_amount, 0) AS outstanding_amount,
+              COALESCE(i.overdue_amount, 0) AS overdue_amount,
+              COALESCE(i.last_invoice_at, NULL) AS last_invoice_at
        FROM customers c
-       LEFT JOIN trips    t ON t.customer_id = c.id
-       LEFT JOIN invoices i ON i.customer_id = c.id
-       GROUP BY c.id
+       LEFT JOIN (
+          SELECT customer_id, COUNT(*) AS total_trips, MAX(created_at) AS last_trip_at
+          FROM trips GROUP BY customer_id
+       ) t ON t.customer_id = c.id
+       LEFT JOIN (
+          SELECT t.customer_id,
+                 COUNT(i.id) AS total_invoices,
+                 SUM(i.amount_gbp) AS billed_amount,
+                 SUM(CASE WHEN i.payment_status!='paid' THEN i.amount_gbp ELSE 0 END) AS outstanding_amount,
+                 SUM(CASE WHEN i.payment_status='overdue' THEN i.amount_gbp ELSE 0 END) AS overdue_amount,
+                 MAX(i.created_at) AS last_invoice_at
+          FROM invoices i
+          INNER JOIN trips t ON t.id = i.trip_id
+          WHERE t.customer_id IS NOT NULL
+          GROUP BY t.customer_id
+       ) i ON i.customer_id = c.id
        ORDER BY c.created_at DESC`
     );
 
     res.json({
       stats: [
-        { label: "Total customers", value: counts.total, tone: "neutral" },
-        { label: "Active accounts", value: counts.active, tone: "success" },
-        { label: "Suspended", value: counts.suspended, tone: "warning" },
-        { label: "New this month", value: counts.new_this_month, tone: "neutral" }
+        { label: "Total customers", value: counts.total, description: "All customer accounts.", change: "Live from database", tone: "neutral" },
+        { label: "Active accounts", value: counts.active, description: "Open for bookings.", change: "Account ready", tone: "success" },
+        { label: "Suspended", value: counts.suspended, description: "Paused from new work.", change: "Needs review", tone: "warning" },
+        { label: "New this month", value: counts.new_this_month, description: "Recently onboarded.", change: "30 day window", tone: "neutral" }
+      ],
+      accountHealth: [
+        { label: "Total billed", value: fmtAmount(totals.billed), description: "Invoice value across customers.", change: "GBP", tone: "neutral" },
+        { label: "Collected", value: fmtAmount(totals.paid), description: "Paid invoice value.", change: "Cash in", tone: "success" },
+        { label: "Outstanding", value: fmtAmount(totals.outstanding), description: "Unpaid customer balance.", change: "Follow up", tone: "warning" },
+        { label: "Overdue exposure", value: fmtAmount(totals.overdue), description: "Past due receivables.", change: "Risk", tone: Number(totals.overdue) > 0 ? "danger" : "success" }
       ],
       customers: rows.map(r => ({
         id: r.id,
@@ -46,6 +105,14 @@ exports.listCustomers = async (req, res) => {
         tone: r.account_status === "active" ? "success" : r.account_status === "suspended" ? "warning" : "neutral",
         totalTrips: r.total_trips,
         totalInvoices: r.total_invoices,
+        billedAmount: fmtAmount(r.billed_amount),
+        billedValue: Number(r.billed_amount || 0),
+        outstandingAmount: fmtAmount(r.outstanding_amount),
+        outstandingValue: Number(r.outstanding_amount || 0),
+        overdueAmount: fmtAmount(r.overdue_amount),
+        overdueValue: Number(r.overdue_amount || 0),
+        lastActivity: fmtDate(r.last_invoice_at || r.last_trip_at || r.created_at),
+        atRisk: Number(r.overdue_amount || 0) > 0 || r.account_status !== "active",
         since: fmtDate(r.created_at)
       }))
     });
@@ -54,8 +121,31 @@ exports.listCustomers = async (req, res) => {
   }
 };
 
+exports.updateCustomerStatus = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { account_status } = req.body;
+    const valid = ["active", "suspended", "closed"];
+    if (!valid.includes(account_status)) {
+      return res.status(400).json({ message: "Invalid customer status." });
+    }
+
+    const [result] = await db.query(
+      `UPDATE customers SET account_status=? WHERE id=?`,
+      [account_status, id]
+    );
+    if (result.affectedRows === 0) return res.status(404).json({ message: "Customer not found." });
+
+    res.json({ message: "Customer status updated.", account_status });
+  } catch (err) {
+    res.status(500).json({ message: "Customer status update error", error: err.message });
+  }
+};
+
 exports.getCustomerById = async (req, res) => {
   try {
+    await ensureCustomerSchema();
+
     const { id } = req.params;
 
     const [[c]] = await db.query(
@@ -76,9 +166,11 @@ exports.getCustomerById = async (req, res) => {
     );
 
     const [invoices] = await db.query(
-      `SELECT id, invoice_no, amount_gbp, vat_amount_gbp, due_date, payment_status, pod_verified
-       FROM invoices WHERE customer_id = ?
-       ORDER BY created_at DESC LIMIT 20`, [id]
+      `SELECT i.id, i.invoice_no, i.amount_gbp, i.due_date, i.payment_status, i.pod_verified
+       FROM invoices i
+       INNER JOIN trips t ON t.id = i.trip_id
+       WHERE t.customer_id = ?
+       ORDER BY i.created_at DESC LIMIT 20`, [id]
     );
 
     const dispatchTone = { active: "success", loading: "warning", blocked: "danger", planned: "neutral", completed: "neutral" };

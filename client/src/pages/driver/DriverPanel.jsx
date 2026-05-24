@@ -23,7 +23,7 @@ import { StatCard } from "../../components/StatCard";
 import { StateNotice } from "../../components/StateNotice";
 import { StatusPill } from "../../components/StatusPill";
 import { clearAuthSession, getAuthSession } from "../../utils/authSession";
-import { gpsErrorMessage, positionToPayload, watchDriverGps } from "../../utils/driverGps";
+import { gpsErrorMessage, positionToPayload, requestDriverGpsAccess, watchDriverGps } from "../../utils/driverGps";
 
 const WALKAROUND_CHECKS = [
   { key: "tyres",       label: "Tyres – pressure and condition" },
@@ -51,6 +51,18 @@ const driverMenu = [
   { href: "#history",    label: "History" },
   { href: "#messages",   label: "Messages" },
 ];
+
+const allowedStatusTransitions = {
+  offered: ["accepted", "declined"],
+  accepted: ["arrived_pickup", "failed_delivery"],
+  arrived_pickup: ["loaded", "failed_delivery"],
+  loaded: ["in_transit", "failed_delivery"],
+  in_transit: ["arrived_drop", "failed_delivery"],
+  arrived_drop: ["failed_delivery"],
+  delivered: [],
+  failed_delivery: [],
+  declined: []
+};
 
 const emptyPod     = { signatureData: "", photoData: "", deliveryNotes: "" };
 const emptyExpense = { expenseType: "fuel", amount: "", notes: "", receiptData: "" };
@@ -182,6 +194,7 @@ export function DriverPanel() {
   const [notice,        setNotice]        = useState("");
   const [busy,          setBusy]          = useState("");
   const [noticeError,   setNoticeError]   = useState(false);
+  const [gpsBlocked,    setGpsBlocked]    = useState(false);
 
   const [pod,        setPod]        = useState(emptyPod);
   const [expense,    setExpense]    = useState(emptyExpense);
@@ -211,6 +224,7 @@ export function DriverPanel() {
 
   // Failed delivery reschedule
   const [reschedule, setReschedule] = useState({ visible: false, date: "", reason: "" });
+  const [jobFilter, setJobFilter] = useState("open");
 
   const navigate         = useNavigate();
   const session          = getAuthSession();
@@ -219,15 +233,26 @@ export function DriverPanel() {
   const gpsLogoutRef     = useRef(false);
 
   const jobs = useMemo(() => {
-    const combined = [...(data?.todayJobs || []), ...(data?.upcomingJobs || [])];
+    const combined = data?.jobs || [...(data?.todayJobs || []), ...(data?.upcomingJobs || []), data?.activeJob].filter(Boolean);
     return combined.filter((job, idx, arr) => arr.findIndex(j => j.id === job.id) === idx);
   }, [data]);
 
   const selectedJob    = jobs.find(j => j.id === selectedJobId) || data?.activeJob || jobs[0] || null;
   const deliveryFlow   = (data?.statusFlow || []).filter(s => !["offered", "declined"].includes(s.value));
+  const statusButtonFlow = deliveryFlow.filter(s => s.value !== "delivered");
   const statusIndex    = deliveryFlow.findIndex(s => s.value === selectedJob?.status);
   const incompleteJobs = jobs.filter(j => !["delivered", "failed_delivery", "declined"].includes(j.status));
   const completedJobs  = jobs.filter(j => ["delivered", "failed_delivery", "declined"].includes(j.status));
+  const todayJobs      = jobs.filter(j => data?.todayJobs?.some(today => today.id === j.id));
+  const filteredJobs   = jobFilter === "today"
+    ? todayJobs
+    : jobFilter === "upcoming"
+      ? (data?.upcomingJobs || [])
+      : jobFilter === "completed"
+        ? completedJobs
+        : incompleteJobs;
+  const selectedStatus = selectedJob?.status || "accepted";
+  const allowedNextStatuses = new Set([selectedStatus, ...(allowedStatusTransitions[selectedStatus] || [])]);
 
   // ── Break timer persistence ─────────────────────────────────
   useEffect(() => {
@@ -287,12 +312,17 @@ export function DriverPanel() {
   useEffect(() => { selectedJobIdRef.current = selectedJobId; }, [selectedJobId]);
 
   useEffect(() => {
+    if (session?.role === "driver" && !session?.sessionToken) {
+      clearAuthSession();
+      navigate("/", { replace: true });
+      return undefined;
+    }
     loadPanel();
     loadMessages();
     const panelTimer = setInterval(() => loadPanel(selectedJobIdRef.current), 30000);
     const msgTimer   = setInterval(() => loadMessages(), 60000);
     return () => { clearInterval(panelTimer); clearInterval(msgTimer); };
-  }, [userId]);
+  }, [navigate, session?.role, session?.sessionToken, userId]);
 
   useEffect(() => {
     const driverId = data?.driver?.id;
@@ -317,25 +347,44 @@ export function DriverPanel() {
   useEffect(() => {
     if (!userId) return undefined;
 
-    function forceLogout(err) {
+    function handleGpsBlocked(err) {
       if (gpsLogoutRef.current) return;
       gpsLogoutRef.current = true;
-      setNotice(`${gpsErrorMessage(err)} Logging out for admin tracking safety.`);
-      clearAuthSession();
-      window.setTimeout(() => navigate("/", { replace: true }), 900);
+      setGpsBlocked(true);
+      setNotice(`${gpsErrorMessage(err)} Live admin tracking is paused until GPS access is restored.`);
+      setNoticeError(true);
     }
 
     return watchDriverGps({
       onPosition: (position) => {
+        gpsLogoutRef.current = false;
+        setGpsBlocked(false);
         updateDriverLocation(userId, positionToPayload(position)).catch(() => {});
       },
-      onBlocked: forceLogout
+      onBlocked: handleGpsBlocked
     });
   }, [navigate, userId]);
 
   function handleLogout() {
     clearAuthSession();
     navigate("/", { replace: true });
+  }
+
+  async function handleRetryGps() {
+    try {
+      setBusy("gps");
+      const position = await requestDriverGpsAccess();
+      await updateDriverLocation(userId, positionToPayload(position));
+      gpsLogoutRef.current = false;
+      setGpsBlocked(false);
+      setNotice("GPS tracking restored.");
+      setNoticeError(false);
+    } catch (err) {
+      setNotice(gpsErrorMessage(err));
+      setNoticeError(true);
+    } finally {
+      setBusy("");
+    }
   }
 
   // ── Generic action runner ───────────────────────────────────
@@ -482,6 +531,7 @@ export function DriverPanel() {
 
   const walkaroundAllChecked = WALKAROUND_CHECKS.every(c => walkaround.checks[c.key] !== undefined);
   const walkaroundAllClear   = WALKAROUND_CHECKS.every(c => walkaround.checks[c.key] === true);
+  const hasPodEvidence       = Boolean(pod.signatureData || pod.photoData);
 
   return (
     <PanelLayout
@@ -522,7 +572,12 @@ export function DriverPanel() {
       {notice && (
         <div className={`state-card ${noticeError ? "error" : "driver-notice"}`} aria-live="polite">
           <span className={`state-dot ${noticeError ? "error" : "success"}`} />
-          <div><strong>{noticeError ? "Action failed" : "Driver update"}</strong><p>{notice}</p></div>
+          <div><strong>{noticeError ? "Action needed" : "Driver update"}</strong><p>{notice}</p></div>
+          {gpsBlocked && (
+            <button className="header-action-button" disabled={busy === "gps"} onClick={handleRetryGps} type="button">
+              {busy === "gps" ? "Checking..." : "Retry GPS"}
+            </button>
+          )}
         </div>
       )}
 
@@ -682,15 +737,21 @@ export function DriverPanel() {
             </div>
             <StatusPill tone={data?.shift ? "success" : "warning"}>{data?.shift ? "Shift active" : "Off shift"}</StatusPill>
           </div>
+          <div className="driver-job-tabs" role="tablist" aria-label="Job filters">
+            <button className={jobFilter === "open" ? "active" : ""} onClick={() => setJobFilter("open")} type="button">Open ({incompleteJobs.length})</button>
+            <button className={jobFilter === "today" ? "active" : ""} onClick={() => setJobFilter("today")} type="button">Today ({todayJobs.length})</button>
+            <button className={jobFilter === "upcoming" ? "active" : ""} onClick={() => setJobFilter("upcoming")} type="button">Upcoming ({data?.upcomingJobs?.length || 0})</button>
+            <button className={jobFilter === "completed" ? "active" : ""} onClick={() => setJobFilter("completed")} type="button">Closed ({completedJobs.length})</button>
+          </div>
           <div className="driver-job-list">
-            {jobs.length ? jobs.map(job => (
+            {filteredJobs.length ? filteredJobs.map(job => (
               <JobButton
                 active={selectedJob?.id === job.id}
                 job={job}
                 key={job.id}
                 onClick={() => setSelectedJobId(job.id)}
               />
-            )) : <p className="driver-empty">No assigned jobs yet.</p>}
+            )) : <p className="driver-empty">No jobs in this view.</p>}
           </div>
         </article>
 
@@ -802,18 +863,25 @@ export function DriverPanel() {
               ))}
             </div>
             <div className="driver-status-grid">
-              {deliveryFlow.map(status => (
+              {statusButtonFlow.map(status => {
+                const allowed = allowedNextStatuses.has(status.value);
+                return (
                 <button
                   className={selectedJob?.status === status.value ? "driver-status-button active" : "driver-status-button"}
-                  disabled={!selectedJob || Boolean(busy) || selectedJob?.status === "declined"}
+                  disabled={!selectedJob || Boolean(busy) || !allowed || ["declined", "failed_delivery", "delivered"].includes(selectedJob?.status)}
                   key={status.value}
                   onClick={() => handleStatus(status.value)}
+                  title={!allowed ? "Complete the previous job step first." : undefined}
                   type="button"
                 >
                   {busy === status.value ? "Updating..." : status.label}
                 </button>
-              ))}
+              );
+              })}
             </div>
+            {selectedJob?.status === "arrived_drop" && (
+              <p className="driver-empty" style={{ marginTop: 10 }}>Submit POD with a signature or photo to complete this job.</p>
+            )}
           </>
         )}
 
@@ -940,9 +1008,10 @@ export function DriverPanel() {
               </div>
             </div>
 
-            <button className="af-submit-btn" disabled={!selectedJob || busy === "pod"} type="submit">
+            <button className="af-submit-btn" disabled={!selectedJob || !hasPodEvidence || busy === "pod"} type="submit">
               {busy === "pod" ? "Submitting..." : "Submit POD"}
             </button>
+            {!hasPodEvidence && <p className="driver-empty">Signature or delivery photo is required before POD submission.</p>}
           </form>
         </article>
 

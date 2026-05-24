@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { updateTrackingVehicle } from "../../api/adminApi";
 import { getRealtimeSocket } from "../../api/realtime";
 import { StatCard } from "../../components/StatCard";
 import { StateNotice } from "../../components/StateNotice";
@@ -21,19 +22,39 @@ function openMapUrl(truck) {
   return `https://www.google.com/maps/search/?api=1&query=${truck.latitude},${truck.longitude}`;
 }
 
+function exportCsv(name, rows) {
+  const csv = rows
+    .map(row => row.map(value => `"${String(value ?? "").replaceAll('"', '""')}"`).join(","))
+    .join("\n");
+  const url = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = name;
+  link.click();
+  URL.revokeObjectURL(url);
+}
+
 export function AdminTrackingPage() {
   const { data, error, loading, refetch } = usePanelData("/api/admin/tracking");
   const navigate = useNavigate();
   const [search, setSearch] = useState("");
   const [status, setStatus] = useState("");
-  const [staleOnly, setStaleOnly] = useState(false);
+  const [gpsFilter, setGpsFilter] = useState("");
+  const [riskFilter, setRiskFilter] = useState("");
   const [selectedTruckId, setSelectedTruckId] = useState(null);
+  const [actionError, setActionError] = useState("");
+  const hasFilters = Boolean(search || status || gpsFilter || riskFilter);
 
   const trucks = useMemo(() => {
     return (data?.trucks || []).filter(truck => {
       const query = search.toLowerCase();
       if (status && truck.rawStatus !== status) return false;
-      if (staleOnly && !truck.stale) return false;
+      if (gpsFilter === "fresh" && (truck.stale || !truck.hasGps)) return false;
+      if (gpsFilter === "stale" && !truck.stale) return false;
+      if (gpsFilter === "missing" && truck.hasGps) return false;
+      if (riskFilter === "eta" && !truck.etaRisk) return false;
+      if (riskFilter === "speed" && !truck.overspeed) return false;
+      if (riskFilter === "driver" && truck.driver !== "Unassigned") return false;
       if (!query) return true;
       return (
         truck.truck.toLowerCase().includes(query) ||
@@ -42,7 +63,7 @@ export function AdminTrackingPage() {
         truck.fleetCode?.toLowerCase().includes(query)
       );
     });
-  }, [data, search, staleOnly, status]);
+  }, [data, gpsFilter, riskFilter, search, status]);
 
   const mapTrucks = useMemo(() => trucks.filter(truck => truck.latitude != null && truck.longitude != null), [trucks]);
   const selectedTruck = mapTrucks.find(truck => truck.id === selectedTruckId) || mapTrucks[0] || null;
@@ -70,6 +91,51 @@ export function AdminTrackingPage() {
     };
   }, [refetch]);
 
+  function clearFilters() {
+    setSearch("");
+    setStatus("");
+    setGpsFilter("");
+    setRiskFilter("");
+  }
+
+  async function quickStatus(truck, nextStatus) {
+    setActionError("");
+    try {
+      await updateTrackingVehicle(truck.id, {
+        current_location: truck.location === "Location unknown" ? "" : truck.location,
+        speed_kph: truck.speedValue || 0,
+        status: nextStatus,
+        gps_latitude: truck.latitude ?? "",
+        gps_longitude: truck.longitude ?? "",
+        gps_accuracy_m: truck.accuracy ?? "",
+        mark_ping_now: true
+      });
+      refetch(false);
+    } catch (err) {
+      setActionError(err?.response?.data?.message || "Vehicle status could not be updated.");
+    }
+  }
+
+  function exportTracking() {
+    exportCsv("live-tracking-register.csv", [
+      ["Vehicle", "Fleet code", "Driver", "Status", "Location", "Latitude", "Longitude", "Speed", "Last ping minutes", "Trip", "ETA", "Risk"],
+      ...trucks.map(truck => [
+        truck.truck,
+        truck.fleetCode,
+        truck.driver,
+        truck.status,
+        truck.location,
+        truck.latitude,
+        truck.longitude,
+        truck.speedValue,
+        truck.lastPingMinutes,
+        truck.tripCode,
+        truck.etaRaw,
+        [truck.stale ? "Stale ping" : "", truck.etaRisk ? "ETA risk" : "", truck.overspeed ? "Speed risk" : ""].filter(Boolean).join("; ")
+      ])
+    ]);
+  }
+
   return (
     <AdminWorkspaceLayout
       badge={data?.header?.badge || "GPS / live tracking"}
@@ -80,10 +146,28 @@ export function AdminTrackingPage() {
       }
       highlights={data?.highlights || []}
     >
+      <div className="finance-command-bar">
+        <button className="header-action-button" type="button" onClick={() => refetch(false)}>Refresh</button>
+        <button className="header-action-button" type="button" onClick={exportTracking}>Export CSV</button>
+      </div>
+
       <StateNotice loading={loading} error={error} />
+
+      {actionError && (
+        <div className="state-card error" style={{ marginBottom: 16 }}>
+          <span className="state-dot error" />
+          <div><strong>Action error</strong><p>{actionError}</p></div>
+        </div>
+      )}
 
       <section className="stats-grid">
         {(data?.stats || []).map((item) => (
+          <StatCard item={item} key={item.label} />
+        ))}
+      </section>
+
+      <section className="stats-grid inline finance-position-grid">
+        {(data?.gpsHealth || []).map((item) => (
           <StatCard item={item} key={item.label} />
         ))}
       </section>
@@ -110,7 +194,7 @@ export function AdminTrackingPage() {
               <div className="tracking-map-overlay">
                 <strong>{selectedTruck.truck}</strong>
                 <span>{selectedTruck.location}</span>
-                <span>{selectedTruck.speed} · {selectedTruck.note}</span>
+                <span>{selectedTruck.speed} · {selectedTruck.note} · {selectedTruck.accuracyLabel}</span>
               </div>
             </div>
             <div className="tracking-map-actions">
@@ -140,6 +224,36 @@ export function AdminTrackingPage() {
         )}
       </section>
 
+      <section className="content-card tracking-command-card">
+        <input
+          className="af-input"
+          placeholder="Search vehicle, driver, location, or fleet code..."
+          value={search}
+          onChange={e => setSearch(e.target.value)}
+        />
+        <select className="af-select" value={status} onChange={e => setStatus(e.target.value)}>
+          <option value="">All statuses</option>
+          <option value="available">Available</option>
+          <option value="planned">Planned</option>
+          <option value="in_transit">In transit</option>
+          <option value="maintenance">Maintenance</option>
+          <option value="stopped">Stopped</option>
+        </select>
+        <select className="af-select" value={gpsFilter} onChange={e => setGpsFilter(e.target.value)}>
+          <option value="">All GPS states</option>
+          <option value="fresh">Fresh GPS</option>
+          <option value="stale">Stale pings</option>
+          <option value="missing">No GPS marker</option>
+        </select>
+        <select className="af-select" value={riskFilter} onChange={e => setRiskFilter(e.target.value)}>
+          <option value="">All risk states</option>
+          <option value="eta">ETA risk</option>
+          <option value="speed">Speed risk</option>
+          <option value="driver">Unassigned driver</option>
+        </select>
+        <button className="header-action-button" disabled={!hasFilters} type="button" onClick={clearFilters}>Clear filters</button>
+      </section>
+
       <section className="content-grid">
         <article className="content-card">
           <div className="section-head">
@@ -150,52 +264,49 @@ export function AdminTrackingPage() {
             <StatusPill tone="success">GPS active</StatusPill>
           </div>
 
-          <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 14 }}>
-            <input
-              className="af-input"
-              style={{ margin: 0, flex: "1 1 220px" }}
-              placeholder="Search vehicle, driver, location..."
-              value={search}
-              onChange={e => setSearch(e.target.value)}
-            />
-            <select className="af-select" style={{ margin: 0, width: 160 }} value={status} onChange={e => setStatus(e.target.value)}>
-              <option value="">All statuses</option>
-              <option value="available">Available</option>
-              <option value="planned">Planned</option>
-              <option value="in_transit">In transit</option>
-              <option value="maintenance">Maintenance</option>
-              <option value="stopped">Stopped</option>
-            </select>
-            <label style={{ display: "flex", alignItems: "center", gap: 8, color: "#334155", fontWeight: 700, fontSize: "0.83rem" }}>
-              <input type="checkbox" checked={staleOnly} onChange={e => setStaleOnly(e.target.checked)} />
-              Stale pings
-            </label>
-          </div>
-
-          <div className="data-rows">
+          <div className="data-rows compact finance-list">
             {trucks.map((item) => (
               <div
-                className="data-row"
+                className="data-row finance-row tracking-row"
                 key={item.truck}
-                style={{ cursor: "pointer" }}
-                onClick={() => {
-                  if (item.latitude != null && item.longitude != null) setSelectedTruckId(item.id);
-                  navigate(`/admin/tracking/vehicles/${item.id}`);
-                }}
               >
-                <div>
-                  <strong>{item.truck}</strong>
-                  <p>{item.driver} · {item.location}</p>
+                <button
+                  className="finance-row-main tracking-row-main"
+                  type="button"
+                  onClick={() => {
+                    if (item.latitude != null && item.longitude != null) setSelectedTruckId(item.id);
+                    navigate(`/admin/tracking/vehicles/${item.id}`);
+                  }}
+                >
+                  <div>
+                    <strong>{item.truck}</strong>
+                    <p>{item.driver} · {item.location}</p>
+                  </div>
+                  <div>
+                    <span>{item.speed}</span>
+                    <p>{item.tripCode ? `${item.tripCode} · ${item.driverJobStatus} · ETA ${item.eta}` : item.note}</p>
+                  </div>
+                  <div>
+                    <span>{item.hasGps ? item.accuracyLabel : "No GPS marker"}</span>
+                    <p>{item.stale ? item.note : "Fresh tracking"}{item.etaRisk ? " · ETA risk" : ""}{item.overspeed ? " · Speed risk" : ""}</p>
+                  </div>
+                </button>
+                <div className="finance-row-actions">
+                  <StatusPill tone={item.tone}>{item.status}</StatusPill>
+                  {item.rawStatus !== "in_transit" && (
+                    <button className="header-action-button" type="button" onClick={() => quickStatus(item, "in_transit")}>In transit</button>
+                  )}
+                  {item.rawStatus !== "stopped" && (
+                    <button className="header-action-button" type="button" onClick={() => quickStatus(item, "stopped")}>Stop</button>
+                  )}
+                  {item.rawStatus !== "maintenance" && (
+                    <button className="header-action-button" type="button" onClick={() => quickStatus(item, "maintenance")}>Maintenance</button>
+                  )}
                 </div>
-                <div>
-                  <span>{item.speed}</span>
-                  <p>{item.tripCode ? `${item.tripCode} · ${item.driverJobStatus} · ETA ${item.eta}` : item.note}</p>
-                </div>
-                <StatusPill tone={item.tone}>{item.status}</StatusPill>
               </div>
             ))}
             {!loading && trucks.length === 0 && (
-              <p style={{ color: "#94a3b8", fontSize: "0.86rem", margin: 0 }}>No vehicles match your filters.</p>
+              <p className="finance-empty">{hasFilters ? "No vehicles match your filters." : "No vehicles are registered for tracking yet."}</p>
             )}
           </div>
         </article>
@@ -224,6 +335,9 @@ export function AdminTrackingPage() {
                 </div>
               </div>
             ))}
+            {!loading && (data?.exceptions || []).length === 0 && (
+              <p className="finance-empty">No tracking exceptions right now. Stale pings, ETA risk, and failed deliveries will appear here.</p>
+            )}
           </div>
         </article>
       </section>

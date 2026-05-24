@@ -26,6 +26,7 @@ router.get("/tracking", adminController.getTracking);
 router.get("/tracking/vehicles/:id", adminController.getTrackingVehicleById);
 router.patch("/tracking/vehicles/:id", adminController.updateTrackingVehicle);
 router.get("/alerts", adminController.getAlerts);
+router.patch("/alerts/:id/status", adminController.updateAlertStatus);
 router.get("/routes", adminController.listRoutes);
 router.post("/routes", adminController.createRoute);
 router.put("/routes/:id", adminController.updateRoute);

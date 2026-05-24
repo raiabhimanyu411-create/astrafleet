@@ -79,6 +79,20 @@ CREATE TABLE IF NOT EXISTS drivers (
   CONSTRAINT fk_drivers_user FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE SET NULL
 ) ENGINE=InnoDB;
 
+CREATE TABLE IF NOT EXISTS customers (
+  id                 INT AUTO_INCREMENT PRIMARY KEY,
+  company_name       VARCHAR(160) NOT NULL,
+  contact_name       VARCHAR(120) DEFAULT NULL,
+  email              VARCHAR(160) DEFAULT NULL,
+  phone              VARCHAR(30) DEFAULT NULL,
+  address            TEXT DEFAULT NULL,
+  postcode           VARCHAR(20) DEFAULT NULL,
+  vat_number         VARCHAR(60) DEFAULT NULL,
+  payment_terms_days INT NOT NULL DEFAULT 30,
+  account_status     ENUM('active', 'suspended', 'closed') NOT NULL DEFAULT 'active',
+  created_at         TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+) ENGINE=InnoDB;
+
 CREATE TABLE IF NOT EXISTS trips (
   id                INT AUTO_INCREMENT PRIMARY KEY,
   trip_code         VARCHAR(40) NOT NULL UNIQUE,
@@ -86,19 +100,34 @@ CREATE TABLE IF NOT EXISTS trips (
   vehicle_id        INT DEFAULT NULL,
   trailer_id        INT DEFAULT NULL,
   driver_id         INT DEFAULT NULL,
+  customer_id       INT DEFAULT NULL,
   client_name       VARCHAR(120) NOT NULL,
   dispatch_status   ENUM('planned', 'loading', 'active', 'blocked', 'completed') NOT NULL DEFAULT 'planned',
   priority_level    ENUM('standard', 'priority', 'critical') NOT NULL DEFAULT 'standard',
   planned_departure DATETIME DEFAULT NULL,
   eta               DATETIME DEFAULT NULL,
+  actual_departure  DATETIME DEFAULT NULL,
+  actual_arrival    DATETIME DEFAULT NULL,
   dock_window       VARCHAR(80) DEFAULT NULL,
   pod_status        ENUM('pending', 'uploaded', 'verified') NOT NULL DEFAULT 'pending',
+  driver_job_status VARCHAR(40) DEFAULT 'accepted',
+  pickup_address    TEXT DEFAULT NULL,
+  drop_address      TEXT DEFAULT NULL,
+  load_type         VARCHAR(80) DEFAULT 'general',
+  load_weight_kg    DECIMAL(10,2) DEFAULT NULL,
+  load_description  TEXT DEFAULT NULL,
+  special_instructions TEXT DEFAULT NULL,
+  delivery_notes    TEXT DEFAULT NULL,
+  pod_signature_data LONGTEXT DEFAULT NULL,
+  pod_photo_data    LONGTEXT DEFAULT NULL,
+  failed_delivery_reason TEXT DEFAULT NULL,
   freight_amount_gbp DECIMAL(10,2) NOT NULL DEFAULT 0,
   created_at        TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   CONSTRAINT fk_trips_route FOREIGN KEY (route_id) REFERENCES routes (id) ON DELETE SET NULL,
   CONSTRAINT fk_trips_vehicle FOREIGN KEY (vehicle_id) REFERENCES vehicles (id) ON DELETE SET NULL,
   CONSTRAINT fk_trips_trailer FOREIGN KEY (trailer_id) REFERENCES trailers (id) ON DELETE SET NULL,
-  CONSTRAINT fk_trips_driver FOREIGN KEY (driver_id) REFERENCES drivers (id) ON DELETE SET NULL
+  CONSTRAINT fk_trips_driver FOREIGN KEY (driver_id) REFERENCES drivers (id) ON DELETE SET NULL,
+  CONSTRAINT fk_trips_customer FOREIGN KEY (customer_id) REFERENCES customers (id) ON DELETE SET NULL
 ) ENGINE=InnoDB;
 
 CREATE TABLE IF NOT EXISTS driver_documents (
@@ -153,6 +182,8 @@ CREATE TABLE IF NOT EXISTS vehicle_inspections (
 CREATE TABLE IF NOT EXISTS defect_reports (
   id          INT AUTO_INCREMENT PRIMARY KEY,
   vehicle_id  INT NOT NULL,
+  driver_id   INT DEFAULT NULL,
+  trip_id     INT DEFAULT NULL,
   defect_type VARCHAR(80) NOT NULL,
   description TEXT DEFAULT NULL,
   severity    ENUM('low', 'medium', 'high', 'critical') NOT NULL DEFAULT 'medium',
@@ -160,7 +191,74 @@ CREATE TABLE IF NOT EXISTS defect_reports (
   status      ENUM('open', 'in_progress', 'resolved') NOT NULL DEFAULT 'open',
   reported_at DATETIME DEFAULT CURRENT_TIMESTAMP,
   resolved_at DATETIME DEFAULT NULL,
-  CONSTRAINT fk_defect_reports_vehicle FOREIGN KEY (vehicle_id) REFERENCES vehicles (id) ON DELETE CASCADE
+  CONSTRAINT fk_defect_reports_vehicle FOREIGN KEY (vehicle_id) REFERENCES vehicles (id) ON DELETE CASCADE,
+  CONSTRAINT fk_defect_reports_driver FOREIGN KEY (driver_id) REFERENCES drivers (id) ON DELETE SET NULL,
+  CONSTRAINT fk_defect_reports_trip FOREIGN KEY (trip_id) REFERENCES trips (id) ON DELETE SET NULL
+) ENGINE=InnoDB;
+
+CREATE TABLE IF NOT EXISTS driver_shifts (
+  id          INT AUTO_INCREMENT PRIMARY KEY,
+  driver_id   INT NOT NULL,
+  shift_start DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  shift_end   DATETIME DEFAULT NULL,
+  total_hours DECIMAL(6,2) DEFAULT NULL,
+  status      ENUM('active', 'completed') NOT NULL DEFAULT 'active',
+  start_note  VARCHAR(255) DEFAULT NULL,
+  end_note    VARCHAR(255) DEFAULT NULL,
+  created_at  TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT fk_driver_shifts_driver FOREIGN KEY (driver_id) REFERENCES drivers (id) ON DELETE CASCADE
+) ENGINE=InnoDB;
+
+CREATE TABLE IF NOT EXISTS driver_expenses (
+  id           INT AUTO_INCREMENT PRIMARY KEY,
+  driver_id    INT NOT NULL,
+  trip_id      INT DEFAULT NULL,
+  expense_type ENUM('fuel', 'toll', 'parking', 'repair', 'meal', 'other') NOT NULL DEFAULT 'fuel',
+  amount_gbp   DECIMAL(10,2) NOT NULL DEFAULT 0,
+  notes        VARCHAR(255) DEFAULT NULL,
+  receipt_data LONGTEXT DEFAULT NULL,
+  expense_at   DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  created_at   TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT fk_driver_expenses_driver FOREIGN KEY (driver_id) REFERENCES drivers (id) ON DELETE CASCADE,
+  CONSTRAINT fk_driver_expenses_trip FOREIGN KEY (trip_id) REFERENCES trips (id) ON DELETE SET NULL
+) ENGINE=InnoDB;
+
+CREATE TABLE IF NOT EXISTS driver_walkarounds (
+  id         INT AUTO_INCREMENT PRIMARY KEY,
+  driver_id  INT NOT NULL,
+  trip_id    INT DEFAULT NULL,
+  checks     JSON NOT NULL,
+  all_clear  TINYINT(1) NOT NULL DEFAULT 0,
+  issues     TEXT DEFAULT NULL,
+  checked_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT fk_walkaround_driver FOREIGN KEY (driver_id) REFERENCES drivers (id) ON DELETE CASCADE,
+  CONSTRAINT fk_walkaround_trip FOREIGN KEY (trip_id) REFERENCES trips (id) ON DELETE SET NULL
+) ENGINE=InnoDB;
+
+CREATE TABLE IF NOT EXISTS driver_odometer_logs (
+  id         INT AUTO_INCREMENT PRIMARY KEY,
+  driver_id  INT NOT NULL,
+  trip_id    INT DEFAULT NULL,
+  vehicle_id INT DEFAULT NULL,
+  reading_km DECIMAL(10,1) NOT NULL,
+  log_type   ENUM('start', 'end') NOT NULL DEFAULT 'start',
+  logged_at  DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT fk_odometer_driver FOREIGN KEY (driver_id) REFERENCES drivers (id) ON DELETE CASCADE,
+  CONSTRAINT fk_odometer_trip FOREIGN KEY (trip_id) REFERENCES trips (id) ON DELETE SET NULL,
+  CONSTRAINT fk_odometer_vehicle FOREIGN KEY (vehicle_id) REFERENCES vehicles (id) ON DELETE SET NULL
+) ENGINE=InnoDB;
+
+CREATE TABLE IF NOT EXISTS driver_messages (
+  id          INT AUTO_INCREMENT PRIMARY KEY,
+  driver_id   INT NOT NULL,
+  sender_role ENUM('driver', 'admin', 'dispatch') NOT NULL DEFAULT 'driver',
+  sender_name VARCHAR(120) DEFAULT NULL,
+  body        TEXT NOT NULL,
+  trip_id     INT DEFAULT NULL,
+  is_read     TINYINT(1) NOT NULL DEFAULT 0,
+  sent_at     DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT fk_msg_driver FOREIGN KEY (driver_id) REFERENCES drivers (id) ON DELETE CASCADE,
+  CONSTRAINT fk_msg_trip FOREIGN KEY (trip_id) REFERENCES trips (id) ON DELETE SET NULL
 ) ENGINE=InnoDB;
 
 CREATE TABLE IF NOT EXISTS invoices (

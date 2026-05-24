@@ -31,7 +31,14 @@ export function TrackingVehicleDetailPage() {
   const { id } = useParams();
   const navigate = useNavigate();
   const [vehicle, setVehicle] = useState(null);
-  const [fields, setFields] = useState({ current_location: "", speed_kph: 0, status: "available" });
+  const [fields, setFields] = useState({
+    current_location: "",
+    speed_kph: 0,
+    status: "available",
+    gps_latitude: "",
+    gps_longitude: "",
+    gps_accuracy_m: ""
+  });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
@@ -65,6 +72,9 @@ export function TrackingVehicleDetailPage() {
         current_location: fields.current_location,
         speed_kph: Number(fields.speed_kph),
         status: fields.status,
+        gps_latitude: fields.gps_latitude,
+        gps_longitude: fields.gps_longitude,
+        gps_accuracy_m: fields.gps_accuracy_m,
         mark_ping_now: true
       });
       load();
@@ -158,6 +168,7 @@ export function TrackingVehicleDetailPage() {
                   <DetailBlock label="Model" value={vehicle.modelName} />
                   <DetailBlock label="Type" value={vehicle.truckType} />
                   <DetailBlock label="Speed" value={`${vehicle.speedKph || 0} km/h`} />
+                  <DetailBlock label="GPS accuracy" value={vehicle.accuracyLabel} />
                   <div className="detail-wide"><DetailBlock label="Current location" value={vehicle.currentLocation || "Location unknown"} /></div>
                   <div className="detail-wide"><DetailBlock label="Last ping" value={vehicle.lastPingMinutes != null ? `${vehicle.lastPingMinutes} min ago · ${vehicle.lastPingAt}` : "No ping data"} /></div>
                 </div>
@@ -204,7 +215,7 @@ export function TrackingVehicleDetailPage() {
                     <div className="tracking-map-overlay">
                       <strong>{vehicle.registrationNumber}</strong>
                       <span>{vehicle.currentLocation || "Location unknown"}</span>
-                      <span>{vehicle.speedKph || 0} km/h · {vehicle.lastPingMinutes != null ? `${vehicle.lastPingMinutes} min ago` : "No ping age"}</span>
+                      <span>{vehicle.speedKph || 0} km/h · {vehicle.accuracyLabel} · {vehicle.lastPingMinutes != null ? `${vehicle.lastPingMinutes} min ago` : "No ping age"}</span>
                     </div>
                   </div>
                   <div className="tracking-map-actions">
@@ -246,6 +257,18 @@ export function TrackingVehicleDetailPage() {
                       <option value="maintenance">Maintenance</option>
                       <option value="stopped">Stopped</option>
                     </select>
+                  </div>
+                  <div className="af-field">
+                    <label className="af-label">Latitude</label>
+                    <input className="af-input" type="number" step="0.000001" value={fields.gps_latitude} onChange={e => set("gps_latitude", e.target.value)} placeholder="e.g. 51.507351" />
+                  </div>
+                  <div className="af-field">
+                    <label className="af-label">Longitude</label>
+                    <input className="af-input" type="number" step="0.000001" value={fields.gps_longitude} onChange={e => set("gps_longitude", e.target.value)} placeholder="e.g. -0.127758" />
+                  </div>
+                  <div className="af-field">
+                    <label className="af-label">GPS accuracy (m)</label>
+                    <input className="af-input" type="number" min="0" step="1" value={fields.gps_accuracy_m} onChange={e => set("gps_accuracy_m", e.target.value)} placeholder="e.g. 15" />
                   </div>
                 </div>
 

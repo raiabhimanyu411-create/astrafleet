@@ -12,6 +12,12 @@ function fmtAmount(n) {
   if (n == null) return "—";
   return `£${Number(n).toLocaleString("en-GB", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
+function rawDateTime(d) {
+  if (!d) return "";
+  const date = new Date(d);
+  const offsetMs = date.getTimezoneOffset() * 60000;
+  return new Date(date.getTime() - offsetMs).toISOString().slice(0, 16);
+}
 const dispatchTone = { active: "success", loading: "warning", blocked: "danger", planned: "neutral", completed: "neutral" };
 const priorityTone = { standard: "neutral", priority: "warning", critical: "danger" };
 const driverStatusLabel = {
@@ -65,6 +71,21 @@ async function ensureDriverOpsSchema() {
   await addColumnIfMissing("trips", "pod_photo_data", "LONGTEXT DEFAULT NULL");
   await addColumnIfMissing("trips", "failed_delivery_reason", "TEXT DEFAULT NULL");
   await addColumnIfMissing("trips", "trailer_id", "INT DEFAULT NULL");
+  await addColumnIfMissing("trips", "customer_id", "INT DEFAULT NULL");
+  await addColumnIfMissing("trips", "pickup_address", "TEXT DEFAULT NULL");
+  await addColumnIfMissing("trips", "drop_address", "TEXT DEFAULT NULL");
+  await addColumnIfMissing("trips", "load_type", "VARCHAR(80) DEFAULT 'general'");
+  await addColumnIfMissing("trips", "load_weight_kg", "DECIMAL(10,2) DEFAULT NULL");
+  await addColumnIfMissing("trips", "load_description", "TEXT DEFAULT NULL");
+  await addColumnIfMissing("trips", "special_instructions", "TEXT DEFAULT NULL");
+  await addColumnIfMissing("trips", "actual_departure", "DATETIME DEFAULT NULL");
+  await addColumnIfMissing("trips", "actual_arrival", "DATETIME DEFAULT NULL");
+  await addColumnIfMissing("vehicles", "current_location", "VARCHAR(160) DEFAULT NULL");
+  await addColumnIfMissing("vehicles", "speed_kph", "DECIMAL(5,1) DEFAULT 0");
+  await addColumnIfMissing("vehicles", "last_ping_at", "DATETIME DEFAULT NULL");
+  await addColumnIfMissing("vehicles", "gps_latitude", "DECIMAL(10,7) DEFAULT NULL");
+  await addColumnIfMissing("vehicles", "gps_longitude", "DECIMAL(10,7) DEFAULT NULL");
+  await addColumnIfMissing("vehicles", "gps_accuracy_m", "DECIMAL(8,2) DEFAULT NULL");
   await db.query(
     `CREATE TABLE IF NOT EXISTS trailers (
       id INT AUTO_INCREMENT PRIMARY KEY,
@@ -150,11 +171,15 @@ exports.listJobs = async (req, res) => {
 
     const [[counts]] = await db.query(
       `SELECT COUNT(*) as total,
-        SUM(dispatch_status='active')    as active,
-        SUM(dispatch_status='planned')   as planned,
-        SUM(dispatch_status='completed') as completed,
-        SUM(dispatch_status='blocked')   as blocked,
-        SUM(dispatch_status='loading')   as loading
+        COALESCE(SUM(dispatch_status='active'), 0)    as active,
+        COALESCE(SUM(dispatch_status='planned'), 0)   as planned,
+        COALESCE(SUM(dispatch_status='completed'), 0) as completed,
+        COALESCE(SUM(dispatch_status='blocked'), 0)   as blocked,
+        COALESCE(SUM(dispatch_status='loading'), 0)   as loading,
+        COALESCE(SUM(priority_level='critical'), 0)   as critical,
+        COALESCE(SUM(driver_id IS NULL OR vehicle_id IS NULL), 0) as assignment_gaps,
+        COALESCE(SUM(eta IS NOT NULL AND eta < NOW() AND dispatch_status IN ('planned','loading','active')), 0) as eta_risk,
+        COALESCE(SUM(freight_amount_gbp), 0) as booked_value
        FROM trips`
     );
 
@@ -172,7 +197,7 @@ exports.listJobs = async (req, res) => {
     const [rows] = await db.query(
       `SELECT t.id, t.trip_code, t.client_name, t.dispatch_status, t.priority_level,
               t.planned_departure, t.eta, t.freight_amount_gbp, t.load_type, t.load_weight_kg,
-              t.pod_status, t.pickup_address, t.drop_address, t.created_at,
+              t.pod_status, t.pickup_address, t.drop_address, t.created_at, t.cancellation_reason,
               c.company_name as customer_name,
               r.origin_hub, r.destination_hub,
               d.full_name as driver_name,
@@ -194,10 +219,16 @@ exports.listJobs = async (req, res) => {
 
     res.json({
       stats: [
-        { label: "Total jobs",  value: counts.total,     tone: "neutral" },
-        { label: "Active",      value: counts.active,    tone: "success" },
-        { label: "Planned",     value: counts.planned,   tone: "warning" },
-        { label: "Completed",   value: counts.completed, tone: "neutral" }
+        { label: "Total jobs",  value: counts.total,     description: "All freight bookings.", change: "Live from database", tone: "neutral" },
+        { label: "Active",      value: counts.active,    description: "Currently moving.", change: "On road", tone: "success" },
+        { label: "Planned",     value: counts.planned,   description: "Scheduled but not dispatched.", change: "Ready queue", tone: "warning" },
+        { label: "Completed",   value: counts.completed, description: "Delivered jobs.", change: "Closed loop", tone: "neutral" }
+      ],
+      opsHealth: [
+        { label: "Booked value", value: fmtAmount(counts.booked_value), description: "Total freight value.", change: "GBP", tone: "neutral" },
+        { label: "Assignment gaps", value: counts.assignment_gaps, description: "Missing driver or vehicle.", change: "Needs dispatch", tone: counts.assignment_gaps ? "danger" : "success" },
+        { label: "ETA risk", value: counts.eta_risk, description: "ETA passed on open jobs.", change: "Ops review", tone: counts.eta_risk ? "danger" : "success" },
+        { label: "Critical jobs", value: counts.critical, description: "Critical priority bookings.", change: "Priority desk", tone: counts.critical ? "danger" : "neutral" }
       ],
       jobs: rows.map(r => ({
         id: r.id,
@@ -205,17 +236,27 @@ exports.listJobs = async (req, res) => {
         customer: r.customer_name || r.client_name || "—",
         lane: r.origin_hub && r.destination_hub ? `${r.origin_hub} → ${r.destination_hub}` : (r.pickup_address ? "Custom route" : "Route TBD"),
         driver: r.driver_name || "Unassigned",
+        driverAssigned: Boolean(r.driver_name),
         vehicle: r.registration_number || "Unassigned",
+        vehicleAssigned: Boolean(r.registration_number),
         trailer: r.trailer_registration || "Unassigned",
+        trailerAssigned: Boolean(r.trailer_registration),
         departure: fmtDate(r.planned_departure),
+        departureRaw: rawDateTime(r.planned_departure),
+        eta: fmtDate(r.eta),
+        etaRaw: rawDateTime(r.eta),
+        etaRisk: r.eta && new Date(r.eta).getTime() < Date.now() && ["planned", "loading", "active"].includes(r.dispatch_status),
         freight: fmtAmount(r.freight_amount_gbp),
+        freightValue: Number(r.freight_amount_gbp || 0),
         loadType: r.load_type || "general",
+        loadWeightKg: r.load_weight_kg,
         status: r.dispatch_status,
         statusTone: dispatchTone[r.dispatch_status] || "neutral",
         priority: r.priority_level,
         priorityTone: priorityTone[r.priority_level] || "neutral",
         podStatus: r.pod_status,
-        stopCount: r.stop_count
+        stopCount: r.stop_count,
+        cancellationReason: r.cancellation_reason || ""
       }))
     });
   } catch (err) {

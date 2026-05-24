@@ -69,7 +69,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  background: linear-gradient(145deg, #dde8f8 0%, #e8eef6 50%, #d6e4f5 100%);
+  background: linear-gradient(145deg, #c5d8f5 0%, #d8e8f8 35%, #e2ecf8 65%, #c8d8f0 100%);
   padding: 32px 16px;
   position: relative;
   overflow: hidden;
@@ -113,9 +113,10 @@
   position: absolute;
   inset: 0;
   background:
-    radial-gradient(ellipse at 75% 8%, rgba(59, 130, 246, 0.3) 0%, transparent 55%),
-    radial-gradient(ellipse at 15% 85%, rgba(29, 78, 216, 0.25) 0%, transparent 50%),
-    radial-gradient(ellipse at 50% 50%, rgba(37, 99, 235, 0.08) 0%, transparent 70%);
+    radial-gradient(circle, rgba(255,255,255,0.055) 1px, transparent 1px) 0 0 / 26px 26px,
+    radial-gradient(ellipse at 75% 8%, rgba(59, 130, 246, 0.32) 0%, transparent 55%),
+    radial-gradient(ellipse at 15% 85%, rgba(29, 78, 216, 0.26) 0%, transparent 50%),
+    radial-gradient(ellipse at 50% 50%, rgba(37, 99, 235, 0.1) 0%, transparent 70%);
   pointer-events: none;
 }
 
@@ -144,7 +145,7 @@
   display: flex;
   align-items: center;
   gap: 14px;
-  margin-bottom: 40px;
+  margin-bottom: 14px;
 }
 
 .lp-brand-name {
@@ -164,7 +165,7 @@
 }
 
 /* Tagline */
-.lp-tagline { margin-bottom: 16px; }
+.lp-tagline { margin-bottom: 12px; }
 
 .lp-tagline h1 {
   font-size: clamp(1.5rem, 2.2vw, 1.9rem);
@@ -195,6 +196,12 @@
   height: auto;
   display: block;
   filter: drop-shadow(0 8px 24px rgba(0,0,0,0.3));
+  animation: truck-float 5s ease-in-out infinite;
+}
+
+@keyframes truck-float {
+  0%, 100% { transform: translateY(0px); }
+  50% { transform: translateY(-8px); }
 }
 
 /* Features */
@@ -212,7 +219,12 @@
   flex-direction: column;
   align-items: center;
   gap: 8px;
-  padding: 10px 4px 6px;
+  padding: 10px 6px 8px;
+  border-radius: 8px;
+  transition: background 200ms;
+}
+.lp-feature:hover {
+  background: rgba(255,255,255,0.07);
 }
 
 .lp-feature span {
@@ -562,6 +574,147 @@ p.lp-success {
 .lp-footer-credit {
   color: var(--muted);
   font-weight: 600;
+}
+
+/* ── Login page enhancements ── */
+
+.lp-status-badge {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 22px;
+  font-size: 0.68rem;
+  color: rgba(134, 239, 172, 0.9);
+  font-weight: 700;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+}
+
+.lp-status-dot {
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #4ade80;
+  box-shadow: 0 0 8px rgba(74, 222, 128, 0.8);
+  animation: lp-status-pulse 2.2s ease-in-out infinite;
+  flex-shrink: 0;
+}
+
+@keyframes lp-status-pulse {
+  0%, 100% { opacity: 1; box-shadow: 0 0 8px rgba(74, 222, 128, 0.8); }
+  50% { opacity: 0.55; box-shadow: 0 0 14px rgba(74, 222, 128, 0.35); }
+}
+
+.lp-stats {
+  display: flex;
+  margin-bottom: 16px;
+  background: rgba(255,255,255,0.06);
+  border: 1px solid rgba(255,255,255,0.11);
+  border-radius: 10px;
+  overflow: hidden;
+  backdrop-filter: blur(6px);
+}
+
+.lp-stat {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 11px 6px 10px;
+  gap: 3px;
+  transition: background 180ms;
+}
+
+.lp-stat:hover { background: rgba(255,255,255,0.05); }
+
+.lp-stat:not(:last-child) {
+  border-right: 1px solid rgba(255,255,255,0.09);
+}
+
+.lp-stat strong {
+  font-size: 1.1rem;
+  font-weight: 800;
+  color: #ffffff;
+  letter-spacing: -0.03em;
+}
+
+.lp-stat span {
+  font-size: 0.62rem;
+  color: rgba(147, 197, 253, 0.7);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+}
+
+.lp-right-top-brand {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  justify-content: center;
+  margin-bottom: 20px;
+  padding-bottom: 20px;
+  border-bottom: 1px solid var(--border);
+}
+
+.lp-right-top-brand svg {
+  width: 38px;
+  height: 38px;
+  flex-shrink: 0;
+}
+
+.lp-right-brand-name {
+  font-size: 1.2rem;
+  font-weight: 800;
+  color: var(--text);
+  letter-spacing: -0.025em;
+  margin: 0 0 2px;
+}
+
+.lp-right-brand-sub {
+  font-size: 0.6rem;
+  font-weight: 800;
+  letter-spacing: 0.22em;
+  color: #2563eb;
+  text-transform: uppercase;
+}
+
+.lp-trust-strip {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  margin-top: 12px;
+  font-size: 0.73rem;
+  color: var(--subtle);
+  font-weight: 500;
+}
+
+.lp-trust-dot {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #22c55e;
+  box-shadow: 0 0 5px rgba(34, 197, 94, 0.6);
+  flex-shrink: 0;
+}
+
+.lp-login-btn::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: -100%;
+  width: 55%;
+  height: 100%;
+  background: linear-gradient(90deg, transparent, rgba(255,255,255,0.14), transparent);
+  animation: btn-shine 3.5s ease-in-out infinite;
+  pointer-events: none;
+}
+
+@keyframes btn-shine {
+  0% { left: -100%; }
+  45%, 100% { left: 150%; }
 }
 
 .lp-footer-credit strong {
@@ -1190,6 +1343,199 @@ p.lp-success {
   margin: 0;
 }
 
+.billing-workflow-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.billing-workflow-tile {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  min-height: 112px;
+  padding: 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+  transition: background 130ms, border-color 130ms, transform 120ms;
+}
+
+.billing-workflow-tile:hover {
+  border-color: var(--primary-ring);
+  background: var(--primary-soft);
+  transform: translateY(-1px);
+}
+
+.billing-workflow-tile span {
+  font-size: 0.76rem;
+  font-weight: 700;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.billing-workflow-tile strong {
+  font-size: 1.65rem;
+  line-height: 1;
+}
+
+.billing-row-main {
+  grid-template-columns: minmax(0, 1fr) 150px minmax(160px, 0.75fr);
+}
+
+.billing-filter-card {
+  grid-template-columns: minmax(240px, 1fr) 160px 160px 145px 145px auto;
+}
+
+.billing-filter-card .header-action-button {
+  height: 42px;
+}
+
+.tracking-command-card {
+  display: grid;
+  grid-template-columns: minmax(240px, 1fr) 165px 170px 170px auto;
+  gap: 10px;
+  margin-bottom: 16px;
+}
+
+.tracking-command-card .af-input,
+.tracking-command-card .af-select {
+  margin: 0;
+}
+
+.tracking-command-card .header-action-button {
+  height: 42px;
+}
+
+.tracking-row-main {
+  grid-template-columns: minmax(0, 1fr) 170px minmax(160px, 0.8fr);
+}
+
+.jobs-filter-card {
+  display: grid;
+  grid-template-columns: minmax(280px, 1fr) 160px 160px 180px auto;
+  gap: 10px;
+  margin-bottom: 16px;
+}
+
+.jobs-filter-card .af-input,
+.jobs-filter-card .af-select {
+  margin: 0;
+}
+
+.jobs-filter-card .header-action-button {
+  height: 42px;
+}
+
+.jobs-search-form {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+}
+
+.jobs-row-main {
+  grid-template-columns: minmax(0, 1.2fr) 130px minmax(150px, 0.8fr) 150px;
+}
+
+.customer-filter-card {
+  display: grid;
+  grid-template-columns: minmax(260px, 1fr) 160px 190px auto;
+  gap: 10px;
+  margin-bottom: 16px;
+}
+
+.customer-filter-card .af-input,
+.customer-filter-card .af-select {
+  margin: 0;
+}
+
+.customer-filter-card .header-action-button {
+  height: 42px;
+}
+
+.customer-row-main {
+  grid-template-columns: minmax(0, 1.2fr) 150px 150px 150px;
+}
+
+.dispatch-filter-card {
+  display: grid;
+  grid-template-columns: minmax(260px, 1fr) 160px 180px auto;
+  gap: 10px;
+  margin-bottom: 16px;
+}
+
+.dispatch-filter-card .af-input,
+.dispatch-filter-card .af-select {
+  margin: 0;
+}
+
+.dispatch-filter-card .header-action-button {
+  height: 42px;
+}
+
+.dispatch-row-main {
+  grid-template-columns: minmax(0, 1.1fr) 120px minmax(150px, 0.8fr) 150px;
+}
+
+.driver-filter-card {
+  display: grid;
+  grid-template-columns: minmax(260px, 1fr) 160px 160px 180px auto;
+  gap: 10px;
+  margin-bottom: 16px;
+}
+
+.driver-filter-card .af-input,
+.driver-filter-card .af-select {
+  margin: 0;
+}
+
+.driver-filter-card .header-action-button {
+  height: 42px;
+}
+
+.driver-row-main {
+  grid-template-columns: minmax(0, 1.1fr) 110px minmax(220px, 1fr);
+}
+
+.driver-doc-strip {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.vehicle-filter-card {
+  display: grid;
+  grid-template-columns: minmax(260px, 1fr) 160px 170px 180px auto;
+  gap: 10px;
+  margin-bottom: 16px;
+}
+
+.vehicle-filter-card .af-input,
+.vehicle-filter-card .af-select {
+  margin: 0;
+}
+
+.vehicle-filter-card .header-action-button {
+  height: 42px;
+}
+
+.vehicle-row-main {
+  grid-template-columns: minmax(0, 1.05fr) 150px minmax(260px, 1.15fr);
+}
+
+.vehicle-doc-strip {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
 .employee-access-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -1209,7 +1555,7 @@ p.lp-success {
   color: var(--muted);
 }
 
-.employee-profile-row { grid-template-columns: minmax(0, 1fr) 130px; }
+.employee-profile-row { grid-template-columns: minmax(0, 1fr) 130px 130px; }
 
 .employee-access-controls { display: grid; gap: 14px; }
 
@@ -1232,6 +1578,77 @@ p.lp-success {
 }
 
 .employee-empty-state { max-width: 560px; }
+
+.employee-filter-card {
+  display: grid;
+  grid-template-columns: minmax(220px, 1fr) 160px 170px auto;
+  gap: 10px;
+}
+
+.employee-filter-card .af-input,
+.employee-filter-card .af-select {
+  margin: 0;
+}
+
+.employee-filter-card .header-action-button {
+  height: 42px;
+}
+
+.employee-coverage-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.employee-coverage-tile {
+  min-height: 92px;
+  padding: 13px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+  transition: background 130ms, border-color 130ms, transform 120ms;
+}
+
+.employee-coverage-tile:hover {
+  border-color: var(--primary-ring);
+  background: var(--primary-soft);
+  transform: translateY(-1px);
+}
+
+.employee-coverage-tile span {
+  display: block;
+  font-size: 0.78rem;
+  font-weight: 800;
+}
+
+.employee-coverage-tile strong {
+  display: block;
+  margin-top: 8px;
+  font-size: 1.5rem;
+  line-height: 1;
+}
+
+.employee-coverage-tile p {
+  margin: 6px 0 0;
+  color: var(--muted);
+  font-size: 0.76rem;
+}
+
+.employee-preset-row {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 10px;
+}
+
+.employee-preset-row .header-action-button {
+  height: 28px;
+  padding: 0 9px;
+  font-size: 0.76rem;
+}
 
 .module-check-grid {
   display: grid;
@@ -1279,6 +1696,55 @@ p.lp-success {
 
 .alert-card strong { display: block; font-size: 0.875rem; font-weight: 600; margin-bottom: 3px; }
 .alert-card p      { font-size: 0.79rem; color: var(--muted); margin: 0; }
+
+.alert-filter-card {
+  display: grid;
+  grid-template-columns: minmax(260px, 1fr) 160px 160px 160px auto;
+  gap: 10px;
+  margin-bottom: 16px;
+}
+
+.alert-filter-card .af-input,
+.alert-filter-card .af-select {
+  margin: 0;
+}
+
+.alert-meta-strip {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.alert-meta-strip span {
+  display: inline-flex;
+  align-items: center;
+  min-height: 22px;
+  padding: 0 8px;
+  border-radius: 999px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  color: var(--subtle);
+  font-size: 0.72rem;
+  font-weight: 700;
+}
+
+.alert-resolution-row {
+  grid-template-columns: minmax(140px, 0.8fr) minmax(0, 1fr) auto;
+}
+
+.alert-row-main {
+  grid-template-columns: minmax(0, 1fr) 140px;
+}
+
+.alert-row-main:disabled {
+  cursor: default;
+}
+
+.alert-register-row .finance-row-actions {
+  min-width: 180px;
+}
 
 .alert-bar { width: 4px; border-radius: 999px; min-height: 40px; background: var(--primary); }
 .alert-bar.success { background: var(--success); }
@@ -1425,6 +1891,32 @@ p.lp-success {
 /* ── Driver Operations Panel ─────────────────────────── */
 
 .driver-job-list { display: flex; flex-direction: column; gap: 10px; }
+
+.driver-job-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 0 0 12px;
+}
+
+.driver-job-tabs button {
+  min-height: 34px;
+  padding: 6px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+  color: var(--text-soft);
+  font-size: 0.76rem;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.driver-job-tabs button:hover,
+.driver-job-tabs button.active {
+  border-color: var(--primary);
+  background: var(--primary-soft);
+  color: var(--primary-hover);
+}
 
 .driver-job-button {
   width: 100%;
@@ -1879,6 +2371,14 @@ p.lp-success {
 
 .admin-chat-card { margin-bottom: 16px; }
 
+.admin-chat-head-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+}
+
 .admin-chat-layout {
   display: grid;
   grid-template-columns: minmax(240px, 0.8fr) minmax(320px, 1.2fr);
@@ -1897,6 +2397,13 @@ p.lp-success {
   gap: 8px;
   max-height: 520px;
   overflow-y: auto;
+}
+
+.admin-chat-search {
+  margin: 0 0 4px;
+  position: sticky;
+  top: 0;
+  z-index: 1;
 }
 
 .admin-chat-driver {
@@ -1958,6 +2465,10 @@ p.lp-success {
 }
 
 .admin-chat-thread-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 10px;
   padding: 12px 14px;
   border-bottom: 1px solid var(--border);
   background: var(--surface-2);
@@ -1965,6 +2476,13 @@ p.lp-success {
 
 .admin-chat-thread-head strong { display: block; font-size: 0.95rem; color: var(--text); }
 .admin-chat-thread-head p { margin: 3px 0 0; font-size: 0.78rem; color: var(--muted); }
+
+.admin-chat-driver-status {
+  display: flex;
+  gap: 6px;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+}
 
 .admin-chat-thread {
   flex: 1;
@@ -1980,6 +2498,21 @@ p.lp-success {
 }
 
 .admin-chat-thread-wrap .af-submit-btn { width: fit-content; }
+
+.admin-chat-quick-replies {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding: 10px 12px;
+  border-top: 1px solid var(--border);
+  background: var(--surface-2);
+}
+
+.admin-chat-quick-replies .header-action-button {
+  height: 28px;
+  padding: 0 9px;
+  font-size: 0.74rem;
+}
 
 /* ═══════════════════════════════════════════════════════════
    TRIP ASSIGNMENT FORM  (af-*)
@@ -2119,6 +2652,8 @@ p.lp-success {
   }
 
   .lp-truck { max-height: 130px; }
+  .lp-stats { display: none; }
+  .lp-status-badge { display: none; }
 
   .lp-right { padding: 24px 32px 22px; }
 
@@ -2166,6 +2701,25 @@ p.lp-success {
   .tracking-map-shell iframe { height: 340px; min-height: 340px; }
 
   .finance-filter-card { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .billing-workflow-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .billing-row-main { grid-template-columns: minmax(0, 1fr) 150px; }
+  .tracking-command-card { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .tracking-row-main { grid-template-columns: minmax(0, 1fr) 170px; }
+  .jobs-filter-card { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .jobs-row-main { grid-template-columns: minmax(0, 1fr) 150px; }
+  .customer-filter-card { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .customer-row-main { grid-template-columns: minmax(0, 1fr) 150px; }
+  .dispatch-filter-card { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .dispatch-row-main { grid-template-columns: minmax(0, 1fr) 150px; }
+  .driver-filter-card { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .driver-row-main { grid-template-columns: minmax(0, 1fr); }
+  .vehicle-filter-card { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .alert-filter-card { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .alert-resolution-row { grid-template-columns: minmax(0, 1fr); }
+  .alert-row-main { grid-template-columns: minmax(0, 1fr); }
+  .vehicle-row-main { grid-template-columns: minmax(0, 1fr); }
+  .employee-filter-card,
+  .employee-coverage-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 
   .af-grid-3 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
@@ -2189,6 +2743,26 @@ p.lp-success {
   .employee-profile-row,
   .finance-list .finance-row,
   .finance-row-main,
+  .billing-workflow-grid,
+  .billing-row-main,
+  .tracking-command-card,
+  .tracking-row-main,
+  .jobs-filter-card,
+  .jobs-search-form,
+  .jobs-row-main,
+  .customer-filter-card,
+  .customer-row-main,
+  .dispatch-filter-card,
+  .dispatch-row-main,
+  .driver-filter-card,
+  .driver-row-main,
+	  .vehicle-filter-card,
+	  .alert-filter-card,
+	  .alert-resolution-row,
+	  .alert-row-main,
+	  .vehicle-row-main,
+  .employee-filter-card,
+  .employee-coverage-grid,
   .finance-filter-card { grid-template-columns: 1fr; }
 
   .finance-row-actions { justify-content: flex-start; }

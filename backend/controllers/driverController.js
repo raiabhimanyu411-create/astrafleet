@@ -1,4 +1,5 @@
 const db = require("../db/connection");
+const { verifySessionToken } = require("./authController");
 const { emitDriverChatMessage, emitDriverLocationUpdate } = require("../realtime");
 
 function fmtDate(d) {
@@ -68,6 +69,36 @@ const driverStatusTone = {
   declined: "danger"
 };
 
+const tripColumnDefinitions = {
+  driver_job_status: "VARCHAR(40) DEFAULT 'accepted'",
+  delivery_notes: "TEXT DEFAULT NULL",
+  pod_signature_data: "LONGTEXT DEFAULT NULL",
+  pod_photo_data: "LONGTEXT DEFAULT NULL",
+  failed_delivery_reason: "TEXT DEFAULT NULL",
+  trailer_id: "INT DEFAULT NULL",
+  customer_id: "INT DEFAULT NULL",
+  pickup_address: "TEXT DEFAULT NULL",
+  drop_address: "TEXT DEFAULT NULL",
+  load_type: "VARCHAR(80) DEFAULT 'general'",
+  load_weight_kg: "DECIMAL(10,2) DEFAULT NULL",
+  load_description: "TEXT DEFAULT NULL",
+  special_instructions: "TEXT DEFAULT NULL",
+  actual_departure: "DATETIME DEFAULT NULL",
+  actual_arrival: "DATETIME DEFAULT NULL"
+};
+
+const statusTransitions = {
+  offered: new Set(["accepted", "declined"]),
+  accepted: new Set(["arrived_pickup", "failed_delivery", "declined"]),
+  arrived_pickup: new Set(["loaded", "failed_delivery"]),
+  loaded: new Set(["in_transit", "failed_delivery"]),
+  in_transit: new Set(["arrived_drop", "failed_delivery"]),
+  arrived_drop: new Set(["failed_delivery"]),
+  delivered: new Set([]),
+  failed_delivery: new Set([]),
+  declined: new Set([])
+};
+
 let driverOpsSchemaReady = false;
 
 async function addColumnIfMissing(table, column, definition) {
@@ -84,12 +115,12 @@ async function addColumnIfMissing(table, column, definition) {
 async function ensureDriverOpsSchema() {
   if (driverOpsSchemaReady) return;
 
-  await addColumnIfMissing("trips", "driver_job_status", "VARCHAR(40) DEFAULT 'accepted'");
-  await addColumnIfMissing("trips", "delivery_notes", "TEXT DEFAULT NULL");
-  await addColumnIfMissing("trips", "pod_signature_data", "LONGTEXT DEFAULT NULL");
-  await addColumnIfMissing("trips", "pod_photo_data", "LONGTEXT DEFAULT NULL");
-  await addColumnIfMissing("trips", "failed_delivery_reason", "TEXT DEFAULT NULL");
-  await addColumnIfMissing("trips", "trailer_id", "INT DEFAULT NULL");
+  for (const [column, definition] of Object.entries(tripColumnDefinitions)) {
+    await addColumnIfMissing("trips", column, definition);
+  }
+  await addColumnIfMissing("vehicles", "current_location", "VARCHAR(160) DEFAULT NULL");
+  await addColumnIfMissing("vehicles", "speed_kph", "DECIMAL(5,1) DEFAULT 0");
+  await addColumnIfMissing("vehicles", "last_ping_at", "DATETIME DEFAULT NULL");
   await addColumnIfMissing("vehicles", "gps_latitude", "DECIMAL(10,7) DEFAULT NULL");
   await addColumnIfMissing("vehicles", "gps_longitude", "DECIMAL(10,7) DEFAULT NULL");
   await addColumnIfMissing("vehicles", "gps_accuracy_m", "DECIMAL(8,2) DEFAULT NULL");
@@ -225,7 +256,31 @@ async function createControlRoomAlert({ title, description, severity = "medium",
 }
 
 function getSessionUserId(req) {
-  return req.query.userId || req.headers["x-user-id"] || req.body?.userId;
+  const token = req.headers["x-session-token"];
+  const userId = req.headers["x-session-user-id"] || req.query.userId || req.body?.userId;
+  const role = req.headers["x-session-role"];
+  const verified = verifySessionToken(token);
+  if (verified?.id && verified.role === "driver") return verified.id;
+  if (process.env.ALLOW_LEGACY_DRIVER_USER_ID === "true" && role === "driver") return userId;
+  return null;
+}
+
+async function hasActiveShift(driverId) {
+  const [[active]] = await db.query(
+    `SELECT id FROM driver_shifts WHERE driver_id=? AND status='active' LIMIT 1`,
+    [driverId]
+  );
+  return Boolean(active);
+}
+
+async function hasClearWalkaround(driverId, tripId) {
+  const [[walkaround]] = await db.query(
+    `SELECT id FROM driver_walkarounds
+     WHERE driver_id=? AND all_clear=1 AND (trip_id=? OR trip_id IS NULL)
+     ORDER BY checked_at DESC LIMIT 1`,
+    [driverId, tripId || null]
+  );
+  return Boolean(walkaround);
 }
 
 async function getDriverFromSession(req) {
@@ -416,6 +471,7 @@ exports.getMyDriverPanel = async (req, res) => {
         startedAt: fmtDateTime(activeShift.shift_start)
       } : null,
       activeJob,
+      jobs,
       todayJobs,
       upcomingJobs,
       statusFlow: driverStatusFlow.map((value) => ({ value, label: driverStatusLabel[value] })),
@@ -468,8 +524,22 @@ exports.updateMyJobStatus = async (req, res) => {
       return res.status(400).json({ message: "Invalid driver job status." });
     }
 
-    const [[job]] = await db.query(`SELECT id, vehicle_id FROM trips WHERE id = ? AND driver_id = ?`, [jobId, driver.id]);
+    const [[job]] = await db.query(`SELECT id, vehicle_id, driver_job_status FROM trips WHERE id = ? AND driver_id = ?`, [jobId, driver.id]);
     if (!job) return res.status(404).json({ message: "Assigned job not found." });
+
+    const currentStatus = job.driver_job_status || "accepted";
+    if (status === "delivered") {
+      return res.status(400).json({ message: "Submit POD with signature/photo to mark the job delivered." });
+    }
+    if (!statusTransitions[currentStatus]?.has(status) && status !== currentStatus) {
+      return res.status(409).json({ message: `Cannot move job from ${driverStatusLabel[currentStatus] || currentStatus} to ${driverStatusLabel[status] || status}.` });
+    }
+    if (!["accepted", "declined", currentStatus].includes(status) && !(await hasActiveShift(driver.id))) {
+      return res.status(400).json({ message: "Start your shift before updating job progress." });
+    }
+    if (["loaded", "in_transit", "arrived_drop"].includes(status) && !(await hasClearWalkaround(driver.id, jobId))) {
+      return res.status(400).json({ message: "Submit an all-clear walkaround before moving this job forward." });
+    }
 
     const updates = ["driver_job_status=?"];
     const values = [status];
@@ -538,8 +608,17 @@ exports.submitMyProofOfDelivery = async (req, res) => {
 
     const { jobId } = req.params;
     const { signatureData, photoData, deliveryNotes } = req.body;
-    const [[job]] = await db.query(`SELECT id FROM trips WHERE id = ? AND driver_id = ?`, [jobId, driver.id]);
+    if (!signatureData && !photoData) {
+      return res.status(400).json({ message: "POD signature or delivery photo is required." });
+    }
+    const [[job]] = await db.query(`SELECT id, vehicle_id, driver_job_status FROM trips WHERE id = ? AND driver_id = ?`, [jobId, driver.id]);
     if (!job) return res.status(404).json({ message: "Assigned job not found." });
+    if (["failed_delivery", "declined"].includes(job.driver_job_status)) {
+      return res.status(409).json({ message: "POD cannot be submitted for a failed or declined job." });
+    }
+    if (!(await hasActiveShift(driver.id))) {
+      return res.status(400).json({ message: "Start your shift before submitting POD." });
+    }
 
     await db.query(
       `UPDATE trips
@@ -547,6 +626,9 @@ exports.submitMyProofOfDelivery = async (req, res) => {
        WHERE id=? AND driver_id=?`,
       [signatureData || null, photoData || null, deliveryNotes || null, new Date(), jobId, driver.id]
     );
+    if (job.vehicle_id) {
+      await db.query(`UPDATE vehicles SET status='available' WHERE id=?`, [job.vehicle_id]);
+    }
 
     res.json({ message: "Proof of delivery submitted." });
   } catch (err) {
@@ -606,18 +688,23 @@ exports.createMyExpense = async (req, res) => {
     if (!driver) return res.status(404).json({ message: "Driver profile not linked to this login." });
 
     const { tripId, expenseType, amount, notes, receiptData } = req.body;
-    if (!amount) return res.status(400).json({ message: "Expense amount is required." });
+    const amountValue = Number(amount);
+    if (!Number.isFinite(amountValue) || amountValue <= 0) return res.status(400).json({ message: "A valid expense amount is required." });
     const allowedCategory = ["fuel", "toll", "parking", "repair", "meal", "other"].includes(expenseType) ? expenseType : "other";
+    if (tripId) {
+      const [[trip]] = await db.query(`SELECT id FROM trips WHERE id=? AND driver_id=?`, [tripId, driver.id]);
+      if (!trip) return res.status(404).json({ message: "Assigned trip not found for this expense." });
+    }
 
     const [result] = await db.query(
       `INSERT INTO driver_expenses
          (driver_id, trip_id, expense_type, amount_gbp, notes, receipt_data)
        VALUES (?, ?, ?, ?, ?, ?)`,
-      [driver.id, tripId || null, allowedCategory, amount, notes || null, receiptData || null]
+      [driver.id, tripId || null, allowedCategory, amountValue, notes || null, receiptData || null]
     );
     await createControlRoomAlert({
       title: `Driver expense submitted`,
-      description: `${driver.full_name} submitted ${expenseType || "fuel"} expense for £${amount}.`,
+      description: `${driver.full_name} submitted ${allowedCategory} expense for £${amountValue.toFixed(2)}.`,
       severity: "medium",
       driverId: driver.id,
       tripId: tripId || null
@@ -636,6 +723,7 @@ exports.createMyDefectReport = async (req, res) => {
     if (!driver) return res.status(404).json({ message: "Driver profile not linked to this login." });
 
     const { vehicleId, defectType, severity, description } = req.body;
+    const allowedSeverity = ["low", "medium", "high", "critical"].includes(severity) ? severity : "medium";
     let targetVehicleId = vehicleId || null;
     let targetTripId = null;
     if (!targetVehicleId) {
@@ -653,7 +741,7 @@ exports.createMyDefectReport = async (req, res) => {
       const [result] = await db.query(
         `INSERT INTO defect_reports (vehicle_id, driver_id, trip_id, defect_type, description, severity, reported_by, status)
          VALUES (?, ?, ?, ?, ?, ?, ?, 'open')`,
-        [targetVehicleId, driver.id, targetTripId, defectType || "Driver report", description || "Driver submitted a vehicle defect report.", severity || "medium", driver.full_name]
+        [targetVehicleId, driver.id, targetTripId, defectType || "Driver report", description || "Driver submitted a vehicle defect report.", allowedSeverity, driver.full_name]
       );
       defectId = result.insertId;
     }
@@ -661,7 +749,7 @@ exports.createMyDefectReport = async (req, res) => {
     await createControlRoomAlert({
       title: `Driver defect report`,
       description: `${driver.full_name}: ${description || defectType || "Vehicle defect reported."}`,
-      severity: severity || "medium",
+      severity: allowedSeverity,
       driverId: driver.id,
       tripId: targetTripId,
       vehicleId: targetVehicleId
@@ -715,7 +803,9 @@ exports.logOdometer = async (req, res) => {
     if (!driver) return res.status(404).json({ message: "Driver profile not linked." });
 
     const { tripId, readingKm, logType } = req.body;
-    if (!readingKm) return res.status(400).json({ message: "Odometer reading is required." });
+    const readingValue = Number(readingKm);
+    if (!Number.isFinite(readingValue) || readingValue <= 0) return res.status(400).json({ message: "A valid odometer reading is required." });
+    const cleanLogType = ["start", "end"].includes(logType) ? logType : "start";
 
     let vehicleId = null;
     if (tripId) {
@@ -725,7 +815,7 @@ exports.logOdometer = async (req, res) => {
 
     const [result] = await db.query(
       `INSERT INTO driver_odometer_logs (driver_id, trip_id, vehicle_id, reading_km, log_type) VALUES (?, ?, ?, ?, ?)`,
-      [driver.id, tripId || null, vehicleId, readingKm, logType || "start"]
+      [driver.id, tripId || null, vehicleId, readingValue, cleanLogType]
     );
 
     res.status(201).json({ message: "Odometer reading logged.", id: result.insertId });
@@ -743,12 +833,13 @@ exports.updateJobEta = async (req, res) => {
 
     const { jobId } = req.params;
     const { eta } = req.body;
-    if (!eta) return res.status(400).json({ message: "ETA is required." });
+    const etaDate = new Date(eta);
+    if (!eta || Number.isNaN(etaDate.getTime())) return res.status(400).json({ message: "A valid ETA is required." });
 
     const [[job]] = await db.query(`SELECT id FROM trips WHERE id=? AND driver_id=?`, [jobId, driver.id]);
     if (!job) return res.status(404).json({ message: "Assigned job not found." });
 
-    await db.query(`UPDATE trips SET eta=? WHERE id=? AND driver_id=?`, [new Date(eta), jobId, driver.id]);
+    await db.query(`UPDATE trips SET eta=? WHERE id=? AND driver_id=?`, [etaDate, jobId, driver.id]);
     res.json({ message: "ETA updated successfully." });
   } catch (err) {
     res.status(500).json({ message: "ETA update error", error: err.message });
@@ -844,7 +935,9 @@ exports.rescheduleJob = async (req, res) => {
 
     const { jobId } = req.params;
     const { newDate, reason } = req.body;
-    if (!newDate) return res.status(400).json({ message: "New delivery date is required." });
+    const nextDate = new Date(newDate);
+    if (!newDate || Number.isNaN(nextDate.getTime())) return res.status(400).json({ message: "A valid new delivery date is required." });
+    if (nextDate.getTime() < Date.now() - 60000) return res.status(400).json({ message: "New delivery date cannot be in the past." });
 
     const [[job]] = await db.query(
       `SELECT id, vehicle_id FROM trips WHERE id=? AND driver_id=? AND driver_job_status='failed_delivery'`,
@@ -856,7 +949,7 @@ exports.rescheduleJob = async (req, res) => {
       `UPDATE trips SET planned_departure=?, driver_job_status='accepted', dispatch_status='planned',
        failed_delivery_reason=CONCAT(COALESCE(failed_delivery_reason,''), ' | Rescheduled: ', ?)
        WHERE id=? AND driver_id=?`,
-      [new Date(newDate), reason || "Driver rescheduled", jobId, driver.id]
+      [nextDate, reason || "Driver rescheduled", jobId, driver.id]
     );
 
     await createControlRoomAlert({
@@ -1013,13 +1106,27 @@ exports.getMyNotifications = async (req, res) => {
 // GET /api/drivers
 exports.listDrivers = async (req, res) => {
   try {
+    await ensureDriverOpsSchema();
+
     const [[counts]] = await db.query(
       `SELECT COUNT(*) as total,
-        SUM(shift_status='ready')           as ready,
-        SUM(shift_status='on_trip')         as on_trip,
-        SUM(compliance_status='blocked')    as blocked,
-        SUM(compliance_status='review')     as review,
-        SUM(onboarding_status IN ('new','docs_pending')) as onboarding
+        COALESCE(SUM(shift_status='ready'), 0)           as ready,
+        COALESCE(SUM(shift_status='on_trip'), 0)         as on_trip,
+        COALESCE(SUM(compliance_status='blocked'), 0)    as blocked,
+        COALESCE(SUM(compliance_status='review'), 0)     as review,
+        COALESCE(SUM(onboarding_status IN ('new','docs_pending')), 0) as onboarding,
+        COALESCE(SUM(
+          license_expiry < CURDATE()
+          OR medical_expiry < CURDATE()
+          OR cpc_expiry < CURDATE()
+          OR tacho_card_expiry < CURDATE()
+        ), 0) as expired_docs,
+        COALESCE(SUM(
+          license_expiry BETWEEN CURDATE() AND DATE_ADD(CURDATE(), INTERVAL 90 DAY)
+          OR medical_expiry BETWEEN CURDATE() AND DATE_ADD(CURDATE(), INTERVAL 90 DAY)
+          OR cpc_expiry BETWEEN CURDATE() AND DATE_ADD(CURDATE(), INTERVAL 90 DAY)
+          OR tacho_card_expiry BETWEEN CURDATE() AND DATE_ADD(CURDATE(), INTERVAL 90 DAY)
+        ), 0) as expiring_docs
        FROM drivers`
     );
 
@@ -1030,13 +1137,29 @@ exports.listDrivers = async (req, res) => {
               d.onboarding_status, d.shift_status, d.compliance_status,
               d.created_at,
               u.email,
-              COUNT(DISTINCT t.id)  AS total_trips,
-              COUNT(DISTINCT dd.id) AS total_docs
+              COALESCE(t.total_trips, 0) AS total_trips,
+              COALESCE(t.open_trips, 0) AS open_trips,
+              COALESCE(dd.total_docs, 0) AS total_docs,
+              dm.last_message_at,
+              COALESCE(dm.unread_messages, 0) AS unread_messages
        FROM drivers d
        LEFT JOIN users         u  ON d.user_id  = u.id
-       LEFT JOIN trips         t  ON t.driver_id = d.id
-       LEFT JOIN driver_documents dd ON dd.driver_id = d.id
-       GROUP BY d.id
+       LEFT JOIN (
+          SELECT driver_id,
+                 COUNT(*) AS total_trips,
+                 SUM(dispatch_status IN ('planned','loading','active')) AS open_trips
+          FROM trips GROUP BY driver_id
+       ) t ON t.driver_id = d.id
+       LEFT JOIN (
+          SELECT driver_id, COUNT(*) AS total_docs
+          FROM driver_documents GROUP BY driver_id
+       ) dd ON dd.driver_id = d.id
+       LEFT JOIN (
+          SELECT driver_id,
+                 MAX(sent_at) AS last_message_at,
+                 SUM(sender_role='driver' AND is_read=0) AS unread_messages
+          FROM driver_messages GROUP BY driver_id
+       ) dm ON dm.driver_id = d.id
        ORDER BY d.created_at DESC`
     );
 
@@ -1045,10 +1168,16 @@ exports.listDrivers = async (req, res) => {
 
     res.json({
       stats: [
-        { label: "Total drivers",    value: counts.total,      tone: "neutral" },
-        { label: "Ready for dispatch", value: counts.ready,    tone: "success" },
-        { label: "On trip",          value: counts.on_trip,    tone: "warning" },
-        { label: "Blocked / review", value: Number(counts.blocked) + Number(counts.review), tone: "danger" }
+        { label: "Total drivers", value: counts.total, description: "All registered drivers.", change: "Live from database", tone: "neutral" },
+        { label: "Ready for dispatch", value: counts.ready, description: "Available for new jobs.", change: "Dispatch ready", tone: "success" },
+        { label: "On trip", value: counts.on_trip, description: "Currently assigned on road.", change: "Live fleet", tone: "warning" },
+        { label: "Blocked / review", value: Number(counts.blocked) + Number(counts.review), description: "Compliance needs attention.", change: "Ops review", tone: "danger" }
+      ],
+      driverHealth: [
+        { label: "Expired docs", value: counts.expired_docs, description: "Licence, medical, CPC, or tacho expired.", change: "Stop dispatch", tone: counts.expired_docs ? "danger" : "success" },
+        { label: "Expiring docs", value: counts.expiring_docs, description: "Documents expiring within 90 days.", change: "Renewal queue", tone: counts.expiring_docs ? "warning" : "success" },
+        { label: "Onboarding queue", value: counts.onboarding, description: "New or docs-pending drivers.", change: "Admin check", tone: counts.onboarding ? "warning" : "success" },
+        { label: "Unread messages", value: rows.reduce((sum, r) => sum + Number(r.unread_messages || 0), 0), description: "Driver messages needing reply.", change: "Support desk", tone: rows.some(r => Number(r.unread_messages || 0) > 0) ? "danger" : "success" }
       ],
       drivers: rows.map(r => ({
         id: r.id,
@@ -1064,13 +1193,22 @@ exports.listDrivers = async (req, res) => {
         medicalExpiryTone: expiryTone(r.medical_expiry),
         cpcExpiry: fmtDate(r.cpc_expiry),
         cpcExpiryTone: expiryTone(r.cpc_expiry),
+        tachoExpiry: fmtDate(r.tacho_card_expiry),
+        tachoExpiryTone: expiryTone(r.tacho_card_expiry),
         onboardingStatus: r.onboarding_status,
         shiftStatus: r.shift_status,
         shiftTone: shiftTone[r.shift_status] || "neutral",
         complianceStatus: r.compliance_status,
         complianceTone: complianceTone[r.compliance_status] || "neutral",
         totalTrips: r.total_trips,
+        openTrips: r.open_trips,
         totalDocs: r.total_docs,
+        unreadMessages: Number(r.unread_messages || 0),
+        lastMessageAt: fmtDateTime(r.last_message_at),
+        docRisk: [r.license_expiry, r.medical_expiry, r.cpc_expiry, r.tacho_card_expiry].some(date => {
+          const days = daysUntil(date);
+          return days !== null && days < 90;
+        }),
         since: fmtDate(r.created_at)
       }))
     });

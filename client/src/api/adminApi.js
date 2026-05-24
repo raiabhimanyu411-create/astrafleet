@@ -21,6 +21,7 @@ export const updateInvoiceStatus = (id, data) => api.patch(`/api/admin/billing/$
 export const deleteInvoice = (id) => api.delete(`/api/admin/billing/${id}`);
 export const getTrackingVehicleById = (id) => api.get(`/api/admin/tracking/vehicles/${id}`);
 export const updateTrackingVehicle = (id, data) => api.patch(`/api/admin/tracking/vehicles/${id}`, data);
+export const updateAlertStatus = (id, data) => api.patch(`/api/admin/alerts/${id}/status`, data);
 export const getTripFormData = () => api.get("/api/admin/trips/form-data");
 export const getAdminTripById = (id) => api.get(`/api/admin/trips/${id}`);
 export const createAdminTrip = (data) => api.post("/api/admin/trips", data);

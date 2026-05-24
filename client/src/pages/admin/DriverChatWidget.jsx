@@ -8,6 +8,7 @@ export function DriverChatWidget({ compact = false }) {
   const [drivers, setDrivers] = useState([]);
   const [selectedDriver, setSelectedDriver] = useState(null);
   const [messages, setMessages] = useState([]);
+  const [driverSearch, setDriverSearch] = useState("");
   const [loading, setLoading] = useState(true);
   const [threadLoading, setThreadLoading] = useState(false);
   const [error, setError] = useState("");
@@ -16,6 +17,12 @@ export function DriverChatWidget({ compact = false }) {
   const threadRef = useRef(null);
   const selectedRef = useRef(null);
   const session = getAuthSession();
+  const quickReplies = [
+    "Thanks, received. Dispatch is reviewing this now.",
+    "Please share your current location and ETA.",
+    "Can you confirm loading is complete?",
+    "Please pause safely and wait for dispatch instructions."
+  ];
 
   async function loadChats(showLoading = true) {
     try {
@@ -122,23 +129,45 @@ export function DriverChatWidget({ compact = false }) {
     }
   }
 
+  const filteredDrivers = drivers.filter(driver => {
+    const query = driverSearch.trim().toLowerCase();
+    if (!query) return true;
+    return (
+      driver.fullName.toLowerCase().includes(query) ||
+      driver.employeeCode.toLowerCase().includes(query) ||
+      (driver.phone || "").toLowerCase().includes(query) ||
+      (driver.lastMessage?.body || "").toLowerCase().includes(query)
+    );
+  });
+
+  const unreadTotal = drivers.reduce((sum, driver) => sum + Number(driver.unreadCount || 0), 0);
+
   return (
     <article className="content-card admin-chat-card" id="admin-driver-chat">
       <div className="section-head">
         <div>
           <span className="card-label">Driver support</span>
-          <h2>Chat with driver</h2>
+          <h2>Driver support console</h2>
         </div>
-        <button className="header-action-button" type="button" onClick={() => loadChats(false)}>Refresh</button>
+        <div className="admin-chat-head-actions">
+          <StatusPill tone={unreadTotal ? "danger" : "success"}>{unreadTotal ? `${unreadTotal} unread` : "Inbox clear"}</StatusPill>
+          <button className="header-action-button" type="button" onClick={() => loadChats(false)}>Refresh</button>
+        </div>
       </div>
 
       {error && <p className="driver-empty">{error}</p>}
 
       <div className={`admin-chat-layout ${compact ? "compact" : ""}`}>
         <div className="admin-chat-driver-list">
+          <input
+            className="af-input admin-chat-search"
+            placeholder="Search driver or message..."
+            value={driverSearch}
+            onChange={e => setDriverSearch(e.target.value)}
+          />
           {loading && <p className="driver-empty">Loading drivers...</p>}
-          {!loading && drivers.length === 0 && <p className="driver-empty">No drivers found.</p>}
-          {drivers.map(driver => (
+          {!loading && filteredDrivers.length === 0 && <p className="driver-empty">No drivers found.</p>}
+          {filteredDrivers.map(driver => (
             <button
               className={`admin-chat-driver ${selectedDriver?.id === driver.id ? "active" : ""}`}
               key={driver.id}
@@ -152,7 +181,7 @@ export function DriverChatWidget({ compact = false }) {
               </div>
               <div>
                 {driver.unreadCount > 0 && <StatusPill tone="danger">{driver.unreadCount} new</StatusPill>}
-                <small>Chat</small>
+                <small>{driver.lastMessage?.at || "Open chat"}</small>
               </div>
             </button>
           ))}
@@ -164,6 +193,16 @@ export function DriverChatWidget({ compact = false }) {
               <strong>{selectedDriver?.fullName || "Select a driver"}</strong>
               <p>{selectedDriver ? `${selectedDriver.shiftStatus} · ${selectedDriver.complianceStatus}` : "Choose a driver to open support chat"}</p>
             </div>
+            {selectedDriver && (
+              <div className="admin-chat-driver-status">
+                <StatusPill tone={selectedDriver.complianceStatus === "clear" ? "success" : selectedDriver.complianceStatus === "blocked" ? "danger" : "warning"}>
+                  {selectedDriver.complianceStatus}
+                </StatusPill>
+                <StatusPill tone={selectedDriver.shiftStatus === "ready" ? "success" : selectedDriver.shiftStatus === "on_trip" ? "warning" : "neutral"}>
+                  {selectedDriver.shiftStatus?.replace("_", " ")}
+                </StatusPill>
+              </div>
+            )}
           </div>
 
           <div className="message-thread admin-chat-thread" ref={threadRef}>
@@ -177,6 +216,20 @@ export function DriverChatWidget({ compact = false }) {
                 <span className="message-meta">{msg.senderName} · {msg.at}</span>
                 <p>{msg.body}</p>
               </div>
+            ))}
+          </div>
+
+          <div className="admin-chat-quick-replies">
+            {quickReplies.map(reply => (
+              <button
+                className="header-action-button"
+                disabled={!selectedDriver || sending}
+                key={reply}
+                type="button"
+                onClick={() => setBody(reply)}
+              >
+                {reply}
+              </button>
             ))}
           </div>
 

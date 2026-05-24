@@ -1,6 +1,6 @@
 const db = require("../db/connection");
 const { ensureEmployeeAuthSchema, employeeModules, parseAccessModules } = require("./authController");
-const { emitDriverChatMessage } = require("../realtime");
+const { emitDriverChatMessage, emitDriverLocationUpdate } = require("../realtime");
 
 function severityTone(s) {
   return s === "critical" || s === "high" ? "danger" : s === "medium" ? "warning" : "neutral";
@@ -40,6 +40,23 @@ function fmtAmount(n) {
     : "—";
 }
 
+function cleanAlertCopy(text) {
+  if (!text) return "No description added.";
+  if (text.includes("Rest-rule breach") && text.includes("Leeds to London")) {
+    return "A new driver must be confirmed for the Leeds to London trip after a rest-rule breach.";
+  }
+  if (text.includes("LON-MAN lane") && text.includes("ETA review")) {
+    return "ETA review is required because of traffic load on the LON-MAN lane.";
+  }
+  if (text.includes("Driver CPC renewal")) {
+    return "Release approval is on hold because Driver CPC renewal is pending.";
+  }
+  if (text.includes("Billing release") && text.includes("POD scan")) {
+    return "Billing release is blocked because the POD scan is missing.";
+  }
+  return text;
+}
+
 function vehicleStatusForTrip(status) {
   if (status === "active" || status === "loading") return "in_transit";
   if (status === "planned") return "planned";
@@ -75,6 +92,15 @@ async function ensureDriverOpsSchema() {
   await addColumnIfMissing("trips", "pod_signature_data", "LONGTEXT DEFAULT NULL");
   await addColumnIfMissing("trips", "pod_photo_data", "LONGTEXT DEFAULT NULL");
   await addColumnIfMissing("trips", "failed_delivery_reason", "TEXT DEFAULT NULL");
+  await addColumnIfMissing("trips", "customer_id", "INT DEFAULT NULL");
+  await addColumnIfMissing("trips", "pickup_address", "TEXT DEFAULT NULL");
+  await addColumnIfMissing("trips", "drop_address", "TEXT DEFAULT NULL");
+  await addColumnIfMissing("trips", "load_type", "VARCHAR(80) DEFAULT 'general'");
+  await addColumnIfMissing("trips", "load_weight_kg", "DECIMAL(10,2) DEFAULT NULL");
+  await addColumnIfMissing("trips", "load_description", "TEXT DEFAULT NULL");
+  await addColumnIfMissing("trips", "special_instructions", "TEXT DEFAULT NULL");
+  await addColumnIfMissing("trips", "actual_departure", "DATETIME DEFAULT NULL");
+  await addColumnIfMissing("trips", "actual_arrival", "DATETIME DEFAULT NULL");
   await db.query(
     `CREATE TABLE IF NOT EXISTS defect_reports (
       id INT AUTO_INCREMENT PRIMARY KEY,
@@ -95,6 +121,9 @@ async function ensureDriverOpsSchema() {
 
 async function ensureVehicleGpsSchema() {
   if (vehicleGpsSchemaReady) return;
+  await addColumnIfMissing("vehicles", "current_location", "VARCHAR(160) DEFAULT NULL");
+  await addColumnIfMissing("vehicles", "speed_kph", "DECIMAL(5,1) DEFAULT 0");
+  await addColumnIfMissing("vehicles", "last_ping_at", "DATETIME DEFAULT NULL");
   await addColumnIfMissing("vehicles", "gps_latitude", "DECIMAL(10,7) DEFAULT NULL");
   await addColumnIfMissing("vehicles", "gps_longitude", "DECIMAL(10,7) DEFAULT NULL");
   await addColumnIfMissing("vehicles", "gps_accuracy_m", "DECIMAL(8,2) DEFAULT NULL");
@@ -530,14 +559,28 @@ exports.getBilling = async (req, res) => {
   try {
     const [[counts]] = await db.query(
       `SELECT COUNT(*) as total,
-        SUM(pod_verified=1) as pod_ok,
-        SUM(pod_verified=0) as pod_pending,
-        SUM(payment_status='overdue') as overdue
+        COALESCE(SUM(pod_verified=1), 0) as pod_ok,
+        COALESCE(SUM(pod_verified=0), 0) as pod_pending,
+        COALESCE(SUM(payment_status='overdue'), 0) as overdue
+       FROM invoices`
+    );
+    const [[totals]] = await db.query(
+      `SELECT
+        COALESCE(SUM(amount_gbp), 0) as billed,
+        COALESCE(SUM(CASE WHEN payment_status='paid' THEN amount_gbp ELSE 0 END), 0) as collected,
+        COALESCE(SUM(CASE WHEN payment_status!='paid' THEN amount_gbp ELSE 0 END), 0) as outstanding,
+        COALESCE(SUM(CASE WHEN pod_verified=0 THEN amount_gbp ELSE 0 END), 0) as pod_risk
        FROM invoices`
     );
     const [invoiceRows] = await db.query(
-      `SELECT id, invoice_no, client_name, amount_gbp, due_date, payment_status, pod_verified, notes
-       FROM invoices ORDER BY created_at DESC LIMIT 10`
+      `SELECT i.id, i.invoice_no, i.client_name, i.amount_gbp, i.issued_at, i.due_date,
+              i.payment_status, i.pod_verified, i.notes, i.currency,
+              t.trip_code, t.pod_status,
+              r.origin_hub, r.destination_hub
+       FROM invoices i
+       LEFT JOIN trips t ON t.id = i.trip_id
+       LEFT JOIN routes r ON r.id = t.route_id
+       ORDER BY i.created_at DESC LIMIT 25`
     );
     const [blockerRows] = await db.query(
       `SELECT title, description, severity FROM control_room_alerts
@@ -563,15 +606,31 @@ exports.getBilling = async (req, res) => {
         { label: "POD pending", value: counts.pod_pending, description: "Waiting for POD upload.", change: "Live from database", tone: "warning" },
         { label: "Overdue", value: counts.overdue, description: "Past due date, unpaid.", change: "Live from database", tone: "danger" }
       ],
+      amountSummary: [
+        { label: "Total billed", value: fmtAmount(totals.billed), description: "Gross invoice value.", change: "Calculated live", tone: "neutral" },
+        { label: "Collected", value: fmtAmount(totals.collected), description: "Invoices marked paid.", change: "Calculated live", tone: "success" },
+        { label: "Outstanding", value: fmtAmount(totals.outstanding), description: "Open customer balance.", change: "Calculated live", tone: "warning" },
+        { label: "POD risk", value: fmtAmount(totals.pod_risk), description: "Value waiting for POD.", change: "Calculated live", tone: "danger" }
+      ],
       invoices: invoiceRows.map(r => ({
         id: r.id,
         invoice: r.invoice_no,
         client: r.client_name,
+        amountValue: Number(r.amount_gbp || 0),
         amount: fmtAmount(r.amount_gbp),
+        issuedAt: rawDate(r.issued_at),
+        issued: fmtDate(r.issued_at),
+        dueDate: rawDate(r.due_date),
+        dueLabel: fmtDate(r.due_date),
         note: r.pod_verified ? `POD verified · Due ${fmtDate(r.due_date)}` : `POD pending · Due ${fmtDate(r.due_date)}`,
         status: r.payment_status,
         tone: payTone[r.payment_status] || "neutral",
-        podVerified: Boolean(r.pod_verified)
+        podVerified: Boolean(r.pod_verified),
+        tripCode: r.trip_code || "",
+        tripPodStatus: r.pod_status || "",
+        lane: r.origin_hub && r.destination_hub ? `${r.origin_hub} → ${r.destination_hub}` : "No linked trip",
+        notes: r.notes || "",
+        currency: r.currency || "GBP"
       })),
       blockers: blockerRows.map(r => ({
         title: r.title,
@@ -832,6 +891,24 @@ exports.getTracking = async (req, res) => {
     );
 
     const vTone = { in_transit: "success", available: "success", planned: "neutral", maintenance: "danger", stopped: "danger" };
+    const trackingRows = truckRows.map(r => {
+      const mins = r.last_ping_at
+        ? Math.round((Date.now() - new Date(r.last_ping_at)) / 60000)
+        : null;
+      const etaRisk = r.eta && ["active", "loading"].includes(r.dispatch_status)
+        ? new Date(r.eta).getTime() < Date.now()
+        : false;
+      const hasGps = r.gps_latitude != null && r.gps_longitude != null;
+
+      return {
+        ...r,
+        ping_minutes: mins,
+        stale_ping: mins == null || mins > 15,
+        eta_risk: etaRisk,
+        has_gps: hasGps,
+        overspeed: Number(r.speed_kph || 0) > 90
+      };
+    });
 
     res.json({
       header: {
@@ -850,10 +927,13 @@ exports.getTracking = async (req, res) => {
         { label: "Available", value: counts.available, description: "Ready for next dispatch.", change: "Live from database", tone: "neutral" },
         { label: "Offline", value: counts.offline, description: "Maintenance or stopped.", change: "Live from database", tone: "danger" }
       ],
-      trucks: truckRows.map(r => {
-        const mins = r.last_ping_at
-          ? Math.round((Date.now() - new Date(r.last_ping_at)) / 60000)
-          : null;
+      gpsHealth: [
+        { label: "GPS online", value: trackingRows.filter(r => r.has_gps && !r.stale_ping).length, description: "Fresh location markers.", change: "15 min window", tone: "success" },
+        { label: "Stale pings", value: trackingRows.filter(r => r.stale_ping).length, description: "No fresh driver update.", change: "Needs check", tone: "warning" },
+        { label: "No GPS marker", value: trackingRows.filter(r => !r.has_gps).length, description: "Location permission or device missing.", change: "GPS gap", tone: "danger" },
+        { label: "ETA / speed risk", value: trackingRows.filter(r => r.eta_risk || r.overspeed).length, description: "Late ETA or speed above 90 km/h.", change: "Ops review", tone: "danger" }
+      ],
+      trucks: trackingRows.map(r => {
         return {
           id: r.id,
           truck: r.registration_number,
@@ -864,12 +944,19 @@ exports.getTracking = async (req, res) => {
           latitude: r.gps_latitude != null ? Number(r.gps_latitude) : null,
           longitude: r.gps_longitude != null ? Number(r.gps_longitude) : null,
           accuracy: r.gps_accuracy_m != null ? Number(r.gps_accuracy_m) : null,
+          accuracyLabel: r.gps_accuracy_m != null ? `±${Math.round(Number(r.gps_accuracy_m))} m` : "Accuracy unknown",
+          speedValue: Number(r.speed_kph || 0),
           speed: r.speed_kph != null ? `${r.speed_kph} km/h` : "—",
-          note: mins != null ? `Last ping ${mins} min ago` : "No ping data",
-          stale: mins == null || mins > 15,
+          note: r.ping_minutes != null ? `Last ping ${r.ping_minutes} min ago` : "No ping data",
+          lastPingMinutes: r.ping_minutes,
+          stale: r.stale_ping,
+          hasGps: r.has_gps,
+          overspeed: r.overspeed,
           tripId: r.trip_id,
           tripCode: r.trip_code,
           eta: r.eta ? fmtDate(r.eta) : "—",
+          etaRaw: rawDateTime(r.eta),
+          etaRisk: r.eta_risk,
           driverJobStatus: driverStatusDisplay(r.driver_job_status),
           failedDeliveryReason: r.failed_delivery_reason || "",
           status: r.status.replace("_", " "),
@@ -878,7 +965,7 @@ exports.getTracking = async (req, res) => {
         };
       }),
       exceptions: [
-        ...truckRows
+        ...trackingRows
           .filter(r => r.driver_job_status === "failed_delivery" || r.driver_job_status === "declined")
           .slice(0, 4)
           .map(r => ({
@@ -891,13 +978,24 @@ exports.getTracking = async (req, res) => {
             tone: "danger",
             vehicleId: r.id
           })),
-        ...truckRows
-          .filter(r => !r.last_ping_at || Math.round((Date.now() - new Date(r.last_ping_at)) / 60000) > 15)
+        ...trackingRows
+          .filter(r => r.eta_risk || r.overspeed)
+          .slice(0, 4)
+          .map(r => ({
+            title: r.eta_risk ? `${r.trip_code || r.registration_number} ETA risk` : `${r.registration_number} speed risk`,
+            description: r.eta_risk
+              ? `ETA has passed for an active trip. Current vehicle status is ${r.status.replace("_", " ")}.`
+              : `Current speed is ${r.speed_kph || 0} km/h, above the 90 km/h review threshold.`,
+            tone: "danger",
+            vehicleId: r.id
+          })),
+        ...trackingRows
+          .filter(r => r.stale_ping)
           .slice(0, 4)
           .map(r => ({
             title: `${r.registration_number} stale ping`,
             description: r.last_ping_at
-              ? `Last GPS ping was ${Math.round((Date.now() - new Date(r.last_ping_at)) / 60000)} minutes ago.`
+              ? `Last GPS ping was ${r.ping_minutes} minutes ago.`
               : "No GPS ping has been recorded for this vehicle.",
             tone: "warning",
             vehicleId: r.id
@@ -953,6 +1051,7 @@ exports.getTrackingVehicleById = async (req, res) => {
       latitude: vehicle.gps_latitude != null ? Number(vehicle.gps_latitude) : null,
       longitude: vehicle.gps_longitude != null ? Number(vehicle.gps_longitude) : null,
       accuracy: vehicle.gps_accuracy_m != null ? Number(vehicle.gps_accuracy_m) : null,
+      accuracyLabel: vehicle.gps_accuracy_m != null ? `±${Math.round(Number(vehicle.gps_accuracy_m))} m` : "Accuracy unknown",
       speedKph: vehicle.speed_kph,
       lastPingAt: fmtDate(vehicle.last_ping_at),
       lastPingAtRaw: rawDateTime(vehicle.last_ping_at),
@@ -974,7 +1073,10 @@ exports.getTrackingVehicleById = async (req, res) => {
       form: {
         current_location: vehicle.current_location || "",
         speed_kph: vehicle.speed_kph || 0,
-        status: vehicle.status
+        status: vehicle.status,
+        gps_latitude: vehicle.gps_latitude || "",
+        gps_longitude: vehicle.gps_longitude || "",
+        gps_accuracy_m: vehicle.gps_accuracy_m || ""
       }
     });
   } catch (error) {
@@ -985,13 +1087,13 @@ exports.getTrackingVehicleById = async (req, res) => {
 exports.updateTrackingVehicle = async (req, res) => {
   try {
     const { id } = req.params;
-    const { current_location, speed_kph, status, mark_ping_now } = req.body;
+    const { current_location, speed_kph, status, mark_ping_now, gps_latitude, gps_longitude, gps_accuracy_m } = req.body;
     const valid = ["available", "planned", "in_transit", "maintenance", "stopped"];
     if (status && !valid.includes(status)) {
       return res.status(400).json({ message: "Invalid vehicle status." });
     }
 
-    const [[vehicle]] = await db.query("SELECT id FROM vehicles WHERE id = ?", [id]);
+    const [[vehicle]] = await db.query("SELECT id, last_ping_at FROM vehicles WHERE id = ?", [id]);
     if (!vehicle) return res.status(404).json({ message: "Vehicle not found." });
 
     await db.query(
@@ -999,17 +1101,24 @@ exports.updateTrackingVehicle = async (req, res) => {
          current_location=?,
          speed_kph=?,
          status=?,
+         gps_latitude=?,
+         gps_longitude=?,
+         gps_accuracy_m=?,
          last_ping_at=?
        WHERE id=?`,
       [
         current_location || null,
         speed_kph != null ? speed_kph : 0,
         status || "available",
-        mark_ping_now ? new Date() : new Date(),
+        gps_latitude !== "" && gps_latitude != null ? gps_latitude : null,
+        gps_longitude !== "" && gps_longitude != null ? gps_longitude : null,
+        gps_accuracy_m !== "" && gps_accuracy_m != null ? gps_accuracy_m : null,
+        mark_ping_now ? new Date() : vehicle.last_ping_at,
         id
       ]
     );
 
+    emitDriverLocationUpdate({ vehicleId: Number(id), source: "admin-manual-update" });
     res.json({ message: "Tracking updated." });
   } catch (error) {
     res.status(500).json({ message: "Tracking update error", error: error.message });
@@ -1022,19 +1131,21 @@ exports.getAlerts = async (req, res) => {
 
     const [[counts]] = await db.query(
       `SELECT COUNT(*) as total,
-        SUM(severity='critical') as critical,
-        SUM(severity='high') as high,
-        SUM(alert_status='resolved') as resolved
+        COALESCE(SUM(severity='critical'), 0) as critical,
+        COALESCE(SUM(severity='high'), 0) as high,
+        COALESCE(SUM(alert_status='open'), 0) as open,
+        COALESCE(SUM(alert_status='watch'), 0) as watch,
+        COALESCE(SUM(alert_status='resolved'), 0) as resolved
        FROM control_room_alerts`
     );
     const [alertRows] = await db.query(
-      `SELECT title, description, severity FROM control_room_alerts
-       WHERE alert_status='open'
-       ORDER BY FIELD(severity,'critical','high','medium','low') LIMIT 10`
-    );
-    const [resolutionRows] = await db.query(
-      `SELECT alert_code, owner_name, title, description, severity, alert_status
-       FROM control_room_alerts WHERE alert_status='watch' LIMIT 8`
+      `SELECT id, alert_code, module_name, title, description, severity, alert_status,
+              owner_name, trip_id, driver_id, vehicle_id, created_at
+       FROM control_room_alerts
+       ORDER BY alert_status='resolved' ASC,
+                FIELD(severity,'critical','high','medium','low'),
+                created_at DESC
+       LIMIT 40`
     );
     const [failedRows] = await db.query(
       `SELECT t.id, t.trip_code, t.failed_delivery_reason, d.full_name
@@ -1044,7 +1155,7 @@ exports.getAlerts = async (req, res) => {
        ORDER BY t.actual_arrival DESC, t.created_at DESC LIMIT 6`
     );
     const [defectRows] = await db.query(
-      `SELECT dr.id, dr.defect_type, dr.description, dr.severity, dr.reported_by, dr.status,
+      `SELECT dr.id, dr.vehicle_id, dr.defect_type, dr.description, dr.severity, dr.reported_by, dr.status,
               v.registration_number
        FROM defect_reports dr
        LEFT JOIN vehicles v ON v.id = dr.vehicle_id
@@ -1052,52 +1163,123 @@ exports.getAlerts = async (req, res) => {
        ORDER BY FIELD(dr.severity,'critical','high','medium','low'), dr.reported_at DESC LIMIT 8`
     );
 
+    const persistedAlerts = alertRows.map(r => ({
+      id: r.id,
+      code: r.alert_code,
+      module: r.module_name,
+      title: r.title,
+      description: cleanAlertCopy(r.description),
+      status: r.alert_status,
+      owner: r.owner_name || "Unassigned",
+      tone: severityTone(r.severity),
+      severity: r.severity,
+      tripId: r.trip_id,
+      driverId: r.driver_id,
+      vehicleId: r.vehicle_id,
+      created: fmtDateTime(r.created_at),
+      source: "Control room"
+    }));
+    const liveAlerts = [
+      ...failedRows.map(r => ({
+        id: null,
+        code: `FAILED-${r.id}`,
+        module: "trips",
+        title: `${r.trip_code} failed delivery`,
+        description: `${r.full_name || "Driver"} reported: ${r.failed_delivery_reason || "No reason added."}`,
+        tone: "danger",
+        severity: "critical",
+        status: "open",
+        owner: "Dispatch desk",
+        tripId: r.id,
+        created: "Live driver feed",
+        source: "Driver panel"
+      })),
+      ...defectRows.map(r => ({
+        id: null,
+        code: `DEFECT-${r.id}`,
+        module: "vehicles",
+        title: `${r.registration_number || "Vehicle"} defect: ${r.defect_type}`,
+        description: `${r.description || "No description."} Reported by ${r.reported_by || "driver"}.`,
+        tone: severityTone(r.severity),
+        severity: r.severity,
+        status: "open",
+        owner: "Workshop desk",
+        vehicleId: r.vehicle_id,
+        created: "Live defect feed",
+        source: "Driver panel"
+      }))
+    ];
+    const allAlerts = [...liveAlerts, ...persistedAlerts];
+    const openAlerts = allAlerts.filter(item => item.status === "open");
+    const resolutionRows = persistedAlerts.filter(item => item.status === "watch");
+    const resolvedRows = persistedAlerts.filter(item => item.status === "resolved").slice(0, 6);
+    const openCritical = openAlerts.filter(item => item.severity === "critical").length;
+
     res.json({
       header: {
         badge: "Control room alerts",
         title: "Delay, breakdown and compliance escalations",
-        description: "A dedicated admin view for delay, breakdown, compliance breach, and reassignment escalations."
+        description: "Monitor live exceptions, assign ownership, and close the loop on operational escalations."
       },
       highlights: [
-        "Critical and high-severity alerts are listed first by priority.",
-        "Watch queue items are assigned to owners for active resolution.",
-        "Resolved alerts maintain closed-loop accountability."
+        "Critical driver, vehicle, billing, finance, and tracking exceptions are prioritized automatically.",
+        "Watch items stay assigned to an owner until the desk marks them resolved.",
+        "Every alert keeps context links so admins can jump back to the affected job or vehicle."
       ],
       stats: [
-        { label: "Total alerts", value: counts.total, description: "All alerts on record.", change: "Live from database", tone: "neutral" },
-        { label: "Critical", value: counts.critical, description: "Immediate action required.", change: "Live from database", tone: "danger" },
-        { label: "High priority", value: counts.high, description: "Escalated, needs resolution.", change: "Live from database", tone: "warning" },
-        { label: "Resolved", value: counts.resolved, description: "Closed alerts.", change: "Live from database", tone: "success" }
+        { label: "Total alerts", value: Number(counts.total) + liveAlerts.length, description: "Database alerts plus live driver feeds.", change: "Live control room", tone: "neutral" },
+        { label: "Critical open", value: openCritical, description: "Immediate action required.", change: "Prioritise now", tone: openCritical ? "danger" : "success" },
+        { label: "Watch queue", value: counts.watch, description: "Assigned items under active resolution.", change: "Owned work", tone: counts.watch ? "warning" : "success" },
+        { label: "Resolved", value: counts.resolved, description: "Closed-loop alerts.", change: "Audit trail", tone: "success" }
       ],
-      alerts: [
-        ...failedRows.map(r => ({
-          title: `${r.trip_code} failed delivery`,
-          description: `${r.full_name || "Driver"} reported: ${r.failed_delivery_reason || "No reason added."}`,
-          tone: "danger",
-          tripId: r.id
-        })),
-        ...defectRows.map(r => ({
-          title: `${r.registration_number || "Vehicle"} defect: ${r.defect_type}`,
-          description: `${r.description || "No description."} Reported by ${r.reported_by || "driver"}.`,
-          tone: severityTone(r.severity)
-        })),
-        ...alertRows.map(r => ({
-          title: r.title,
-          description: r.description,
-          tone: severityTone(r.severity)
-        }))
+      operations: [
+        { label: "Open queue", value: openAlerts.length, description: "Unresolved live and database alerts.", change: "Desk load", tone: openAlerts.length ? "warning" : "success" },
+        { label: "High severity", value: Number(counts.high), description: "High priority database alerts.", change: "Escalated", tone: counts.high ? "warning" : "success" },
+        { label: "Assigned owners", value: persistedAlerts.filter(item => item.owner !== "Unassigned").length, description: "Alerts with named ownership.", change: "Accountable", tone: "success" },
+        { label: "Closure rate", value: `${Number(counts.total) ? Math.round((Number(counts.resolved) / Number(counts.total)) * 100) : 0}%`, description: "Resolved share of database alerts.", change: "KPI", tone: Number(counts.resolved) ? "success" : "neutral" }
       ],
+      alerts: openAlerts.slice(0, 14),
       resolutions: resolutionRows.map(r => ({
-        reference: r.alert_code,
-        owner: r.owner_name || "Unassigned",
+        id: r.id,
+        reference: r.code,
+        owner: r.owner,
         action: r.title,
         note: r.description,
-        status: r.alert_status,
-        tone: severityTone(r.severity)
-      }))
+        status: r.status,
+        module: r.module,
+        severity: r.severity,
+        tripId: r.tripId,
+        vehicleId: r.vehicleId,
+        tone: r.tone
+      })),
+      resolved: resolvedRows,
+      allAlerts
     });
   } catch (error) {
     res.status(500).json({ message: "Alerts data error", error: error.message });
+  }
+};
+
+exports.updateAlertStatus = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { alert_status, owner_name } = req.body;
+    const validStatuses = ["open", "watch", "resolved"];
+    if (!validStatuses.includes(alert_status)) {
+      return res.status(400).json({ message: "Invalid alert status." });
+    }
+
+    const [result] = await db.query(
+      `UPDATE control_room_alerts
+       SET alert_status = ?, owner_name = COALESCE(NULLIF(?, ''), owner_name)
+       WHERE id = ?`,
+      [alert_status, owner_name || null, id]
+    );
+    if (result.affectedRows === 0) return res.status(404).json({ message: "Alert not found." });
+
+    res.json({ message: "Alert status updated.", alert_status });
+  } catch (error) {
+    res.status(500).json({ message: "Alert update error", error: error.message });
   }
 };
 
@@ -1109,11 +1291,15 @@ exports.getTrips = async (req, res) => {
       `SELECT COUNT(*) as total,
         COALESCE(SUM(dispatch_status IN ('loading','active')), 0) as active,
         COALESCE(SUM(dispatch_status='planned'), 0) as planned,
-        COALESCE(SUM(dispatch_status='blocked'), 0) as blocked
+        COALESCE(SUM(dispatch_status='blocked'), 0) as blocked,
+        COALESCE(SUM(driver_id IS NULL OR vehicle_id IS NULL OR trailer_id IS NULL), 0) as assignment_gaps,
+        COALESCE(SUM(eta IS NOT NULL AND eta < NOW() AND dispatch_status IN ('planned','loading','active')), 0) as eta_risk,
+        COALESCE(SUM(freight_amount_gbp), 0) as freight_value
        FROM trips`
     );
     const [tripRows] = await db.query(
       `SELECT t.id, t.trip_code, t.dispatch_status, t.dock_window, t.eta, t.planned_departure,
+              t.freight_amount_gbp, t.priority_level, t.driver_job_status,
               r.origin_hub, r.destination_hub, r.distance_km, r.standard_eta_hours,
               v.registration_number,
               tr.trailer_code, tr.registration_number AS trailer_registration,
@@ -1133,8 +1319,18 @@ exports.getTrips = async (req, res) => {
       trip: r.trip_code,
       lane: r.origin_hub && r.destination_hub ? `${r.origin_hub} → ${r.destination_hub}` : "Route TBD",
       schedule: r.planned_departure ? `Departure ${fmtDate(r.planned_departure)}` : "Schedule pending",
+      departureRaw: rawDateTime(r.planned_departure),
+      eta: r.eta ? fmtDate(r.eta) : "—",
+      etaRaw: rawDateTime(r.eta),
+      etaRisk: r.eta && new Date(r.eta).getTime() < Date.now() && ["planned", "loading", "active"].includes(r.dispatch_status),
       vehicle: r.registration_number || "Unassigned",
       trailer: r.trailer_registration || r.trailer_code || "No trolley assigned",
+      driver: r.driver_name || "Unassigned",
+      assignmentGap: !r.driver_name || !r.registration_number || !(r.trailer_registration || r.trailer_code),
+      freight: fmtAmount(r.freight_amount_gbp),
+      freightValue: Number(r.freight_amount_gbp || 0),
+      priority: r.priority_level || "standard",
+      driverJobStatus: driverStatusDisplay(r.driver_job_status),
       status: r.dispatch_status,
       tone: dispatchTone[r.dispatch_status] || "neutral"
     }));
@@ -1145,6 +1341,7 @@ exports.getTrips = async (req, res) => {
       warehouse: r.destination_hub || "TBD",
       window: r.dock_window,
       note: r.eta ? `ETA ${fmtDate(r.eta)}` : "ETA pending",
+      etaRisk: r.eta && new Date(r.eta).getTime() < Date.now() && ["planned", "loading", "active"].includes(r.dispatch_status),
       status: r.dispatch_status === "active" ? "Slot confirmed" : r.dispatch_status === "blocked" ? "On hold" : "Pre-booked",
       tone: dispatchTone[r.dispatch_status] || "neutral"
     }));
@@ -1156,6 +1353,8 @@ exports.getTrips = async (req, res) => {
       trip: r.trip_code,
       driver: r.driver_name || "Unassigned",
       note: r.standard_eta_hours ? `${r.trailer_registration || r.trailer_code || "No trolley"} · Est. ${r.standard_eta_hours}h · ${r.distance_km || "—"} km` : r.trailer_registration || r.trailer_code || "Details TBD",
+      assignmentGap: !r.driver_name || !r.registration_number || !(r.trailer_registration || r.trailer_code),
+      etaRisk: r.eta && new Date(r.eta).getTime() < Date.now() && ["planned", "loading", "active"].includes(r.dispatch_status),
       status: r.dispatch_status,
       tone: dispatchTone[r.dispatch_status] || "neutral"
     }));
@@ -1176,6 +1375,12 @@ exports.getTrips = async (req, res) => {
         { label: "Active", value: counts.active, description: "Currently on road.", change: "Live from database", tone: "success" },
         { label: "Planned", value: counts.planned, description: "Scheduled, not dispatched.", change: "Live from database", tone: "warning" },
         { label: "Blocked", value: counts.blocked, description: "Trips needing resolution.", change: "Live from database", tone: "danger" }
+      ],
+      dispatchHealth: [
+        { label: "Freight value", value: fmtAmount(counts.freight_value), description: "Total trip value.", change: "GBP", tone: "neutral" },
+        { label: "Assignment gaps", value: counts.assignment_gaps, description: "Missing driver, truck, or trolley.", change: "Fleet desk", tone: counts.assignment_gaps ? "danger" : "success" },
+        { label: "ETA risk", value: counts.eta_risk, description: "ETA passed on open trips.", change: "Timing watch", tone: counts.eta_risk ? "danger" : "success" },
+        { label: "Blocked queue", value: counts.blocked, description: "Trips needing resolution.", change: "Dispatch action", tone: counts.blocked ? "danger" : "success" }
       ],
       routes,
       docks,
@@ -1992,6 +2197,16 @@ exports.getEmployees = async (_req, res) => {
       acc[item.approvalStatus] = (acc[item.approvalStatus] || 0) + 1;
       return acc;
     }, { total: 0, pending: 0, active: 0, rejected: 0 });
+    const moduleCoverage = Array.from(employeeModules).map(module => ({
+      module,
+      label: module.replace("_", " "),
+      activeCount: employees.filter(employee => (
+        employee.approvalStatus === "active" && employee.accessModules.includes(module)
+      )).length
+    }));
+    const activeWithoutAccess = employees.filter(employee => (
+      employee.approvalStatus === "active" && employee.accessModules.length === 0
+    )).length;
 
     res.json({
       header: {
@@ -2010,6 +2225,13 @@ exports.getEmployees = async (_req, res) => {
         { label: "Active employees", value: counts.active, description: "Can log in to assigned pages.", change: "Access granted", tone: "success" },
         { label: "Rejected", value: counts.rejected, description: "Blocked from employee login.", change: "Access denied", tone: "danger" }
       ],
+      accessHealth: [
+        { label: "Configured active", value: counts.active - activeWithoutAccess, description: "Active users with at least one page.", change: "Access ready", tone: "success" },
+        { label: "Access gaps", value: activeWithoutAccess, description: "Active users without assigned pages.", change: "Needs fix", tone: activeWithoutAccess ? "danger" : "success" },
+        { label: "Pages covered", value: moduleCoverage.filter(item => item.activeCount > 0).length, description: "Modules with active users assigned.", change: "Coverage", tone: "neutral" },
+        { label: "Pending queue", value: counts.pending, description: "Employees waiting for review.", change: "Admin review", tone: counts.pending ? "warning" : "success" }
+      ],
+      moduleCoverage,
       modules: Array.from(employeeModules),
       employees
     });

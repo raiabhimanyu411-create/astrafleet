@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { getEmployees, updateEmployeeAccess } from "../../api/adminApi";
 import { StatCard } from "../../components/StatCard";
 import { StateNotice } from "../../components/StateNotice";
@@ -15,6 +15,13 @@ const moduleLabels = {
   billing: "Billing",
   tracking: "Live Tracking",
   alerts: "Alerts"
+};
+
+const accessPresets = {
+  operations: ["jobs", "customers", "trips", "drivers", "vehicles", "tracking", "alerts"],
+  financeDesk: ["finance", "billing", "alerts"],
+  controlRoom: ["trips", "drivers", "vehicles", "tracking", "alerts"],
+  fullAccess: Object.keys(moduleLabels)
 };
 
 function sameModules(a = [], b = []) {
@@ -45,6 +52,12 @@ function EmployeeAccessCard({ employee, modules, onSaved }) {
     ));
   }
 
+  function applyModules(nextModules) {
+    setSuccess("");
+    setError("");
+    setAccessModules(nextModules.filter((module) => modules.includes(module)));
+  }
+
   async function handleSave(e) {
     e.preventDefault();
     setError("");
@@ -66,6 +79,13 @@ function EmployeeAccessCard({ employee, modules, onSaved }) {
   const activeAccessText = accessModules.length
     ? accessModules.map((module) => moduleLabels[module] || module).join(", ")
     : "No pages selected";
+  const recommendedAction = employee.approvalStatus === "pending"
+    ? "Review registration"
+    : employee.approvalStatus === "active" && employee.accessModules.length === 0
+      ? "Assign pages"
+      : employee.approvalStatus === "rejected"
+        ? "Access blocked"
+        : "Access configured";
 
   return (
     <article className="content-card employee-access-card">
@@ -82,6 +102,10 @@ function EmployeeAccessCard({ employee, modules, onSaved }) {
         <div>
           <strong>{employee.jobTitle || "Role not set"}</strong>
           <p>{employee.department || "Department not set"}</p>
+        </div>
+        <div>
+          <span>Action</span>
+          <p>{recommendedAction}</p>
         </div>
         <div>
           <span>Registered</span>
@@ -110,6 +134,13 @@ function EmployeeAccessCard({ employee, modules, onSaved }) {
         <div>
           <span className="af-label">Allowed pages</span>
           <p className="employee-access-summary">{activeAccessText}</p>
+          <div className="employee-preset-row">
+            <button className="header-action-button" type="button" onClick={() => applyModules(accessPresets.operations)}>Operations</button>
+            <button className="header-action-button" type="button" onClick={() => applyModules(accessPresets.financeDesk)}>Finance desk</button>
+            <button className="header-action-button" type="button" onClick={() => applyModules(accessPresets.controlRoom)}>Control room</button>
+            <button className="header-action-button" type="button" onClick={() => applyModules(modules)}>All pages</button>
+            <button className="header-action-button danger" type="button" onClick={() => applyModules([])}>Clear</button>
+          </div>
           <div className="module-check-grid">
             {modules.map((module) => (
               <label className="module-check" key={module}>
@@ -142,6 +173,9 @@ export function AdminEmployeesPage() {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [search, setSearch] = useState("");
+  const [status, setStatus] = useState("");
+  const [moduleFilter, setModuleFilter] = useState("");
 
   function load() {
     setLoading(true);
@@ -158,6 +192,30 @@ export function AdminEmployeesPage() {
     load();
   }, []);
 
+  const employees = useMemo(() => {
+    const query = search.trim().toLowerCase();
+    return (data?.employees || []).filter(employee => {
+      if (status && employee.approvalStatus !== status) return false;
+      if (moduleFilter && !employee.accessModules.includes(moduleFilter)) return false;
+      if (!query) return true;
+      return (
+        employee.name.toLowerCase().includes(query) ||
+        employee.email.toLowerCase().includes(query) ||
+        employee.employeeCode?.toLowerCase().includes(query) ||
+        employee.department?.toLowerCase().includes(query) ||
+        employee.jobTitle?.toLowerCase().includes(query)
+      );
+    });
+  }, [data, moduleFilter, search, status]);
+
+  const hasFilters = Boolean(search || status || moduleFilter);
+
+  function clearFilters() {
+    setSearch("");
+    setStatus("");
+    setModuleFilter("");
+  }
+
   return (
     <AdminWorkspaceLayout
       badge={data?.header?.badge || "Employee access control"}
@@ -173,8 +231,66 @@ export function AdminEmployeesPage() {
         ))}
       </section>
 
+      <section className="stats-grid inline finance-position-grid">
+        {(data?.accessHealth || []).map((item) => (
+          <StatCard item={item} key={item.label} />
+        ))}
+      </section>
+
+      <section className="content-grid">
+        <article className="content-card">
+          <div className="section-head">
+            <div>
+              <span className="card-label">Access coverage</span>
+              <h2>Assigned workspace owners</h2>
+            </div>
+            <StatusPill tone="neutral">Live permissions</StatusPill>
+          </div>
+          <div className="employee-coverage-grid">
+            {(data?.moduleCoverage || []).map(item => (
+              <button className="employee-coverage-tile" key={item.module} type="button" onClick={() => setModuleFilter(item.module)}>
+                <span>{moduleLabels[item.module] || item.module}</span>
+                <strong>{item.activeCount}</strong>
+                <p>{item.activeCount === 1 ? "active employee" : "active employees"}</p>
+              </button>
+            ))}
+          </div>
+        </article>
+
+        <article className="content-card">
+          <div className="section-head">
+            <div>
+              <span className="card-label">Review queue</span>
+              <h2>Employee access controls</h2>
+            </div>
+            <StatusPill tone={employees.length ? "success" : "neutral"}>{employees.length} visible</StatusPill>
+          </div>
+          <div className="employee-filter-card">
+            <input
+              className="af-input"
+              placeholder="Search employee, email, role, or department..."
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+            />
+            <select className="af-select" value={status} onChange={e => setStatus(e.target.value)}>
+              <option value="">All statuses</option>
+              <option value="pending">Pending review</option>
+              <option value="active">Active</option>
+              <option value="rejected">Rejected</option>
+            </select>
+            <select className="af-select" value={moduleFilter} onChange={e => setModuleFilter(e.target.value)}>
+              <option value="">All pages</option>
+              {(data?.modules || []).map(module => (
+                <option key={module} value={module}>{moduleLabels[module] || module}</option>
+              ))}
+            </select>
+            <button className="header-action-button" disabled={!hasFilters} type="button" onClick={clearFilters}>Clear filters</button>
+          </div>
+        </article>
+      </section>
+
       <section className="employee-access-grid">
-        {(data?.employees || []).map((employee) => (
+        {employees.map((employee) => (
           <EmployeeAccessCard
             employee={employee}
             key={employee.id}
@@ -184,11 +300,11 @@ export function AdminEmployeesPage() {
         ))}
       </section>
 
-      {!loading && (data?.employees || []).length === 0 && (
+      {!loading && employees.length === 0 && (
         <article className="content-card employee-empty-state">
-          <span className="card-label">No requests</span>
-          <strong>No employee registrations yet.</strong>
-          <p className="employee-meta">New employee signups will appear here for admin approval and page assignment.</p>
+          <span className="card-label">{hasFilters ? "No matches" : "No requests"}</span>
+          <strong>{hasFilters ? "No employees match your filters." : "No employee registrations yet."}</strong>
+          <p className="employee-meta">{hasFilters ? "Clear filters to return to the full access queue." : "New employee signups will appear here for admin approval and page assignment."}</p>
         </article>
       )}
     </AdminWorkspaceLayout>

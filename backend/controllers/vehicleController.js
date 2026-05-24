@@ -131,15 +131,47 @@ exports.listVehicles = async (req, res) => {
         COALESCE(SUM(status='in_transit'), 0)  as in_transit,
         COALESCE(SUM(status='maintenance'), 0) as maintenance,
         COALESCE(SUM(status='planned'), 0)     as planned,
-        COALESCE(SUM(status='stopped'), 0)     as stopped
+        COALESCE(SUM(status='stopped'), 0)     as stopped,
+        COALESCE(SUM(
+          mot_expiry < CURDATE()
+          OR insurance_expiry < CURDATE()
+          OR road_tax_expiry < CURDATE()
+          OR next_service_due < CURDATE()
+        ), 0) as expired_items,
+        COALESCE(SUM(
+          mot_expiry BETWEEN CURDATE() AND DATE_ADD(CURDATE(), INTERVAL 90 DAY)
+          OR insurance_expiry BETWEEN CURDATE() AND DATE_ADD(CURDATE(), INTERVAL 90 DAY)
+          OR road_tax_expiry BETWEEN CURDATE() AND DATE_ADD(CURDATE(), INTERVAL 90 DAY)
+          OR next_service_due BETWEEN CURDATE() AND DATE_ADD(CURDATE(), INTERVAL 90 DAY)
+        ), 0) as expiring_items
        FROM vehicles`
     );
 
     const [rows] = await db.query(
-      `SELECT v.*, COUNT(DISTINCT t.id) AS total_trips
+      `SELECT v.*,
+              COALESCE(trip.total_trips, 0) AS total_trips,
+              COALESCE(trip.open_trips, 0) AS open_trips,
+              COALESCE(def.open_defects, 0) AS open_defects,
+              COALESCE(def.critical_defects, 0) AS critical_defects,
+              trip.last_trip_at
        FROM vehicles v
-       LEFT JOIN trips t ON t.vehicle_id = v.id
-       GROUP BY v.id
+       LEFT JOIN (
+          SELECT vehicle_id,
+                 COUNT(*) AS total_trips,
+                 SUM(dispatch_status IN ('planned','loading','active')) AS open_trips,
+                 MAX(created_at) AS last_trip_at
+          FROM trips
+          WHERE vehicle_id IS NOT NULL
+          GROUP BY vehicle_id
+       ) trip ON trip.vehicle_id = v.id
+       LEFT JOIN (
+          SELECT vehicle_id,
+                 COUNT(*) AS open_defects,
+                 SUM(severity IN ('critical','high')) AS critical_defects
+          FROM defect_reports
+          WHERE status != 'resolved'
+          GROUP BY vehicle_id
+       ) def ON def.vehicle_id = v.id
        ORDER BY v.created_at DESC`
     );
 
@@ -150,10 +182,16 @@ exports.listVehicles = async (req, res) => {
 
     res.json({
       stats: [
-        { label: "Total vehicles",  value: counts.total,       tone: "neutral" },
-        { label: "Available",       value: counts.available,   tone: "success" },
-        { label: "In transit",      value: counts.in_transit,  tone: "warning" },
-        { label: "Maintenance",     value: Number(counts.maintenance) + Number(counts.stopped), tone: "danger" }
+        { label: "Total vehicles", value: counts.total, description: "All fleet assets.", change: "Live from database", tone: "neutral" },
+        { label: "Available", value: counts.available, description: "Ready for assignment.", change: "Fleet ready", tone: "success" },
+        { label: "In transit", value: counts.in_transit, description: "Currently on road.", change: "Live fleet", tone: "warning" },
+        { label: "Maintenance", value: Number(counts.maintenance) + Number(counts.stopped), description: "Unavailable or stopped.", change: "Workshop queue", tone: "danger" }
+      ],
+      fleetHealth: [
+        { label: "Expired items", value: counts.expired_items, description: "Compliance or service overdue.", change: "Stop dispatch", tone: counts.expired_items ? "danger" : "success" },
+        { label: "Expiring soon", value: counts.expiring_items, description: "Due within 90 days.", change: "Renewal queue", tone: counts.expiring_items ? "warning" : "success" },
+        { label: "Open defects", value: rows.reduce((sum, v) => sum + Number(v.open_defects || 0), 0), description: "Unresolved defect reports.", change: "Workshop", tone: rows.some(v => Number(v.open_defects || 0) > 0) ? "danger" : "success" },
+        { label: "Open trips", value: rows.reduce((sum, v) => sum + Number(v.open_trips || 0), 0), description: "Planned, loading, or active trips.", change: "Dispatch", tone: "neutral" }
       ],
       vehicles: rows.map(v => ({
         id: v.id,
@@ -169,14 +207,26 @@ exports.listVehicles = async (req, res) => {
         colour: v.colour || "—",
         currentLocation: v.current_location || "—",
         motExpiry: fmtDate(v.mot_expiry),
+        motDaysLeft: daysUntil(v.mot_expiry),
         motExpiryTone: expiryTone(v.mot_expiry),
         insuranceExpiry: fmtDate(v.insurance_expiry),
+        insuranceDaysLeft: daysUntil(v.insurance_expiry),
         insuranceExpiryTone: expiryTone(v.insurance_expiry),
         roadTaxExpiry: fmtDate(v.road_tax_expiry),
+        roadTaxDaysLeft: daysUntil(v.road_tax_expiry),
         roadTaxExpiryTone: expiryTone(v.road_tax_expiry),
         nextServiceDue: fmtDate(v.next_service_due),
+        nextServiceDaysLeft: daysUntil(v.next_service_due),
         nextServiceTone: expiryTone(v.next_service_due),
         totalTrips: v.total_trips,
+        openTrips: v.open_trips,
+        openDefects: Number(v.open_defects || 0),
+        criticalDefects: Number(v.critical_defects || 0),
+        lastActivity: fmtDate(v.last_trip_at || v.created_at),
+        complianceRisk: [v.mot_expiry, v.insurance_expiry, v.road_tax_expiry, v.next_service_due].some(date => {
+          const days = daysUntil(date);
+          return days !== null && days < 90;
+        }) || Number(v.open_defects || 0) > 0,
         since: fmtDate(v.created_at)
       }))
     });

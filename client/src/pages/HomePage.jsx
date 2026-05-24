@@ -5,26 +5,51 @@ import { updateDriverLocation } from "../api/driverApi";
 import { getAuthSession, saveAuthSession } from "../utils/authSession";
 import { gpsErrorMessage, positionToPayload, requestDriverGpsAccess } from "../utils/driverGps";
 
-function LogoIcon() {
+function LogoIcon({ light = false, size = 56 }) {
+  const s1 = light ? "#1e293b" : "#f1f5f9";
+  const s2 = light ? "#475569" : "#94a3b8";
+  const p1 = light ? "#6d28d9" : "#9333ea";
+  const p2 = light ? "#7c3aed" : "#c084fc";
+  const idSuffix = light ? "L" : "D";
   return (
-    <svg width="52" height="52" viewBox="0 0 52 52" fill="none">
+    <svg width={size} height={size} viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
       <defs>
-        <linearGradient id="logoGrad" x1="0" y1="0" x2="52" y2="52" gradientUnits="userSpaceOnUse">
-          <stop offset="0%" stopColor="#60a5fa" />
-          <stop offset="100%" stopColor="#2563eb" />
+        <linearGradient id={`af-sv-${idSuffix}`} x1="4" y1="4" x2="60" y2="60" gradientUnits="userSpaceOnUse">
+          <stop offset="0%" stopColor={s1} />
+          <stop offset="100%" stopColor={s2} />
+        </linearGradient>
+        <linearGradient id={`af-pu-${idSuffix}`} x1="10" y1="58" x2="58" y2="10" gradientUnits="userSpaceOnUse">
+          <stop offset="0%" stopColor={p1} />
+          <stop offset="100%" stopColor={p2} />
         </linearGradient>
       </defs>
-      {/* A shape - left stroke */}
-      <path d="M10 44 L26 8 L42 44" stroke="url(#logoGrad)" strokeWidth="5" strokeLinecap="round" strokeLinejoin="round" fill="none" />
-      {/* Crossbar */}
-      <line x1="17" y1="32" x2="35" y2="32" stroke="url(#logoGrad)" strokeWidth="4.5" strokeLinecap="round" />
-      {/* Stars */}
-      <circle cx="39" cy="14" r="2.2" fill="#93c5fd" />
-      <circle cx="44" cy="20" r="1.4" fill="#bfdbfe" />
-      <circle cx="43" cy="10" r="1" fill="#60a5fa" />
-      {/* Wave arcs bottom right */}
-      <path d="M32 40 Q36 37 40 40" stroke="#60a5fa" strokeWidth="1.8" strokeLinecap="round" fill="none" />
-      <path d="M34 44 Q38 41 42 44" stroke="#3b82f6" strokeWidth="1.4" strokeLinecap="round" fill="none" />
+
+      {/* Orbit arrow 1 — top sweep right */}
+      <path d="M12 30 C13 16 24 8 40 11" stroke={`url(#af-sv-${idSuffix})`} strokeWidth="4.2" strokeLinecap="round" fill="none"/>
+      <polygon points="40,11 34,7 40,4 44,10" fill={s1}/>
+
+      {/* Orbit arrow 2 — right sweep down */}
+      <path d="M52 22 C58 34 54 48 44 55" stroke={`url(#af-sv-${idSuffix})`} strokeWidth="4.2" strokeLinecap="round" fill="none"/>
+      <polygon points="44,55 50,50 54,57 47,58" fill={s1}/>
+
+      {/* Orbit arrow 3 — bottom sweep left */}
+      <path d="M36 59 C22 62 10 54 9 40" stroke={s2} strokeWidth="3.6" strokeLinecap="round" fill="none"/>
+      <polygon points="9,40 6,47 2,41 8,38" fill={s2}/>
+
+      {/* Orbit arrow 4 — left short sweep up */}
+      <path d="M12 35 C10 26 12 18 17 13" stroke={s2} strokeWidth="3" strokeLinecap="round" fill="none"/>
+
+      {/* Purple diagonal arrow — main accent */}
+      <path d="M15 57 L51 17" stroke={`url(#af-pu-${idSuffix})`} strokeWidth="6" strokeLinecap="round" fill="none"/>
+      <polygon points="51,17 43,20 47,27 53,22" fill={p2}/>
+
+      {/* Center star */}
+      <path d="M32 24 L33.9 29.6 L40 29.6 L35.1 33 L37 38.5 L32 35.1 L27 38.5 L28.9 33 L24 29.6 L30.1 29.6 Z" fill={`url(#af-sv-${idSuffix})`}/>
+
+      {/* Accent circles */}
+      <circle cx="46" cy="13" r="3" fill={p2} opacity="0.95"/>
+      <circle cx="18" cy="54" r="1.8" fill={s2} opacity="0.8"/>
+      <circle cx="52" cy="32" r="1.2" fill={p1} opacity="0.6"/>
     </svg>
   );
 }
@@ -339,22 +364,34 @@ export function HomePage() {
       const { data } = await api.post("/api/auth/login", { email: email.trim().toLowerCase(), password });
 
       if (data.role === "driver") {
+        saveAuthSession({
+          id: data.id,
+          name: data.name,
+          role: data.role,
+          sessionToken: data.sessionToken,
+          accessModules: data.accessModules || [],
+          approvalStatus: data.approvalStatus
+        });
         try {
           const position = await requestDriverGpsAccess();
           await updateDriverLocation(data.id, positionToPayload(position));
         } catch (gpsError) {
+          window.localStorage.removeItem("astrafleet_session");
           setError(gpsErrorMessage(gpsError));
           return;
         }
       }
 
-      saveAuthSession({
-        id: data.id,
-        name: data.name,
-        role: data.role,
-        accessModules: data.accessModules || [],
-        approvalStatus: data.approvalStatus
-      });
+      if (data.role !== "driver") {
+        saveAuthSession({
+          id: data.id,
+          name: data.name,
+          role: data.role,
+          sessionToken: data.sessionToken,
+          accessModules: data.accessModules || [],
+          approvalStatus: data.approvalStatus
+        });
+      }
       if (data.role === "admin") {
         navigate("/admin");
       } else if (data.role === "employee") {
@@ -411,10 +448,30 @@ export function HomePage() {
               </div>
             </div>
 
+            <div className="lp-status-badge">
+              <span className="lp-status-dot" />
+              All systems operational
+            </div>
+
             {/* Tagline */}
             <div className="lp-tagline">
               <h1>Smarter Logistics.<br />Stronger Business.</h1>
               <p>Streamline operations, optimize fleet performance and deliver more.</p>
+            </div>
+
+            <div className="lp-stats">
+              <div className="lp-stat">
+                <strong>2,400+</strong>
+                <span>Trips</span>
+              </div>
+              <div className="lp-stat">
+                <strong>98%</strong>
+                <span>On-time</span>
+              </div>
+              <div className="lp-stat">
+                <strong>500+</strong>
+                <span>Drivers</span>
+              </div>
             </div>
 
             {/* Truck */}
@@ -444,6 +501,13 @@ export function HomePage() {
           </div>
 
           <div className="lp-form-wrap">
+            <div className="lp-right-top-brand">
+              <LogoIcon light size={42} />
+              <div>
+                <p className="lp-right-brand-name">AstraFleet</p>
+                <span className="lp-right-brand-sub">FLEET TMS</span>
+              </div>
+            </div>
             <div className="lp-form-head">
               <h1>{mode === "login" ? "Welcome Back" : "Employee Registration"}</h1>
               <p>{mode === "login" ? "Login to your AstraFleet TMS account" : "Create your TMS login and wait for admin access"}</p>
@@ -589,6 +653,11 @@ export function HomePage() {
                 <IconLogin />
                 {loading ? "Please wait..." : mode === "login" ? "Login" : "Submit for admin approval"}
               </button>
+
+              <div className="lp-trust-strip">
+                <span className="lp-trust-dot" />
+                SSL secured · Enterprise grade · Private
+              </div>
             </form>
           </div>
 

@@ -1,4 +1,5 @@
 const bcrypt = require("bcrypt");
+const crypto = require("crypto");
 const pool = require("../db/connection");
 
 const employeeModules = new Set(["jobs", "customers", "trips", "drivers", "vehicles", "finance", "billing", "tracking", "alerts"]);
@@ -35,6 +36,36 @@ function parseAccessModules(value) {
   }
 }
 
+function sessionSecret() {
+  return process.env.SESSION_SECRET || process.env.JWT_SECRET || "astrafleet-local-session-secret";
+}
+
+function signSessionToken(user) {
+  const payload = {
+    id: user.id,
+    role: user.role,
+    issuedAt: Date.now()
+  };
+  const encoded = Buffer.from(JSON.stringify(payload)).toString("base64url");
+  const signature = crypto.createHmac("sha256", sessionSecret()).update(encoded).digest("base64url");
+  return `${encoded}.${signature}`;
+}
+
+function verifySessionToken(token) {
+  if (!token || typeof token !== "string" || !token.includes(".")) return null;
+  const [encoded, signature] = token.split(".");
+  const expected = crypto.createHmac("sha256", sessionSecret()).update(encoded).digest("base64url");
+  if (!signature || signature.length !== expected.length) return null;
+  if (!crypto.timingSafeEqual(Buffer.from(signature), Buffer.from(expected))) return null;
+  try {
+    const payload = JSON.parse(Buffer.from(encoded, "base64url").toString("utf8"));
+    if (!payload?.id || !payload?.role) return null;
+    return payload;
+  } catch {
+    return null;
+  }
+}
+
 async function login(req, res) {
   const { email, password } = req.body;
   if (!email || !password) {
@@ -68,6 +99,7 @@ async function login(req, res) {
       role: user.role,
       name: user.name,
       id: user.id,
+      sessionToken: signSessionToken(user),
       approvalStatus: user.approval_status,
       accessModules: parseAccessModules(user.access_modules)
     });
@@ -125,4 +157,4 @@ async function registerEmployee(req, res) {
   }
 }
 
-module.exports = { login, registerEmployee, ensureEmployeeAuthSchema, employeeModules, parseAccessModules };
+module.exports = { login, registerEmployee, ensureEmployeeAuthSchema, employeeModules, parseAccessModules, signSessionToken, verifySessionToken };
