@@ -144,24 +144,23 @@
 .lp-brand {
   display: flex;
   align-items: center;
-  gap: 14px;
-  margin-bottom: 14px;
+  margin-bottom: 18px;
 }
 
-.lp-brand-name {
-  font-size: 1.3rem;
-  font-weight: 800;
-  color: #ffffff;
-  letter-spacing: -0.025em;
-  margin: 0 0 3px;
+.lp-logo-img {
+  display: block;
+  width: min(230px, 100%);
+  aspect-ratio: 677 / 369;
+  object-fit: cover;
+  object-position: center;
+  border-radius: 12px;
+  box-shadow: 0 14px 30px rgba(0, 0, 0, 0.22);
 }
 
-.lp-brand-sub {
-  font-size: 0.66rem;
-  font-weight: 800;
-  letter-spacing: 0.2em;
-  color: #60a5fa;
-  text-transform: uppercase;
+.lp-logo-img.compact {
+  width: 178px;
+  border-radius: 10px;
+  box-shadow: 0 8px 18px rgba(15, 23, 42, 0.12);
 }
 
 /* Tagline */
@@ -650,33 +649,10 @@ p.lp-success {
 .lp-right-top-brand {
   display: flex;
   align-items: center;
-  gap: 12px;
   justify-content: center;
-  margin-bottom: 20px;
-  padding-bottom: 20px;
+  margin-bottom: 18px;
+  padding-bottom: 18px;
   border-bottom: 1px solid var(--border);
-}
-
-.lp-right-top-brand svg {
-  width: 38px;
-  height: 38px;
-  flex-shrink: 0;
-}
-
-.lp-right-brand-name {
-  font-size: 1.2rem;
-  font-weight: 800;
-  color: var(--text);
-  letter-spacing: -0.025em;
-  margin: 0 0 2px;
-}
-
-.lp-right-brand-sub {
-  font-size: 0.6rem;
-  font-weight: 800;
-  letter-spacing: 0.22em;
-  color: #2563eb;
-  text-transform: uppercase;
 }
 
 .lp-trust-strip {

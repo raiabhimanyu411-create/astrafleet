@@ -4,53 +4,15 @@ import api from "../api/axios";
 import { updateDriverLocation } from "../api/driverApi";
 import { getAuthSession, saveAuthSession } from "../utils/authSession";
 import { gpsErrorMessage, positionToPayload, requestDriverGpsAccess } from "../utils/driverGps";
+import astraLogo from "../../images/Logo1.png";
 
-function LogoIcon({ light = false, size = 56 }) {
-  const s1 = light ? "#1e293b" : "#f1f5f9";
-  const s2 = light ? "#475569" : "#94a3b8";
-  const p1 = light ? "#6d28d9" : "#9333ea";
-  const p2 = light ? "#7c3aed" : "#c084fc";
-  const idSuffix = light ? "L" : "D";
+function BrandLogo({ compact = false }) {
   return (
-    <svg width={size} height={size} viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
-      <defs>
-        <linearGradient id={`af-sv-${idSuffix}`} x1="4" y1="4" x2="60" y2="60" gradientUnits="userSpaceOnUse">
-          <stop offset="0%" stopColor={s1} />
-          <stop offset="100%" stopColor={s2} />
-        </linearGradient>
-        <linearGradient id={`af-pu-${idSuffix}`} x1="10" y1="58" x2="58" y2="10" gradientUnits="userSpaceOnUse">
-          <stop offset="0%" stopColor={p1} />
-          <stop offset="100%" stopColor={p2} />
-        </linearGradient>
-      </defs>
-
-      {/* Orbit arrow 1 — top sweep right */}
-      <path d="M12 30 C13 16 24 8 40 11" stroke={`url(#af-sv-${idSuffix})`} strokeWidth="4.2" strokeLinecap="round" fill="none"/>
-      <polygon points="40,11 34,7 40,4 44,10" fill={s1}/>
-
-      {/* Orbit arrow 2 — right sweep down */}
-      <path d="M52 22 C58 34 54 48 44 55" stroke={`url(#af-sv-${idSuffix})`} strokeWidth="4.2" strokeLinecap="round" fill="none"/>
-      <polygon points="44,55 50,50 54,57 47,58" fill={s1}/>
-
-      {/* Orbit arrow 3 — bottom sweep left */}
-      <path d="M36 59 C22 62 10 54 9 40" stroke={s2} strokeWidth="3.6" strokeLinecap="round" fill="none"/>
-      <polygon points="9,40 6,47 2,41 8,38" fill={s2}/>
-
-      {/* Orbit arrow 4 — left short sweep up */}
-      <path d="M12 35 C10 26 12 18 17 13" stroke={s2} strokeWidth="3" strokeLinecap="round" fill="none"/>
-
-      {/* Purple diagonal arrow — main accent */}
-      <path d="M15 57 L51 17" stroke={`url(#af-pu-${idSuffix})`} strokeWidth="6" strokeLinecap="round" fill="none"/>
-      <polygon points="51,17 43,20 47,27 53,22" fill={p2}/>
-
-      {/* Center star */}
-      <path d="M32 24 L33.9 29.6 L40 29.6 L35.1 33 L37 38.5 L32 35.1 L27 38.5 L28.9 33 L24 29.6 L30.1 29.6 Z" fill={`url(#af-sv-${idSuffix})`}/>
-
-      {/* Accent circles */}
-      <circle cx="46" cy="13" r="3" fill={p2} opacity="0.95"/>
-      <circle cx="18" cy="54" r="1.8" fill={s2} opacity="0.8"/>
-      <circle cx="52" cy="32" r="1.2" fill={p1} opacity="0.6"/>
-    </svg>
+    <img
+      className={`lp-logo-img${compact ? " compact" : ""}`}
+      src={astraLogo}
+      alt="AstraFleet TMS"
+    />
   );
 }
 
@@ -441,11 +403,7 @@ export function HomePage() {
           <div className="lp-left-inner">
             {/* Brand */}
             <div className="lp-brand">
-              <LogoIcon />
-              <div>
-                <h2 className="lp-brand-name">AstraFleet</h2>
-                <span className="lp-brand-sub">FLEET TMS</span>
-              </div>
+              <BrandLogo />
             </div>
 
             <div className="lp-status-badge">
@@ -502,11 +460,7 @@ export function HomePage() {
 
           <div className="lp-form-wrap">
             <div className="lp-right-top-brand">
-              <LogoIcon light size={42} />
-              <div>
-                <p className="lp-right-brand-name">AstraFleet</p>
-                <span className="lp-right-brand-sub">FLEET TMS</span>
-              </div>
+              <BrandLogo compact />
             </div>
             <div className="lp-form-head">
               <h1>{mode === "login" ? "Welcome Back" : "Employee Registration"}</h1>
