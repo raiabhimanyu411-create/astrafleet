@@ -18,6 +18,7 @@ import {
 } from "../../api/driverApi";
 import { getRealtimeSocket } from "../../api/realtime";
 import { NotificationBell } from "../../components/NotificationBell";
+import { NotificationCenter } from "../../components/NotificationCenter";
 import { PanelLayout } from "../../components/PanelLayout";
 import { StatCard } from "../../components/StatCard";
 import { StateNotice } from "../../components/StateNotice";
@@ -42,6 +43,7 @@ const WALKAROUND_CHECKS = [
 
 const driverMenu = [
   { href: "#overview",   label: "Overview" },
+  { href: "#notifications", label: "Notifications" },
   { href: "#walkaround", label: "Walkaround" },
   { href: "#jobs",       label: "Jobs" },
   { href: "#status",     label: "Status" },
@@ -547,6 +549,7 @@ export function DriverPanel() {
             fetchUrl="/api/drivers/me/notifications"
             paramKey="userId"
             paramValue={userId}
+            viewAllTo="#notifications"
           />
           <button className="header-action-button" onClick={() => loadPanel(selectedJob?.id)} type="button">Refresh</button>
           <button className="header-action-button danger" onClick={handleLogout} type="button">Logout</button>
@@ -554,6 +557,15 @@ export function DriverPanel() {
       )}
     >
       <StateNotice loading={loading} error={error} />
+
+      <NotificationCenter
+        fetchUrl="/api/drivers/me/notifications"
+        paramKey="userId"
+        paramValue={userId}
+        title="Driver notification inbox"
+        eyebrow="Driver alerts"
+        emptyBody="No driver jobs, POD reminders, or shift alerts need attention right now."
+      />
 
       {/* ── Document expiry warnings ── */}
       {(data?.docWarnings || []).length > 0 && (

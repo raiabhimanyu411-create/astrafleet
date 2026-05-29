@@ -5,6 +5,7 @@ import { AdminBillingPage } from "./pages/admin/AdminBillingPage";
 import { AdminDriversPage } from "./pages/admin/AdminDriversPage";
 import { AdminFinancePage } from "./pages/admin/AdminFinancePage";
 import { AdminEmployeesPage } from "./pages/admin/AdminEmployeesPage";
+import { AdminNotificationsPage } from "./pages/admin/AdminNotificationsPage";
 import { AdminPanel } from "./pages/admin/AdminPanel";
 import { AdminTrackingPage } from "./pages/admin/AdminTrackingPage";
 import { AdminTripAssignPage } from "./pages/admin/AdminTripAssignPage";
@@ -259,6 +260,14 @@ function App() {
           <AdminOrEmployeeRoute>
             <AdminAlertsPage />
           </AdminOrEmployeeRoute>
+        )}
+      />
+      <Route
+        path="/admin/notifications"
+        element={(
+          <ProtectedRoute role="admin">
+            <AdminNotificationsPage />
+          </ProtectedRoute>
         )}
       />
       {/* Jobs */}

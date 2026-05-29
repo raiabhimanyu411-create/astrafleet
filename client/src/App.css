@@ -2905,12 +2905,17 @@ p.lp-success {
 
 .notif-empty { padding: 18px 16px; margin: 0; font-size: 0.83rem; color: var(--muted); text-align: center; }
 
+.notif-footer-actions {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(0, 1fr));
+  border-top: 1px solid var(--surface-3);
+}
+
 .notif-refresh-btn {
   width: 100%;
   padding: 10px;
   background: var(--surface-2);
   border: none;
-  border-top: 1px solid var(--surface-3);
   font-size: 0.78rem;
   font-weight: 600;
   color: var(--muted);
@@ -2918,4 +2923,162 @@ p.lp-success {
   transition: background 120ms, color 120ms;
 }
 
+.notif-footer-actions .notif-refresh-btn + .notif-refresh-btn {
+  border-left: 1px solid var(--surface-3);
+}
+
 .notif-refresh-btn:hover { background: var(--primary-soft); color: var(--primary); }
+
+/* ═══════════════════════════════════════════════════════════
+   NOTIFICATION CENTER
+════════════════════════════════════════════════════════════ */
+
+.notification-center-card {
+  margin-bottom: 22px;
+}
+
+.notification-center-head {
+  align-items: center;
+}
+
+.notification-center-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.notification-filter-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+.notification-filter-btn {
+  height: 34px;
+  padding: 0 14px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 0.8rem;
+  font-weight: 700;
+  transition: background 130ms, border-color 130ms, color 130ms;
+}
+
+.notification-filter-btn:hover,
+.notification-filter-btn.active {
+  background: var(--primary-soft);
+  border-color: var(--primary-ring);
+  color: var(--primary);
+}
+
+.notification-center-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.notification-center-item {
+  display: grid;
+  grid-template-columns: 5px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 14px;
+  width: 100%;
+  padding: 14px 16px 14px 0;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: background 130ms, border-color 130ms, transform 130ms;
+}
+
+.notification-center-item:hover:not(:disabled) {
+  background: var(--surface-3);
+  border-color: var(--border-strong);
+  transform: translateY(-1px);
+}
+
+.notification-center-item:disabled {
+  cursor: default;
+}
+
+.notification-center-rail {
+  align-self: stretch;
+  width: 5px;
+  border-radius: 0 6px 6px 0;
+  background: var(--primary);
+}
+
+.notification-center-item.danger .notification-center-rail { background: var(--danger); }
+.notification-center-item.warning .notification-center-rail { background: var(--warning); }
+.notification-center-item.info .notification-center-rail { background: var(--primary); }
+
+.notification-center-copy {
+  min-width: 0;
+}
+
+.notification-center-copy strong {
+  display: block;
+  margin-bottom: 4px;
+  font-size: 0.9rem;
+  font-weight: 700;
+}
+
+.notification-center-copy span {
+  display: block;
+  color: var(--muted);
+  font-size: 0.8rem;
+  line-height: 1.45;
+}
+
+.notification-empty-state {
+  padding: 24px;
+  background: var(--surface-2);
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--radius-md);
+  text-align: center;
+}
+
+.notification-empty-state strong {
+  display: block;
+  font-size: 0.92rem;
+  margin-bottom: 5px;
+}
+
+.notification-empty-state p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.82rem;
+}
+
+@media (max-width: 560px) {
+  .notif-dropdown {
+    right: -48px;
+    width: min(340px, calc(100vw - 28px));
+  }
+
+  .notification-center-head {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .notification-center-actions {
+    justify-content: flex-start;
+    width: 100%;
+  }
+
+  .notification-center-item {
+    grid-template-columns: 5px minmax(0, 1fr);
+  }
+
+  .notification-center-item .status-pill {
+    grid-column: 2;
+    justify-self: start;
+  }
+}

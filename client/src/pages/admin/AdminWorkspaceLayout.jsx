@@ -14,7 +14,8 @@ export const adminMenu = [
   { to: "/admin/finance",   label: "Finance" },
   { to: "/admin/billing",   label: "Billing" },
   { to: "/admin/tracking",  label: "Live Tracking" },
-  { to: "/admin/alerts",    label: "Alerts" }
+  { to: "/admin/alerts",    label: "Alerts" },
+  { to: "/admin/notifications", label: "Notifications" }
 ];
 
 const menuAccessKey = {
@@ -59,7 +60,7 @@ export function AdminWorkspaceLayout({ badge, title, description, highlights, ch
       }}
       headerContent={(
         <>
-          {!isEmployee && <NotificationBell fetchUrl="/api/admin/notifications" />}
+          {!isEmployee && <NotificationBell fetchUrl="/api/admin/notifications" viewAllTo="/admin/notifications" />}
           <button className="header-action-button danger" onClick={handleLogout} type="button">
             Logout
           </button>

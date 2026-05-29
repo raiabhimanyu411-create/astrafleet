@@ -17,7 +17,7 @@ const toneStyle = {
   info: { bg: "#eff6ff", bar: "#2563eb", text: "#1d4ed8" }
 };
 
-export function NotificationBell({ fetchUrl, paramKey, paramValue }) {
+export function NotificationBell({ fetchUrl, paramKey, paramValue, viewAllTo }) {
   const [open, setOpen] = useState(false);
   const [notifications, setNotifications] = useState([]);
   const [count, setCount] = useState(0);
@@ -58,6 +58,17 @@ export function NotificationBell({ fetchUrl, paramKey, paramValue }) {
   function handleNotifClick(notif) {
     setOpen(false);
     if (notif.link) navigate(notif.link);
+  }
+
+  function handleViewAll() {
+    setOpen(false);
+    if (!viewAllTo) return;
+    if (viewAllTo.startsWith("#")) {
+      window.location.hash = viewAllTo;
+      document.querySelector(viewAllTo)?.scrollIntoView({ behavior: "smooth", block: "start" });
+      return;
+    }
+    navigate(viewAllTo);
   }
 
   const showBadge = count > 0 && !seen;
@@ -109,9 +120,16 @@ export function NotificationBell({ fetchUrl, paramKey, paramValue }) {
             </div>
           )}
 
-          <button className="notif-refresh-btn" onClick={load} type="button">
-            Refresh
-          </button>
+          <div className="notif-footer-actions">
+            {viewAllTo && (
+              <button className="notif-refresh-btn" onClick={handleViewAll} type="button">
+                View all
+              </button>
+            )}
+            <button className="notif-refresh-btn" onClick={load} type="button">
+              Refresh
+            </button>
+          </div>
         </div>
       )}
     </div>
