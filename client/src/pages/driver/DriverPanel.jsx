@@ -17,6 +17,7 @@ import {
   updateDriverLocation
 } from "../../api/driverApi";
 import { getRealtimeSocket } from "../../api/realtime";
+import { logout } from "../../api/authApi";
 import { NotificationBell } from "../../components/NotificationBell";
 import { NotificationCenter } from "../../components/NotificationCenter";
 import { PanelLayout } from "../../components/PanelLayout";
@@ -367,7 +368,12 @@ export function DriverPanel() {
     });
   }, [navigate, userId]);
 
-  function handleLogout() {
+  async function handleLogout() {
+    try {
+      await logout();
+    } catch {
+      // Still clear the local session if the backend is temporarily unavailable.
+    }
     clearAuthSession();
     navigate("/", { replace: true });
   }

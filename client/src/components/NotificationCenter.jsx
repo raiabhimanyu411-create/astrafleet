@@ -62,7 +62,12 @@ export function NotificationCenter({
   }, [data.notifications, filter]);
 
   function openNotification(item) {
+    api.post(`${fetchUrl}/${encodeURIComponent(item.id)}/ack`).then(() => load(false)).catch(() => {});
     if (item.link) navigate(item.link);
+  }
+
+  function acknowledge(item) {
+    api.post(`${fetchUrl}/${encodeURIComponent(item.id)}/ack`).then(() => load(false)).catch(() => {});
   }
 
   return (
@@ -118,8 +123,19 @@ export function NotificationCenter({
                 <span>{item.body}</span>
               </span>
               <StatusPill tone={tonePill[item.type] || "info"}>
-                {toneLabel[item.type] || "Info"}
+                {item.acknowledged ? "Acked" : toneLabel[item.type] || "Info"}
               </StatusPill>
+              {!item.acknowledged && (
+                <span
+                  className="header-action-button"
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    acknowledge(item);
+                  }}
+                >
+                  Acknowledge
+                </span>
+              )}
             </button>
           ))}
         </div>

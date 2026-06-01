@@ -1,6 +1,7 @@
 const db = require("../db/connection");
 const { verifySessionToken } = require("./authController");
 const { emitDriverChatMessage, emitDriverLocationUpdate } = require("../realtime");
+const { buildChangeSet, logActivity } = require("../utils/auditLogger");
 
 function fmtDate(d) {
   if (!d) return "—";
@@ -1398,6 +1399,14 @@ exports.createDriver = async (req, res) => {
     );
 
     await conn.commit();
+    await logActivity(req, {
+      module: "drivers",
+      action: "create",
+      entityType: "driver",
+      entityId: result.insertId,
+      entityLabel: full_name,
+      details: { employee_code, compliance_status: compliance_status || "review" }
+    });
     res.status(201).json({ message: "Driver created.", id: result.insertId });
   } catch (err) {
     await conn.rollback();
@@ -1414,7 +1423,7 @@ exports.createDriver = async (req, res) => {
 exports.updateDriver = async (req, res) => {
   try {
     const { id } = req.params;
-    const [[existing]] = await db.query(`SELECT id FROM drivers WHERE id = ?`, [id]);
+    const [[existing]] = await db.query(`SELECT * FROM drivers WHERE id = ?`, [id]);
     if (!existing) return res.status(404).json({ message: "Driver not found." });
 
     const {
@@ -1453,6 +1462,15 @@ exports.updateDriver = async (req, res) => {
       ]
     );
 
+    const [[updated]] = await db.query(`SELECT * FROM drivers WHERE id = ?`, [id]);
+    await logActivity(req, {
+      module: "drivers",
+      action: "update",
+      entityType: "driver",
+      entityId: id,
+      entityLabel: updated.full_name,
+      details: { changes: buildChangeSet(existing, updated, ["full_name", "employee_code", "phone", "home_depot", "license_number", "license_expiry", "medical_expiry", "onboarding_status", "shift_status", "compliance_status"]) }
+    });
     res.json({ message: "Driver updated." });
   } catch (err) {
     res.status(500).json({ message: "Driver update error", error: err.message });
@@ -1465,7 +1483,7 @@ exports.deleteDriver = async (req, res) => {
   try {
     const { id } = req.params;
 
-    const [[driver]] = await conn.query(`SELECT id, user_id FROM drivers WHERE id = ?`, [id]);
+    const [[driver]] = await conn.query(`SELECT id, user_id, full_name, employee_code FROM drivers WHERE id = ?`, [id]);
     if (!driver) return res.status(404).json({ message: "Driver not found." });
 
     await conn.beginTransaction();
@@ -1473,6 +1491,7 @@ exports.deleteDriver = async (req, res) => {
     await conn.query(`DELETE FROM drivers WHERE id = ?`, [id]);
     await conn.commit();
 
+    await logActivity(req, { module: "drivers", action: "delete", entityType: "driver", entityId: id, entityLabel: driver.full_name, details: { employee_code: driver.employee_code } });
     res.json({ message: "Driver deleted." });
   } catch (err) {
     await conn.rollback();
@@ -1501,6 +1520,7 @@ exports.addDocument = async (req, res) => {
       [id, document_type, document_number || "", expiry_date, autoStatus]
     );
 
+    await logActivity(req, { module: "drivers", action: "create", entityType: "driver_document", entityId: result.insertId, entityLabel: document_type, details: { driver_id: id, expiry_date } });
     res.status(201).json({ message: "Document added.", id: result.insertId });
   } catch (err) {
     res.status(500).json({ message: "Document add error", error: err.message });
@@ -1522,6 +1542,7 @@ exports.updateDocument = async (req, res) => {
       [document_type, document_number || "", expiry_date, autoStatus, docId, id]
     );
 
+    await logActivity(req, { module: "drivers", action: "update", entityType: "driver_document", entityId: docId, entityLabel: document_type, details: { driver_id: id, expiry_date } });
     res.json({ message: "Document updated." });
   } catch (err) {
     res.status(500).json({ message: "Document update error", error: err.message });
@@ -1533,6 +1554,7 @@ exports.deleteDocument = async (req, res) => {
   try {
     const { id, docId } = req.params;
     await db.query(`DELETE FROM driver_documents WHERE id=? AND driver_id=?`, [docId, id]);
+    await logActivity(req, { module: "drivers", action: "delete", entityType: "driver_document", entityId: docId, details: { driver_id: id } });
     res.json({ message: "Document removed." });
   } catch (err) {
     res.status(500).json({ message: "Document delete error", error: err.message });

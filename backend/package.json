@@ -4,7 +4,8 @@
   "version": "1.0.0",
   "scripts": {
     "dev": "nodemon server.js",
-    "start": "node server.js"
+    "start": "node server.js",
+    "test:audit": "node scripts/auditSmokeTest.js"
   },
   "dependencies": {
     "bcrypt": "^6.0.0",

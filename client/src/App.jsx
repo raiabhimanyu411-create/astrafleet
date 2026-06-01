@@ -1,6 +1,7 @@
 import { Navigate, Route, Routes, useLocation } from "react-router-dom";
 import "./App.css";
 import { AdminAlertsPage } from "./pages/admin/AdminAlertsPage";
+import { AdminActivityPage } from "./pages/admin/AdminActivityPage";
 import { AdminBillingPage } from "./pages/admin/AdminBillingPage";
 import { AdminDriversPage } from "./pages/admin/AdminDriversPage";
 import { AdminFinancePage } from "./pages/admin/AdminFinancePage";
@@ -91,6 +92,14 @@ function App() {
         element={(
           <ProtectedRoute role="admin">
             <AdminPanel />
+          </ProtectedRoute>
+        )}
+      />
+      <Route
+        path="/admin/activity"
+        element={(
+          <ProtectedRoute role="admin">
+            <AdminActivityPage />
           </ProtectedRoute>
         )}
       />

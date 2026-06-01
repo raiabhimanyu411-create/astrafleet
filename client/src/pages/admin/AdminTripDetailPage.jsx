@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { deleteAdminTrip, getAdminTripById, updateAdminTripStatus } from "../../api/adminApi";
+import { DeleteReasonModal } from "../../components/DeleteReasonModal";
 import { StatusPill } from "../../components/StatusPill";
 import { AdminWorkspaceLayout } from "./AdminWorkspaceLayout";
 
@@ -21,6 +22,8 @@ export function AdminTripDetailPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [actionError, setActionError] = useState("");
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
   function loadTrip() {
     setLoading(true);
@@ -44,14 +47,16 @@ export function AdminTripDetailPage() {
     }
   }
 
-  async function handleDelete() {
-    if (!window.confirm("Delete this trip? The assigned vehicle will be released.")) return;
+  async function handleDelete(payload) {
     setActionError("");
+    setDeleting(true);
     try {
-      await deleteAdminTrip(id);
+      await deleteAdminTrip(id, payload);
       navigate("/admin/trips");
     } catch (err) {
       setActionError(err?.response?.data?.message || "Trip could not be deleted.");
+    } finally {
+      setDeleting(false);
     }
   }
 
@@ -259,7 +264,7 @@ export function AdminTripDetailPage() {
               <button
                 className="header-action-button danger"
                 type="button"
-                onClick={handleDelete}
+                onClick={() => setShowDeleteModal(true)}
               >
                 Delete trip
               </button>
@@ -267,6 +272,15 @@ export function AdminTripDetailPage() {
           </>
         )}
       </div>
+      <DeleteReasonModal
+        open={showDeleteModal}
+        title="Delete trip"
+        recordLabel={trip ? `${trip.tripCode} · ${trip.clientName || "Client"}` : ""}
+        body="The trip will be hidden from dispatch lists and can be restored from the activity report."
+        loading={deleting}
+        onCancel={() => setShowDeleteModal(false)}
+        onConfirm={handleDelete}
+      />
     </AdminWorkspaceLayout>
   );
 }

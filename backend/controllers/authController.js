@@ -1,6 +1,7 @@
 const bcrypt = require("bcrypt");
 const crypto = require("crypto");
 const pool = require("../db/connection");
+const { closeUserSession, createUserSession, logActivity } = require("../utils/auditLogger");
 
 const employeeModules = new Set(["jobs", "customers", "trips", "drivers", "vehicles", "finance", "billing", "tracking", "alerts"]);
 
@@ -95,17 +96,46 @@ async function login(req, res) {
       return res.status(403).json({ error: "Your employee account is waiting for admin approval." });
     }
 
+    const sessionToken = signSessionToken(user);
+
+    await createUserSession(req, user, sessionToken);
+    await logActivity(req, {
+      actor: { id: user.id, name: user.name, role: user.role },
+      module: user.role === "employee" ? "employee_portal" : user.role,
+      action: "login",
+      entityType: "user",
+      entityId: user.id,
+      entityLabel: user.name,
+      details: { email: user.email, role: user.role }
+    });
+
     res.json({
       role: user.role,
       name: user.name,
       id: user.id,
-      sessionToken: signSessionToken(user),
+      sessionToken,
       approvalStatus: user.approval_status,
       accessModules: parseAccessModules(user.access_modules)
     });
   } catch (err) {
     console.error("Login error:", err);
     res.status(500).json({ error: "Server error. Please try again." });
+  }
+}
+
+async function logout(req, res) {
+  try {
+    await closeUserSession(req);
+    await logActivity(req, {
+      module: "session",
+      action: "logout",
+      entityType: "user",
+      entityId: req.headers["x-session-user-id"] || null,
+      details: { role: req.headers["x-session-role"] || null }
+    });
+    res.json({ message: "Logged out." });
+  } catch (err) {
+    res.status(500).json({ message: "Logout error", error: err.message });
   }
 }
 
@@ -157,4 +187,4 @@ async function registerEmployee(req, res) {
   }
 }
 
-module.exports = { login, registerEmployee, ensureEmployeeAuthSchema, employeeModules, parseAccessModules, signSessionToken, verifySessionToken };
+module.exports = { login, logout, registerEmployee, ensureEmployeeAuthSchema, employeeModules, parseAccessModules, signSessionToken, verifySessionToken };

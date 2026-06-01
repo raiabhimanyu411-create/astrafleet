@@ -56,6 +56,7 @@ export function NotificationBell({ fetchUrl, paramKey, paramValue, viewAllTo }) 
   }
 
   function handleNotifClick(notif) {
+    api.post(`${fetchUrl}/${encodeURIComponent(notif.id)}/ack`).then(load).catch(() => {});
     setOpen(false);
     if (notif.link) navigate(notif.link);
   }
@@ -106,7 +107,7 @@ export function NotificationBell({ fetchUrl, paramKey, paramValue, viewAllTo }) 
                   <div
                     key={n.id}
                     className="notif-item"
-                    style={{ background: style.bg, cursor: n.link ? "pointer" : "default" }}
+                    style={{ background: n.acknowledged ? "#f8fafc" : style.bg, cursor: n.link ? "pointer" : "default", opacity: n.acknowledged ? 0.74 : 1 }}
                     onClick={() => handleNotifClick(n)}
                   >
                     <div className="notif-bar" style={{ background: style.bar }} />

@@ -823,6 +823,72 @@ p.lp-success {
   animation: overlay-in 200ms ease;
 }
 
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 90;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  background: rgba(15, 23, 42, 0.44);
+  animation: overlay-in 160ms ease;
+}
+
+.reason-modal {
+  width: min(520px, 100%);
+  border: 1px solid rgba(148, 163, 184, 0.34);
+  border-radius: 8px;
+  background: #ffffff;
+  box-shadow: 0 28px 80px rgba(15, 23, 42, 0.28);
+  padding: 22px;
+}
+
+.reason-modal-record {
+  margin: 4px 0 10px;
+  color: var(--text);
+  font-weight: 800;
+}
+
+.reason-modal-body {
+  margin: 0 0 16px;
+  color: var(--text-soft);
+  font-size: 0.9rem;
+  line-height: 1.55;
+}
+
+.reason-modal-input {
+  min-height: 112px;
+  resize: vertical;
+}
+
+.reason-modal-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 16px;
+  flex-wrap: wrap;
+}
+
+.audit-change-list {
+  display: grid;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.audit-change-item {
+  display: grid;
+  grid-template-columns: minmax(90px, 0.5fr) minmax(0, 1fr);
+  gap: 8px;
+  font-size: 0.78rem;
+  color: var(--text-soft);
+}
+
+.audit-change-item strong {
+  color: var(--text);
+  font-size: 0.76rem;
+  text-transform: capitalize;
+}
+
 @keyframes overlay-in {
   from { opacity: 0; }
   to   { opacity: 1; }

@@ -1,4 +1,5 @@
 const db = require("../db/connection");
+const { buildChangeSet, logActivity } = require("../utils/auditLogger");
 
 const vehicleColumns = [
   ["fuel_type", "fuel_type VARCHAR(30) DEFAULT NULL"],
@@ -387,6 +388,14 @@ exports.createVehicle = async (req, res) => {
       ]
     );
 
+    await logActivity(req, {
+      module: "vehicles",
+      action: "create",
+      entityType: "vehicle",
+      entityId: result.insertId,
+      entityLabel: registration_number,
+      details: { registration_number, fleet_code, model_name, truck_type, status: status || "available" }
+    });
     res.status(201).json({ message: "Vehicle created.", id: result.insertId });
   } catch (err) {
     if (err.code === "ER_DUP_ENTRY") {
@@ -400,7 +409,7 @@ exports.createVehicle = async (req, res) => {
 exports.updateVehicle = async (req, res) => {
   try {
     const { id } = req.params;
-    const [[existing]] = await db.query(`SELECT id FROM vehicles WHERE id = ?`, [id]);
+    const [[existing]] = await db.query(`SELECT * FROM vehicles WHERE id = ?`, [id]);
     if (!existing) return res.status(404).json({ message: "Vehicle not found." });
 
     const {
@@ -426,6 +435,15 @@ exports.updateVehicle = async (req, res) => {
       ]
     );
 
+    const [[updated]] = await db.query(`SELECT * FROM vehicles WHERE id = ?`, [id]);
+    await logActivity(req, {
+      module: "vehicles",
+      action: "update",
+      entityType: "vehicle",
+      entityId: id,
+      entityLabel: updated.registration_number,
+      details: { changes: buildChangeSet(existing, updated, ["registration_number", "fleet_code", "model_name", "truck_type", "status", "fuel_type", "capacity_tonnes", "mot_expiry", "insurance_expiry", "road_tax_expiry", "next_service_due", "current_location"]) }
+    });
     res.json({ message: "Vehicle updated." });
   } catch (err) {
     res.status(500).json({ message: "Vehicle update error", error: err.message });
@@ -441,7 +459,16 @@ exports.updateVehicleStatus = async (req, res) => {
     if (!valid.includes(status)) {
       return res.status(400).json({ message: "Invalid status." });
     }
+    const [[before]] = await db.query(`SELECT id, registration_number, status FROM vehicles WHERE id=?`, [id]);
     await db.query(`UPDATE vehicles SET status=? WHERE id=?`, [status, id]);
+    await logActivity(req, {
+      module: "vehicles",
+      action: "status_update",
+      entityType: "vehicle",
+      entityId: id,
+      entityLabel: before?.registration_number,
+      details: { changes: buildChangeSet(before || {}, { ...(before || {}), status }, ["status"]) }
+    });
     res.json({ message: "Status updated." });
   } catch (err) {
     res.status(500).json({ message: "Status update error", error: err.message });
@@ -463,6 +490,7 @@ exports.addDocument = async (req, res) => {
        VALUES (?,?,?,?,?)`,
       [id, document_type, document_number || "", expiry_date, autoStatus]
     );
+    await logActivity(req, { module: "vehicles", action: "create", entityType: "vehicle_document", entityId: result.insertId, entityLabel: document_type, details: { vehicle_id: id, expiry_date } });
     res.status(201).json({ message: "Document added.", id: result.insertId });
   } catch (err) {
     res.status(500).json({ message: "Document add error", error: err.message });
@@ -481,6 +509,7 @@ exports.updateDocument = async (req, res) => {
        WHERE id=? AND vehicle_id=?`,
       [document_type, document_number || "", expiry_date, autoStatus, docId, id]
     );
+    await logActivity(req, { module: "vehicles", action: "update", entityType: "vehicle_document", entityId: docId, entityLabel: document_type, details: { vehicle_id: id, expiry_date } });
     res.json({ message: "Document updated." });
   } catch (err) {
     res.status(500).json({ message: "Document update error", error: err.message });
@@ -492,6 +521,7 @@ exports.deleteDocument = async (req, res) => {
   try {
     const { id, docId } = req.params;
     await db.query(`DELETE FROM vehicle_documents WHERE id=? AND vehicle_id=?`, [docId, id]);
+    await logActivity(req, { module: "vehicles", action: "delete", entityType: "vehicle_document", entityId: docId, details: { vehicle_id: id } });
     res.json({ message: "Document removed." });
   } catch (err) {
     res.status(500).json({ message: "Document delete error", error: err.message });
@@ -514,6 +544,7 @@ exports.addMaintenance = async (req, res) => {
        VALUES (?,?,?,?,?,?,?,?)`,
       [id, service_date, service_type, description || null, cost_gbp || 0, mileage || null, next_due_date || null, garage_name || null]
     );
+    await logActivity(req, { module: "vehicles", action: "create", entityType: "maintenance_record", entityId: result.insertId, entityLabel: service_type, details: { vehicle_id: id, service_date, cost_gbp } });
     res.status(201).json({ message: "Maintenance record added.", id: result.insertId });
   } catch (err) {
     res.status(500).json({ message: "Maintenance add error", error: err.message });
@@ -525,6 +556,7 @@ exports.deleteMaintenance = async (req, res) => {
   try {
     const { id, recId } = req.params;
     await db.query(`DELETE FROM maintenance_records WHERE id=? AND vehicle_id=?`, [recId, id]);
+    await logActivity(req, { module: "vehicles", action: "delete", entityType: "maintenance_record", entityId: recId, details: { vehicle_id: id } });
     res.json({ message: "Record removed." });
   } catch (err) {
     res.status(500).json({ message: "Maintenance delete error", error: err.message });
@@ -544,6 +576,7 @@ exports.addInspection = async (req, res) => {
        VALUES (?,?,?,?,?,?,?)`,
       [id, inspection_date, inspection_type || "Routine", inspector_name || null, result, notes || null, next_due || null]
     );
+    await logActivity(req, { module: "vehicles", action: "create", entityType: "vehicle_inspection", entityId: ins.insertId, details: { vehicle_id: id, result } });
     res.status(201).json({ message: "Inspection added.", id: ins.insertId });
   } catch (err) {
     res.status(500).json({ message: "Inspection add error", error: err.message });
@@ -563,6 +596,7 @@ exports.addDefect = async (req, res) => {
        VALUES (?,?,?,?,?,'open')`,
       [id, defect_type, description || null, severity || "medium", reported_by || null]
     );
+    await logActivity(req, { module: "vehicles", action: "create", entityType: "defect_report", entityId: result.insertId, entityLabel: defect_type, details: { vehicle_id: id, severity: severity || "medium" } });
     res.status(201).json({ message: "Defect reported.", id: result.insertId });
   } catch (err) {
     res.status(500).json({ message: "Defect add error", error: err.message });
@@ -579,6 +613,7 @@ exports.updateDefectStatus = async (req, res) => {
       `UPDATE defect_reports SET status=?, resolved_at=? WHERE id=? AND vehicle_id=?`,
       [status, resolvedAt, defId, id]
     );
+    await logActivity(req, { module: "vehicles", action: "status_update", entityType: "defect_report", entityId: defId, details: { vehicle_id: id, status } });
     res.json({ message: "Defect status updated." });
   } catch (err) {
     res.status(500).json({ message: "Defect update error", error: err.message });

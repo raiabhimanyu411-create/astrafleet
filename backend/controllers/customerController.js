@@ -1,4 +1,5 @@
 const db = require("../db/connection");
+const { buildChangeSet, logActivity } = require("../utils/auditLogger");
 
 function fmtDate(d) {
   if (!d) return "—";
@@ -135,6 +136,13 @@ exports.updateCustomerStatus = async (req, res) => {
       [account_status, id]
     );
     if (result.affectedRows === 0) return res.status(404).json({ message: "Customer not found." });
+    await logActivity(req, {
+      module: "customers",
+      action: "status_update",
+      entityType: "customer",
+      entityId: id,
+      details: { account_status }
+    });
 
     res.json({ message: "Customer status updated.", account_status });
   } catch (err) {
@@ -244,6 +252,14 @@ exports.createCustomer = async (req, res) => {
     const [[newCustomer]] = await db.query(
       `SELECT * FROM customers WHERE id = ?`, [result.insertId]
     );
+    await logActivity(req, {
+      module: "customers",
+      action: "create",
+      entityType: "customer",
+      entityId: result.insertId,
+      entityLabel: company_name,
+      details: { company_name, email, phone }
+    });
 
     res.status(201).json({ message: "Customer created.", customer: newCustomer });
   } catch (err) {
@@ -263,7 +279,7 @@ exports.updateCustomer = async (req, res) => {
       return res.status(400).json({ message: "Company name is required." });
     }
 
-    const [[existing]] = await db.query(`SELECT id FROM customers WHERE id = ?`, [id]);
+    const [[existing]] = await db.query(`SELECT * FROM customers WHERE id = ?`, [id]);
     if (!existing) return res.status(404).json({ message: "Customer not found." });
 
     await db.query(
@@ -286,6 +302,14 @@ exports.updateCustomer = async (req, res) => {
     );
 
     const [[updated]] = await db.query(`SELECT * FROM customers WHERE id = ?`, [id]);
+    await logActivity(req, {
+      module: "customers",
+      action: "update",
+      entityType: "customer",
+      entityId: id,
+      entityLabel: updated.company_name,
+      details: { changes: buildChangeSet(existing, updated, ["company_name", "contact_name", "email", "phone", "address", "postcode", "vat_number", "payment_terms_days", "account_status"]) }
+    });
     res.json({ message: "Customer updated.", customer: updated });
   } catch (err) {
     res.status(500).json({ message: "Customer update error", error: err.message });
@@ -295,10 +319,18 @@ exports.updateCustomer = async (req, res) => {
 exports.deleteCustomer = async (req, res) => {
   try {
     const { id } = req.params;
-    const [[existing]] = await db.query(`SELECT id FROM customers WHERE id = ?`, [id]);
+    const [[existing]] = await db.query(`SELECT id, company_name, account_status FROM customers WHERE id = ?`, [id]);
     if (!existing) return res.status(404).json({ message: "Customer not found." });
 
     await db.query(`UPDATE customers SET account_status='closed' WHERE id=?`, [id]);
+    await logActivity(req, {
+      module: "customers",
+      action: "delete",
+      entityType: "customer",
+      entityId: id,
+      entityLabel: existing.company_name,
+      details: { changes: buildChangeSet(existing, { ...existing, account_status: "closed" }, ["account_status"]) }
+    });
     res.json({ message: "Customer closed." });
   } catch (err) {
     res.status(500).json({ message: "Customer delete error", error: err.message });

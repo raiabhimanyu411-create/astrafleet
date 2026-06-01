@@ -7,6 +7,7 @@ import {
   updatePayout,
   updatePayoutStatus
 } from "../../api/adminApi";
+import { DeleteReasonModal } from "../../components/DeleteReasonModal";
 import { StatCard } from "../../components/StatCard";
 import { StateNotice } from "../../components/StateNotice";
 import { StatusPill } from "../../components/StatusPill";
@@ -53,6 +54,8 @@ export function AdminFinancePage() {
   const [editingId, setEditingId] = useState(null);
   const [saving, setSaving] = useState(false);
   const [actionError, setActionError] = useState("");
+  const [deleteTarget, setDeleteTarget] = useState(null);
+  const [deleting, setDeleting] = useState(false);
 
   const collections = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -118,15 +121,19 @@ export function AdminFinancePage() {
     }
   }
 
-  async function handleDeletePayout(item) {
-    if (!window.confirm(`Delete payout ${item.reference}?`)) return;
+  async function confirmDeletePayout(payload) {
+    if (!deleteTarget) return;
     setActionError("");
+    setDeleting(true);
     try {
-      await deletePayout(item.id);
-      if (editingId === item.id) resetForm();
+      await deletePayout(deleteTarget.id, payload);
+      if (editingId === deleteTarget.id) resetForm();
+      setDeleteTarget(null);
       refetch(false);
     } catch (err) {
       setActionError(err?.response?.data?.message || "Payout could not be deleted.");
+    } finally {
+      setDeleting(false);
     }
   }
 
@@ -348,7 +355,7 @@ export function AdminFinancePage() {
             </label>
             <div className="af-actions">
               {editingId && (
-                <button className="header-action-button danger" type="button" onClick={() => handleDeletePayout({ id: editingId, reference: form.payout_reference })}>
+                <button className="header-action-button danger" type="button" onClick={() => setDeleteTarget({ id: editingId, reference: form.payout_reference, vendorName: form.vendor_name })}>
                   Delete
                 </button>
               )}
@@ -384,6 +391,14 @@ export function AdminFinancePage() {
           </div>
         </article>
       </section>
+      <DeleteReasonModal
+        open={Boolean(deleteTarget)}
+        title="Delete payout"
+        recordLabel={deleteTarget ? `${deleteTarget.reference} · ${deleteTarget.vendorName || "Vendor"}` : ""}
+        loading={deleting}
+        onCancel={() => setDeleteTarget(null)}
+        onConfirm={confirmDeletePayout}
+      />
     </AdminWorkspaceLayout>
   );
 }

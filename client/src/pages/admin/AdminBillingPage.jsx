@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { deleteInvoice, updateInvoiceStatus } from "../../api/adminApi";
+import { DeleteReasonModal } from "../../components/DeleteReasonModal";
 import { StatCard } from "../../components/StatCard";
 import { StateNotice } from "../../components/StateNotice";
 import { StatusPill } from "../../components/StatusPill";
@@ -34,6 +35,8 @@ export function AdminBillingPage() {
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
   const [actionError, setActionError] = useState("");
+  const [deleteTarget, setDeleteTarget] = useState(null);
+  const [deleting, setDeleting] = useState(false);
   const hasFilters = Boolean(search || status || pod || dateFrom || dateTo);
 
   const invoices = useMemo(() => {
@@ -82,14 +85,18 @@ export function AdminBillingPage() {
     }
   }
 
-  async function removeInvoice(item) {
-    if (!window.confirm(`Delete invoice ${item.invoice}?`)) return;
+  async function confirmDeleteInvoice(payload) {
+    if (!deleteTarget) return;
     setActionError("");
+    setDeleting(true);
     try {
-      await deleteInvoice(item.id);
+      await deleteInvoice(deleteTarget.id, payload);
+      setDeleteTarget(null);
       refetch(false);
     } catch (err) {
       setActionError(err?.response?.data?.message || "Invoice could not be deleted.");
+    } finally {
+      setDeleting(false);
     }
   }
 
@@ -276,7 +283,7 @@ export function AdminBillingPage() {
                   <button className="header-action-button" type="button" onClick={() => updateStatus(item.id, "paid")}>Mark paid</button>
                 )}
                 <button className="header-action-button" type="button" onClick={() => navigate(`/admin/billing/${item.id}/edit`)}>Edit</button>
-                <button className="header-action-button danger" type="button" onClick={() => removeInvoice(item)}>Delete</button>
+                <button className="header-action-button danger" type="button" onClick={() => setDeleteTarget(item)}>Delete</button>
               </div>
             </div>
           ))}
@@ -287,6 +294,14 @@ export function AdminBillingPage() {
           )}
         </div>
       </section>
+      <DeleteReasonModal
+        open={Boolean(deleteTarget)}
+        title="Delete invoice"
+        recordLabel={deleteTarget ? `${deleteTarget.invoice} · ${deleteTarget.client}` : ""}
+        loading={deleting}
+        onCancel={() => setDeleteTarget(null)}
+        onConfirm={confirmDeleteInvoice}
+      />
     </AdminWorkspaceLayout>
   );
 }

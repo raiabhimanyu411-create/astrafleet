@@ -1,6 +1,9 @@
 const express = require("express");
 const router = express.Router();
 const c = require("../controllers/customerController");
+const { requireModuleAccess } = require("../middleware/accessControl");
+
+router.use(requireModuleAccess("customers"));
 
 router.get("/", c.listCustomers);
 router.get("/:id", c.getCustomerById);

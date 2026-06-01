@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { deleteInvoice, getInvoiceById, updateInvoiceStatus } from "../../../api/adminApi";
+import { DeleteReasonModal } from "../../../components/DeleteReasonModal";
 import { StatusPill } from "../../../components/StatusPill";
 import { AdminWorkspaceLayout } from "../AdminWorkspaceLayout";
 
@@ -20,6 +21,8 @@ export function InvoiceDetailPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [actionError, setActionError] = useState("");
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
   function load() {
     setLoading(true);
@@ -53,14 +56,16 @@ export function InvoiceDetailPage() {
     }
   }
 
-  async function handleDelete() {
-    if (!window.confirm("Delete this invoice?")) return;
+  async function handleDelete(payload) {
     setActionError("");
+    setDeleting(true);
     try {
-      await deleteInvoice(id);
+      await deleteInvoice(id, payload);
       navigate("/admin/billing");
     } catch (err) {
       setActionError(err?.response?.data?.message || "Invoice could not be deleted.");
+    } finally {
+      setDeleting(false);
     }
   }
 
@@ -178,13 +183,21 @@ export function InvoiceDetailPage() {
               <button className="af-submit-btn" type="button" onClick={() => navigate("/admin/billing/new")}>
                 + Create invoice
               </button>
-              <button className="header-action-button danger" type="button" onClick={handleDelete}>
+              <button className="header-action-button danger" type="button" onClick={() => setShowDeleteModal(true)}>
                 Delete invoice
               </button>
             </div>
           </>
         )}
       </div>
+      <DeleteReasonModal
+        open={showDeleteModal}
+        title="Delete invoice"
+        recordLabel={invoice ? `${invoice.invoiceNo} · ${invoice.clientName}` : ""}
+        loading={deleting}
+        onCancel={() => setShowDeleteModal(false)}
+        onConfirm={handleDelete}
+      />
     </AdminWorkspaceLayout>
   );
 }

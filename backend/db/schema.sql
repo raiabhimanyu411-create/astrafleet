@@ -15,6 +15,51 @@ CREATE TABLE IF NOT EXISTS users (
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 ) ENGINE=InnoDB;
 
+CREATE TABLE IF NOT EXISTS activity_logs (
+  id            INT AUTO_INCREMENT PRIMARY KEY,
+  actor_user_id INT DEFAULT NULL,
+  actor_name    VARCHAR(120) DEFAULT NULL,
+  actor_role    VARCHAR(40) DEFAULT NULL,
+  module_key    VARCHAR(60) NOT NULL,
+  action_key    VARCHAR(60) NOT NULL,
+  entity_type   VARCHAR(80) DEFAULT NULL,
+  entity_id     VARCHAR(80) DEFAULT NULL,
+  entity_label  VARCHAR(180) DEFAULT NULL,
+  reason        TEXT DEFAULT NULL,
+  reason_category VARCHAR(60) DEFAULT NULL,
+  details       JSON DEFAULT NULL,
+  previous_hash CHAR(64) DEFAULT NULL,
+  entry_hash    CHAR(64) DEFAULT NULL,
+  ip_address    VARCHAR(80) DEFAULT NULL,
+  user_agent    VARCHAR(255) DEFAULT NULL,
+  created_at    DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  INDEX idx_activity_created_at (created_at),
+  INDEX idx_activity_actor (actor_user_id),
+  INDEX idx_activity_module (module_key, action_key)
+) ENGINE=InnoDB;
+
+CREATE TABLE IF NOT EXISTS user_sessions (
+  id                 INT AUTO_INCREMENT PRIMARY KEY,
+  user_id            INT NOT NULL,
+  session_token_hash CHAR(64) NOT NULL,
+  role               VARCHAR(40) DEFAULT NULL,
+  login_at           DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  logout_at          DATETIME DEFAULT NULL,
+  last_activity_at   DATETIME DEFAULT NULL,
+  ip_address         VARCHAR(80) DEFAULT NULL,
+  user_agent         VARCHAR(255) DEFAULT NULL,
+  INDEX idx_sessions_user (user_id),
+  INDEX idx_sessions_token (session_token_hash)
+) ENGINE=InnoDB;
+
+CREATE TABLE IF NOT EXISTS notification_acknowledgements (
+  id              INT AUTO_INCREMENT PRIMARY KEY,
+  notification_id VARCHAR(120) NOT NULL,
+  user_id          INT DEFAULT NULL,
+  acknowledged_at  DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE KEY uniq_notification_user (notification_id, user_id)
+) ENGINE=InnoDB;
+
 CREATE TABLE IF NOT EXISTS vehicles (
   id                  INT AUTO_INCREMENT PRIMARY KEY,
   registration_number VARCHAR(20) NOT NULL UNIQUE,
@@ -122,6 +167,9 @@ CREATE TABLE IF NOT EXISTS trips (
   pod_photo_data    LONGTEXT DEFAULT NULL,
   failed_delivery_reason TEXT DEFAULT NULL,
   freight_amount_gbp DECIMAL(10,2) NOT NULL DEFAULT 0,
+  deleted_at        DATETIME DEFAULT NULL,
+  deleted_by        INT DEFAULT NULL,
+  delete_reason     TEXT DEFAULT NULL,
   created_at        TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   CONSTRAINT fk_trips_route FOREIGN KEY (route_id) REFERENCES routes (id) ON DELETE SET NULL,
   CONSTRAINT fk_trips_vehicle FOREIGN KEY (vehicle_id) REFERENCES vehicles (id) ON DELETE SET NULL,
@@ -273,6 +321,9 @@ CREATE TABLE IF NOT EXISTS invoices (
   pod_verified   TINYINT(1) NOT NULL DEFAULT 0,
   notes          VARCHAR(255) DEFAULT NULL,
   currency       CHAR(3) NOT NULL DEFAULT 'GBP',
+  deleted_at     DATETIME DEFAULT NULL,
+  deleted_by     INT DEFAULT NULL,
+  delete_reason  TEXT DEFAULT NULL,
   created_at     TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   CONSTRAINT fk_invoices_trip FOREIGN KEY (trip_id) REFERENCES trips (id) ON DELETE SET NULL
 ) ENGINE=InnoDB;
@@ -286,6 +337,9 @@ CREATE TABLE IF NOT EXISTS vendor_payouts (
   due_date         DATE NOT NULL,
   payout_status    ENUM('scheduled', 'processing', 'paid', 'hold') NOT NULL DEFAULT 'scheduled',
   notes            VARCHAR(255) DEFAULT NULL,
+  deleted_at       DATETIME DEFAULT NULL,
+  deleted_by       INT DEFAULT NULL,
+  delete_reason    TEXT DEFAULT NULL,
   created_at       TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 ) ENGINE=InnoDB;
 

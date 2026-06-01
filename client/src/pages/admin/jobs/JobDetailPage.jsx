@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { cancelJob, getJobById, updateJobStatus } from "../../../api/jobApi";
+import { DeleteReasonModal } from "../../../components/DeleteReasonModal";
 import { StateNotice } from "../../../components/StateNotice";
 import { StatusPill } from "../../../components/StatusPill";
 import { AdminWorkspaceLayout } from "../AdminWorkspaceLayout";
@@ -47,6 +48,7 @@ export function JobDetailPage() {
   const [updating, setUpdating] = useState(false);
   const [blockReason, setBlockReason] = useState("");
   const [showBlockInput, setShowBlockInput] = useState(false);
+  const [showCancelModal, setShowCancelModal] = useState(false);
 
   function load() {
     setLoading(true);
@@ -84,13 +86,16 @@ export function JobDetailPage() {
     }
   }
 
-  async function handleCancel() {
-    if (!window.confirm("Cancel this job? The vehicle will be released.")) return;
+  async function handleCancel(payload) {
+    setUpdating(true);
     try {
-      await cancelJob(id, { reason: "Cancelled by admin" });
+      await cancelJob(id, payload);
+      setShowCancelModal(false);
       load();
     } catch {
       alert("Could not cancel job.");
+    } finally {
+      setUpdating(false);
     }
   }
 
@@ -121,7 +126,7 @@ export function JobDetailPage() {
                 </button>
               )}
               {data.status === "planned" && (
-                <button className="header-action-button danger" type="button" onClick={handleCancel}>
+                <button className="header-action-button danger" type="button" onClick={() => setShowCancelModal(true)}>
                   Cancel job
                 </button>
               )}
@@ -452,6 +457,16 @@ export function JobDetailPage() {
           </>
         )}
       </div>
+      <DeleteReasonModal
+        open={showCancelModal}
+        title="Cancel job"
+        recordLabel={data ? data.code : ""}
+        body="The job will be blocked, its vehicle and trolley will be released, and this reason will be visible to admin."
+        confirmLabel="Cancel job"
+        loading={updating}
+        onCancel={() => setShowCancelModal(false)}
+        onConfirm={handleCancel}
+      />
     </AdminWorkspaceLayout>
   );
 }

@@ -1,8 +1,10 @@
 const express = require("express");
 const router  = express.Router();
 const v       = require("../controllers/vehicleController");
+const { requireModuleAccess } = require("../middleware/accessControl");
 
 router.use(v.ensureVehicleSchema);
+router.use(requireModuleAccess("vehicles"));
 
 router.get("/",    v.listVehicles);
 router.get("/:id", v.getVehicleById);

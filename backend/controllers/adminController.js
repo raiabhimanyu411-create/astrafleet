@@ -1,6 +1,7 @@
 const db = require("../db/connection");
 const { ensureEmployeeAuthSchema, employeeModules, parseAccessModules } = require("./authController");
 const { emitDriverChatMessage, emitDriverLocationUpdate } = require("../realtime");
+const { buildChangeSet, ensureActivitySchema, ensureSessionSchema, getActor, logActivity, requireDeleteReason } = require("../utils/auditLogger");
 
 function severityTone(s) {
   return s === "critical" || s === "high" ? "danger" : s === "medium" ? "warning" : "neutral";
@@ -40,6 +41,16 @@ function fmtAmount(n) {
     : "—";
 }
 
+function parseJsonValue(value) {
+  if (!value) return null;
+  if (typeof value === "object") return value;
+  try {
+    return JSON.parse(value);
+  } catch {
+    return null;
+  }
+}
+
 function cleanAlertCopy(text) {
   if (!text) return "No description added.";
   if (text.includes("Rest-rule breach") && text.includes("Leeds to London")) {
@@ -73,6 +84,8 @@ let driverOpsSchemaReady = false;
 let vehicleGpsSchemaReady = false;
 let trailerSchemaReady = false;
 let driverChatSchemaReady = false;
+let softDeleteSchemaReady = false;
+let notificationAckSchemaReady = false;
 
 async function addColumnIfMissing(table, column, definition) {
   const [rows] = await db.query(`SHOW COLUMNS FROM ${table} LIKE ?`, [column]);
@@ -164,6 +177,30 @@ async function ensureDriverChatSchema() {
     ) ENGINE=InnoDB`
   );
   driverChatSchemaReady = true;
+}
+
+async function ensureSoftDeleteSchema() {
+  if (softDeleteSchemaReady) return;
+  for (const table of ["invoices", "vendor_payouts", "trips"]) {
+    await addColumnIfMissing(table, "deleted_at", "DATETIME DEFAULT NULL");
+    await addColumnIfMissing(table, "deleted_by", "INT DEFAULT NULL");
+    await addColumnIfMissing(table, "delete_reason", "TEXT DEFAULT NULL");
+  }
+  softDeleteSchemaReady = true;
+}
+
+async function ensureNotificationAckSchema() {
+  if (notificationAckSchemaReady) return;
+  await db.query(
+    `CREATE TABLE IF NOT EXISTS notification_acknowledgements (
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      notification_id VARCHAR(120) NOT NULL,
+      user_id INT DEFAULT NULL,
+      acknowledged_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      UNIQUE KEY uniq_notification_user (notification_id, user_id)
+    ) ENGINE=InnoDB`
+  );
+  notificationAckSchemaReady = true;
 }
 
 function mapChatMessage(row, driverName = "Driver") {
@@ -382,28 +419,31 @@ exports.sendDriverChatMessage = async (req, res) => {
 
 exports.getFinance = async (req, res) => {
   try {
+    await ensureSoftDeleteSchema();
     const [[counts]] = await db.query(
       `SELECT COUNT(*) as total,
         COALESCE(SUM(payment_status='overdue'), 0) as overdue,
         COALESCE(SUM(payment_status IN ('pending','sent')), 0) as pending,
         COALESCE(SUM(payment_status='paid'), 0) as paid
-       FROM invoices`
+       FROM invoices
+       WHERE deleted_at IS NULL`
     );
     const [[position]] = await db.query(
       `SELECT
         COALESCE(SUM(CASE WHEN payment_status != 'paid' THEN amount_gbp ELSE 0 END), 0) as receivable,
         COALESCE(SUM(CASE WHEN payment_status = 'overdue' THEN amount_gbp ELSE 0 END), 0) as overdue_amount,
-        COALESCE((SELECT SUM(amount_gbp) FROM vendor_payouts WHERE payout_status != 'paid'), 0) as payable,
-        COALESCE((SELECT SUM(amount_gbp) FROM vendor_payouts WHERE payout_status = 'hold'), 0) as held_payouts
-       FROM invoices`
+        COALESCE((SELECT SUM(amount_gbp) FROM vendor_payouts WHERE payout_status != 'paid' AND deleted_at IS NULL), 0) as payable,
+        COALESCE((SELECT SUM(amount_gbp) FROM vendor_payouts WHERE payout_status = 'hold' AND deleted_at IS NULL), 0) as held_payouts
+       FROM invoices
+       WHERE deleted_at IS NULL`
     );
     const [collectionRows] = await db.query(
       `SELECT id, invoice_no, client_name, amount_gbp, due_date, payment_status
-       FROM invoices WHERE payment_status != 'paid' ORDER BY due_date ASC LIMIT 8`
+       FROM invoices WHERE payment_status != 'paid' AND deleted_at IS NULL ORDER BY due_date ASC LIMIT 8`
     );
     const [payoutRows] = await db.query(
       `SELECT id, payout_reference, vendor_name, lane_code, amount_gbp, due_date, payout_status, notes
-       FROM vendor_payouts ORDER BY due_date ASC LIMIT 8`
+       FROM vendor_payouts WHERE deleted_at IS NULL ORDER BY due_date ASC LIMIT 8`
     );
     const [noteRows] = await db.query(
       `SELECT title, description, severity FROM control_room_alerts
@@ -474,6 +514,7 @@ exports.getFinance = async (req, res) => {
 
 exports.createPayout = async (req, res) => {
   try {
+    await ensureSoftDeleteSchema();
     const { payout_reference, vendor_name, lane_code, amount_gbp, due_date, payout_status, notes } = req.body;
     if (!payout_reference || !vendor_name || !amount_gbp || !due_date) {
       return res.status(400).json({ message: "payout_reference, vendor_name, amount_gbp, and due_date are required." });
@@ -490,10 +531,19 @@ exports.createPayout = async (req, res) => {
       [payout_reference, vendor_name, lane_code || null, amount_gbp, due_date, status, notes || null]
     );
 
+    await logActivity(req, {
+      module: "finance",
+      action: "create",
+      entityType: "payout",
+      entityId: result.insertId,
+      entityLabel: payout_reference,
+      details: { vendor_name, amount_gbp, due_date, payout_status: status }
+    });
+
     res.status(201).json({ message: "Payout created.", id: result.insertId });
   } catch (error) {
     if (error.code === "ER_DUP_ENTRY") {
-      return res.status(409).json({ message: "Payout reference already exists." });
+      return res.status(409).json({ message: "Payout reference already exists. If it was deleted, restore it from the activity report instead of creating a duplicate." });
     }
     res.status(500).json({ message: "Payout create error", error: error.message });
   }
@@ -501,6 +551,7 @@ exports.createPayout = async (req, res) => {
 
 exports.updatePayout = async (req, res) => {
   try {
+    await ensureSoftDeleteSchema();
     const { id } = req.params;
     const { payout_reference, vendor_name, lane_code, amount_gbp, due_date, payout_status, notes } = req.body;
     if (!payout_reference || !vendor_name || !amount_gbp || !due_date) {
@@ -511,14 +562,32 @@ exports.updatePayout = async (req, res) => {
     const status = payout_status || "scheduled";
     if (!valid.includes(status)) return res.status(400).json({ message: "Invalid payout status." });
 
+    const [[before]] = await db.query("SELECT * FROM vendor_payouts WHERE id=? AND deleted_at IS NULL", [id]);
+    if (!before) return res.status(404).json({ message: "Payout not found." });
+
     const [result] = await db.query(
       `UPDATE vendor_payouts SET
         payout_reference=?, vendor_name=?, lane_code=?, amount_gbp=?, due_date=?, payout_status=?, notes=?
-       WHERE id=?`,
+       WHERE id=? AND deleted_at IS NULL`,
       [payout_reference, vendor_name, lane_code || null, amount_gbp, due_date, status, notes || null, id]
     );
 
     if (result.affectedRows === 0) return res.status(404).json({ message: "Payout not found." });
+    const after = { ...before, payout_reference, vendor_name, lane_code: lane_code || null, amount_gbp, due_date, payout_status: status, notes: notes || null };
+    await logActivity(req, {
+      module: "finance",
+      action: "update",
+      entityType: "payout",
+      entityId: id,
+      entityLabel: payout_reference,
+      details: {
+        vendor_name,
+        amount_gbp,
+        due_date,
+        payout_status: status,
+        changes: buildChangeSet(before, after, ["payout_reference", "vendor_name", "lane_code", "amount_gbp", "due_date", "payout_status", "notes"])
+      }
+    });
     res.json({ message: "Payout updated." });
   } catch (error) {
     if (error.code === "ER_DUP_ENTRY") {
@@ -530,13 +599,24 @@ exports.updatePayout = async (req, res) => {
 
 exports.updatePayoutStatus = async (req, res) => {
   try {
+    await ensureSoftDeleteSchema();
     const { id } = req.params;
     const { payout_status } = req.body;
     const valid = ["scheduled", "processing", "paid", "hold"];
     if (!valid.includes(payout_status)) return res.status(400).json({ message: "Invalid payout status." });
 
-    const [result] = await db.query("UPDATE vendor_payouts SET payout_status=? WHERE id=?", [payout_status, id]);
+    const [[before]] = await db.query("SELECT id, payout_status FROM vendor_payouts WHERE id=? AND deleted_at IS NULL", [id]);
+    if (!before) return res.status(404).json({ message: "Payout not found." });
+    const [result] = await db.query("UPDATE vendor_payouts SET payout_status=? WHERE id=? AND deleted_at IS NULL", [payout_status, id]);
     if (result.affectedRows === 0) return res.status(404).json({ message: "Payout not found." });
+
+    await logActivity(req, {
+      module: "finance",
+      action: "status_update",
+      entityType: "payout",
+      entityId: id,
+      details: { payout_status, changes: buildChangeSet(before, { ...before, payout_status }, ["payout_status"]) }
+    });
 
     res.json({ message: "Payout status updated." });
   } catch (error) {
@@ -546,9 +626,30 @@ exports.updatePayoutStatus = async (req, res) => {
 
 exports.deletePayout = async (req, res) => {
   try {
+    await ensureSoftDeleteSchema();
     const { id } = req.params;
-    const [result] = await db.query("DELETE FROM vendor_payouts WHERE id=?", [id]);
+    const reasonCheck = requireDeleteReason(req);
+    if (!reasonCheck.ok) return res.status(400).json({ message: reasonCheck.message });
+
+    const [[payout]] = await db.query("SELECT id, payout_reference, vendor_name, amount_gbp FROM vendor_payouts WHERE id=? AND deleted_at IS NULL", [id]);
+    if (!payout) return res.status(404).json({ message: "Payout not found." });
+
+    const actor = await getActor(req);
+    const [result] = await db.query(
+      "UPDATE vendor_payouts SET deleted_at=NOW(), deleted_by=?, delete_reason=? WHERE id=? AND deleted_at IS NULL",
+      [actor.id, reasonCheck.reason, id]
+    );
     if (result.affectedRows === 0) return res.status(404).json({ message: "Payout not found." });
+    await logActivity(req, {
+      module: "finance",
+      action: "delete",
+      entityType: "payout",
+      entityId: id,
+      entityLabel: payout.payout_reference,
+      reason: reasonCheck.reason,
+      reasonCategory: reasonCheck.reasonCategory,
+      details: { vendor_name: payout.vendor_name, amount_gbp: payout.amount_gbp }
+    });
     res.json({ message: "Payout deleted." });
   } catch (error) {
     res.status(500).json({ message: "Payout delete error", error: error.message });
@@ -557,12 +658,14 @@ exports.deletePayout = async (req, res) => {
 
 exports.getBilling = async (req, res) => {
   try {
+    await ensureSoftDeleteSchema();
     const [[counts]] = await db.query(
       `SELECT COUNT(*) as total,
         COALESCE(SUM(pod_verified=1), 0) as pod_ok,
         COALESCE(SUM(pod_verified=0), 0) as pod_pending,
         COALESCE(SUM(payment_status='overdue'), 0) as overdue
-       FROM invoices`
+       FROM invoices
+       WHERE deleted_at IS NULL`
     );
     const [[totals]] = await db.query(
       `SELECT
@@ -570,7 +673,8 @@ exports.getBilling = async (req, res) => {
         COALESCE(SUM(CASE WHEN payment_status='paid' THEN amount_gbp ELSE 0 END), 0) as collected,
         COALESCE(SUM(CASE WHEN payment_status!='paid' THEN amount_gbp ELSE 0 END), 0) as outstanding,
         COALESCE(SUM(CASE WHEN pod_verified=0 THEN amount_gbp ELSE 0 END), 0) as pod_risk
-       FROM invoices`
+       FROM invoices
+       WHERE deleted_at IS NULL`
     );
     const [invoiceRows] = await db.query(
       `SELECT i.id, i.invoice_no, i.client_name, i.amount_gbp, i.issued_at, i.due_date,
@@ -580,6 +684,7 @@ exports.getBilling = async (req, res) => {
        FROM invoices i
        LEFT JOIN trips t ON t.id = i.trip_id
        LEFT JOIN routes r ON r.id = t.route_id
+       WHERE i.deleted_at IS NULL
        ORDER BY i.created_at DESC LIMIT 25`
     );
     const [blockerRows] = await db.query(
@@ -645,11 +750,13 @@ exports.getBilling = async (req, res) => {
 
 exports.getBillingFormData = async (_req, res) => {
   try {
+    await ensureSoftDeleteSchema();
     const [trips] = await db.query(
       `SELECT t.id, t.trip_code, t.client_name, t.freight_amount_gbp, t.pod_status,
               r.origin_hub, r.destination_hub
        FROM trips t
        LEFT JOIN routes r ON r.id = t.route_id
+       WHERE t.deleted_at IS NULL
        ORDER BY t.created_at DESC`
     );
 
@@ -670,6 +777,7 @@ exports.getBillingFormData = async (_req, res) => {
 
 exports.getInvoiceById = async (req, res) => {
   try {
+    await ensureSoftDeleteSchema();
     const { id } = req.params;
     const [[invoice]] = await db.query(
       `SELECT i.*, t.trip_code, t.dispatch_status, t.pod_status,
@@ -677,7 +785,7 @@ exports.getInvoiceById = async (req, res) => {
        FROM invoices i
        LEFT JOIN trips t ON t.id = i.trip_id
        LEFT JOIN routes r ON r.id = t.route_id
-       WHERE i.id = ?`,
+       WHERE i.id = ? AND i.deleted_at IS NULL`,
       [id]
     );
 
@@ -723,6 +831,7 @@ exports.getInvoiceById = async (req, res) => {
 
 exports.createInvoice = async (req, res) => {
   try {
+    await ensureSoftDeleteSchema();
     const {
       invoice_no,
       trip_id,
@@ -760,10 +869,19 @@ exports.createInvoice = async (req, res) => {
       await db.query("UPDATE trips SET pod_status='verified' WHERE id=?", [trip_id]);
     }
 
+    await logActivity(req, {
+      module: "billing",
+      action: "create",
+      entityType: "invoice",
+      entityId: result.insertId,
+      entityLabel: invoice_no,
+      details: { client_name, amount_gbp, due_date, payment_status: payment_status || "draft" }
+    });
+
     res.status(201).json({ message: "Invoice created.", id: result.insertId });
   } catch (error) {
     if (error.code === "ER_DUP_ENTRY") {
-      return res.status(409).json({ message: "Invoice number already exists." });
+      return res.status(409).json({ message: "Invoice number already exists. If it was deleted, restore it from the activity report instead of creating a duplicate." });
     }
     res.status(500).json({ message: "Invoice create error", error: error.message });
   }
@@ -771,6 +889,7 @@ exports.createInvoice = async (req, res) => {
 
 exports.updateInvoice = async (req, res) => {
   try {
+    await ensureSoftDeleteSchema();
     const { id } = req.params;
     const {
       invoice_no,
@@ -784,7 +903,7 @@ exports.updateInvoice = async (req, res) => {
       notes
     } = req.body;
 
-    const [[existing]] = await db.query("SELECT id FROM invoices WHERE id = ?", [id]);
+    const [[existing]] = await db.query("SELECT * FROM invoices WHERE id = ? AND deleted_at IS NULL", [id]);
     if (!existing) return res.status(404).json({ message: "Invoice not found." });
 
     if (!invoice_no || !client_name || !amount_gbp || !issued_at || !due_date) {
@@ -795,7 +914,7 @@ exports.updateInvoice = async (req, res) => {
       `UPDATE invoices SET
          invoice_no=?, trip_id=?, client_name=?, amount_gbp=?, issued_at=?, due_date=?,
          payment_status=?, pod_verified=?, notes=?
-       WHERE id=?`,
+       WHERE id=? AND deleted_at IS NULL`,
       [
         invoice_no,
         trip_id || null,
@@ -814,6 +933,33 @@ exports.updateInvoice = async (req, res) => {
       await db.query("UPDATE trips SET pod_status='verified' WHERE id=?", [trip_id]);
     }
 
+    const after = {
+      ...existing,
+      invoice_no,
+      trip_id: trip_id || null,
+      client_name,
+      amount_gbp,
+      issued_at,
+      due_date,
+      payment_status: payment_status || "draft",
+      pod_verified: pod_verified ? 1 : 0,
+      notes: notes || null
+    };
+    await logActivity(req, {
+      module: "billing",
+      action: "update",
+      entityType: "invoice",
+      entityId: id,
+      entityLabel: invoice_no,
+      details: {
+        client_name,
+        amount_gbp,
+        due_date,
+        payment_status: payment_status || "draft",
+        changes: buildChangeSet(existing, after, ["invoice_no", "trip_id", "client_name", "amount_gbp", "issued_at", "due_date", "payment_status", "pod_verified", "notes"])
+      }
+    });
+
     res.json({ message: "Invoice updated." });
   } catch (error) {
     if (error.code === "ER_DUP_ENTRY") {
@@ -825,6 +971,7 @@ exports.updateInvoice = async (req, res) => {
 
 exports.updateInvoiceStatus = async (req, res) => {
   try {
+    await ensureSoftDeleteSchema();
     const { id } = req.params;
     const { payment_status, pod_verified } = req.body;
     const valid = ["draft", "sent", "pending", "overdue", "paid", "hold"];
@@ -832,20 +979,28 @@ exports.updateInvoiceStatus = async (req, res) => {
       return res.status(400).json({ message: "Invalid payment status." });
     }
 
-    const [[invoice]] = await db.query("SELECT id, trip_id, payment_status, pod_verified FROM invoices WHERE id = ?", [id]);
+    const [[invoice]] = await db.query("SELECT id, trip_id, payment_status, pod_verified FROM invoices WHERE id = ? AND deleted_at IS NULL", [id]);
     if (!invoice) return res.status(404).json({ message: "Invoice not found." });
 
     const nextStatus = payment_status || invoice.payment_status;
     const nextPod = typeof pod_verified === "boolean" ? pod_verified : Boolean(invoice.pod_verified);
 
     await db.query(
-      "UPDATE invoices SET payment_status=?, pod_verified=? WHERE id=?",
+      "UPDATE invoices SET payment_status=?, pod_verified=? WHERE id=? AND deleted_at IS NULL",
       [nextStatus, nextPod ? 1 : 0, id]
     );
 
     if (invoice.trip_id && nextPod) {
       await db.query("UPDATE trips SET pod_status='verified' WHERE id=?", [invoice.trip_id]);
     }
+
+    await logActivity(req, {
+      module: "billing",
+      action: "status_update",
+      entityType: "invoice",
+      entityId: id,
+      details: { payment_status: nextStatus, pod_verified: nextPod, changes: buildChangeSet(invoice, { ...invoice, payment_status: nextStatus, pod_verified: nextPod ? 1 : 0 }, ["payment_status", "pod_verified"]) }
+    });
 
     res.json({ message: "Invoice status updated." });
   } catch (error) {
@@ -855,8 +1010,32 @@ exports.updateInvoiceStatus = async (req, res) => {
 
 exports.deleteInvoice = async (req, res) => {
   try {
+    await ensureSoftDeleteSchema();
     const { id } = req.params;
-    await db.query("DELETE FROM invoices WHERE id = ?", [id]);
+    const reasonCheck = requireDeleteReason(req);
+    if (!reasonCheck.ok) return res.status(400).json({ message: reasonCheck.message });
+
+    const [[invoice]] = await db.query(
+      "SELECT id, invoice_no, client_name, amount_gbp, payment_status FROM invoices WHERE id = ? AND deleted_at IS NULL",
+      [id]
+    );
+    if (!invoice) return res.status(404).json({ message: "Invoice not found." });
+
+    const actor = await getActor(req);
+    await db.query(
+      "UPDATE invoices SET deleted_at=NOW(), deleted_by=?, delete_reason=? WHERE id = ? AND deleted_at IS NULL",
+      [actor.id, reasonCheck.reason, id]
+    );
+    await logActivity(req, {
+      module: "billing",
+      action: "delete",
+      entityType: "invoice",
+      entityId: id,
+      entityLabel: invoice.invoice_no,
+      reason: reasonCheck.reason,
+      reasonCategory: reasonCheck.reasonCategory,
+      details: { client_name: invoice.client_name, amount_gbp: invoice.amount_gbp, payment_status: invoice.payment_status }
+    });
     res.json({ message: "Invoice deleted." });
   } catch (error) {
     res.status(500).json({ message: "Invoice delete error", error: error.message });
@@ -1286,6 +1465,7 @@ exports.updateAlertStatus = async (req, res) => {
 exports.getTrips = async (req, res) => {
   try {
     await ensureTrailerSchema();
+    await ensureSoftDeleteSchema();
 
     const [[counts]] = await db.query(
       `SELECT COUNT(*) as total,
@@ -1295,7 +1475,8 @@ exports.getTrips = async (req, res) => {
         COALESCE(SUM(driver_id IS NULL OR vehicle_id IS NULL OR trailer_id IS NULL), 0) as assignment_gaps,
         COALESCE(SUM(eta IS NOT NULL AND eta < NOW() AND dispatch_status IN ('planned','loading','active')), 0) as eta_risk,
         COALESCE(SUM(freight_amount_gbp), 0) as freight_value
-       FROM trips`
+       FROM trips
+       WHERE deleted_at IS NULL`
     );
     const [tripRows] = await db.query(
       `SELECT t.id, t.trip_code, t.dispatch_status, t.dock_window, t.eta, t.planned_departure,
@@ -1309,6 +1490,7 @@ exports.getTrips = async (req, res) => {
        LEFT JOIN vehicles v ON t.vehicle_id = v.id
        LEFT JOIN trailers tr ON t.trailer_id = tr.id
        LEFT JOIN drivers d ON t.driver_id = d.id
+       WHERE t.deleted_at IS NULL
        ORDER BY t.created_at DESC LIMIT 20`
     );
 
@@ -1394,6 +1576,7 @@ exports.getTrips = async (req, res) => {
 exports.getTripFormData = async (req, res) => {
   try {
     await ensureTrailerSchema();
+    await ensureSoftDeleteSchema();
 
     const [drivers] = await db.query(
       `SELECT id, full_name, employee_code, phone, shift_status, compliance_status
@@ -1426,6 +1609,7 @@ exports.getTripFormData = async (req, res) => {
 
 exports.listRoutes = async (_req, res) => {
   try {
+    await ensureSoftDeleteSchema();
     const [[counts]] = await db.query(
       `SELECT COUNT(*) AS total,
               COALESCE(SUM(status='active'), 0) AS active,
@@ -1436,7 +1620,7 @@ exports.listRoutes = async (_req, res) => {
     const [rows] = await db.query(
       `SELECT r.*, COUNT(t.id) AS trip_count
        FROM routes r
-       LEFT JOIN trips t ON t.route_id = r.id
+       LEFT JOIN trips t ON t.route_id = r.id AND t.deleted_at IS NULL
        GROUP BY r.id
        ORDER BY r.created_at DESC`
     );
@@ -1553,7 +1737,8 @@ exports.updateRoute = async (req, res) => {
 exports.deleteRoute = async (req, res) => {
   try {
     const { id } = req.params;
-    const [[usage]] = await db.query("SELECT COUNT(*) AS total FROM trips WHERE route_id = ?", [id]);
+    await ensureSoftDeleteSchema();
+    const [[usage]] = await db.query("SELECT COUNT(*) AS total FROM trips WHERE route_id = ? AND deleted_at IS NULL", [id]);
     if (usage.total > 0) {
       return res.status(409).json({ message: "Route is assigned to trips. Block it instead of deleting." });
     }
@@ -1569,6 +1754,7 @@ exports.createTrip = async (req, res) => {
   try {
     await ensureDriverOpsSchema();
     await ensureTrailerSchema();
+    await ensureSoftDeleteSchema();
     const {
       route_id,
       vehicle_id,
@@ -1631,6 +1817,15 @@ exports.createTrip = async (req, res) => {
       [result.insertId]
     );
 
+    await logActivity(req, {
+      module: "trips",
+      action: "create",
+      entityType: "trip",
+      entityId: result.insertId,
+      entityLabel: tripCode,
+      details: { client_name: client_name || "Internal dispatch", route_id, vehicle_id, trailer_id, driver_id }
+    });
+
     res.status(201).json({ message: "Trip assigned successfully.", trip: newTrip });
   } catch (error) {
     res.status(500).json({ message: "Trip create error", error: error.message });
@@ -1642,6 +1837,7 @@ exports.updateTrip = async (req, res) => {
   try {
     await ensureDriverOpsSchema();
     await ensureTrailerSchema();
+    await ensureSoftDeleteSchema();
     const { id } = req.params;
     const {
       route_id,
@@ -1659,7 +1855,7 @@ exports.updateTrip = async (req, res) => {
       return res.status(400).json({ message: "route_id, vehicle_id, trailer_id, driver_id, and planned_departure are required." });
     }
 
-    const [[existing]] = await conn.query("SELECT id, vehicle_id, trailer_id, driver_id, dispatch_status FROM trips WHERE id = ?", [id]);
+    const [[existing]] = await conn.query("SELECT * FROM trips WHERE id = ? AND deleted_at IS NULL", [id]);
     if (!existing) return res.status(404).json({ message: "Trip not found." });
 
     const [[route]] = await conn.query("SELECT * FROM routes WHERE id = ?", [route_id]);
@@ -1684,7 +1880,7 @@ exports.updateTrip = async (req, res) => {
          route_id=?, vehicle_id=?, trailer_id=?, driver_id=?, client_name=?, priority_level=?,
          planned_departure=?, eta=?, dock_window=?, freight_amount_gbp=?,
          driver_job_status=IF(? = 1, 'offered', driver_job_status)
-       WHERE id=?`,
+       WHERE id=? AND deleted_at IS NULL`,
       [
         route_id,
         vehicle_id,
@@ -1726,6 +1922,32 @@ exports.updateTrip = async (req, res) => {
     await conn.query("UPDATE trailers SET status=? WHERE id=?", [trailerStatusForTrip(existing.dispatch_status), trailer_id]);
 
     await conn.commit();
+    const after = {
+      ...existing,
+      route_id,
+      vehicle_id,
+      trailer_id,
+      driver_id,
+      client_name: client_name || "Internal dispatch",
+      priority_level: priority_level || "standard",
+      planned_departure,
+      dock_window: dock_window || null,
+      freight_amount_gbp: freight_amount || 0
+    };
+    await logActivity(req, {
+      module: "trips",
+      action: "update",
+      entityType: "trip",
+      entityId: id,
+      details: {
+        route_id,
+        vehicle_id,
+        trailer_id,
+        driver_id,
+        client_name: client_name || "Internal dispatch",
+        changes: buildChangeSet(existing, after, ["route_id", "vehicle_id", "trailer_id", "driver_id", "client_name", "priority_level", "planned_departure", "dock_window", "freight_amount_gbp"])
+      }
+    });
     res.json({ message: "Trip updated." });
   } catch (error) {
     await conn.rollback();
@@ -1738,6 +1960,7 @@ exports.updateTrip = async (req, res) => {
 exports.updateTripStatus = async (req, res) => {
   try {
     await ensureTrailerSchema();
+    await ensureSoftDeleteSchema();
 
     const { id } = req.params;
     const { status } = req.body;
@@ -1746,16 +1969,24 @@ exports.updateTripStatus = async (req, res) => {
       return res.status(400).json({ message: "Invalid trip status." });
     }
 
-    const [[trip]] = await db.query("SELECT id, vehicle_id, trailer_id FROM trips WHERE id = ?", [id]);
+    const [[trip]] = await db.query("SELECT id, vehicle_id, trailer_id, dispatch_status FROM trips WHERE id = ? AND deleted_at IS NULL", [id]);
     if (!trip) return res.status(404).json({ message: "Trip not found." });
 
-    await db.query("UPDATE trips SET dispatch_status=? WHERE id=?", [status, id]);
+    await db.query("UPDATE trips SET dispatch_status=? WHERE id=? AND deleted_at IS NULL", [status, id]);
     if (trip.vehicle_id) {
       await db.query("UPDATE vehicles SET status=? WHERE id=?", [vehicleStatusForTrip(status), trip.vehicle_id]);
     }
     if (trip.trailer_id) {
       await db.query("UPDATE trailers SET status=? WHERE id=?", [trailerStatusForTrip(status), trip.trailer_id]);
     }
+
+    await logActivity(req, {
+      module: "trips",
+      action: "status_update",
+      entityType: "trip",
+      entityId: id,
+      details: { status, changes: buildChangeSet(trip, { ...trip, dispatch_status: status }, ["dispatch_status"]) }
+    });
 
     res.json({ message: "Trip status updated." });
   } catch (error) {
@@ -1767,13 +1998,21 @@ exports.deleteTrip = async (req, res) => {
   const conn = await db.getConnection();
   try {
     await ensureTrailerSchema();
+    await ensureSoftDeleteSchema();
 
     const { id } = req.params;
-    const [[trip]] = await conn.query("SELECT id, vehicle_id, trailer_id FROM trips WHERE id = ?", [id]);
+    const reasonCheck = requireDeleteReason(req);
+    if (!reasonCheck.ok) return res.status(400).json({ message: reasonCheck.message });
+
+    const [[trip]] = await conn.query("SELECT id, trip_code, vehicle_id, trailer_id, client_name FROM trips WHERE id = ? AND deleted_at IS NULL", [id]);
     if (!trip) return res.status(404).json({ message: "Trip not found." });
 
     await conn.beginTransaction();
-    await conn.query("DELETE FROM trips WHERE id = ?", [id]);
+    const actor = await getActor(req);
+    await conn.query(
+      "UPDATE trips SET deleted_at=NOW(), deleted_by=?, delete_reason=? WHERE id = ? AND deleted_at IS NULL",
+      [actor.id, reasonCheck.reason, id]
+    );
     if (trip.vehicle_id) {
       await conn.query("UPDATE vehicles SET status='available' WHERE id = ?", [trip.vehicle_id]);
     }
@@ -1781,6 +2020,17 @@ exports.deleteTrip = async (req, res) => {
       await conn.query("UPDATE trailers SET status='available' WHERE id = ?", [trip.trailer_id]);
     }
     await conn.commit();
+
+    await logActivity(req, {
+      module: "trips",
+      action: "delete",
+      entityType: "trip",
+      entityId: id,
+      entityLabel: trip.trip_code,
+      reason: reasonCheck.reason,
+      reasonCategory: reasonCheck.reasonCategory,
+      details: { client_name: trip.client_name, vehicle_id: trip.vehicle_id, trailer_id: trip.trailer_id }
+    });
 
     res.json({ message: "Trip deleted." });
   } catch (error) {
@@ -1794,6 +2044,7 @@ exports.deleteTrip = async (req, res) => {
 exports.getTripById = async (req, res) => {
   try {
     await ensureTrailerSchema();
+    await ensureSoftDeleteSchema();
 
     const { id } = req.params;
     const [[trip]] = await db.query(
@@ -1809,7 +2060,7 @@ exports.getTripById = async (req, res) => {
        LEFT JOIN vehicles v ON t.vehicle_id = v.id
        LEFT JOIN trailers tr ON t.trailer_id = tr.id
        LEFT JOIN drivers d ON t.driver_id = d.id
-       WHERE t.id = ?`,
+       WHERE t.id = ? AND t.deleted_at IS NULL`,
       [id]
     );
 
@@ -1881,6 +2132,10 @@ exports.getNotifications = async (req, res) => {
   try {
     await ensureDriverOpsSchema();
     await ensureEmployeeAuthSchema();
+    await ensureActivitySchema();
+    await ensureSessionSchema();
+    await ensureSoftDeleteSchema();
+    await ensureNotificationAckSchema();
 
     const [employeeRows] = await db.query(
       `SELECT id, name, department, job_title
@@ -1893,6 +2148,7 @@ exports.getNotifications = async (req, res) => {
        FROM trips t
        LEFT JOIN drivers d ON d.id = t.driver_id
        WHERE t.driver_job_status = 'failed_delivery'
+         AND t.deleted_at IS NULL
        ORDER BY t.created_at DESC LIMIT 5`
     );
     const [defectRows] = await db.query(
@@ -1905,7 +2161,7 @@ exports.getNotifications = async (req, res) => {
     );
     const [overdueRows] = await db.query(
       `SELECT id, invoice_no, client_name, amount_gbp
-       FROM invoices WHERE payment_status = 'overdue'
+       FROM invoices WHERE payment_status = 'overdue' AND deleted_at IS NULL
        ORDER BY due_date ASC LIMIT 4`
     );
     const [staleRows] = await db.query(
@@ -1914,6 +2170,12 @@ exports.getNotifications = async (req, res) => {
        WHERE v.status = 'in_transit'
          AND (v.last_ping_at IS NULL OR v.last_ping_at < NOW() - INTERVAL 15 MINUTE)
        LIMIT 4`
+    );
+    const [auditRows] = await db.query(
+      `SELECT id, actor_name, module_key, entity_type, entity_label, reason, created_at
+       FROM activity_logs
+       WHERE action_key='delete'
+       ORDER BY created_at DESC LIMIT 6`
     );
 
     const notifications = [
@@ -1951,12 +2213,232 @@ exports.getNotifications = async (req, res) => {
         title: `Stale GPS: ${r.registration_number}`,
         body: "No GPS ping for over 15 minutes while in transit.",
         link: `/admin/tracking/vehicles/${r.id}`
+      })),
+      ...auditRows.map(r => ({
+        id: `audit-${r.id}`,
+        type: "danger",
+        title: `${r.actor_name || "Employee"} deleted ${r.entity_type || "record"}`,
+        body: `${r.entity_label || r.module_key} removed from ${r.module_key}. Reason: ${r.reason || "No reason recorded"}.`,
+        link: "/admin/activity"
       }))
     ];
 
-    res.json({ count: notifications.length, notifications });
+    const actor = await getActor(req);
+    const ids = notifications.map(item => item.id);
+    let acknowledged = new Set();
+    if (ids.length) {
+      const [ackRows] = await db.query(
+        `SELECT notification_id FROM notification_acknowledgements
+         WHERE user_id <=> ? AND notification_id IN (${ids.map(() => "?").join(",")})`,
+        [actor.id, ...ids]
+      );
+      acknowledged = new Set(ackRows.map(row => row.notification_id));
+    }
+    const enriched = notifications.map(item => ({ ...item, acknowledged: acknowledged.has(item.id) }));
+
+    res.json({ count: enriched.filter(item => !item.acknowledged).length, notifications: enriched });
   } catch (error) {
     res.status(500).json({ message: "Notifications error", error: error.message });
+  }
+};
+
+exports.acknowledgeNotification = async (req, res) => {
+  try {
+    await ensureNotificationAckSchema();
+    const notificationId = String(req.params.id || "").trim();
+    if (!notificationId) return res.status(400).json({ message: "Notification id is required." });
+    const actor = await getActor(req);
+    await db.query(
+      `INSERT IGNORE INTO notification_acknowledgements (notification_id, user_id) VALUES (?, ?)`,
+      [notificationId, actor.id]
+    );
+    res.json({ message: "Notification acknowledged." });
+  } catch (error) {
+    res.status(500).json({ message: "Notification acknowledge error", error: error.message });
+  }
+};
+
+exports.getActivityReport = async (req, res) => {
+  try {
+    await ensureActivitySchema();
+    await ensureSessionSchema();
+    const { employeeId, module, action, from, to } = req.query;
+    const where = [];
+    const params = [];
+
+    if (employeeId) {
+      where.push("actor_user_id = ?");
+      params.push(employeeId);
+    }
+    if (module) {
+      where.push("module_key = ?");
+      params.push(module);
+    }
+    if (action) {
+      where.push("action_key = ?");
+      params.push(action);
+    }
+    if (from) {
+      where.push("created_at >= ?");
+      params.push(`${from} 00:00:00`);
+    }
+    if (to) {
+      where.push("created_at <= ?");
+      params.push(`${to} 23:59:59`);
+    }
+
+    const clause = where.length ? `WHERE ${where.join(" AND ")}` : "";
+    const [rows] = await db.query(
+      `SELECT id, actor_user_id, actor_name, actor_role, module_key, action_key,
+              entity_type, entity_id, entity_label, reason, reason_category, details,
+              previous_hash, entry_hash, ip_address, created_at
+       FROM activity_logs
+       ${clause}
+       ORDER BY created_at DESC
+       LIMIT 300`,
+      params
+    );
+    const [employees] = await db.query(
+      `SELECT id, name, email FROM users WHERE role='employee' ORDER BY name ASC`
+    );
+    const [[summary]] = await db.query(
+      `SELECT
+        COUNT(*) AS total,
+        COALESCE(SUM(action_key='login'), 0) AS logins,
+        COALESCE(SUM(action_key='create'), 0) AS created,
+        COALESCE(SUM(action_key='delete'), 0) AS deleted
+       FROM activity_logs`
+    );
+    const [sessions] = await db.query(
+      `SELECT s.id, s.user_id, u.name, u.email, s.role, s.login_at, s.logout_at, s.last_activity_at,
+              TIMESTAMPDIFF(MINUTE, s.login_at, COALESCE(s.logout_at, s.last_activity_at, NOW())) AS duration_minutes
+       FROM user_sessions s
+       LEFT JOIN users u ON u.id = s.user_id
+       ORDER BY s.login_at DESC LIMIT 80`
+    );
+
+    res.json({
+      summary: [
+        { label: "Total events", value: summary.total, description: "All tracked portal activity.", change: "Audit trail", tone: "neutral" },
+        { label: "Logins", value: summary.logins, description: "Successful portal login events.", change: "Session trail", tone: "success" },
+        { label: "Records added", value: summary.created, description: "Create actions across panels.", change: "Additions", tone: "neutral" },
+        { label: "Records deleted", value: summary.deleted, description: "Delete actions with reasons.", change: "Reason required", tone: summary.deleted ? "danger" : "success" }
+      ],
+      employees,
+      modules: ["employee_portal", "jobs", "trips", "finance", "billing", "employees"],
+      actions: ["login", "logout", "view", "create", "update", "status_update", "delete", "restore", "access_update"],
+      reasonCategories: ["duplicate", "client_request", "incorrect_amount", "wrong_assignment", "compliance_issue", "data_correction", "other"],
+      sessions: sessions.map(s => ({
+        id: s.id,
+        userId: s.user_id,
+        name: s.name || "Unknown user",
+        email: s.email || "",
+        role: s.role || "user",
+        loginAt: fmtDateTime(s.login_at),
+        logoutAt: fmtDateTime(s.logout_at),
+        lastActivityAt: fmtDateTime(s.last_activity_at),
+        durationMinutes: Number(s.duration_minutes || 0),
+        active: !s.logout_at
+      })),
+      logs: rows.map(row => ({
+        id: row.id,
+        employeeId: row.actor_user_id,
+        actorName: row.actor_name || "System",
+        actorRole: row.actor_role || "system",
+        module: row.module_key,
+        action: row.action_key,
+        entityType: row.entity_type || "record",
+        entityId: row.entity_id,
+        entityLabel: row.entity_label || row.entity_id || "—",
+        reason: row.reason || "",
+        reasonCategory: row.reason_category || "",
+        details: parseJsonValue(row.details),
+        hashVerified: Boolean(row.entry_hash),
+        entryHash: row.entry_hash || "",
+        previousHash: row.previous_hash || "",
+        canRestore: row.action_key === "delete" && ["invoice", "payout", "trip"].includes(row.entity_type),
+        ipAddress: row.ip_address || "—",
+        at: fmtDateTime(row.created_at),
+        atRaw: row.created_at
+      }))
+    });
+  } catch (error) {
+    res.status(500).json({ message: "Activity report error", error: error.message });
+  }
+};
+
+exports.restoreActivityRecord = async (req, res) => {
+  try {
+    await ensureActivitySchema();
+    await ensureSoftDeleteSchema();
+    const { id } = req.params;
+    const [[log]] = await db.query(
+      `SELECT id, action_key, entity_type, entity_id, entity_label
+       FROM activity_logs WHERE id = ?`,
+      [id]
+    );
+
+    if (!log || log.action_key !== "delete") {
+      return res.status(404).json({ message: "Restorable delete event not found." });
+    }
+
+    const tableByType = {
+      invoice: "invoices",
+      payout: "vendor_payouts",
+      trip: "trips"
+    };
+    const table = tableByType[log.entity_type];
+    if (!table) return res.status(400).json({ message: "This record type cannot be restored." });
+
+    if (log.entity_type === "trip") {
+      const [[trip]] = await db.query(
+        "SELECT id, vehicle_id, trailer_id FROM trips WHERE id=? AND deleted_at IS NOT NULL",
+        [log.entity_id]
+      );
+      if (!trip) return res.status(409).json({ message: "Trip is already active or no longer exists." });
+      if (trip.vehicle_id) {
+        const [[vehicleConflict]] = await db.query(
+          `SELECT id, trip_code FROM trips
+           WHERE id<>? AND vehicle_id=? AND deleted_at IS NULL AND dispatch_status IN ('planned','loading','active')
+           LIMIT 1`,
+          [log.entity_id, trip.vehicle_id]
+        );
+        if (vehicleConflict) return res.status(409).json({ message: `Vehicle is already assigned to ${vehicleConflict.trip_code}.` });
+      }
+      if (trip.trailer_id) {
+        const [[trailerConflict]] = await db.query(
+          `SELECT id, trip_code FROM trips
+           WHERE id<>? AND trailer_id=? AND deleted_at IS NULL AND dispatch_status IN ('planned','loading','active')
+           LIMIT 1`,
+          [log.entity_id, trip.trailer_id]
+        );
+        if (trailerConflict) return res.status(409).json({ message: `Trolley is already assigned to ${trailerConflict.trip_code}.` });
+      }
+    }
+
+    const [result] = await db.query(
+      `UPDATE ${table}
+       SET deleted_at=NULL, deleted_by=NULL, delete_reason=NULL
+       WHERE id=? AND deleted_at IS NOT NULL`,
+      [log.entity_id]
+    );
+
+    if (result.affectedRows === 0) {
+      return res.status(409).json({ message: "Record is already active or no longer exists." });
+    }
+
+    await logActivity(req, {
+      module: "activity",
+      action: "restore",
+      entityType: log.entity_type,
+      entityId: log.entity_id,
+      entityLabel: log.entity_label,
+      details: { restoredFromLogId: log.id }
+    });
+
+    res.json({ message: "Record restored." });
+  } catch (error) {
+    res.status(500).json({ message: "Restore error", error: error.message });
   }
 };
 
@@ -1964,11 +2446,12 @@ exports.getOverview = async (req, res) => {
   try {
     await ensureTrailerSchema();
     await ensureEmployeeAuthSchema();
+    await ensureSoftDeleteSchema();
 
     const [[drivers]] = await db.query("SELECT COUNT(*) AS total FROM drivers");
     const [[vehicles]] = await db.query("SELECT COUNT(*) AS total FROM vehicles");
-    const [[trips]] = await db.query("SELECT COUNT(*) AS total FROM trips");
-    const [[invoices]] = await db.query("SELECT COUNT(*) AS total FROM invoices");
+    const [[trips]] = await db.query("SELECT COUNT(*) AS total FROM trips WHERE deleted_at IS NULL");
+    const [[invoices]] = await db.query("SELECT COUNT(*) AS total FROM invoices WHERE deleted_at IS NULL");
     const [employeeRows] = await db.query(
       `SELECT id, name, email, employee_code, department, job_title, approval_status, access_modules
        FROM users
@@ -1994,14 +2477,14 @@ exports.getOverview = async (req, res) => {
        LEFT JOIN vehicles v ON t.vehicle_id = v.id
        LEFT JOIN trailers tr ON t.trailer_id = tr.id
        LEFT JOIN drivers d ON t.driver_id = d.id
-       WHERE t.dispatch_status != 'completed'
+       WHERE t.dispatch_status != 'completed' AND t.deleted_at IS NULL
        ORDER BY FIELD(t.priority_level, 'critical', 'priority', 'standard'), t.planned_departure ASC
        LIMIT 6`
     );
     const [financeRows] = await db.query(
       `SELECT invoice_no, client_name, amount_gbp, due_date, payment_status
        FROM invoices
-       WHERE payment_status != 'paid'
+       WHERE payment_status != 'paid' AND deleted_at IS NULL
        ORDER BY due_date ASC
        LIMIT 6`
     );
@@ -2273,6 +2756,14 @@ exports.updateEmployeeAccess = async (req, res) => {
     if (result.affectedRows === 0) {
       return res.status(404).json({ message: "Employee not found." });
     }
+
+    await logActivity(req, {
+      module: "employees",
+      action: "access_update",
+      entityType: "employee",
+      entityId: id,
+      details: { approvalStatus, accessModules: savedModules }
+    });
 
     res.json({ message: "Employee access updated.", approvalStatus, accessModules: savedModules });
   } catch (error) {

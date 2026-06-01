@@ -1,6 +1,7 @@
 const express = require("express");
 const router  = express.Router();
 const d       = require("../controllers/driverController");
+const { requireModuleAccess } = require("../middleware/accessControl");
 
 router.get("/me/panel",                    d.getMyDriverPanel);
 router.get("/me/notifications",            d.getMyNotifications);
@@ -18,13 +19,13 @@ router.get("/me/messages",                 d.getMyMessages);
 router.post("/me/messages",                d.sendMyMessage);
 router.post("/me/location",                d.updateMyLocation);
 
-router.get("/",                          d.listDrivers);
-router.get("/:id",                       d.getDriverById);
-router.post("/",                         d.createDriver);
-router.put("/:id",                       d.updateDriver);
-router.delete("/:id",                    d.deleteDriver);
-router.post("/:id/documents",            d.addDocument);
-router.put("/:id/documents/:docId",      d.updateDocument);
-router.delete("/:id/documents/:docId",   d.deleteDocument);
+router.get("/",                          requireModuleAccess("drivers"), d.listDrivers);
+router.get("/:id",                       requireModuleAccess("drivers"), d.getDriverById);
+router.post("/",                         requireModuleAccess("drivers"), d.createDriver);
+router.put("/:id",                       requireModuleAccess("drivers"), d.updateDriver);
+router.delete("/:id",                    requireModuleAccess("drivers"), d.deleteDriver);
+router.post("/:id/documents",            requireModuleAccess("drivers"), d.addDocument);
+router.put("/:id/documents/:docId",      requireModuleAccess("drivers"), d.updateDocument);
+router.delete("/:id/documents/:docId",   requireModuleAccess("drivers"), d.deleteDocument);
 
 module.exports = router;

@@ -1,10 +1,12 @@
 import { useNavigate } from "react-router-dom";
+import { logout } from "../../api/authApi";
 import { NotificationBell } from "../../components/NotificationBell";
 import { PanelLayout } from "../../components/PanelLayout";
 import { clearAuthSession, getAuthSession } from "../../utils/authSession";
 
 export const adminMenu = [
   { to: "/admin",           label: "Overview",      end: true },
+  { to: "/admin/activity",  label: "Activity Report" },
   { to: "/admin/employees", label: "Employees" },
   { to: "/admin/jobs",      label: "Jobs" },
   { to: "/admin/customers", label: "Customers" },
@@ -38,7 +40,12 @@ export function AdminWorkspaceLayout({ badge, title, description, highlights, ch
     ? adminMenu.filter((item) => session.accessModules?.includes(menuAccessKey[item.to]))
     : adminMenu;
 
-  function handleLogout() {
+  async function handleLogout() {
+    try {
+      await logout();
+    } catch {
+      // Local logout should still complete if the network request fails.
+    }
     clearAuthSession();
     navigate("/", { replace: true });
   }

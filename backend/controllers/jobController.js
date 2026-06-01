@@ -1,4 +1,5 @@
 const db = require("../db/connection");
+const { logActivity, requireDeleteReason } = require("../utils/auditLogger");
 
 function fmtDate(d) {
   if (!d) return "—";
@@ -44,6 +45,7 @@ const driverStatusTone = {
 };
 
 let driverOpsSchemaReady = false;
+let softDeleteSchemaReady = false;
 
 function trailerStatusForJob(status) {
   if (status === "active" || status === "loading") return "in_use";
@@ -131,10 +133,19 @@ async function ensureDriverOpsSchema() {
   driverOpsSchemaReady = true;
 }
 
+async function ensureSoftDeleteSchema() {
+  if (softDeleteSchemaReady) return;
+  await addColumnIfMissing("trips", "deleted_at", "DATETIME DEFAULT NULL");
+  await addColumnIfMissing("trips", "deleted_by", "INT DEFAULT NULL");
+  await addColumnIfMissing("trips", "delete_reason", "TEXT DEFAULT NULL");
+  softDeleteSchemaReady = true;
+}
+
 // GET /api/jobs/form-data
 exports.getFormData = async (req, res) => {
   try {
     await ensureDriverOpsSchema();
+    await ensureSoftDeleteSchema();
 
     const [customers] = await db.query(
       `SELECT id, company_name, contact_name, phone, email FROM customers WHERE account_status='active' ORDER BY company_name ASC`
@@ -180,7 +191,8 @@ exports.listJobs = async (req, res) => {
         COALESCE(SUM(driver_id IS NULL OR vehicle_id IS NULL), 0) as assignment_gaps,
         COALESCE(SUM(eta IS NOT NULL AND eta < NOW() AND dispatch_status IN ('planned','loading','active')), 0) as eta_risk,
         COALESCE(SUM(freight_amount_gbp), 0) as booked_value
-       FROM trips`
+       FROM trips
+       WHERE deleted_at IS NULL`
     );
 
     let where = ["1=1"];
@@ -211,7 +223,7 @@ exports.listJobs = async (req, res) => {
        LEFT JOIN vehicles  v  ON t.vehicle_id  = v.id
        LEFT JOIN trailers  tr ON t.trailer_id  = tr.id
        LEFT JOIN job_stops js ON js.trip_id    = t.id
-       WHERE ${where.join(" AND ")}
+       WHERE ${where.join(" AND ")} AND t.deleted_at IS NULL
        GROUP BY t.id
        ORDER BY t.created_at DESC`,
       params
@@ -268,6 +280,7 @@ exports.listJobs = async (req, res) => {
 exports.getJobById = async (req, res) => {
   try {
     await ensureDriverOpsSchema();
+    await ensureSoftDeleteSchema();
 
     const { id } = req.params;
 
@@ -285,7 +298,7 @@ exports.getJobById = async (req, res) => {
        LEFT JOIN drivers   d ON t.driver_id   = d.id
        LEFT JOIN vehicles  v ON t.vehicle_id  = v.id
        LEFT JOIN trailers  tr ON t.trailer_id  = tr.id
-       WHERE t.id = ?`,
+       WHERE t.id = ? AND t.deleted_at IS NULL`,
       [id]
     );
     if (!t) return res.status(404).json({ message: "Job not found." });
@@ -445,6 +458,7 @@ exports.createJob = async (req, res) => {
   const conn = await db.getConnection();
   try {
     await ensureDriverOpsSchema();
+    await ensureSoftDeleteSchema();
     await conn.beginTransaction();
 
     const {
@@ -537,6 +551,14 @@ exports.createJob = async (req, res) => {
     await conn.commit();
 
     const [[newJob]] = await db.query(`SELECT id, trip_code FROM trips WHERE id = ?`, [jobId]);
+    await logActivity(req, {
+      module: "jobs",
+      action: "create",
+      entityType: "job",
+      entityId: jobId,
+      entityLabel: newJob?.trip_code || jobCode,
+      details: { customer_id, client_name: resolvedClientName, vehicle_id, trailer_id, driver_id }
+    });
     res.status(201).json({ message: "Job created.", job: newJob });
   } catch (err) {
     await conn.rollback();
@@ -551,10 +573,11 @@ exports.updateJob = async (req, res) => {
   const conn = await db.getConnection();
   try {
     await ensureDriverOpsSchema();
+    await ensureSoftDeleteSchema();
     await conn.beginTransaction();
     const { id } = req.params;
 
-    const [[existing]] = await conn.query(`SELECT id, vehicle_id, trailer_id, driver_id FROM trips WHERE id = ?`, [id]);
+    const [[existing]] = await conn.query(`SELECT id, vehicle_id, trailer_id, driver_id FROM trips WHERE id = ? AND deleted_at IS NULL`, [id]);
     if (!existing) return res.status(404).json({ message: "Job not found." });
 
     const {
@@ -623,7 +646,7 @@ exports.updateJob = async (req, res) => {
          planned_departure=?, eta=?, dock_window=?,
          load_type=?, load_weight_kg=?, load_description=?, freight_amount_gbp=?, special_instructions=?,
          driver_job_status=IF(? = 1, 'offered', driver_job_status)
-       WHERE id=?`,
+       WHERE id=? AND deleted_at IS NULL`,
       [
         customer_id || null, resolvedClientName, route_id || null,
         vehicle_id || null, trailer_id || null, driver_id || null,
@@ -651,6 +674,13 @@ exports.updateJob = async (req, res) => {
     }
 
     await conn.commit();
+    await logActivity(req, {
+      module: "jobs",
+      action: "update",
+      entityType: "job",
+      entityId: id,
+      details: { customer_id, client_name: resolvedClientName, vehicle_id, trailer_id, driver_id }
+    });
     res.json({ message: "Job updated." });
   } catch (err) {
     await conn.rollback();
@@ -664,6 +694,7 @@ exports.updateJob = async (req, res) => {
 exports.updateJobStatus = async (req, res) => {
   try {
     await ensureDriverOpsSchema();
+    await ensureSoftDeleteSchema();
 
     const { id } = req.params;
     const { status, reason } = req.body;
@@ -673,7 +704,7 @@ exports.updateJobStatus = async (req, res) => {
       return res.status(400).json({ message: "Invalid status value." });
     }
 
-    const [[job]] = await db.query(`SELECT id, dispatch_status, vehicle_id, trailer_id FROM trips WHERE id = ?`, [id]);
+    const [[job]] = await db.query(`SELECT id, dispatch_status, vehicle_id, trailer_id FROM trips WHERE id = ? AND deleted_at IS NULL`, [id]);
     if (!job) return res.status(404).json({ message: "Job not found." });
 
     const updates = { dispatch_status: status };
@@ -682,7 +713,7 @@ exports.updateJobStatus = async (req, res) => {
     if (status === "blocked")   updates.cancellation_reason = reason || null;
 
     const fields = Object.keys(updates).map(k => `${k}=?`).join(", ");
-    await db.query(`UPDATE trips SET ${fields} WHERE id=?`, [...Object.values(updates), id]);
+    await db.query(`UPDATE trips SET ${fields} WHERE id=? AND deleted_at IS NULL`, [...Object.values(updates), id]);
 
     // Update vehicle status accordingly
     if (job.vehicle_id) {
@@ -692,6 +723,15 @@ exports.updateJobStatus = async (req, res) => {
     if (job.trailer_id) {
       await db.query(`UPDATE trailers SET status=? WHERE id=?`, [trailerStatusForJob(status), job.trailer_id]);
     }
+
+    await logActivity(req, {
+      module: "jobs",
+      action: "status_update",
+      entityType: "job",
+      entityId: id,
+      reason: status === "blocked" ? reason : undefined,
+      details: { status }
+    });
 
     res.json({ message: "Job status updated.", status });
   } catch (err) {
@@ -703,16 +743,18 @@ exports.updateJobStatus = async (req, res) => {
 exports.cancelJob = async (req, res) => {
   try {
     await ensureDriverOpsSchema();
+    await ensureSoftDeleteSchema();
 
     const { id } = req.params;
-    const { reason } = req.body;
+    const reasonCheck = requireDeleteReason(req);
+    if (!reasonCheck.ok) return res.status(400).json({ message: reasonCheck.message });
 
-    const [[job]] = await db.query(`SELECT id, vehicle_id, trailer_id FROM trips WHERE id = ?`, [id]);
+    const [[job]] = await db.query(`SELECT id, trip_code, vehicle_id, trailer_id FROM trips WHERE id = ? AND deleted_at IS NULL`, [id]);
     if (!job) return res.status(404).json({ message: "Job not found." });
 
     await db.query(
-      `UPDATE trips SET dispatch_status='blocked', cancellation_reason=? WHERE id=?`,
-      [reason || "Cancelled by admin", id]
+      `UPDATE trips SET dispatch_status='blocked', cancellation_reason=? WHERE id=? AND deleted_at IS NULL`,
+      [reasonCheck.reason, id]
     );
     if (job.vehicle_id) {
       await db.query(`UPDATE vehicles SET status='available' WHERE id=?`, [job.vehicle_id]);
@@ -720,6 +762,17 @@ exports.cancelJob = async (req, res) => {
     if (job.trailer_id) {
       await db.query(`UPDATE trailers SET status='available' WHERE id=?`, [job.trailer_id]);
     }
+
+    await logActivity(req, {
+      module: "jobs",
+      action: "delete",
+      entityType: "job",
+      entityId: id,
+      entityLabel: job.trip_code,
+      reason: reasonCheck.reason,
+      reasonCategory: reasonCheck.reasonCategory,
+      details: { vehicle_id: job.vehicle_id, trailer_id: job.trailer_id }
+    });
 
     res.json({ message: "Job cancelled." });
   } catch (err) {

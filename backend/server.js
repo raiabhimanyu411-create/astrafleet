@@ -71,6 +71,14 @@ io.on("connection", (socket) => {
     socket.leave("admin-chat");
   });
 
+  socket.on("admin-audit:join", () => {
+    socket.join("admin-audit");
+  });
+
+  socket.on("admin-audit:leave", () => {
+    socket.leave("admin-audit");
+  });
+
   socket.on("driver-chat:join", (driverId) => {
     if (driverId) socket.join(chatRoom(driverId));
   });

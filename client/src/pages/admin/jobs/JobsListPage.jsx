@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { cancelJob, getJobs, updateJobStatus } from "../../../api/jobApi";
+import { DeleteReasonModal } from "../../../components/DeleteReasonModal";
 import { StatCard } from "../../../components/StatCard";
 import { StateNotice } from "../../../components/StateNotice";
 import { StatusPill } from "../../../components/StatusPill";
@@ -44,6 +45,7 @@ export function JobsListPage() {
   const [filterPriority, setFilterPriority] = useState("");
   const [riskFilter, setRiskFilter] = useState("");
   const [busyId, setBusyId] = useState(null);
+  const [blockTarget, setBlockTarget] = useState(null);
 
   function load() {
     setLoading(true);
@@ -110,14 +112,13 @@ export function JobsListPage() {
     }
   }
 
-  async function handleCancel(job) {
-    const label = job.code || "this job";
-    if (!window.confirm(`Block ${label}? Vehicle and trolley will be released.`)) return;
-
+  async function handleCancel(payload) {
+    if (!blockTarget) return;
     setError("");
-    setBusyId(job.id);
+    setBusyId(blockTarget.id);
     try {
-      await cancelJob(job.id, { reason: "Blocked from jobs board" });
+      await cancelJob(blockTarget.id, payload);
+      setBlockTarget(null);
       await load();
     } catch (err) {
       setError(err?.response?.data?.message || "Job could not be blocked. Please try again.");
@@ -309,7 +310,7 @@ export function JobsListPage() {
                 )}
                 <button className="header-action-button" type="button" onClick={() => navigate(`/admin/jobs/${job.id}/edit`)}>Edit</button>
                 {job.status !== "blocked" && job.status !== "completed" && (
-                  <button className="header-action-button danger" disabled={busyId === job.id} type="button" onClick={() => handleCancel(job)}>
+                  <button className="header-action-button danger" disabled={busyId === job.id} type="button" onClick={() => setBlockTarget(job)}>
                     {busyId === job.id ? "Saving..." : "Block"}
                   </button>
                 )}
@@ -323,6 +324,16 @@ export function JobsListPage() {
           )}
         </div>
       </section>
+      <DeleteReasonModal
+        open={Boolean(blockTarget)}
+        title="Block job"
+        recordLabel={blockTarget ? `${blockTarget.code} · ${blockTarget.customer}` : ""}
+        body="The job will be blocked, its vehicle and trolley will be released, and this reason will be visible to admin."
+        confirmLabel="Block job"
+        loading={Boolean(busyId)}
+        onCancel={() => setBlockTarget(null)}
+        onConfirm={handleCancel}
+      />
     </AdminWorkspaceLayout>
   );
 }
