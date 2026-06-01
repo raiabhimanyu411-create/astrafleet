@@ -616,7 +616,7 @@ export function HomePage() {
           </div>
 
           <footer className="lp-footer">
-            <span>© 2025 AstraFleet. All rights reserved.</span>
+            <span>© 2026 AstraFleet. All rights reserved.</span>
             <span className="lp-footer-credit">
               Designed and developed by <strong>Devmora Technology</strong>
             </span>
