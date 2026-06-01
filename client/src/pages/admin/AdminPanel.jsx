@@ -1,5 +1,6 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
+import { getMyProfile, updateMyProfile } from "../../api/authApi";
 import { getRealtimeSocket } from "../../api/realtime";
 import { StatCard } from "../../components/StatCard";
 import { StateNotice } from "../../components/StateNotice";
@@ -7,6 +8,7 @@ import { StatusPill } from "../../components/StatusPill";
 import { usePanelData } from "../../hooks/usePanelData";
 import { AdminWorkspaceLayout } from "./AdminWorkspaceLayout";
 import { DriverChatWidget } from "./DriverChatWidget";
+import { getAuthSession, saveAuthSession } from "../../utils/authSession";
 
 const moduleLinks = {
   "Employee Access Control": "/admin/employees",
@@ -18,6 +20,97 @@ const moduleLinks = {
   "GPS / Live Tracking": "/admin/tracking",
   "Control Room Alerts": "/admin/alerts"
 };
+
+function AdminProfileSettings() {
+  const [profile, setProfile] = useState({ name: "", email: "" });
+  const [passwords, setPasswords] = useState({ currentPassword: "", newPassword: "", confirmPassword: "" });
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+  const [success, setSuccess] = useState("");
+
+  useEffect(() => {
+    getMyProfile()
+      .then((res) => {
+        setProfile({ name: res.data.name || "", email: res.data.email || "" });
+        setError("");
+      })
+      .catch((err) => setError(err.response?.data?.message || "Profile could not be loaded."))
+      .finally(() => setLoading(false));
+  }, []);
+
+  async function handleSubmit(e) {
+    e.preventDefault();
+    setError("");
+    setSuccess("");
+
+    if (passwords.newPassword && passwords.newPassword !== passwords.confirmPassword) {
+      setError("New password and confirmation do not match.");
+      return;
+    }
+
+    setSaving(true);
+    try {
+      const payload = {
+        name: profile.name,
+        email: profile.email,
+        currentPassword: passwords.currentPassword,
+        newPassword: passwords.newPassword
+      };
+      const res = await updateMyProfile(payload);
+      const session = getAuthSession();
+      if (session) saveAuthSession({ ...session, name: res.data.profile?.name || profile.name });
+      setPasswords({ currentPassword: "", newPassword: "", confirmPassword: "" });
+      setSuccess("Profile settings updated.");
+    } catch (err) {
+      setError(err.response?.data?.message || "Profile could not be updated.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <article className="content-card admin-profile-card">
+      <div className="section-head">
+        <div>
+          <span className="card-label">Profile settings</span>
+          <h2>Admin account</h2>
+        </div>
+        <StatusPill tone="neutral">{loading ? "Loading" : "Secure"}</StatusPill>
+      </div>
+
+      <form className="admin-profile-form" onSubmit={handleSubmit}>
+        <div className="profile-settings-grid">
+          <label className="af-field">
+            <span className="af-label">Admin name</span>
+            <input className="af-input" value={profile.name} onChange={e => setProfile(prev => ({ ...prev, name: e.target.value }))} required />
+          </label>
+          <label className="af-field">
+            <span className="af-label">Email / username</span>
+            <input className="af-input" type="email" value={profile.email} onChange={e => setProfile(prev => ({ ...prev, email: e.target.value }))} required />
+          </label>
+          <label className="af-field">
+            <span className="af-label">Current password</span>
+            <input className="af-input" type="password" value={passwords.currentPassword} onChange={e => setPasswords(prev => ({ ...prev, currentPassword: e.target.value }))} required />
+          </label>
+          <label className="af-field">
+            <span className="af-label">New password</span>
+            <input className="af-input" type="password" value={passwords.newPassword} onChange={e => setPasswords(prev => ({ ...prev, newPassword: e.target.value }))} placeholder="Leave blank to keep current" />
+          </label>
+          <label className="af-field">
+            <span className="af-label">Confirm new password</span>
+            <input className="af-input" type="password" value={passwords.confirmPassword} onChange={e => setPasswords(prev => ({ ...prev, confirmPassword: e.target.value }))} placeholder="Repeat new password" />
+          </label>
+        </div>
+        {error && <p className="lp-error">{error}</p>}
+        {success && <p className="lp-success">{success}</p>}
+        <button className="header-action-button" type="submit" disabled={loading || saving}>
+          {saving ? "Saving..." : "Save profile"}
+        </button>
+      </form>
+    </article>
+  );
+}
 
 export function AdminPanel() {
   const { data, error, loading, refetch } = usePanelData("/api/admin/overview");
@@ -58,6 +151,8 @@ export function AdminPanel() {
       <StateNotice loading={loading} error={error} />
 
       <DriverChatWidget />
+
+      <AdminProfileSettings />
 
       <section className="stats-grid">
         {(data?.stats || []).map((item) => (

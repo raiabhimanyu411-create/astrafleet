@@ -139,6 +139,99 @@ async function logout(req, res) {
   }
 }
 
+async function getMyProfile(req, res) {
+  try {
+    const payload = verifySessionToken(req.headers["x-session-token"]);
+    const userId = Number(req.headers["x-session-user-id"] || 0);
+    if (!payload || payload.role !== "admin" || payload.id !== userId) {
+      return res.status(403).json({ message: "Admin session is required." });
+    }
+
+    const [[user]] = await pool.execute(
+      `SELECT id, name, email, role, created_at FROM users WHERE id = ? AND role='admin'`,
+      [userId]
+    );
+    if (!user) return res.status(404).json({ message: "Admin profile not found." });
+
+    res.json({
+      id: user.id,
+      name: user.name,
+      email: user.email,
+      role: user.role,
+      createdAt: user.created_at
+    });
+  } catch (err) {
+    res.status(500).json({ message: "Profile fetch error", error: err.message });
+  }
+}
+
+async function updateMyProfile(req, res) {
+  try {
+    const payload = verifySessionToken(req.headers["x-session-token"]);
+    const userId = Number(req.headers["x-session-user-id"] || 0);
+    if (!payload || payload.role !== "admin" || payload.id !== userId) {
+      return res.status(403).json({ message: "Admin session is required." });
+    }
+
+    const name = String(req.body.name || "").trim();
+    const email = String(req.body.email || "").trim().toLowerCase();
+    const currentPassword = String(req.body.currentPassword || "");
+    const newPassword = String(req.body.newPassword || "");
+
+    if (!name || !email || !currentPassword) {
+      return res.status(400).json({ message: "Name, email, and current password are required." });
+    }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      return res.status(400).json({ message: "Enter a valid email address." });
+    }
+    if (newPassword && newPassword.length < 6) {
+      return res.status(400).json({ message: "New password must be at least 6 characters." });
+    }
+
+    const [[user]] = await pool.execute(
+      `SELECT id, name, email, password FROM users WHERE id = ? AND role='admin'`,
+      [userId]
+    );
+    if (!user) return res.status(404).json({ message: "Admin profile not found." });
+
+    const passwordOk = await bcrypt.compare(currentPassword, user.password);
+    if (!passwordOk) return res.status(401).json({ message: "Current password is incorrect." });
+
+    const [[emailOwner]] = await pool.execute(
+      `SELECT id FROM users WHERE email = ? AND id <> ? LIMIT 1`,
+      [email, userId]
+    );
+    if (emailOwner) return res.status(409).json({ message: "This email is already used by another account." });
+
+    const nextHash = newPassword ? await bcrypt.hash(newPassword, 10) : user.password;
+    await pool.execute(
+      `UPDATE users SET name=?, email=?, password=? WHERE id=? AND role='admin'`,
+      [name, email, nextHash, userId]
+    );
+
+    await logActivity(req, {
+      actor: { id: userId, name, role: "admin" },
+      module: "profile",
+      action: "update",
+      entityType: "admin_profile",
+      entityId: userId,
+      entityLabel: name,
+      details: {
+        changedName: user.name !== name,
+        changedEmail: user.email !== email,
+        changedPassword: Boolean(newPassword)
+      }
+    });
+
+    res.json({
+      message: "Profile updated.",
+      profile: { id: userId, name, email, role: "admin" }
+    });
+  } catch (err) {
+    res.status(500).json({ message: "Profile update error", error: err.message });
+  }
+}
+
 async function registerEmployee(req, res) {
   const name = String(req.body.name || "").trim();
   const email = String(req.body.email || "").trim().toLowerCase();
@@ -187,4 +280,4 @@ async function registerEmployee(req, res) {
   }
 }
 
-module.exports = { login, logout, registerEmployee, ensureEmployeeAuthSchema, employeeModules, parseAccessModules, signSessionToken, verifySessionToken };
+module.exports = { login, logout, getMyProfile, updateMyProfile, registerEmployee, ensureEmployeeAuthSchema, employeeModules, parseAccessModules, signSessionToken, verifySessionToken };
