@@ -3,7 +3,7 @@ const crypto = require("crypto");
 const pool = require("../db/connection");
 const { closeUserSession, createUserSession, logActivity } = require("../utils/auditLogger");
 
-const employeeModules = new Set(["jobs", "customers", "trips", "drivers", "vehicles", "finance", "billing", "tracking", "alerts"]);
+const employeeModules = new Set(["jobs", "customers", "trips", "drivers", "vehicles", "maintenance", "finance", "billing", "tracking", "alerts"]);
 
 async function addColumnIfMissing(table, column, definition) {
   const [rows] = await pool.query(`SHOW COLUMNS FROM ${table} LIKE ?`, [column]);

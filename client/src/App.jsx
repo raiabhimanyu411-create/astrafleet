@@ -6,6 +6,7 @@ import { AdminBillingPage } from "./pages/admin/AdminBillingPage";
 import { AdminDriversPage } from "./pages/admin/AdminDriversPage";
 import { AdminFinancePage } from "./pages/admin/AdminFinancePage";
 import { AdminEmployeesPage } from "./pages/admin/AdminEmployeesPage";
+import { AdminMaintenancePage } from "./pages/admin/AdminMaintenancePage";
 import { AdminNotificationsPage } from "./pages/admin/AdminNotificationsPage";
 import { AdminPanel } from "./pages/admin/AdminPanel";
 import { AdminTrackingPage } from "./pages/admin/AdminTrackingPage";
@@ -37,6 +38,7 @@ const routeAccess = {
   "/admin/trips": "trips",
   "/admin/drivers": "drivers",
   "/admin/vehicles": "vehicles",
+  "/admin/maintenance": "maintenance",
   "/admin/finance": "finance",
   "/admin/billing": "billing",
   "/admin/tracking": "tracking",
@@ -172,6 +174,14 @@ function App() {
         element={(
           <AdminOrEmployeeRoute>
             <VehicleFormPage />
+          </AdminOrEmployeeRoute>
+        )}
+      />
+      <Route
+        path="/admin/maintenance"
+        element={(
+          <AdminOrEmployeeRoute>
+            <AdminMaintenancePage />
           </AdminOrEmployeeRoute>
         )}
       />

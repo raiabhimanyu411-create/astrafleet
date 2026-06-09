@@ -47,9 +47,10 @@ INSERT INTO admin_modules (title, description, route_path, sort_order, is_active
   ('Finance Management', 'Collections follow-up, vendor payouts, cash flow view, and overdue control.', '/admin/finance', 2, 1),
   ('Trip / Route Planning', 'Lane planning, dispatch scheduling, dock windows, and vehicle assignment.', '/admin/trips', 3, 1),
   ('Vehicle Management', 'Fleet registration, compliance dates, maintenance logs, and defect reporting.', '/admin/vehicles', 4, 1),
-  ('Invoicing & Billing', 'Freight invoice generation, POD-linked billing, and payment status tracking.', '/admin/billing', 5, 1),
-  ('GPS / Live Tracking', 'Current location, speed, ETA, and last ping visibility for every active truck.', '/admin/tracking', 6, 1),
-  ('Control Room Alerts', 'Delay, breakdown, compliance breach, and reassignment escalations.', '/admin/alerts', 7, 1)
+  ('Maintenance Planner', 'Workshop schedule, 6-week inspections, service due dates, and open defects.', '/admin/maintenance', 5, 1),
+  ('Invoicing & Billing', 'Freight invoice generation, POD-linked billing, and payment status tracking.', '/admin/billing', 6, 1),
+  ('GPS / Live Tracking', 'Current location, speed, ETA, and last ping visibility for every active truck.', '/admin/tracking', 7, 1),
+  ('Control Room Alerts', 'Delay, breakdown, compliance breach, and reassignment escalations.', '/admin/alerts', 8, 1)
 ON DUPLICATE KEY UPDATE
   description = VALUES(description),
   route_path = VALUES(route_path),

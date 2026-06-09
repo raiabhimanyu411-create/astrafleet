@@ -2579,6 +2579,11 @@ exports.getOverview = async (req, res) => {
           path: "/admin/vehicles"
         },
         {
+          title: "Maintenance Planner",
+          description: "Workshop schedule, 6-week inspections, service due dates, and open defects.",
+          path: "/admin/maintenance"
+        },
+        {
           title: "Invoicing & Billing",
           description: "Freight invoice generation, POD-linked billing, and payment status tracking.",
           path: "/admin/billing"

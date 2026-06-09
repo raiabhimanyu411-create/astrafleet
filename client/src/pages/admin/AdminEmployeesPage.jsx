@@ -11,6 +11,7 @@ const moduleLabels = {
   trips: "Dispatch",
   drivers: "Drivers",
   vehicles: "Vehicles",
+  maintenance: "Maintenance",
   finance: "Finance",
   billing: "Billing",
   tracking: "Live Tracking",
@@ -18,9 +19,9 @@ const moduleLabels = {
 };
 
 const accessPresets = {
-  operations: ["jobs", "customers", "trips", "drivers", "vehicles", "tracking", "alerts"],
+  operations: ["jobs", "customers", "trips", "drivers", "vehicles", "maintenance", "tracking", "alerts"],
   financeDesk: ["finance", "billing", "alerts"],
-  controlRoom: ["trips", "drivers", "vehicles", "tracking", "alerts"],
+  controlRoom: ["trips", "drivers", "vehicles", "maintenance", "tracking", "alerts"],
   fullAccess: Object.keys(moduleLabels)
 };
 

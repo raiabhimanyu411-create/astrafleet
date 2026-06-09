@@ -20,8 +20,6 @@ const TRUCK_TYPES = [
   "Refrigerated", "Box Van", "Tipper", "Skip Lorry", "Tanker", "Other"
 ];
 
-const FUEL_TYPES = ["Diesel", "Petrol", "Electric", "Hybrid", "LPG", "Other"];
-
 const empty = {
   registration_number: "", fleet_code: "", model_name: "",
   truck_type: "Rigid HGV", status: "available",
@@ -92,7 +90,7 @@ export function VehicleFormPage() {
     <AdminWorkspaceLayout
       badge="Fleet management"
       title={isEdit ? "Edit vehicle" : "Add new vehicle"}
-      description={isEdit ? "Update vehicle profile, compliance dates, and operational status." : "Register a new vehicle with full UK compliance and fleet details."}
+      description={isEdit ? "Update core vehicle identity details." : "Register a new vehicle with the required fleet identity fields."}
       highlights={[]}
     >
       <div className="af-page" style={{ maxWidth: 920 }}>
@@ -140,62 +138,6 @@ export function VehicleFormPage() {
                 </Field>
                 <Field label="Year of manufacture">
                   <input className="af-input" type="number" placeholder="e.g. 2019" min="1990" max={new Date().getFullYear()} value={fields.year_of_manufacture} onChange={e => set("year_of_manufacture", e.target.value)} />
-                </Field>
-              </div>
-            </div>
-
-            {/* Specifications */}
-            <div className="af-section">
-              <p className="af-section-title">Specifications</p>
-              <div className="af-grid-3">
-                <Field label="Fuel type">
-                  <select className="af-select" value={fields.fuel_type} onChange={e => set("fuel_type", e.target.value)}>
-                    {FUEL_TYPES.map(f => <option key={f} value={f}>{f}</option>)}
-                  </select>
-                </Field>
-                <Field label="Capacity (tonnes)" hint="Maximum payload in metric tonnes">
-                  <input className="af-input" type="number" placeholder="e.g. 26" step="0.5" min="0" value={fields.capacity_tonnes} onChange={e => set("capacity_tonnes", e.target.value)} />
-                </Field>
-                <Field label="Current location" hint="Depot or last known location">
-                  <input className="af-input" type="text" placeholder="e.g. Manchester Depot" value={fields.current_location} onChange={e => set("current_location", e.target.value)} />
-                </Field>
-              </div>
-            </div>
-
-            {/* UK Compliance */}
-            <div className="af-section">
-              <p className="af-section-title">UK compliance dates</p>
-              <p style={{ fontSize: "0.82rem", color: "#64748b", margin: "0 0 14px" }}>
-                Alerts will be sent 90 days before expiry. Leave blank if not applicable.
-              </p>
-              <div className="af-grid-3">
-                <Field label="MOT expiry" required={!isEdit} hint="Annual HGV test">
-                  <input className="af-input" type="date" value={fields.mot_expiry} onChange={e => set("mot_expiry", e.target.value)} required={!isEdit} />
-                </Field>
-                <Field label="Insurance expiry" required={!isEdit} hint="Commercial vehicle insurance">
-                  <input className="af-input" type="date" value={fields.insurance_expiry} onChange={e => set("insurance_expiry", e.target.value)} required={!isEdit} />
-                </Field>
-                <Field label="Road tax expiry" required={!isEdit} hint="Vehicle Excise Duty (VED)">
-                  <input className="af-input" type="date" value={fields.road_tax_expiry} onChange={e => set("road_tax_expiry", e.target.value)} required={!isEdit} />
-                </Field>
-                <Field label="Next service due" hint="Scheduled maintenance date">
-                  <input className="af-input" type="date" value={fields.next_service_due} onChange={e => set("next_service_due", e.target.value)} />
-                </Field>
-              </div>
-            </div>
-
-            {/* Status */}
-            <div className="af-section">
-              <p className="af-section-title">Operational status</p>
-              <div className="af-grid-3">
-                <Field label="Vehicle status">
-                  <select className="af-select" value={fields.status} onChange={e => set("status", e.target.value)}>
-                    <option value="available">Available</option>
-                    <option value="planned">Planned</option>
-                    <option value="in_transit">In transit</option>
-                    <option value="maintenance">Maintenance</option>
-                    <option value="stopped">Stopped</option>
-                  </select>
                 </Field>
               </div>
             </div>

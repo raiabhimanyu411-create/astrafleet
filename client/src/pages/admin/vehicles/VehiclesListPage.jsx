@@ -173,7 +173,7 @@ export function VehiclesListPage() {
         ))}
       </section>
 
-      <section className="content-grid">
+      <section className="content-grid vehicle-overview-grid">
         <article className="content-card">
           <div className="section-head">
             <div>
@@ -182,7 +182,7 @@ export function VehiclesListPage() {
             </div>
             <StatusPill tone="neutral">Filtered view</StatusPill>
           </div>
-          <div className="billing-workflow-grid">
+          <div className="billing-workflow-grid vehicle-workload-grid">
             {visibleStats.map(item => (
               <button className="billing-workflow-tile" key={item.label} type="button" onClick={() => {
                 if (item.label === "Needs workshop") setRiskFilter("defects");
