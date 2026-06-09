@@ -1,5 +1,6 @@
 const db = require("../db/connection");
 
+const INSPECTION_INTERVAL_DAYS = 42;
 let schemaSyncPromise;
 
 async function addColumnIfMissing(table, column, definition) {
@@ -158,6 +159,13 @@ function dueLabel(days) {
   return `${days}d left`;
 }
 
+function inspectionStatus(days) {
+  if (days === null) return { label: "Not planned", tone: "neutral" };
+  if (days < 0) return { label: "Inspection overdue", tone: "danger" };
+  if (days <= 7) return { label: "Inspection due", tone: "warning" };
+  return { label: "Inspection OK", tone: "success" };
+}
+
 function addDays(date, days) {
   const next = new Date(date);
   next.setDate(next.getDate() + days);
@@ -286,7 +294,7 @@ exports.getMaintenancePortal = async (_req, res) => {
         status: v.status,
         statusLabel: v.status.replace("_", " "),
         currentLocation: v.current_location || "-",
-        inspectionFrequency: "6-week safety check",
+        inspectionFrequency: "6-week safety inspection",
         lastService: fmtDate(v.last_service_date),
         lastServiceRaw: rawDate(v.last_service_date),
         lastServiceType: v.last_service_type || "No service record",
@@ -303,6 +311,8 @@ exports.getMaintenancePortal = async (_req, res) => {
         nextInspectionRaw: rawDate(v.next_inspection_due),
         inspectionDaysLeft: inspectionDays,
         inspectionDueLabel: dueLabel(inspectionDays),
+        inspectionStatus: inspectionStatus(inspectionDays).label,
+        inspectionTone: inspectionStatus(inspectionDays).tone,
         openDefects: Number(v.open_defects || 0),
         criticalDefects: Number(v.critical_defects || 0),
         priorityDays,
@@ -558,6 +568,61 @@ exports.getMaintenancePortal = async (_req, res) => {
     });
   } catch (err) {
     res.status(500).json({ message: "Maintenance portal error", error: err.message });
+  }
+};
+
+exports.markVehicleInspectionDone = async (req, res) => {
+  try {
+    const vehicleId = Number(req.params.vehicleId);
+    const result = req.body.result || "pass";
+    const inspectorName = String(req.body.inspector_name || req.body.inspectorName || "").trim() || req.sessionUser?.name || null;
+    const notes = String(req.body.notes || "").trim() || null;
+    const nextDue = rawDate(addDays(new Date(), INSPECTION_INTERVAL_DAYS));
+
+    if (!vehicleId) {
+      return res.status(400).json({ message: "Valid vehicle id is required." });
+    }
+    if (!["pass", "advisory", "fail"].includes(result)) {
+      return res.status(400).json({ message: "Inspection result must be pass, advisory, or fail." });
+    }
+
+    const [[vehicle]] = await db.query(`SELECT id FROM vehicles WHERE id=?`, [vehicleId]);
+    if (!vehicle) return res.status(404).json({ message: "Vehicle not found." });
+
+    const [inserted] = await db.query(
+      `INSERT INTO vehicle_inspections
+        (vehicle_id, inspection_date, inspection_type, inspector_name, result, notes, next_due)
+       VALUES (?, CURDATE(), '6-week safety inspection', ?, ?, ?, ?)`,
+      [vehicleId, inspectorName, result, notes, nextDue]
+    );
+
+    if (result === "fail") {
+      await db.query(`UPDATE vehicles SET status='maintenance' WHERE id=?`, [vehicleId]);
+    } else {
+      await db.query(
+        `UPDATE maintenance_jobs
+         SET status='completed', completion_notes=COALESCE(completion_notes, ?), completed_at=COALESCE(completed_at, NOW())
+         WHERE vehicle_id=? AND status IN ('planned','booked','in_progress') AND LOWER(service_type) LIKE '%inspection%'`,
+        [notes || "6-week safety inspection completed.", vehicleId]
+      );
+      const [[open]] = await db.query(
+        `SELECT
+          (SELECT COUNT(*) FROM defect_reports WHERE vehicle_id=? AND status != 'resolved') AS defects,
+          (SELECT COUNT(*) FROM maintenance_jobs WHERE vehicle_id=? AND status IN ('booked','in_progress')) AS jobs`,
+        [vehicleId, vehicleId]
+      );
+      if (Number(open.defects || 0) === 0 && Number(open.jobs || 0) === 0) {
+        await db.query(`UPDATE vehicles SET status='available' WHERE id=? AND status IN ('maintenance','stopped')`, [vehicleId]);
+      }
+    }
+
+    res.status(201).json({
+      message: result === "fail" ? "Inspection recorded and vehicle kept in maintenance." : "Inspection done. Next 6-week inspection scheduled.",
+      id: inserted.insertId,
+      nextDue
+    });
+  } catch (err) {
+    res.status(500).json({ message: "Inspection completion error", error: err.message });
   }
 };
 

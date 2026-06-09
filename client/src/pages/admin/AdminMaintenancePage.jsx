@@ -5,6 +5,7 @@ import {
   createJobFromDefect,
   createMaintenanceJob,
   getMaintenancePortal,
+  markVehicleInspectionDone,
   updateMaintenanceJob
 } from "../../api/maintenanceApi";
 import { StatCard } from "../../components/StatCard";
@@ -402,6 +403,22 @@ export function AdminMaintenancePage() {
     }
   }
 
+  async function handleInspectionDone(row) {
+    const inspectorName = window.prompt("Inspector name", "");
+    if (inspectorName === null) return;
+    const notes = window.prompt("Inspection notes", "6-week safety inspection completed. Vehicle roadworthy.");
+    if (notes === null) return;
+    setSavingAction(`inspection-${row.id}`);
+    try {
+      await markVehicleInspectionDone(row.id, { inspector_name: inspectorName, notes, result: "pass" });
+      await load();
+    } catch (err) {
+      setError(err.response?.data?.message || "Could not mark inspection done.");
+    } finally {
+      setSavingAction("");
+    }
+  }
+
   function exportJobs() {
     exportCsv("maintenance-jobs.csv", [
       ["Job", "Vehicle", "Due item", "Last done", "Next due", "Status", "Priority", "Vendor", "Cost", "Action"],
@@ -541,6 +558,50 @@ export function AdminMaintenancePage() {
         <input className="af-input" type="date" value={filters.from} onChange={(e) => setFilter("from", e.target.value)} />
         <input className="af-input" type="date" value={filters.to} onChange={(e) => setFilter("to", e.target.value)} />
         <button className="header-action-button" disabled={!hasFilters} type="button" onClick={clearFilters}>Clear filters</button>
+      </section>
+
+      <section className="content-card">
+        <div className="section-head">
+          <div>
+            <span className="card-label">6-week safety inspections</span>
+            <h2>PMI / roadworthiness inspection tracker</h2>
+          </div>
+          <StatusPill tone="neutral">{(data?.plannerRows || []).length} vehicles</StatusPill>
+        </div>
+        <div className="maintenance-inspection-grid">
+          {(data?.plannerRows || []).map((row) => (
+            <div className="maintenance-inspection-row" key={row.id}>
+              <div>
+                <strong>{row.registrationNumber}</strong>
+                <p>{row.fleetCode} · {row.make}</p>
+              </div>
+              <div>
+                <span>Frequency</span>
+                <p>{row.inspectionFrequency}</p>
+              </div>
+              <div>
+                <span>Last done</span>
+                <p>{row.lastInspection}</p>
+              </div>
+              <div>
+                <span>Next due</span>
+                <p>{row.nextInspection} · {row.inspectionDueLabel}</p>
+              </div>
+              <StatusPill tone={row.inspectionTone}>{row.inspectionStatus}</StatusPill>
+              <button
+                className="header-action-button"
+                disabled={savingAction === `inspection-${row.id}`}
+                type="button"
+                onClick={() => handleInspectionDone(row)}
+              >
+                Mark inspection done
+              </button>
+            </div>
+          ))}
+          {!loading && (data?.plannerRows || []).length === 0 && (
+            <p className="finance-empty">No vehicles available for inspection tracking.</p>
+          )}
+        </div>
       </section>
 
       <section className="content-card">

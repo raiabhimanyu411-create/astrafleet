@@ -3497,6 +3497,43 @@ p.lp-success {
   overflow-x: auto;
 }
 
+.maintenance-inspection-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.maintenance-inspection-row {
+  display: grid;
+  grid-template-columns: minmax(150px, 1.1fr) minmax(150px, 0.9fr) 110px minmax(160px, 1fr) auto auto;
+  gap: 12px;
+  align-items: center;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+}
+
+.maintenance-inspection-row strong {
+  display: block;
+  color: var(--text);
+  font-size: 0.88rem;
+}
+
+.maintenance-inspection-row span {
+  display: block;
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.maintenance-inspection-row p {
+  margin: 3px 0 0;
+  color: var(--muted);
+  font-size: 0.78rem;
+}
+
 .maintenance-table-head,
 .maintenance-table-row {
   display: grid;
@@ -3721,6 +3758,7 @@ p.lp-success {
   .maintenance-job-card-grid,
   .maintenance-form-grid,
   .maintenance-form-grid.single,
+  .maintenance-inspection-row,
   .maintenance-defect-row,
   .maintenance-detail-grid {
     grid-template-columns: 1fr;

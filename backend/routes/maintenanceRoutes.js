@@ -11,5 +11,6 @@ router.post("/jobs", maintenance.createJob);
 router.put("/jobs/:id", maintenance.updateJob);
 router.patch("/jobs/:id/complete", maintenance.completeJob);
 router.post("/defects/:defectId/job", maintenance.createJobFromDefect);
+router.post("/vehicles/:vehicleId/inspection-done", maintenance.markVehicleInspectionDone);
 
 module.exports = router;
