@@ -28,6 +28,11 @@ const emptyJob = {
   labour_cost_gbp: "",
   parts_cost_gbp: "",
   final_cost_gbp: "",
+  bill_number: "",
+  bill_date: "",
+  bill_amount_gbp: "",
+  bill_notes: "",
+  bill_attachment_data: "",
   priority: "normal",
   status: "planned",
   notes: "",
@@ -85,6 +90,13 @@ function nextMileageForItem(serviceType, completedMileageKm) {
   return String(Number(completedMileageKm) + 85000);
 }
 
+function readFileAsDataUrl(file, onDone) {
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = () => onDone(reader.result);
+  reader.readAsDataURL(file);
+}
+
 function displayDay(date) {
   return date.toLocaleDateString("en-GB", { weekday: "short", day: "2-digit", month: "short" });
 }
@@ -133,6 +145,11 @@ function toJobForm(job) {
     labour_cost_gbp: job.labourCostGbp || "",
     parts_cost_gbp: job.partsCostGbp || "",
     final_cost_gbp: job.finalCostGbp || "",
+    bill_number: job.billNumber || "",
+    bill_date: job.billDateRaw || "",
+    bill_amount_gbp: job.billAmountGbp || "",
+    bill_notes: job.billNotes === "-" ? "" : job.billNotes,
+    bill_attachment_data: job.billAttachmentData || "",
     priority: job.priority || "normal",
     status: job.status || "planned",
     notes: job.notes === "-" ? "" : job.notes,
@@ -287,6 +304,33 @@ function JobModal({ vehicles, defects, editingJob, initialForm, onClose, onSaved
           )}
         </div>
 
+        <div className="maintenance-form-grid bill">
+          <Field label="Bill / invoice number">
+            <input className="af-input" value={form.bill_number} onChange={(e) => set("bill_number", e.target.value)} placeholder="e.g. INV-9821" />
+          </Field>
+          <Field label="Bill date">
+            <input className="af-input" type="date" value={form.bill_date} onChange={(e) => set("bill_date", e.target.value)} />
+          </Field>
+          <Field label="Bill amount">
+            <input className="af-input" type="number" min="0" step="0.01" value={form.bill_amount_gbp} onChange={(e) => set("bill_amount_gbp", e.target.value)} />
+          </Field>
+          <Field label="Attach bill / paper">
+            <input
+              className="af-input"
+              type="file"
+              accept="image/*,.pdf"
+              onChange={(e) => readFileAsDataUrl(e.target.files?.[0], (value) => set("bill_attachment_data", value))}
+            />
+          </Field>
+          <Field label="Bill notes">
+            <textarea className="af-textarea" value={form.bill_notes} onChange={(e) => set("bill_notes", e.target.value)} rows={2} placeholder="Parts invoice, labour sheet, VAT note..." />
+          </Field>
+          <div className="maintenance-rule-note">
+            <span>Attachment</span>
+            <strong>{form.bill_attachment_data ? "Bill attached" : "No bill attached"}</strong>
+          </div>
+        </div>
+
         <div className="maintenance-form-grid single">
           <Field label="Parts required">
             <textarea className="af-textarea" value={form.parts_required} onChange={(e) => set("parts_required", e.target.value)} rows={3} />
@@ -331,10 +375,24 @@ function JobDrawer({ job, history, onClose, onEdit, onComplete }) {
         <div><span>Vendor</span><strong>{job.garageName}</strong></div>
         <div><span>Owner</span><strong>{job.assignedMechanic}</strong></div>
         <div><span>Cost</span><strong>{job.costLabel}</strong></div>
+        <div><span>Bill</span><strong>{job.billNumber || "-"}</strong></div>
+        <div><span>Bill amount</span><strong>{job.billAmountLabel}</strong></div>
         <div><span>Vehicle type</span><strong>{job.truckType}</strong></div>
         <div><span>Date done</span><strong>{job.serviceDateRaw ? job.serviceDate : "-"}</strong></div>
         <div><span>Mileage</span><strong>{job.mileageLabel}</strong></div>
       </div>
+      {(job.billNotes !== "-" || job.billAttachmentData) && (
+        <section className="maintenance-drawer-section">
+          <span className="card-label">Bill paperwork</span>
+          <p><strong>Bill date:</strong> {job.billDateRaw ? job.billDate : "-"}</p>
+          <p><strong>Notes:</strong> {job.billNotes}</p>
+          {job.billAttachmentData && (
+            <a className="header-action-button maintenance-bill-link" href={job.billAttachmentData} target="_blank" rel="noreferrer">
+              Open attached bill
+            </a>
+          )}
+        </section>
+      )}
       <div className="maintenance-drawer-actions">
         <button className="header-action-button" type="button" onClick={() => onEdit(job)}>Edit job</button>
         {!["completed", "cancelled"].includes(job.status) && (
@@ -476,6 +534,7 @@ export function AdminMaintenancePage() {
         service_date: serviceDate,
         completed_mileage_km: job.completedMileageKm,
         next_due_mileage_km: job.nextDueMileageKm,
+        bill_amount_gbp: job.billAmountGbp,
         completion_notes: completionNotes
       });
       await load();
@@ -519,7 +578,7 @@ export function AdminMaintenancePage() {
 
   function exportJobs() {
     exportCsv("maintenance-jobs.csv", [
-      ["Job", "Vehicle", "Due item", "Last done", "Next due", "Status", "Priority", "Vendor", "Cost", "Action"],
+      ["Job", "Vehicle", "Due item", "Last done", "Next due", "Status", "Priority", "Vendor", "Cost", "Bill no", "Bill amount", "Bill attached", "Action"],
       ...jobs.map((job) => [
         job.jobNumber,
         job.vehicle,
@@ -530,6 +589,9 @@ export function AdminMaintenancePage() {
         job.priority,
         job.garageName,
         job.costLabel,
+        job.billNumber,
+        job.billAmountLabel,
+        job.billAttachmentData ? "Yes" : "No",
         job.status === "completed" ? "Completed" : job.daysLeft < 0 ? "Overdue" : "Open"
       ])
     ]);
@@ -723,7 +785,7 @@ export function AdminMaintenancePage() {
               <div><StatusPill tone={job.statusTone}>{job.statusLabel}</StatusPill></div>
               <div><StatusPill tone={job.priorityTone}>{job.priority}</StatusPill></div>
               <div><span>{job.garageName}</span><p>{job.assignedMechanic}</p></div>
-              <div><span>{job.costLabel}</span><p>Estimate/final</p></div>
+              <div><span>{job.costLabel}</span><p>{job.billNumber ? `Bill ${job.billNumber}` : job.billAttachmentData ? "Bill attached" : "Estimate/final"}</p></div>
               <div className="finance-row-actions" onClick={(e) => e.stopPropagation()}>
                 <button className="header-action-button" type="button" onClick={() => openEditJob(job)}>Edit</button>
                 {!["completed", "cancelled"].includes(job.status) && (

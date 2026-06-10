@@ -3697,6 +3697,19 @@ p.lp-success {
   margin-top: 12px;
 }
 
+.maintenance-form-grid.bill {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+}
+
+.maintenance-bill-link {
+  width: fit-content;
+  margin-top: 8px;
+  text-decoration: none;
+}
+
 .maintenance-drawer {
   position: fixed;
   top: 0;
@@ -3780,6 +3793,7 @@ p.lp-success {
   .maintenance-job-card-grid,
   .maintenance-form-grid,
   .maintenance-form-grid.single,
+  .maintenance-form-grid.bill,
   .maintenance-inspection-row,
   .maintenance-defect-row,
   .maintenance-detail-grid {

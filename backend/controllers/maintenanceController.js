@@ -124,6 +124,11 @@ async function syncMaintenanceSchema() {
   await addColumnIfMissing("maintenance_jobs", "road_tax_interval_months", "INT DEFAULT NULL");
   await addColumnIfMissing("maintenance_jobs", "completed_mileage_km", "INT DEFAULT NULL");
   await addColumnIfMissing("maintenance_jobs", "next_due_mileage_km", "INT DEFAULT NULL");
+  await addColumnIfMissing("maintenance_jobs", "bill_number", "VARCHAR(80) DEFAULT NULL");
+  await addColumnIfMissing("maintenance_jobs", "bill_date", "DATE DEFAULT NULL");
+  await addColumnIfMissing("maintenance_jobs", "bill_amount_gbp", "DECIMAL(10,2) DEFAULT NULL");
+  await addColumnIfMissing("maintenance_jobs", "bill_notes", "TEXT DEFAULT NULL");
+  await addColumnIfMissing("maintenance_jobs", "bill_attachment_data", "LONGTEXT DEFAULT NULL");
 }
 
 exports.ensureMaintenanceSchema = async (_req, res, next) => {
@@ -242,6 +247,11 @@ function cleanJobPayload(body) {
     road_tax_interval_months: body.road_tax_interval_months || body.roadTaxIntervalMonths || null,
     completed_mileage_km: body.completed_mileage_km || body.completedMileageKm || null,
     next_due_mileage_km: body.next_due_mileage_km || body.nextDueMileageKm || null,
+    bill_number: String(body.bill_number || body.billNumber || "").trim() || null,
+    bill_date: body.bill_date || body.billDate || null,
+    bill_amount_gbp: body.bill_amount_gbp || body.billAmountGbp || null,
+    bill_notes: String(body.bill_notes || body.billNotes || "").trim() || null,
+    bill_attachment_data: body.bill_attachment_data || body.billAttachmentData || null,
     priority: body.priority || "normal",
     status: body.status || "planned",
     notes: String(body.notes || "").trim() || null,
@@ -263,12 +273,14 @@ async function applyCompletedMaintenance(job, completion = {}) {
   const nextDueDate = completion.nextDueDate || job.due_date || calculateNextDueDate(job.service_type, serviceDate, job.road_tax_interval_months) || null;
   const completedMileageKm = completion.completedMileageKm || job.completed_mileage_km || null;
   const nextDueMileageKm = completion.nextDueMileageKm || job.next_due_mileage_km || null;
+  const billAmountGbp = completion.billAmountGbp || job.bill_amount_gbp || null;
 
   await db.query(
     `UPDATE maintenance_jobs
-     SET status='completed', final_cost_gbp=?, completion_notes=?, service_date=?, completed_mileage_km=?, next_due_mileage_km=?, completed_at=COALESCE(completed_at, NOW())
+     SET status='completed', final_cost_gbp=?, completion_notes=?, service_date=?, completed_mileage_km=?, next_due_mileage_km=?,
+         bill_amount_gbp=COALESCE(?, bill_amount_gbp), completed_at=COALESCE(completed_at, NOW())
      WHERE id=?`,
-    [finalCost, completionNotes, serviceDate, completedMileageKm, nextDueMileageKm, job.id]
+    [finalCost, completionNotes, serviceDate, completedMileageKm, nextDueMileageKm, billAmountGbp, job.id]
   );
   await db.query(
     `INSERT INTO maintenance_records (vehicle_id, service_date, service_type, description, cost_gbp, mileage, next_due_date, garage_name)
@@ -290,7 +302,7 @@ async function applyCompletedMaintenance(job, completion = {}) {
       [job.vehicle_id, serviceDate, job.service_type, job.assigned_mechanic || job.garage_name, completionNotes || job.notes, nextDueDate]
     );
   }
-  return { finalCost, completionNotes, serviceDate, nextDueDate, completedMileageKm, nextDueMileageKm };
+  return { finalCost, completionNotes, serviceDate, nextDueDate, completedMileageKm, nextDueMileageKm, billAmountGbp };
 }
 
 exports.getMaintenancePortal = async (_req, res) => {
@@ -437,7 +449,9 @@ exports.getMaintenancePortal = async (_req, res) => {
       const daysLeft = daysUntil(j.due_date);
       const totalCost = j.final_cost_gbp != null
         ? Number(j.final_cost_gbp)
-        : Number(j.estimated_cost_gbp || 0) + Number(j.labour_cost_gbp || 0) + Number(j.parts_cost_gbp || 0);
+        : j.bill_amount_gbp != null
+          ? Number(j.bill_amount_gbp)
+          : Number(j.estimated_cost_gbp || 0) + Number(j.labour_cost_gbp || 0) + Number(j.parts_cost_gbp || 0);
       return {
         id: j.id,
         jobNumber: j.job_number,
@@ -467,6 +481,13 @@ exports.getMaintenancePortal = async (_req, res) => {
         roadTaxIntervalMonths: j.road_tax_interval_months,
         completedMileageKm: j.completed_mileage_km,
         nextDueMileageKm: j.next_due_mileage_km,
+        billNumber: j.bill_number || "",
+        billDate: fmtDate(j.bill_date),
+        billDateRaw: rawDate(j.bill_date),
+        billAmountGbp: j.bill_amount_gbp == null ? "" : Number(j.bill_amount_gbp),
+        billAmountLabel: j.bill_amount_gbp == null ? "-" : fmtAmount(j.bill_amount_gbp),
+        billNotes: j.bill_notes || "-",
+        billAttachmentData: j.bill_attachment_data || "",
         mileageLabel: j.next_due_mileage_km
           ? `${Number(j.next_due_mileage_km).toLocaleString("en-GB")} km next`
           : j.completed_mileage_km
@@ -577,15 +598,15 @@ exports.getMaintenancePortal = async (_req, res) => {
     const thisMonthKey = `${thisMonth.getFullYear()}-${String(thisMonth.getMonth() + 1).padStart(2, "0")}`;
     const monthlySpend = jobs
       .filter((job) => (job.completedAtRaw || job.dueDateRaw || "").startsWith(thisMonthKey))
-      .reduce((sum, job) => sum + Number(job.finalCostGbp ?? job.estimatedCostGbp), 0);
+      .reduce((sum, job) => sum + Number(job.finalCostGbp ?? job.billAmountGbp ?? job.estimatedCostGbp), 0);
     const completedActual = jobs
       .filter((job) => job.status === "completed")
-      .reduce((sum, job) => sum + Number(job.finalCostGbp ?? job.estimatedCostGbp), 0);
+      .reduce((sum, job) => sum + Number(job.finalCostGbp ?? job.billAmountGbp ?? job.estimatedCostGbp), 0);
     const openEstimated = jobs
       .filter((job) => !["completed", "cancelled"].includes(job.status))
       .reduce((sum, job) => sum + Number(job.estimatedCostGbp), 0);
     const costByVehicle = jobs.reduce((acc, job) => {
-      acc[job.vehicle] = (acc[job.vehicle] || 0) + Number(job.finalCostGbp ?? job.estimatedCostGbp);
+      acc[job.vehicle] = (acc[job.vehicle] || 0) + Number(job.finalCostGbp ?? job.billAmountGbp ?? job.estimatedCostGbp);
       return acc;
     }, {});
     const highestCost = Object.entries(costByVehicle).sort((a, b) => b[1] - a[1])[0];
@@ -723,12 +744,14 @@ exports.createJob = async (req, res) => {
       `INSERT INTO maintenance_jobs
         (job_number, vehicle_id, defect_id, service_type, due_date, garage_name, assigned_mechanic,
          estimated_cost_gbp, labour_cost_gbp, parts_cost_gbp, final_cost_gbp, service_date, road_tax_interval_months,
-         completed_mileage_km, next_due_mileage_km, priority, status, notes, parts_required, completion_notes)
-       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+         completed_mileage_km, next_due_mileage_km, bill_number, bill_date, bill_amount_gbp, bill_notes, bill_attachment_data,
+         priority, status, notes, parts_required, completion_notes)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
       [
         jobNumber, job.vehicle_id, job.defect_id, job.service_type, job.due_date, job.garage_name, job.assigned_mechanic,
         job.estimated_cost_gbp, job.labour_cost_gbp, job.parts_cost_gbp, job.final_cost_gbp,
         job.service_date, job.road_tax_interval_months, job.completed_mileage_km, job.next_due_mileage_km,
+        job.bill_number, job.bill_date, job.bill_amount_gbp, job.bill_notes, job.bill_attachment_data,
         job.priority, job.status, job.notes, job.parts_required, job.completion_notes
       ]
     );
@@ -763,12 +786,14 @@ exports.updateJob = async (req, res) => {
         vehicle_id=?, defect_id=?, service_type=?, due_date=?, garage_name=?, assigned_mechanic=?,
         estimated_cost_gbp=?, labour_cost_gbp=?, parts_cost_gbp=?, final_cost_gbp=?,
         service_date=?, road_tax_interval_months=?, completed_mileage_km=?, next_due_mileage_km=?,
+        bill_number=?, bill_date=?, bill_amount_gbp=?, bill_notes=?, bill_attachment_data=?,
         priority=?, status=?, notes=?, parts_required=?, completion_notes=?
        WHERE id=?`,
       [
         job.vehicle_id, job.defect_id, job.service_type, job.due_date, job.garage_name, job.assigned_mechanic,
         job.estimated_cost_gbp, job.labour_cost_gbp, job.parts_cost_gbp, job.final_cost_gbp,
         job.service_date, job.road_tax_interval_months, job.completed_mileage_km, job.next_due_mileage_km,
+        job.bill_number, job.bill_date, job.bill_amount_gbp, job.bill_notes, job.bill_attachment_data,
         job.priority, job.status, job.notes, job.parts_required, job.completion_notes, id
       ]
     );
@@ -791,7 +816,8 @@ exports.completeJob = async (req, res) => {
       serviceDate: req.body.service_date || req.body.serviceDate || job.service_date || rawDate(new Date()),
       nextDueDate: req.body.next_due_date || req.body.nextDueDate || job.due_date || null,
       completedMileageKm: req.body.completed_mileage_km || req.body.completedMileageKm || job.completed_mileage_km || null,
-      nextDueMileageKm: req.body.next_due_mileage_km || req.body.nextDueMileageKm || job.next_due_mileage_km || null
+      nextDueMileageKm: req.body.next_due_mileage_km || req.body.nextDueMileageKm || job.next_due_mileage_km || null,
+      billAmountGbp: req.body.bill_amount_gbp || req.body.billAmountGbp || job.bill_amount_gbp || null
     });
     if (job.defect_id) {
       await db.query(`UPDATE defect_reports SET status='resolved', resolved_at=NOW() WHERE id=?`, [job.defect_id]);

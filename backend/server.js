@@ -23,7 +23,7 @@ const corsOptions = process.env.CORS_ORIGIN
   : { origin: true };
 
 app.use(cors(corsOptions));
-app.use(express.json());
+app.use(express.json({ limit: "10mb" }));
 
 if (process.env.NODE_ENV !== "production") {
   app.get("/", (_req, res) => {
