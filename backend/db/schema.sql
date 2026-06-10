@@ -64,6 +64,8 @@ CREATE TABLE IF NOT EXISTS vehicles (
   id                  INT AUTO_INCREMENT PRIMARY KEY,
   registration_number VARCHAR(20) NOT NULL UNIQUE,
   fleet_code          VARCHAR(30) NOT NULL,
+  make                VARCHAR(80) DEFAULT NULL,
+  model               VARCHAR(80) DEFAULT NULL,
   model_name          VARCHAR(120) NOT NULL,
   truck_type          VARCHAR(50) NOT NULL,
   status              ENUM('available', 'planned', 'in_transit', 'maintenance', 'stopped') NOT NULL DEFAULT 'available',

@@ -237,7 +237,8 @@ export function VehicleDetailPage() {
                 </div>
               </div>
               <div className="detail-grid">
-                <DetailField label="Model"             value={data.modelName} />
+                <DetailField label="Make"              value={data.make} />
+                <DetailField label="Model"             value={data.model} />
                 <DetailField label="Type"              value={data.truckType} />
                 <DetailField label="Fuel type"         value={data.fuelType} />
                 <DetailField label="Capacity"          value={data.capacityTonnes ? `${data.capacityTonnes} tonnes` : "—"} />

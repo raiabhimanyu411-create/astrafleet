@@ -21,12 +21,17 @@ const TRUCK_TYPES = [
 ];
 
 const empty = {
-  registration_number: "", fleet_code: "", model_name: "",
+  registration_number: "", fleet_code: "", make: "", model: "",
   truck_type: "Rigid HGV", status: "available",
   fuel_type: "Diesel", capacity_tonnes: "", year_of_manufacture: "", colour: "",
   mot_expiry: "", insurance_expiry: "", road_tax_expiry: "", next_service_due: "",
   current_location: ""
 };
+
+function splitVehicleModelName(modelName = "") {
+  const [make = "", ...modelParts] = String(modelName || "").trim().split(/\s+/);
+  return { make, model: modelParts.join(" ") };
+}
 
 export function VehicleFormPage() {
   const { id } = useParams();
@@ -44,10 +49,12 @@ export function VehicleFormPage() {
     getVehicleById(id)
       .then(r => {
         const v = r.data;
+        const fallback = splitVehicleModelName(v.modelName);
         setFields({
           registration_number: v.registrationNumber || "",
           fleet_code:          v.fleetCode || "",
-          model_name:          v.modelName || "",
+          make:                v.make || fallback.make,
+          model:               v.model || fallback.model,
           truck_type:          v.truckType || "Rigid HGV",
           status:              v.status || "available",
           fuel_type:           v.fuelType || "Diesel",
@@ -71,12 +78,16 @@ export function VehicleFormPage() {
     e.preventDefault();
     setSubmitErr("");
     setSubmitting(true);
+    const payload = {
+      ...fields,
+      model_name: [fields.make, fields.model].filter(Boolean).join(" ").trim()
+    };
     try {
       if (isEdit) {
-        await updateVehicle(id, fields);
+        await updateVehicle(id, payload);
         navigate(`/admin/vehicles/${id}`);
       } else {
-        const res = await createVehicle(fields);
+        const res = await createVehicle(payload);
         navigate(`/admin/vehicles/${res.data.id}`);
       }
     } catch (err) {
@@ -125,8 +136,11 @@ export function VehicleFormPage() {
                 <Field label="Fleet code" required hint="Internal code e.g. FLT-001">
                   <input className="af-input" type="text" placeholder="e.g. FLT-001" value={fields.fleet_code} onChange={e => set("fleet_code", e.target.value)} required />
                 </Field>
-                <Field label="Vehicle model" required hint="Make and model e.g. Volvo FH16">
-                  <input className="af-input" type="text" placeholder="e.g. Volvo FH16" value={fields.model_name} onChange={e => set("model_name", e.target.value)} required />
+                <Field label="Vehicle make" required hint="Manufacturer e.g. Volvo">
+                  <input className="af-input" type="text" placeholder="e.g. Volvo" value={fields.make} onChange={e => set("make", e.target.value)} required />
+                </Field>
+                <Field label="Vehicle model" required hint="Model e.g. FH16">
+                  <input className="af-input" type="text" placeholder="e.g. FH16" value={fields.model} onChange={e => set("model", e.target.value)} required />
                 </Field>
                 <Field label="Vehicle type" required>
                   <select className="af-select" value={fields.truck_type} onChange={e => set("truck_type", e.target.value)} required>

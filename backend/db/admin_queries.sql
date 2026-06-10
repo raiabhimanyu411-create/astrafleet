@@ -61,14 +61,17 @@ ON DUPLICATE KEY UPDATE
 -- SAMPLE VEHICLES
 -- ------------------------------------
 INSERT INTO vehicles (
-  registration_number, fleet_code, model_name, truck_type, status, fuel_type, capacity_tonnes, year_of_manufacture, colour,
+  registration_number, fleet_code, make, model, model_name, truck_type, status, fuel_type, capacity_tonnes, year_of_manufacture, colour,
   mot_expiry, insurance_expiry, road_tax_expiry, current_location, speed_kph, last_ping_at, next_service_due
 ) VALUES
-  ('MX22KHT', 'FLT-101', 'Mercedes Actros 2545', 'Curtainsider', 'in_transit', 'Diesel', 26.00, 2022, 'White', DATE_ADD(CURDATE(), INTERVAL 210 DAY), DATE_ADD(CURDATE(), INTERVAL 160 DAY), DATE_ADD(CURDATE(), INTERVAL 120 DAY), 'M6 Northbound, Stoke-on-Trent', 58.0, DATE_SUB(NOW(), INTERVAL 2 MINUTE), DATE_ADD(CURDATE(), INTERVAL 18 DAY)),
-  ('KT21BZN', 'FLT-102', 'DAF XF 530', 'Box Van', 'stopped', 'Diesel', 18.00, 2021, 'Blue', DATE_ADD(CURDATE(), INTERVAL 35 DAY), DATE_ADD(CURDATE(), INTERVAL 80 DAY), DATE_ADD(CURDATE(), INTERVAL 48 DAY), 'Birmingham fuel stop', 0.0, DATE_SUB(NOW(), INTERVAL 5 MINUTE), DATE_ADD(CURDATE(), INTERVAL 7 DAY)),
-  ('PX71UTR', 'FLT-103', 'Volvo FH 460', 'Refrigerated', 'in_transit', 'Diesel', 24.00, 2021, 'Silver', DATE_ADD(CURDATE(), INTERVAL 15 DAY), DATE_ADD(CURDATE(), INTERVAL 24 DAY), DATE_ADD(CURDATE(), INTERVAL 95 DAY), 'Leeds outer ring', 34.0, DATE_SUB(NOW(), INTERVAL 9 MINUTE), DATE_ADD(CURDATE(), INTERVAL 3 DAY)),
-  ('NV23LQP', 'FLT-104', 'Scania R450', 'Flatbed', 'planned', 'Diesel', 28.00, 2023, 'Red', DATE_ADD(CURDATE(), INTERVAL 300 DAY), DATE_ADD(CURDATE(), INTERVAL 220 DAY), DATE_ADD(CURDATE(), INTERVAL 180 DAY), 'Avonmouth yard', 12.0, DATE_SUB(NOW(), INTERVAL 3 MINUTE), DATE_ADD(CURDATE(), INTERVAL 26 DAY))
+  ('MX22KHT', 'FLT-101', 'Mercedes', 'Actros 2545', 'Mercedes Actros 2545', 'Curtainsider', 'in_transit', 'Diesel', 26.00, 2022, 'White', DATE_ADD(CURDATE(), INTERVAL 210 DAY), DATE_ADD(CURDATE(), INTERVAL 160 DAY), DATE_ADD(CURDATE(), INTERVAL 120 DAY), 'M6 Northbound, Stoke-on-Trent', 58.0, DATE_SUB(NOW(), INTERVAL 2 MINUTE), DATE_ADD(CURDATE(), INTERVAL 18 DAY)),
+  ('KT21BZN', 'FLT-102', 'DAF', 'XF 530', 'DAF XF 530', 'Box Van', 'stopped', 'Diesel', 18.00, 2021, 'Blue', DATE_ADD(CURDATE(), INTERVAL 35 DAY), DATE_ADD(CURDATE(), INTERVAL 80 DAY), DATE_ADD(CURDATE(), INTERVAL 48 DAY), 'Birmingham fuel stop', 0.0, DATE_SUB(NOW(), INTERVAL 5 MINUTE), DATE_ADD(CURDATE(), INTERVAL 7 DAY)),
+  ('PX71UTR', 'FLT-103', 'Volvo', 'FH 460', 'Volvo FH 460', 'Refrigerated', 'in_transit', 'Diesel', 24.00, 2021, 'Silver', DATE_ADD(CURDATE(), INTERVAL 15 DAY), DATE_ADD(CURDATE(), INTERVAL 24 DAY), DATE_ADD(CURDATE(), INTERVAL 95 DAY), 'Leeds outer ring', 34.0, DATE_SUB(NOW(), INTERVAL 9 MINUTE), DATE_ADD(CURDATE(), INTERVAL 3 DAY)),
+  ('NV23LQP', 'FLT-104', 'Scania', 'R450', 'Scania R450', 'Flatbed', 'planned', 'Diesel', 28.00, 2023, 'Red', DATE_ADD(CURDATE(), INTERVAL 300 DAY), DATE_ADD(CURDATE(), INTERVAL 220 DAY), DATE_ADD(CURDATE(), INTERVAL 180 DAY), 'Avonmouth yard', 12.0, DATE_SUB(NOW(), INTERVAL 3 MINUTE), DATE_ADD(CURDATE(), INTERVAL 26 DAY))
 ON DUPLICATE KEY UPDATE
+  make = VALUES(make),
+  model = VALUES(model),
+  model_name = VALUES(model_name),
   current_location = VALUES(current_location),
   speed_kph = VALUES(speed_kph),
   last_ping_at = VALUES(last_ping_at),

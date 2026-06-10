@@ -83,6 +83,8 @@ export function VehiclesListPage() {
         return (
           v.registrationNumber.toLowerCase().includes(q) ||
           v.fleetCode.toLowerCase().includes(q) ||
+          (v.make || "").toLowerCase().includes(q) ||
+          (v.model || "").toLowerCase().includes(q) ||
           v.modelName.toLowerCase().includes(q) ||
           v.truckType.toLowerCase().includes(q) ||
           (v.currentLocation || "").toLowerCase().includes(q)
@@ -123,11 +125,12 @@ export function VehiclesListPage() {
 
   function exportVehicles() {
     exportCsv("vehicles-register.csv", [
-      ["Registration", "Fleet code", "Model", "Type", "Status", "Location", "MOT", "Insurance", "Road tax", "Next service", "Trips", "Open trips", "Open defects"],
+      ["Registration", "Fleet code", "Make", "Model", "Type", "Status", "Location", "MOT", "Insurance", "Road tax", "Next service", "Trips", "Open trips", "Open defects"],
       ...vehicles.map(v => [
         v.registrationNumber,
         v.fleetCode,
-        v.modelName,
+        v.make,
+        v.model,
         v.truckType,
         v.status,
         v.currentLocation,
@@ -225,7 +228,7 @@ export function VehiclesListPage() {
         <input
           className="af-input"
           type="text"
-          placeholder="Search reg, fleet code, model, type, or location..."
+          placeholder="Search reg, fleet code, make, model, type, or location..."
           value={search}
           onChange={e => setSearch(e.target.value)}
         />
@@ -260,7 +263,7 @@ export function VehiclesListPage() {
               <button className="finance-row-main vehicle-row-main" type="button" onClick={() => navigate(`/admin/vehicles/${v.id}`)}>
                 <div>
                   <strong>{v.registrationNumber}</strong>
-                  <p>{v.fleetCode} · {v.modelName} · {v.truckType}</p>
+                  <p>{v.fleetCode} · {v.make} · {v.model} · {v.truckType}</p>
                 </div>
                 <div>
                   <span>{v.currentLocation}</span>

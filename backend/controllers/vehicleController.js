@@ -2,6 +2,8 @@ const db = require("../db/connection");
 const { buildChangeSet, logActivity } = require("../utils/auditLogger");
 
 const vehicleColumns = [
+  ["make", "make VARCHAR(80) DEFAULT NULL"],
+  ["model", "model VARCHAR(80) DEFAULT NULL"],
   ["fuel_type", "fuel_type VARCHAR(30) DEFAULT NULL"],
   ["capacity_tonnes", "capacity_tonnes DECIMAL(6,2) DEFAULT NULL"],
   ["year_of_manufacture", "year_of_manufacture INT DEFAULT NULL"],
@@ -123,6 +125,23 @@ function expiryTone(dateStr) {
   return "success";
 }
 
+function splitVehicleModelName(modelName = "") {
+  const [make = "", ...modelParts] = String(modelName || "").trim().split(/\s+/);
+  return { make, model: modelParts.join(" ") };
+}
+
+function vehicleMake(row) {
+  return row.make || splitVehicleModelName(row.model_name).make || "—";
+}
+
+function vehicleModel(row) {
+  return row.model || splitVehicleModelName(row.model_name).model || row.model_name || "—";
+}
+
+function combinedModelName(make, model, modelName) {
+  return String(modelName || [make, model].filter(Boolean).join(" ")).trim();
+}
+
 // GET /api/vehicles
 exports.listVehicles = async (req, res) => {
   try {
@@ -198,6 +217,8 @@ exports.listVehicles = async (req, res) => {
         id: v.id,
         registrationNumber: v.registration_number,
         fleetCode: v.fleet_code,
+        make: vehicleMake(v),
+        model: vehicleModel(v),
         modelName: v.model_name,
         truckType: v.truck_type,
         status: v.status,
@@ -279,6 +300,8 @@ exports.getVehicleById = async (req, res) => {
       id: v.id,
       registrationNumber: v.registration_number,
       fleetCode: v.fleet_code,
+      make: vehicleMake(v),
+      model: vehicleModel(v),
       modelName: v.model_name,
       truckType: v.truck_type,
       status: v.status,
@@ -365,23 +388,24 @@ exports.getVehicleById = async (req, res) => {
 exports.createVehicle = async (req, res) => {
   try {
     const {
-      registration_number, fleet_code, model_name, truck_type, status,
+      registration_number, fleet_code, make, model, model_name, truck_type, status,
       fuel_type, capacity_tonnes, year_of_manufacture, colour,
       mot_expiry, insurance_expiry, road_tax_expiry, next_service_due
     } = req.body;
+    const finalModelName = combinedModelName(make, model, model_name);
 
-    if (!registration_number || !fleet_code || !model_name || !truck_type) {
-      return res.status(400).json({ message: "registration_number, fleet_code, model_name, and truck_type are required." });
+    if (!registration_number || !fleet_code || !make || !model || !truck_type) {
+      return res.status(400).json({ message: "registration_number, fleet_code, make, model, and truck_type are required." });
     }
 
     const [result] = await db.query(
       `INSERT INTO vehicles
-         (registration_number, fleet_code, model_name, truck_type, status,
+         (registration_number, fleet_code, make, model, model_name, truck_type, status,
           fuel_type, capacity_tonnes, year_of_manufacture, colour,
           mot_expiry, insurance_expiry, road_tax_expiry, next_service_due)
-       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
       [
-        registration_number, fleet_code, model_name, truck_type,
+        registration_number, fleet_code, make, model, finalModelName, truck_type,
         status || "available",
         fuel_type || null, capacity_tonnes || null, year_of_manufacture || null, colour || null,
         mot_expiry || null, insurance_expiry || null, road_tax_expiry || null, next_service_due || null
@@ -394,7 +418,7 @@ exports.createVehicle = async (req, res) => {
       entityType: "vehicle",
       entityId: result.insertId,
       entityLabel: registration_number,
-      details: { registration_number, fleet_code, model_name, truck_type, status: status || "available" }
+      details: { registration_number, fleet_code, make, model, model_name: finalModelName, truck_type, status: status || "available" }
     });
     res.status(201).json({ message: "Vehicle created.", id: result.insertId });
   } catch (err) {
@@ -413,20 +437,21 @@ exports.updateVehicle = async (req, res) => {
     if (!existing) return res.status(404).json({ message: "Vehicle not found." });
 
     const {
-      registration_number, fleet_code, model_name, truck_type, status,
+      registration_number, fleet_code, make, model, model_name, truck_type, status,
       fuel_type, capacity_tonnes, year_of_manufacture, colour,
       mot_expiry, insurance_expiry, road_tax_expiry, next_service_due, current_location
     } = req.body;
+    const finalModelName = combinedModelName(make, model, model_name);
 
     await db.query(
       `UPDATE vehicles SET
-         registration_number=?, fleet_code=?, model_name=?, truck_type=?, status=?,
+         registration_number=?, fleet_code=?, make=?, model=?, model_name=?, truck_type=?, status=?,
          fuel_type=?, capacity_tonnes=?, year_of_manufacture=?, colour=?,
          mot_expiry=?, insurance_expiry=?, road_tax_expiry=?,
          next_service_due=?, current_location=?
        WHERE id=?`,
       [
-        registration_number, fleet_code, model_name, truck_type,
+        registration_number, fleet_code, make || null, model || null, finalModelName, truck_type,
         status || "available",
         fuel_type || null, capacity_tonnes || null, year_of_manufacture || null, colour || null,
         mot_expiry || null, insurance_expiry || null, road_tax_expiry || null,
@@ -442,7 +467,7 @@ exports.updateVehicle = async (req, res) => {
       entityType: "vehicle",
       entityId: id,
       entityLabel: updated.registration_number,
-      details: { changes: buildChangeSet(existing, updated, ["registration_number", "fleet_code", "model_name", "truck_type", "status", "fuel_type", "capacity_tonnes", "mot_expiry", "insurance_expiry", "road_tax_expiry", "next_service_due", "current_location"]) }
+      details: { changes: buildChangeSet(existing, updated, ["registration_number", "fleet_code", "make", "model", "model_name", "truck_type", "status", "fuel_type", "capacity_tonnes", "mot_expiry", "insurance_expiry", "road_tax_expiry", "next_service_due", "current_location"]) }
     });
     res.json({ message: "Vehicle updated." });
   } catch (err) {

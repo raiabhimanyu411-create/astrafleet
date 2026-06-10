@@ -17,7 +17,11 @@ const emptyJob = {
   vehicle_id: "",
   defect_id: "",
   service_type: "",
+  service_date: "",
   due_date: "",
+  road_tax_interval_months: "12",
+  completed_mileage_km: "",
+  next_due_mileage_km: "",
   garage_name: "",
   assigned_mechanic: "",
   estimated_cost_gbp: "",
@@ -33,6 +37,14 @@ const emptyJob = {
 
 const statusOptions = ["planned", "booked", "in_progress", "completed", "cancelled"];
 const priorityOptions = ["low", "normal", "high", "critical"];
+const maintenanceItems = [
+  { value: "Roller brake test", label: "Roller brake test", interval: "Every 6 weeks", days: 42 },
+  { value: "Safety inspection", label: "Safety inspection", interval: "Every 6 weeks", days: 42 },
+  { value: "MOT", label: "MOT", interval: "Every 12 months", months: 12 },
+  { value: "Tacho Calibration", label: "Tacho Calibration", interval: "Every 2 years", months: 24 },
+  { value: "Road Tax", label: "Road Tax", interval: "Every 6 or 12 months", roadTax: true },
+  { value: "Full Service", label: "Full Service", interval: "Every 85,000 km", mileageKm: 85000 }
+];
 const dueWindows = [
   { value: "", label: "All due windows" },
   { value: "overdue", label: "Overdue only" },
@@ -43,6 +55,34 @@ const dueWindows = [
 
 function dateKey(date) {
   return date.toISOString().slice(0, 10);
+}
+
+function addDaysToKey(value, days) {
+  if (!value) return "";
+  const date = new Date(`${value}T00:00:00`);
+  date.setDate(date.getDate() + days);
+  return dateKey(date);
+}
+
+function addMonthsToKey(value, months) {
+  if (!value) return "";
+  const date = new Date(`${value}T00:00:00`);
+  date.setMonth(date.getMonth() + months);
+  return dateKey(date);
+}
+
+function nextDueForItem(serviceType, serviceDate, roadTaxIntervalMonths) {
+  const item = maintenanceItems.find((option) => option.value === serviceType);
+  if (!item || !serviceDate) return "";
+  if (item.roadTax) return addMonthsToKey(serviceDate, Number(roadTaxIntervalMonths || 12));
+  if (item.days) return addDaysToKey(serviceDate, item.days);
+  if (item.months) return addMonthsToKey(serviceDate, item.months);
+  return "";
+}
+
+function nextMileageForItem(serviceType, completedMileageKm) {
+  if (serviceType !== "Full Service" || !completedMileageKm) return "";
+  return String(Number(completedMileageKm) + 85000);
 }
 
 function displayDay(date) {
@@ -82,7 +122,11 @@ function toJobForm(job) {
     vehicle_id: job.vehicleId || "",
     defect_id: job.defectId || "",
     service_type: job.serviceType || "",
+    service_date: job.serviceDateRaw || "",
     due_date: job.dueDateRaw || "",
+    road_tax_interval_months: job.roadTaxIntervalMonths || "12",
+    completed_mileage_km: job.completedMileageKm || "",
+    next_due_mileage_km: job.nextDueMileageKm || "",
     garage_name: job.garageName === "-" ? "" : job.garageName,
     assigned_mechanic: job.assignedMechanic === "-" ? "" : job.assignedMechanic,
     estimated_cost_gbp: job.estimatedCostGbp || "",
@@ -117,8 +161,20 @@ function JobModal({ vehicles, defects, editingJob, initialForm, onClose, onSaved
 
   function set(name, value) {
     setError("");
-    setForm((current) => ({ ...current, [name]: value }));
+    setForm((current) => {
+      const next = { ...current, [name]: value };
+      if (["service_type", "service_date", "road_tax_interval_months"].includes(name)) {
+        const calculatedDue = nextDueForItem(next.service_type, next.service_date, next.road_tax_interval_months);
+        if (calculatedDue) next.due_date = calculatedDue;
+      }
+      if (["service_type", "completed_mileage_km"].includes(name)) {
+        next.next_due_mileage_km = nextMileageForItem(next.service_type, next.completed_mileage_km);
+      }
+      return next;
+    });
   }
+
+  const selectedItem = maintenanceItems.find((item) => item.value === form.service_type);
 
   async function submit(e) {
     e.preventDefault();
@@ -158,11 +214,31 @@ function JobModal({ vehicles, defects, editingJob, initialForm, onClose, onSaved
             </select>
           </Field>
           <Field label="Service type">
-            <input className="af-input" value={form.service_type} onChange={(e) => set("service_type", e.target.value)} placeholder="PMI, MOT prep, tyre repair..." required />
+            <select className="af-select" value={form.service_type} onChange={(e) => set("service_type", e.target.value)} required>
+              <option value="">Select maintenance item</option>
+              {maintenanceItems.map((item) => <option key={item.value} value={item.value}>{item.label} · {item.interval}</option>)}
+            </select>
           </Field>
-          <Field label="Due date">
+          <Field label="Date completed / done">
+            <input className="af-input" type="date" value={form.service_date} onChange={(e) => set("service_date", e.target.value)} />
+          </Field>
+          {form.service_type === "Road Tax" && (
+            <Field label="Road tax period">
+              <select className="af-select" value={form.road_tax_interval_months} onChange={(e) => set("road_tax_interval_months", e.target.value)}>
+                <option value="6">6 months</option>
+                <option value="12">12 months</option>
+              </select>
+            </Field>
+          )}
+          <Field label="Next due date">
             <input className="af-input" type="date" value={form.due_date} onChange={(e) => set("due_date", e.target.value)} required />
           </Field>
+          {selectedItem?.interval && (
+            <div className="maintenance-rule-note">
+              <span>Interval</span>
+              <strong>{selectedItem.interval}</strong>
+            </div>
+          )}
           <Field label="Status">
             <select className="af-select" value={form.status} onChange={(e) => set("status", e.target.value)}>
               {statusOptions.map((status) => <option key={status} value={status}>{status.replace("_", " ")}</option>)}
@@ -199,6 +275,16 @@ function JobModal({ vehicles, defects, editingJob, initialForm, onClose, onSaved
           <Field label="Final cost">
             <input className="af-input" type="number" min="0" step="0.01" value={form.final_cost_gbp} onChange={(e) => set("final_cost_gbp", e.target.value)} />
           </Field>
+          {form.service_type === "Full Service" && (
+            <>
+              <Field label="Completed mileage (km)">
+                <input className="af-input" type="number" min="0" value={form.completed_mileage_km} onChange={(e) => set("completed_mileage_km", e.target.value)} placeholder="e.g. 185000" />
+              </Field>
+              <Field label="Next due mileage (km)">
+                <input className="af-input" type="number" min="0" value={form.next_due_mileage_km} onChange={(e) => set("next_due_mileage_km", e.target.value)} placeholder="Auto +85,000 km" />
+              </Field>
+            </>
+          )}
         </div>
 
         <div className="maintenance-form-grid single">
@@ -246,6 +332,8 @@ function JobDrawer({ job, history, onClose, onEdit, onComplete }) {
         <div><span>Owner</span><strong>{job.assignedMechanic}</strong></div>
         <div><span>Cost</span><strong>{job.costLabel}</strong></div>
         <div><span>Vehicle type</span><strong>{job.truckType}</strong></div>
+        <div><span>Date done</span><strong>{job.serviceDateRaw ? job.serviceDate : "-"}</strong></div>
+        <div><span>Mileage</span><strong>{job.mileageLabel}</strong></div>
       </div>
       <div className="maintenance-drawer-actions">
         <button className="header-action-button" type="button" onClick={() => onEdit(job)}>Edit job</button>
@@ -377,11 +465,19 @@ export function AdminMaintenancePage() {
   async function handleComplete(job) {
     const finalCost = window.prompt("Final cost (£)", String(job.finalCostGbp ?? job.estimatedCostGbp ?? ""));
     if (finalCost === null) return;
+    const serviceDate = window.prompt("Date completed (YYYY-MM-DD)", job.serviceDateRaw || dateKey(new Date()));
+    if (serviceDate === null) return;
     const completionNotes = window.prompt("Completion notes", job.completionNotes === "-" ? "" : job.completionNotes);
     if (completionNotes === null) return;
     setSavingAction(job.id);
     try {
-      await completeMaintenanceJob(job.id, { final_cost_gbp: finalCost, completion_notes: completionNotes });
+      await completeMaintenanceJob(job.id, {
+        final_cost_gbp: finalCost,
+        service_date: serviceDate,
+        completed_mileage_km: job.completedMileageKm,
+        next_due_mileage_km: job.nextDueMileageKm,
+        completion_notes: completionNotes
+      });
       await load();
       setDrawerJob(null);
     } catch (err) {
@@ -404,13 +500,15 @@ export function AdminMaintenancePage() {
   }
 
   async function handleInspectionDone(row) {
+    const inspectionDate = window.prompt("Inspection date (YYYY-MM-DD)", dateKey(new Date()));
+    if (inspectionDate === null) return;
     const inspectorName = window.prompt("Inspector name", "");
     if (inspectorName === null) return;
     const notes = window.prompt("Inspection notes", "6-week safety inspection completed. Vehicle roadworthy.");
     if (notes === null) return;
     setSavingAction(`inspection-${row.id}`);
     try {
-      await markVehicleInspectionDone(row.id, { inspector_name: inspectorName, notes, result: "pass" });
+      await markVehicleInspectionDone(row.id, { inspection_date: inspectionDate, inspector_name: inspectorName, notes, result: "pass" });
       await load();
     } catch (err) {
       setError(err.response?.data?.message || "Could not mark inspection done.");
@@ -426,7 +524,7 @@ export function AdminMaintenancePage() {
         job.jobNumber,
         job.vehicle,
         job.serviceType,
-        job.completedAtRaw ? job.completedAt : "-",
+        job.serviceDateRaw ? job.serviceDate : job.completedAtRaw ? job.completedAt : "-",
         job.dueDate,
         job.statusLabel,
         job.priority,
@@ -620,8 +718,8 @@ export function AdminMaintenancePage() {
             <div className="maintenance-table-row" key={job.id} onClick={() => setDrawerJob(job)}>
               <div><strong>{job.vehicle}</strong><p>{job.fleetCode} · {job.make}</p></div>
               <div><span>{job.serviceType}</span><p>{job.jobNumber}</p></div>
-              <div><span>{job.completedAtRaw ? job.completedAt : "-"}</span><p>{job.defectType || "Planned work"}</p></div>
-              <div><span>{job.dueDate}</span><p>{job.dueLabel}</p></div>
+              <div><span>{job.serviceDateRaw ? job.serviceDate : job.completedAtRaw ? job.completedAt : "-"}</span><p>{job.defectType || "Planned work"}</p></div>
+              <div><span>{job.dueDate}</span><p>{job.serviceType === "Full Service" ? job.mileageLabel : job.dueLabel}</p></div>
               <div><StatusPill tone={job.statusTone}>{job.statusLabel}</StatusPill></div>
               <div><StatusPill tone={job.priorityTone}>{job.priority}</StatusPill></div>
               <div><span>{job.garageName}</span><p>{job.assignedMechanic}</p></div>

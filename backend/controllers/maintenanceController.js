@@ -1,6 +1,14 @@
 const db = require("../db/connection");
 
 const INSPECTION_INTERVAL_DAYS = 42;
+const MAINTENANCE_RULES = {
+  "Roller brake test": { days: 42 },
+  "Safety inspection": { days: 42 },
+  MOT: { months: 12 },
+  "Tacho Calibration": { months: 24 },
+  "Road Tax": { months: 12 },
+  "Full Service": { mileageKm: 85000 }
+};
 let schemaSyncPromise;
 
 async function addColumnIfMissing(table, column, definition) {
@@ -112,6 +120,10 @@ async function syncMaintenanceSchema() {
   await addColumnIfMissing("maintenance_jobs", "parts_required", "TEXT DEFAULT NULL");
   await addColumnIfMissing("maintenance_jobs", "completion_notes", "TEXT DEFAULT NULL");
   await addColumnIfMissing("maintenance_jobs", "completed_at", "DATETIME DEFAULT NULL");
+  await addColumnIfMissing("maintenance_jobs", "service_date", "DATE DEFAULT NULL");
+  await addColumnIfMissing("maintenance_jobs", "road_tax_interval_months", "INT DEFAULT NULL");
+  await addColumnIfMissing("maintenance_jobs", "completed_mileage_km", "INT DEFAULT NULL");
+  await addColumnIfMissing("maintenance_jobs", "next_due_mileage_km", "INT DEFAULT NULL");
 }
 
 exports.ensureMaintenanceSchema = async (_req, res, next) => {
@@ -172,6 +184,23 @@ function addDays(date, days) {
   return next;
 }
 
+function addMonths(date, months) {
+  const next = new Date(date);
+  next.setMonth(next.getMonth() + months);
+  return next;
+}
+
+function calculateNextDueDate(serviceType, serviceDate, roadTaxIntervalMonths) {
+  if (!serviceType || !serviceDate) return "";
+  if (serviceType === "Road Tax") {
+    return rawDate(addMonths(serviceDate, Number(roadTaxIntervalMonths || 12)));
+  }
+  const rule = MAINTENANCE_RULES[serviceType];
+  if (rule?.days) return rawDate(addDays(serviceDate, rule.days));
+  if (rule?.months) return rawDate(addMonths(serviceDate, rule.months));
+  return "";
+}
+
 function fmtAmount(value) {
   return `£${Number(value || 0).toLocaleString("en-GB", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
@@ -209,6 +238,10 @@ function cleanJobPayload(body) {
     labour_cost_gbp: Number(body.labour_cost_gbp || body.labourCostGbp || 0),
     parts_cost_gbp: Number(body.parts_cost_gbp || body.partsCostGbp || 0),
     final_cost_gbp: body.final_cost_gbp || body.finalCostGbp || null,
+    service_date: body.service_date || body.serviceDate || null,
+    road_tax_interval_months: body.road_tax_interval_months || body.roadTaxIntervalMonths || null,
+    completed_mileage_km: body.completed_mileage_km || body.completedMileageKm || null,
+    next_due_mileage_km: body.next_due_mileage_km || body.nextDueMileageKm || null,
     priority: body.priority || "normal",
     status: body.status || "planned",
     notes: String(body.notes || "").trim() || null,
@@ -221,6 +254,43 @@ async function setVehicleWorkshopStatus(vehicleId, jobStatus) {
   if (["booked", "in_progress"].includes(jobStatus)) {
     await db.query(`UPDATE vehicles SET status='maintenance' WHERE id=?`, [vehicleId]);
   }
+}
+
+async function applyCompletedMaintenance(job, completion = {}) {
+  const finalCost = Number(completion.finalCost ?? job.final_cost_gbp ?? job.estimated_cost_gbp ?? 0);
+  const completionNotes = completion.completionNotes ?? job.completion_notes ?? job.notes ?? null;
+  const serviceDate = completion.serviceDate || job.service_date || rawDate(new Date());
+  const nextDueDate = completion.nextDueDate || job.due_date || calculateNextDueDate(job.service_type, serviceDate, job.road_tax_interval_months) || null;
+  const completedMileageKm = completion.completedMileageKm || job.completed_mileage_km || null;
+  const nextDueMileageKm = completion.nextDueMileageKm || job.next_due_mileage_km || null;
+
+  await db.query(
+    `UPDATE maintenance_jobs
+     SET status='completed', final_cost_gbp=?, completion_notes=?, service_date=?, completed_mileage_km=?, next_due_mileage_km=?, completed_at=COALESCE(completed_at, NOW())
+     WHERE id=?`,
+    [finalCost, completionNotes, serviceDate, completedMileageKm, nextDueMileageKm, job.id]
+  );
+  await db.query(
+    `INSERT INTO maintenance_records (vehicle_id, service_date, service_type, description, cost_gbp, mileage, next_due_date, garage_name)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+    [job.vehicle_id, serviceDate, job.service_type, completionNotes || job.notes, finalCost, completedMileageKm, nextDueDate, job.garage_name]
+  );
+  if (nextDueDate && job.service_type === "MOT") {
+    await db.query(`UPDATE vehicles SET mot_expiry=? WHERE id=?`, [nextDueDate, job.vehicle_id]);
+  } else if (nextDueDate && job.service_type === "Road Tax") {
+    await db.query(`UPDATE vehicles SET road_tax_expiry=? WHERE id=?`, [nextDueDate, job.vehicle_id]);
+  } else if (nextDueDate && job.service_type === "Full Service") {
+    await db.query(`UPDATE vehicles SET next_service_due=? WHERE id=?`, [nextDueDate, job.vehicle_id]);
+  }
+  if (["Safety inspection", "Roller brake test"].includes(job.service_type)) {
+    await db.query(
+      `INSERT INTO vehicle_inspections
+        (vehicle_id, inspection_date, inspection_type, inspector_name, result, notes, next_due)
+       VALUES (?, ?, ?, ?, 'pass', ?, ?)`,
+      [job.vehicle_id, serviceDate, job.service_type, job.assigned_mechanic || job.garage_name, completionNotes || job.notes, nextDueDate]
+    );
+  }
+  return { finalCost, completionNotes, serviceDate, nextDueDate, completedMileageKm, nextDueMileageKm };
 }
 
 exports.getMaintenancePortal = async (_req, res) => {
@@ -392,6 +462,16 @@ exports.getMaintenancePortal = async (_req, res) => {
         labourCostGbp: Number(j.labour_cost_gbp || 0),
         partsCostGbp: Number(j.parts_cost_gbp || 0),
         finalCostGbp: j.final_cost_gbp == null ? null : Number(j.final_cost_gbp),
+        serviceDate: fmtDate(j.service_date),
+        serviceDateRaw: rawDate(j.service_date),
+        roadTaxIntervalMonths: j.road_tax_interval_months,
+        completedMileageKm: j.completed_mileage_km,
+        nextDueMileageKm: j.next_due_mileage_km,
+        mileageLabel: j.next_due_mileage_km
+          ? `${Number(j.next_due_mileage_km).toLocaleString("en-GB")} km next`
+          : j.completed_mileage_km
+            ? `${Number(j.completed_mileage_km).toLocaleString("en-GB")} km done`
+            : "-",
         costLabel: fmtAmount(totalCost),
         priority: j.priority,
         priorityTone: priorityTone(j.priority),
@@ -438,8 +518,10 @@ exports.getMaintenancePortal = async (_req, res) => {
     const complianceItems = rows.flatMap((v) => [
       { vehicleId: v.id, vehicle: v.registration_number, itemType: "MOT", dueDateRaw: rawDate(v.mot_expiry), dueDate: fmtDate(v.mot_expiry), daysLeft: daysUntil(v.mot_expiry) },
       { vehicleId: v.id, vehicle: v.registration_number, itemType: "Insurance", dueDateRaw: rawDate(v.insurance_expiry), dueDate: fmtDate(v.insurance_expiry), daysLeft: daysUntil(v.insurance_expiry) },
-      { vehicleId: v.id, vehicle: v.registration_number, itemType: "Road tax", dueDateRaw: rawDate(v.road_tax_expiry), dueDate: fmtDate(v.road_tax_expiry), daysLeft: daysUntil(v.road_tax_expiry) },
-      { vehicleId: v.id, vehicle: v.registration_number, itemType: "Service", dueDateRaw: rawDate(v.next_service_due), dueDate: fmtDate(v.next_service_due), daysLeft: daysUntil(v.next_service_due) }
+      { vehicleId: v.id, vehicle: v.registration_number, itemType: "Road Tax", dueDateRaw: rawDate(v.road_tax_expiry), dueDate: fmtDate(v.road_tax_expiry), daysLeft: daysUntil(v.road_tax_expiry) },
+      { vehicleId: v.id, vehicle: v.registration_number, itemType: "Full Service", dueDateRaw: rawDate(v.next_service_due), dueDate: fmtDate(v.next_service_due), daysLeft: daysUntil(v.next_service_due) },
+      { vehicleId: v.id, vehicle: v.registration_number, itemType: "Roller brake test", dueDateRaw: rawDate(v.next_inspection_due), dueDate: fmtDate(v.next_inspection_due), daysLeft: daysUntil(v.next_inspection_due) },
+      { vehicleId: v.id, vehicle: v.registration_number, itemType: "Safety inspection", dueDateRaw: rawDate(v.next_inspection_due), dueDate: fmtDate(v.next_inspection_due), daysLeft: daysUntil(v.next_inspection_due) }
     ]).filter((item) => item.dueDateRaw).map((item) => ({
       ...item,
       dueLabel: dueLabel(item.daysLeft),
@@ -534,7 +616,7 @@ exports.getMaintenancePortal = async (_req, res) => {
       highlights: [
         "Planner rows are generated from vehicles, maintenance logs, inspections, and defects.",
         "Use due filters to separate overdue work, upcoming workshop bookings, and healthy assets.",
-        "Vehicle profile remains the record entry point for adding maintenance, inspections, and defects."
+        "UK intervals are supported for roller brake tests, 6-week inspections, MOT, tacho calibration, road tax, and 85,000 km full service."
       ],
       stats: [
         { label: "Overdue", value: overdue + jobs.filter((job) => job.daysLeft < 0 && !["completed", "cancelled"].includes(job.status)).length, description: "Service, inspection, or job past due.", change: "Immediate action", tone: overdue ? "danger" : "success" },
@@ -577,7 +659,8 @@ exports.markVehicleInspectionDone = async (req, res) => {
     const result = req.body.result || "pass";
     const inspectorName = String(req.body.inspector_name || req.body.inspectorName || "").trim() || req.sessionUser?.name || null;
     const notes = String(req.body.notes || "").trim() || null;
-    const nextDue = rawDate(addDays(new Date(), INSPECTION_INTERVAL_DAYS));
+    const inspectionDate = req.body.inspection_date || req.body.inspectionDate || rawDate(new Date());
+    const nextDue = rawDate(addDays(inspectionDate, INSPECTION_INTERVAL_DAYS));
 
     if (!vehicleId) {
       return res.status(400).json({ message: "Valid vehicle id is required." });
@@ -592,8 +675,8 @@ exports.markVehicleInspectionDone = async (req, res) => {
     const [inserted] = await db.query(
       `INSERT INTO vehicle_inspections
         (vehicle_id, inspection_date, inspection_type, inspector_name, result, notes, next_due)
-       VALUES (?, CURDATE(), '6-week safety inspection', ?, ?, ?, ?)`,
-      [vehicleId, inspectorName, result, notes, nextDue]
+       VALUES (?, ?, '6-week safety inspection', ?, ?, ?, ?)`,
+      [vehicleId, inspectionDate, inspectorName, result, notes, nextDue]
     );
 
     if (result === "fail") {
@@ -629,6 +712,9 @@ exports.markVehicleInspectionDone = async (req, res) => {
 exports.createJob = async (req, res) => {
   try {
     const job = cleanJobPayload(req.body);
+    if (!job.due_date && job.service_date) {
+      job.due_date = calculateNextDueDate(job.service_type, job.service_date, job.road_tax_interval_months);
+    }
     if (!job.vehicle_id || !job.service_type || !job.due_date) {
       return res.status(400).json({ message: "Vehicle, service type, and due date are required." });
     }
@@ -636,16 +722,24 @@ exports.createJob = async (req, res) => {
     const [result] = await db.query(
       `INSERT INTO maintenance_jobs
         (job_number, vehicle_id, defect_id, service_type, due_date, garage_name, assigned_mechanic,
-         estimated_cost_gbp, labour_cost_gbp, parts_cost_gbp, final_cost_gbp, priority, status, notes, parts_required, completion_notes)
-       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+         estimated_cost_gbp, labour_cost_gbp, parts_cost_gbp, final_cost_gbp, service_date, road_tax_interval_months,
+         completed_mileage_km, next_due_mileage_km, priority, status, notes, parts_required, completion_notes)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
       [
         jobNumber, job.vehicle_id, job.defect_id, job.service_type, job.due_date, job.garage_name, job.assigned_mechanic,
         job.estimated_cost_gbp, job.labour_cost_gbp, job.parts_cost_gbp, job.final_cost_gbp,
+        job.service_date, job.road_tax_interval_months, job.completed_mileage_km, job.next_due_mileage_km,
         job.priority, job.status, job.notes, job.parts_required, job.completion_notes
       ]
     );
     if (job.defect_id) {
       await db.query(`UPDATE defect_reports SET status='in_progress' WHERE id=?`, [job.defect_id]);
+    }
+    if (job.status === "completed") {
+      await applyCompletedMaintenance({ id: result.insertId, ...job });
+      if (job.defect_id) {
+        await db.query(`UPDATE defect_reports SET status='resolved', resolved_at=NOW() WHERE id=?`, [job.defect_id]);
+      }
     }
     await setVehicleWorkshopStatus(job.vehicle_id, job.status);
     res.status(201).json({ message: "Maintenance job created.", id: result.insertId, jobNumber });
@@ -658,6 +752,9 @@ exports.updateJob = async (req, res) => {
   try {
     const id = Number(req.params.id);
     const job = cleanJobPayload(req.body);
+    if (!job.due_date && job.service_date) {
+      job.due_date = calculateNextDueDate(job.service_type, job.service_date, job.road_tax_interval_months);
+    }
     if (!id || !job.vehicle_id || !job.service_type || !job.due_date) {
       return res.status(400).json({ message: "Valid job, vehicle, service type, and due date are required." });
     }
@@ -665,11 +762,13 @@ exports.updateJob = async (req, res) => {
       `UPDATE maintenance_jobs SET
         vehicle_id=?, defect_id=?, service_type=?, due_date=?, garage_name=?, assigned_mechanic=?,
         estimated_cost_gbp=?, labour_cost_gbp=?, parts_cost_gbp=?, final_cost_gbp=?,
+        service_date=?, road_tax_interval_months=?, completed_mileage_km=?, next_due_mileage_km=?,
         priority=?, status=?, notes=?, parts_required=?, completion_notes=?
        WHERE id=?`,
       [
         job.vehicle_id, job.defect_id, job.service_type, job.due_date, job.garage_name, job.assigned_mechanic,
         job.estimated_cost_gbp, job.labour_cost_gbp, job.parts_cost_gbp, job.final_cost_gbp,
+        job.service_date, job.road_tax_interval_months, job.completed_mileage_km, job.next_due_mileage_km,
         job.priority, job.status, job.notes, job.parts_required, job.completion_notes, id
       ]
     );
@@ -686,24 +785,14 @@ exports.completeJob = async (req, res) => {
     const [[job]] = await db.query(`SELECT * FROM maintenance_jobs WHERE id=?`, [id]);
     if (!job) return res.status(404).json({ message: "Maintenance job not found." });
 
-    const finalCost = Number(req.body.final_cost_gbp || req.body.finalCostGbp || job.final_cost_gbp || job.estimated_cost_gbp || 0);
-    const completionNotes = String(req.body.completion_notes || req.body.completionNotes || job.completion_notes || "").trim() || null;
-    const nextDueDate = req.body.next_due_date || req.body.nextDueDate || null;
-
-    await db.query(
-      `UPDATE maintenance_jobs
-       SET status='completed', final_cost_gbp=?, completion_notes=?, completed_at=NOW()
-       WHERE id=?`,
-      [finalCost, completionNotes, id]
-    );
-    await db.query(
-      `INSERT INTO maintenance_records (vehicle_id, service_date, service_type, description, cost_gbp, next_due_date, garage_name)
-       VALUES (?, CURDATE(), ?, ?, ?, ?, ?)`,
-      [job.vehicle_id, job.service_type, completionNotes || job.notes, finalCost, nextDueDate, job.garage_name]
-    );
-    if (nextDueDate) {
-      await db.query(`UPDATE vehicles SET next_service_due=? WHERE id=?`, [nextDueDate, job.vehicle_id]);
-    }
+    await applyCompletedMaintenance(job, {
+      finalCost: Number(req.body.final_cost_gbp || req.body.finalCostGbp || job.final_cost_gbp || job.estimated_cost_gbp || 0),
+      completionNotes: String(req.body.completion_notes || req.body.completionNotes || job.completion_notes || "").trim() || null,
+      serviceDate: req.body.service_date || req.body.serviceDate || job.service_date || rawDate(new Date()),
+      nextDueDate: req.body.next_due_date || req.body.nextDueDate || job.due_date || null,
+      completedMileageKm: req.body.completed_mileage_km || req.body.completedMileageKm || job.completed_mileage_km || null,
+      nextDueMileageKm: req.body.next_due_mileage_km || req.body.nextDueMileageKm || job.next_due_mileage_km || null
+    });
     if (job.defect_id) {
       await db.query(`UPDATE defect_reports SET status='resolved', resolved_at=NOW() WHERE id=?`, [job.defect_id]);
     }
