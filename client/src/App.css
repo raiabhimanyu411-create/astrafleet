@@ -3440,6 +3440,119 @@ p.lp-success {
   gap: 10px;
 }
 
+.maintenance-profile-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.maintenance-profile-card {
+  min-width: 0;
+  padding: 13px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+}
+
+.maintenance-profile-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.maintenance-profile-head strong,
+.maintenance-inventory-item strong {
+  display: block;
+  color: var(--text);
+  font-size: 0.88rem;
+}
+
+.maintenance-profile-head p,
+.maintenance-inventory-item p,
+.maintenance-analytics-grid p {
+  margin: 3px 0 0;
+  color: var(--muted);
+  font-size: 0.76rem;
+}
+
+.maintenance-profile-items {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.maintenance-profile-item {
+  min-width: 0;
+  min-height: 108px;
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.maintenance-profile-item span {
+  display: block;
+  color: var(--muted);
+  font-size: 0.7rem;
+  font-weight: 800;
+}
+
+.maintenance-profile-item strong {
+  display: block;
+  margin-top: 5px;
+  color: var(--text);
+  font-size: 0.82rem;
+}
+
+.maintenance-profile-item p {
+  margin: 4px 0 8px;
+  color: var(--muted);
+  font-size: 0.72rem;
+}
+
+.maintenance-inventory-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.maintenance-inventory-item {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 110px auto;
+  align-items: center;
+  gap: 10px;
+  padding: 11px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+}
+
+.maintenance-inventory-item > span {
+  color: var(--text);
+  font-size: 0.8rem;
+  font-weight: 800;
+  text-align: right;
+}
+
+.maintenance-analytics-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.maintenance-analytics-grid > div {
+  min-height: 130px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+}
+
 .maintenance-job-card,
 .maintenance-compliance-item,
 .maintenance-mini-stat,
@@ -3791,6 +3904,10 @@ p.lp-success {
   .maintenance-top-grid,
   .maintenance-filter-card,
   .maintenance-job-card-grid,
+  .maintenance-profile-grid,
+  .maintenance-profile-items,
+  .maintenance-inventory-item,
+  .maintenance-analytics-grid,
   .maintenance-form-grid,
   .maintenance-form-grid.single,
   .maintenance-form-grid.bill,

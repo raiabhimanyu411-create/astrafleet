@@ -6,6 +6,8 @@ import {
   createMaintenanceJob,
   getMaintenancePortal,
   markVehicleInspectionDone,
+  updateDefectWorkflow,
+  updateMaintenanceBill,
   updateMaintenanceJob
 } from "../../api/maintenanceApi";
 import { StatCard } from "../../components/StatCard";
@@ -353,7 +355,7 @@ function JobModal({ vehicles, defects, editingJob, initialForm, onClose, onSaved
   );
 }
 
-function JobDrawer({ job, history, onClose, onEdit, onComplete }) {
+function JobDrawer({ job, history, onClose, onEdit, onComplete, onBillStatus, savingAction }) {
   if (!job) return null;
   const vehicleHistory = history.filter((item) => item.vehicleId === job.vehicleId).slice(0, 10);
   return (
@@ -377,6 +379,7 @@ function JobDrawer({ job, history, onClose, onEdit, onComplete }) {
         <div><span>Cost</span><strong>{job.costLabel}</strong></div>
         <div><span>Bill</span><strong>{job.billNumber || "-"}</strong></div>
         <div><span>Bill amount</span><strong>{job.billAmountLabel}</strong></div>
+        <div><span>Bill status</span><strong>{job.billStatus} · {job.billPaymentStatus}</strong></div>
         <div><span>Vehicle type</span><strong>{job.truckType}</strong></div>
         <div><span>Date done</span><strong>{job.serviceDateRaw ? job.serviceDate : "-"}</strong></div>
         <div><span>Mileage</span><strong>{job.mileageLabel}</strong></div>
@@ -395,6 +398,15 @@ function JobDrawer({ job, history, onClose, onEdit, onComplete }) {
       )}
       <div className="maintenance-drawer-actions">
         <button className="header-action-button" type="button" onClick={() => onEdit(job)}>Edit job</button>
+        {job.billStatus === "pending" && (job.billAmountGbp || job.billAttachmentData) && (
+          <>
+            <button className="header-action-button" disabled={savingAction === `bill-${job.id}`} type="button" onClick={() => onBillStatus(job, "approved")}>Approve bill</button>
+            <button className="header-action-button danger" disabled={savingAction === `bill-${job.id}`} type="button" onClick={() => onBillStatus(job, "rejected")}>Reject bill</button>
+          </>
+        )}
+        {job.billStatus === "approved" && job.billPaymentStatus !== "paid" && (
+          <button className="header-action-button" disabled={savingAction === `bill-${job.id}`} type="button" onClick={() => onBillStatus(job, "paid", "paid")}>Mark bill paid</button>
+        )}
         {!["completed", "cancelled"].includes(job.status) && (
           <button className="af-submit-btn" type="button" onClick={() => onComplete(job)}>Mark complete</button>
         )}
@@ -558,6 +570,31 @@ export function AdminMaintenancePage() {
     }
   }
 
+  async function handleBillStatus(job, billStatus, billPaymentStatus) {
+    setSavingAction(`bill-${job.id}`);
+    try {
+      await updateMaintenanceBill(job.id, { bill_status: billStatus, bill_payment_status: billPaymentStatus });
+      await load();
+      setDrawerJob((current) => current?.id === job.id ? null : current);
+    } catch (err) {
+      setError(err.response?.data?.message || "Could not update bill status.");
+    } finally {
+      setSavingAction("");
+    }
+  }
+
+  async function handleDefectWorkflow(defect, workflowStatus) {
+    setSavingAction(`defect-flow-${defect.id}`);
+    try {
+      await updateDefectWorkflow(defect.id, { workflow_status: workflowStatus });
+      await load();
+    } catch (err) {
+      setError(err.response?.data?.message || "Could not update defect workflow.");
+    } finally {
+      setSavingAction("");
+    }
+  }
+
   async function handleInspectionDone(row) {
     const inspectionDate = window.prompt("Inspection date (YYYY-MM-DD)", dateKey(new Date()));
     if (inspectionDate === null) return;
@@ -621,6 +658,93 @@ export function AdminMaintenancePage() {
 
       <section className="stats-grid inline finance-position-grid">
         {(data?.health || []).map((item) => <StatCard key={item.label} item={item} />)}
+      </section>
+
+      <section className="content-card">
+        <div className="section-head">
+          <div>
+            <span className="card-label">Vehicle maintenance profiles</span>
+            <h2> by vehicle</h2>
+          </div>
+          <StatusPill tone="neutral">{(data?.vehicleProfiles || []).length} vehicles</StatusPill>
+        </div>
+        <div className="maintenance-profile-grid">
+          {(data?.vehicleProfiles || []).slice(0, 8).map((profile) => (
+            <div className="maintenance-profile-card" key={profile.vehicleId}>
+              <div className="maintenance-profile-head">
+                <div>
+                  <strong>{profile.vehicle}</strong>
+                  <p>{profile.fleetCode} · {profile.currentKmLabel}</p>
+                </div>
+                <button className="header-action-button" type="button" onClick={() => navigate(`/admin/vehicles/${profile.vehicleId}`)}>Open</button>
+              </div>
+              <div className="maintenance-profile-items">
+                {profile.items.map((item) => (
+                  <button
+                    className="maintenance-profile-item"
+                    key={item.type}
+                    type="button"
+                    onClick={() => openAddJob({ vehicle_id: profile.vehicleId, service_type: item.type, due_date: item.nextDueRaw, priority: item.tone === "danger" ? "critical" : item.tone === "warning" ? "high" : "normal" })}
+                  >
+                    <span>{item.type}</span>
+                    <strong>{item.nextDue}</strong>
+                    <p>{item.type === "Full Service" ? item.kmRemainingLabel : item.dueLabel}</p>
+                    <StatusPill tone={item.tone}>{item.status}</StatusPill>
+                  </button>
+                ))}
+              </div>
+            </div>
+          ))}
+          {!loading && (data?.vehicleProfiles || []).length === 0 && <p className="finance-empty">No vehicle maintenance profiles available.</p>}
+        </div>
+      </section>
+
+      <section className="content-grid">
+        <article className="content-card">
+          <div className="section-head">
+            <div>
+              <span className="card-label">Compliance risk dashboard</span>
+              <h2>Alerts and upcoming risk</h2>
+            </div>
+            <StatusPill tone={(data?.maintenanceAlerts || []).length ? "warning" : "success"}>{(data?.maintenanceAlerts || []).length} alerts</StatusPill>
+          </div>
+          <div className="alert-stack">
+            {(data?.maintenanceAlerts || []).map((alert, index) => (
+              <div className="alert-card" key={`${alert.title}-${index}`}>
+                <div className={`alert-bar ${alert.tone}`} />
+                <div>
+                  <strong>{alert.title}</strong>
+                  <p>{alert.detail}</p>
+                </div>
+              </div>
+            ))}
+            {!loading && (data?.maintenanceAlerts || []).length === 0 && <p className="finance-empty">No maintenance alerts right now.</p>}
+          </div>
+        </article>
+
+        <article className="content-card">
+          <div className="section-head">
+            <div>
+              <span className="card-label">Odometer full service</span>
+              <h2>85,000 km tracking</h2>
+            </div>
+            <StatusPill tone="neutral">Driver readings</StatusPill>
+          </div>
+          <div className="maintenance-cost-list">
+            {(data?.vehicleProfiles || []).slice(0, 8).map((profile) => {
+              const service = profile.items.find((item) => item.type === "Full Service");
+              return (
+                <div className="maintenance-cost-item" key={`km-${profile.vehicleId}`}>
+                  <div>
+                    <strong>{profile.vehicle}</strong>
+                    <p>{profile.currentKmLabel} current · {service?.nextDueMileageKm ? `${Number(service.nextDueMileageKm).toLocaleString("en-GB")} km next` : "No service km target"}</p>
+                  </div>
+                  <StatusPill tone={service?.tone || "neutral"}>{service?.kmRemainingLabel || "-"}</StatusPill>
+                </div>
+              );
+            })}
+          </div>
+        </article>
       </section>
 
       <section className="content-grid maintenance-top-grid">
@@ -788,6 +912,9 @@ export function AdminMaintenancePage() {
               <div><span>{job.costLabel}</span><p>{job.billNumber ? `Bill ${job.billNumber}` : job.billAttachmentData ? "Bill attached" : "Estimate/final"}</p></div>
               <div className="finance-row-actions" onClick={(e) => e.stopPropagation()}>
                 <button className="header-action-button" type="button" onClick={() => openEditJob(job)}>Edit</button>
+                {job.billStatus === "pending" && (job.billAmountGbp || job.billAttachmentData) && (
+                  <button className="header-action-button" disabled={savingAction === `bill-${job.id}`} type="button" onClick={() => handleBillStatus(job, "approved")}>Approve bill</button>
+                )}
                 {!["completed", "cancelled"].includes(job.status) && (
                   <button className="header-action-button" disabled={savingAction === job.id} type="button" onClick={() => handleComplete(job)}>Complete</button>
                 )}
@@ -846,6 +973,105 @@ export function AdminMaintenancePage() {
         <article className="content-card">
           <div className="section-head">
             <div>
+              <span className="card-label">Parts inventory</span>
+              <h2>Stock and reorder watch</h2>
+            </div>
+            <StatusPill tone={(data?.inventory || []).some((item) => item.tone === "warning") ? "warning" : "success"}>
+              {(data?.inventory || []).length} parts
+            </StatusPill>
+          </div>
+          <div className="maintenance-inventory-list">
+            {(data?.inventory || []).slice(0, 8).map((part) => (
+              <div className="maintenance-inventory-item" key={part.id}>
+                <div>
+                  <strong>{part.partName}</strong>
+                  <p>{part.category} · {part.supplier}</p>
+                </div>
+                <span>{part.stockQty} in stock</span>
+                <StatusPill tone={part.tone}>{part.status}</StatusPill>
+              </div>
+            ))}
+            {!loading && (data?.inventory || []).length === 0 && <p className="finance-empty">No inventory parts configured.</p>}
+          </div>
+        </article>
+
+        <article className="content-card">
+          <div className="section-head">
+            <div>
+              <span className="card-label">Tyre management</span>
+              <h2>Tread, pressure and replacement watch</h2>
+            </div>
+            <StatusPill tone={(data?.tyres || []).some((tyre) => tyre.status === "replace") ? "danger" : "neutral"}>{(data?.tyres || []).length} tyres</StatusPill>
+          </div>
+          <div className="maintenance-inventory-list">
+            {(data?.tyres || []).slice(0, 8).map((tyre) => (
+              <div className="maintenance-inventory-item" key={tyre.id}>
+                <div>
+                  <strong>{tyre.vehicle} · {tyre.position}</strong>
+                  <p>{tyre.brand} · {tyre.treadDepth} · {tyre.pressure}</p>
+                </div>
+                <span>{tyre.replacementDue}</span>
+                <StatusPill tone={tyre.tone}>{tyre.status}</StatusPill>
+              </div>
+            ))}
+            {!loading && (data?.tyres || []).length === 0 && <p className="finance-empty">Tyre positions will appear after tyre records are added.</p>}
+          </div>
+        </article>
+      </section>
+
+      <section className="content-grid">
+        <article className="content-card">
+          <div className="section-head">
+            <div>
+              <span className="card-label">Documents vault</span>
+              <h2>Bills, invoices and workshop papers</h2>
+            </div>
+            <StatusPill tone="neutral">{(data?.documentsVault || []).length} docs</StatusPill>
+          </div>
+          <div className="maintenance-compliance-list">
+            {(data?.documentsVault || []).map((doc) => (
+              <button className="maintenance-compliance-item" key={doc.id} type="button" onClick={() => setDrawerJob((data?.jobs || []).find((job) => job.id === doc.id))}>
+                <StatusPill tone={doc.billStatusTone}>{doc.billStatus}</StatusPill>
+                <strong>{doc.vehicle} · {doc.serviceType}</strong>
+                <span>{doc.billAmount}</span>
+                <p>{doc.billNumber} · {doc.billDate} · {doc.hasAttachment ? "Attachment available" : "No attachment"}</p>
+              </button>
+            ))}
+            {!loading && (data?.documentsVault || []).length === 0 && <p className="finance-empty">Bills and workshop paperwork will appear here after upload.</p>}
+          </div>
+        </article>
+
+        <article className="content-card">
+          <div className="section-head">
+            <div>
+              <span className="card-label">Maintenance analytics</span>
+              <h2>Cost, defects and vendors</h2>
+            </div>
+            <StatusPill tone="neutral">Live</StatusPill>
+          </div>
+          <div className="maintenance-analytics-grid">
+            <div>
+              <span className="card-label">Repeated defects</span>
+              {(data?.analytics?.repeatedDefects || []).map((item) => <p key={item.type}><strong>{item.type}</strong> · {item.count}</p>)}
+              {(data?.analytics?.repeatedDefects || []).length === 0 && <p>No repeated defects.</p>}
+            </div>
+            <div>
+              <span className="card-label">Vendor spend</span>
+              {(data?.analytics?.vendorSpend || []).map((item) => <p key={item.vendor}><strong>{item.vendor}</strong> · {item.amountLabel}</p>)}
+              {(data?.analytics?.vendorSpend || []).length === 0 && <p>No vendor spend yet.</p>}
+            </div>
+            <div>
+              <span className="card-label">Cost / km</span>
+              {(data?.analytics?.costPerKm || []).slice(0, 5).map((item) => <p key={item.vehicle}><strong>{item.vehicle}</strong> · {item.costPerKm}</p>)}
+            </div>
+          </div>
+        </article>
+      </section>
+
+      <section className="content-grid">
+        <article className="content-card">
+          <div className="section-head">
+            <div>
               <span className="card-label">Defect-to-repair workflow</span>
               <h2>Driver defects awaiting maintenance</h2>
             </div>
@@ -857,6 +1083,20 @@ export function AdminMaintenancePage() {
                 <div><strong>{defect.vehicle}</strong><p>{defect.defectType} · {defect.description}</p></div>
                 <StatusPill tone={defect.severityTone}>{defect.severity}</StatusPill>
                 <div className="finance-row-actions">
+                  <StatusPill tone={defect.workflowStatus === "verified" ? "success" : defect.workflowStatus === "fixed" ? "warning" : "neutral"}>{defect.workflowStatus}</StatusPill>
+                  {["reported", "reviewed", "booked", "fixed"].map((step) => (
+                    defect.workflowStatus !== step && (
+                      <button
+                        className="header-action-button"
+                        disabled={savingAction === `defect-flow-${defect.id}`}
+                        key={step}
+                        type="button"
+                        onClick={() => handleDefectWorkflow(defect, step)}
+                      >
+                        {step}
+                      </button>
+                    )
+                  ))}
                   {defect.jobId ? (
                     <StatusPill tone="success">{defect.jobNumber}</StatusPill>
                   ) : (
@@ -906,6 +1146,8 @@ export function AdminMaintenancePage() {
         onClose={() => setDrawerJob(null)}
         onEdit={openEditJob}
         onComplete={handleComplete}
+        onBillStatus={handleBillStatus}
+        savingAction={savingAction}
       />
     </AdminWorkspaceLayout>
   );

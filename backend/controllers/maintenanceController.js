@@ -129,6 +129,86 @@ async function syncMaintenanceSchema() {
   await addColumnIfMissing("maintenance_jobs", "bill_amount_gbp", "DECIMAL(10,2) DEFAULT NULL");
   await addColumnIfMissing("maintenance_jobs", "bill_notes", "TEXT DEFAULT NULL");
   await addColumnIfMissing("maintenance_jobs", "bill_attachment_data", "LONGTEXT DEFAULT NULL");
+  await addColumnIfMissing("maintenance_jobs", "bill_status", "ENUM('pending','approved','rejected','paid') NOT NULL DEFAULT 'pending'");
+  await addColumnIfMissing("maintenance_jobs", "bill_approved_by", "VARCHAR(120) DEFAULT NULL");
+  await addColumnIfMissing("maintenance_jobs", "bill_approved_at", "DATETIME DEFAULT NULL");
+  await addColumnIfMissing("maintenance_jobs", "bill_payment_status", "ENUM('unpaid','scheduled','paid') NOT NULL DEFAULT 'unpaid'");
+  await addColumnIfMissing("maintenance_jobs", "vendor_invoice_ref", "VARCHAR(100) DEFAULT NULL");
+
+  await db.query(`
+    CREATE TABLE IF NOT EXISTS maintenance_inventory (
+      id              INT AUTO_INCREMENT PRIMARY KEY,
+      part_name       VARCHAR(120) NOT NULL,
+      category        VARCHAR(80) NOT NULL DEFAULT 'General',
+      stock_qty       INT NOT NULL DEFAULT 0,
+      reorder_level   INT NOT NULL DEFAULT 0,
+      unit_cost_gbp   DECIMAL(10,2) NOT NULL DEFAULT 0,
+      supplier        VARCHAR(120) DEFAULT NULL,
+      updated_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+      UNIQUE KEY uniq_inventory_part (part_name)
+    ) ENGINE=InnoDB
+  `);
+
+  await db.query(`
+    INSERT INTO maintenance_inventory (part_name, category, stock_qty, reorder_level, unit_cost_gbp, supplier)
+    VALUES
+      ('Tyre 315/70 R22.5', 'Tyres', 8, 4, 245.00, 'Fleet Tyres UK'),
+      ('Brake pads axle set', 'Brakes', 5, 3, 180.00, 'BrakeLine Parts'),
+      ('Engine oil 20L', 'Service', 12, 6, 72.00, 'Workshop Supplies'),
+      ('Oil filter', 'Service', 10, 5, 22.00, 'Workshop Supplies'),
+      ('Headlamp bulb', 'Electrical', 14, 6, 9.50, 'Parts Desk')
+    ON DUPLICATE KEY UPDATE part_name = VALUES(part_name)
+  `);
+
+  await db.query(`
+    CREATE TABLE IF NOT EXISTS vehicle_tyres (
+      id                 INT AUTO_INCREMENT PRIMARY KEY,
+      vehicle_id         INT NOT NULL,
+      position_label     VARCHAR(80) NOT NULL,
+      tyre_brand         VARCHAR(80) DEFAULT NULL,
+      tread_depth_mm     DECIMAL(4,1) DEFAULT NULL,
+      pressure_psi       DECIMAL(5,1) DEFAULT NULL,
+      fitted_date        DATE DEFAULT NULL,
+      replacement_due    DATE DEFAULT NULL,
+      cost_gbp           DECIMAL(10,2) DEFAULT NULL,
+      supplier           VARCHAR(120) DEFAULT NULL,
+      status             ENUM('ok','monitor','replace') NOT NULL DEFAULT 'ok',
+      updated_at         TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+      CONSTRAINT fk_vehicle_tyres_vehicle FOREIGN KEY (vehicle_id) REFERENCES vehicles (id) ON DELETE CASCADE
+    ) ENGINE=InnoDB
+  `);
+
+  await db.query(`
+    INSERT INTO vehicle_tyres (vehicle_id, position_label, tyre_brand, tread_depth_mm, pressure_psi, status)
+    SELECT v.id, positions.position_label, 'Fleet standard', 8.0, 110.0, 'ok'
+    FROM vehicles v
+    JOIN (
+      SELECT 'Front left' AS position_label
+      UNION ALL SELECT 'Front right'
+      UNION ALL SELECT 'Axle 2 left'
+      UNION ALL SELECT 'Axle 2 right'
+      UNION ALL SELECT 'Rear left'
+      UNION ALL SELECT 'Rear right'
+    ) positions
+    WHERE NOT EXISTS (
+      SELECT 1 FROM vehicle_tyres existing
+      WHERE existing.vehicle_id = v.id AND existing.position_label = positions.position_label
+    )
+  `);
+
+  await addColumnIfMissing("defect_reports", "workflow_status", "ENUM('reported','reviewed','booked','fixed','verified') NOT NULL DEFAULT 'reported'");
+
+  await db.query(`
+    CREATE TABLE IF NOT EXISTS driver_odometer_logs (
+      id         INT AUTO_INCREMENT PRIMARY KEY,
+      driver_id  INT DEFAULT NULL,
+      trip_id    INT DEFAULT NULL,
+      vehicle_id INT DEFAULT NULL,
+      reading_km DECIMAL(10,1) NOT NULL,
+      log_type   VARCHAR(20) NOT NULL DEFAULT 'start',
+      logged_at  DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+    ) ENGINE=InnoDB
+  `);
 }
 
 exports.ensureMaintenanceSchema = async (_req, res, next) => {
@@ -174,6 +254,14 @@ function dueLabel(days) {
   if (days < 0) return `${Math.abs(days)}d overdue`;
   if (days === 0) return "Due today";
   return `${days}d left`;
+}
+
+function statusFromDays(days) {
+  if (days === null) return { label: "Not scheduled", tone: "neutral" };
+  if (days < 0) return { label: "Overdue", tone: "danger" };
+  if (days <= 7) return { label: "Due now", tone: "danger" };
+  if (days <= 30) return { label: "Due soon", tone: "warning" };
+  return { label: "OK", tone: "success" };
 }
 
 function inspectionStatus(days) {
@@ -252,6 +340,9 @@ function cleanJobPayload(body) {
     bill_amount_gbp: body.bill_amount_gbp || body.billAmountGbp || null,
     bill_notes: String(body.bill_notes || body.billNotes || "").trim() || null,
     bill_attachment_data: body.bill_attachment_data || body.billAttachmentData || null,
+    bill_status: body.bill_status || body.billStatus || "pending",
+    bill_payment_status: body.bill_payment_status || body.billPaymentStatus || "unpaid",
+    vendor_invoice_ref: String(body.vendor_invoice_ref || body.vendorInvoiceRef || "").trim() || null,
     priority: body.priority || "normal",
     status: body.status || "planned",
     notes: String(body.notes || "").trim() || null,
@@ -263,6 +354,46 @@ function cleanJobPayload(body) {
 async function setVehicleWorkshopStatus(vehicleId, jobStatus) {
   if (["booked", "in_progress"].includes(jobStatus)) {
     await db.query(`UPDATE vehicles SET status='maintenance' WHERE id=?`, [vehicleId]);
+  }
+}
+
+function recurringPriority(daysLeft) {
+  if (daysLeft !== null && daysLeft <= 7) return "high";
+  if (daysLeft !== null && daysLeft <= 30) return "normal";
+  return "low";
+}
+
+async function ensureRecurringJob(vehicleId, serviceType, dueDate, sourceJobId = null) {
+  if (!vehicleId || !serviceType || !dueDate) return null;
+  const [[existing]] = await db.query(
+    `SELECT id FROM maintenance_jobs
+     WHERE vehicle_id=? AND service_type=? AND due_date=? AND status IN ('planned','booked','in_progress')
+     LIMIT 1`,
+    [vehicleId, serviceType, dueDate]
+  );
+  if (existing) return existing.id;
+  const jobNumber = await nextJobNumber();
+  const daysLeft = daysUntil(dueDate);
+  const [result] = await db.query(
+    `INSERT INTO maintenance_jobs
+      (job_number, vehicle_id, service_type, due_date, priority, status, notes)
+     VALUES (?, ?, ?, ?, ?, 'planned', ?)`,
+    [jobNumber, vehicleId, serviceType, dueDate, recurringPriority(daysLeft), sourceJobId ? `Auto-created from completed job #${sourceJobId}` : "Auto-created recurring maintenance"]
+  );
+  return result.insertId;
+}
+
+async function decrementInventoryFromText(partsText) {
+  const text = String(partsText || "").toLowerCase();
+  if (!text) return;
+  const [parts] = await db.query(`SELECT id, part_name, stock_qty FROM maintenance_inventory`);
+  for (const part of parts) {
+    if (text.includes(String(part.part_name).toLowerCase())) {
+      await db.query(
+        `UPDATE maintenance_inventory SET stock_qty=GREATEST(stock_qty - 1, 0) WHERE id=?`,
+        [part.id]
+      );
+    }
   }
 }
 
@@ -287,6 +418,7 @@ async function applyCompletedMaintenance(job, completion = {}) {
      VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
     [job.vehicle_id, serviceDate, job.service_type, completionNotes || job.notes, finalCost, completedMileageKm, nextDueDate, job.garage_name]
   );
+  await decrementInventoryFromText(job.parts_required);
   if (nextDueDate && job.service_type === "MOT") {
     await db.query(`UPDATE vehicles SET mot_expiry=? WHERE id=?`, [nextDueDate, job.vehicle_id]);
   } else if (nextDueDate && job.service_type === "Road Tax") {
@@ -294,6 +426,7 @@ async function applyCompletedMaintenance(job, completion = {}) {
   } else if (nextDueDate && job.service_type === "Full Service") {
     await db.query(`UPDATE vehicles SET next_service_due=? WHERE id=?`, [nextDueDate, job.vehicle_id]);
   }
+  await ensureRecurringJob(job.vehicle_id, job.service_type, nextDueDate, job.id);
   if (["Safety inspection", "Roller brake test"].includes(job.service_type)) {
     await db.query(
       `INSERT INTO vehicle_inspections
@@ -488,6 +621,12 @@ exports.getMaintenancePortal = async (_req, res) => {
         billAmountLabel: j.bill_amount_gbp == null ? "-" : fmtAmount(j.bill_amount_gbp),
         billNotes: j.bill_notes || "-",
         billAttachmentData: j.bill_attachment_data || "",
+        billStatus: j.bill_status || "pending",
+        billStatusTone: { approved: "success", paid: "success", rejected: "danger", pending: "warning" }[j.bill_status || "pending"] || "neutral",
+        billPaymentStatus: j.bill_payment_status || "unpaid",
+        billApprovedBy: j.bill_approved_by || "-",
+        billApprovedAt: fmtDate(j.bill_approved_at),
+        vendorInvoiceRef: j.vendor_invoice_ref || "-",
         mileageLabel: j.next_due_mileage_km
           ? `${Number(j.next_due_mileage_km).toLocaleString("en-GB")} km next`
           : j.completed_mileage_km
@@ -530,11 +669,24 @@ exports.getMaintenancePortal = async (_req, res) => {
       severity: d.severity,
       severityTone: { critical: "danger", high: "danger", medium: "warning", low: "neutral" }[d.severity] || "neutral",
       status: d.status,
+      workflowStatus: d.workflow_status || (d.job_id ? "booked" : "reported"),
       reportedBy: d.reported_by || "-",
       reportedAt: fmtDate(d.reported_at),
       jobId: d.job_id,
       jobNumber: d.job_number
     }));
+
+    const [odometerRows] = await db.query(`
+      SELECT l.vehicle_id, l.reading_km
+      FROM driver_odometer_logs l
+      JOIN (
+        SELECT vehicle_id, MAX(logged_at) AS max_logged_at
+        FROM driver_odometer_logs
+        WHERE vehicle_id IS NOT NULL
+        GROUP BY vehicle_id
+      ) latest ON latest.vehicle_id = l.vehicle_id AND latest.max_logged_at = l.logged_at
+    `);
+    const odometerByVehicle = new Map(odometerRows.map((row) => [Number(row.vehicle_id), Number(row.reading_km || 0)]));
 
     const complianceItems = rows.flatMap((v) => [
       { vehicleId: v.id, vehicle: v.registration_number, itemType: "MOT", dueDateRaw: rawDate(v.mot_expiry), dueDate: fmtDate(v.mot_expiry), daysLeft: daysUntil(v.mot_expiry) },
@@ -549,6 +701,59 @@ exports.getMaintenancePortal = async (_req, res) => {
       tone: item.daysLeft < 0 ? "danger" : item.daysLeft <= 30 ? "warning" : "success",
       reminder: item.daysLeft <= 30 ? "Reminder due" : "Scheduled"
     })).sort((a, b) => (a.daysLeft ?? 9999) - (b.daysLeft ?? 9999));
+
+    const profileItemTypes = ["MOT", "Road Tax", "Tacho Calibration", "Safety inspection", "Roller brake test", "Full Service"];
+    const latestServiceByVehicleAndType = new Map();
+    for (const job of jobs) {
+      const key = `${job.vehicleId}:${job.serviceType}`;
+      const current = latestServiceByVehicleAndType.get(key);
+      if (job.serviceDateRaw && (!current || job.serviceDateRaw > current.serviceDateRaw)) {
+        latestServiceByVehicleAndType.set(key, job);
+      }
+    }
+    const vehicleProfiles = rows.map((v) => {
+      const currentKm = odometerByVehicle.get(Number(v.id)) || null;
+      return {
+        vehicleId: v.id,
+        vehicle: v.registration_number,
+        fleetCode: v.fleet_code,
+        make: v.model_name,
+        currentKm,
+        currentKmLabel: currentKm ? `${currentKm.toLocaleString("en-GB")} km` : "-",
+        items: profileItemTypes.map((type) => {
+          const latest = latestServiceByVehicleAndType.get(`${v.id}:${type}`);
+          const dueDateRaw = type === "MOT"
+            ? rawDate(v.mot_expiry)
+            : type === "Road Tax"
+              ? rawDate(v.road_tax_expiry)
+              : type === "Full Service"
+                ? rawDate(v.next_service_due)
+                : latest?.dueDateRaw || rawDate(v.next_inspection_due);
+          const daysLeft = daysUntil(dueDateRaw);
+          const serviceStatus = statusFromDays(daysLeft);
+          const kmRemaining = type === "Full Service" && latest?.nextDueMileageKm && currentKm
+            ? Number(latest.nextDueMileageKm) - currentKm
+            : null;
+          return {
+            type,
+            lastDone: latest?.serviceDateRaw ? latest.serviceDate : "-",
+            nextDue: fmtDate(dueDateRaw),
+            nextDueRaw: dueDateRaw,
+            daysLeft,
+            dueLabel: dueLabel(daysLeft),
+            status: type === "Full Service" && kmRemaining !== null && kmRemaining <= 5000 ? "Due by km" : serviceStatus.label,
+            tone: type === "Full Service" && kmRemaining !== null && kmRemaining <= 0
+              ? "danger"
+              : type === "Full Service" && kmRemaining !== null && kmRemaining <= 5000
+                ? "warning"
+                : serviceStatus.tone,
+            nextDueMileageKm: latest?.nextDueMileageKm || "",
+            kmRemaining,
+            kmRemainingLabel: kmRemaining === null ? "-" : `${Number(kmRemaining).toLocaleString("en-GB")} km`
+          };
+        })
+      };
+    });
 
     const calendarEvents = [
       ...complianceItems.map((item) => ({
@@ -619,6 +824,100 @@ exports.getMaintenancePortal = async (_req, res) => {
         jobs: jobs.filter((job) => job.vehicle === vehicle).length
       }));
 
+    const [inventoryRows] = await db.query(`
+      SELECT *
+      FROM maintenance_inventory
+      ORDER BY stock_qty <= reorder_level DESC, category ASC, part_name ASC
+    `);
+    const inventory = inventoryRows.map((part) => ({
+      id: part.id,
+      partName: part.part_name,
+      category: part.category,
+      stockQty: Number(part.stock_qty || 0),
+      reorderLevel: Number(part.reorder_level || 0),
+      unitCost: fmtAmount(part.unit_cost_gbp),
+      supplier: part.supplier || "-",
+      status: Number(part.stock_qty || 0) <= Number(part.reorder_level || 0) ? "Reorder" : "In stock",
+      tone: Number(part.stock_qty || 0) <= Number(part.reorder_level || 0) ? "warning" : "success"
+    }));
+
+    const [tyreRows] = await db.query(`
+      SELECT t.*, v.registration_number
+      FROM vehicle_tyres t
+      JOIN vehicles v ON v.id = t.vehicle_id
+      ORDER BY FIELD(t.status, 'replace','monitor','ok'), v.registration_number ASC, t.position_label ASC
+      LIMIT 80
+    `);
+    const tyres = tyreRows.map((tyre) => ({
+      id: tyre.id,
+      vehicleId: tyre.vehicle_id,
+      vehicle: tyre.registration_number,
+      position: tyre.position_label,
+      brand: tyre.tyre_brand || "-",
+      treadDepth: tyre.tread_depth_mm == null ? "-" : `${Number(tyre.tread_depth_mm).toFixed(1)} mm`,
+      pressure: tyre.pressure_psi == null ? "-" : `${Number(tyre.pressure_psi).toFixed(1)} psi`,
+      replacementDue: fmtDate(tyre.replacement_due),
+      supplier: tyre.supplier || "-",
+      cost: tyre.cost_gbp == null ? "-" : fmtAmount(tyre.cost_gbp),
+      status: tyre.status,
+      tone: { replace: "danger", monitor: "warning", ok: "success" }[tyre.status] || "neutral"
+    }));
+
+    const documentsVault = jobs
+      .filter((job) => job.billAttachmentData || job.billNumber || job.billNotes !== "-")
+      .slice(0, 12)
+      .map((job) => ({
+        id: job.id,
+        jobNumber: job.jobNumber,
+        vehicle: job.vehicle,
+        serviceType: job.serviceType,
+        billNumber: job.billNumber || "-",
+        billDate: job.billDateRaw ? job.billDate : "-",
+        billAmount: job.billAmountLabel,
+        hasAttachment: Boolean(job.billAttachmentData),
+        billStatus: job.billStatus,
+        billStatusTone: job.billStatusTone
+      }));
+
+    const repeatedDefects = Object.entries(defects.reduce((acc, defect) => {
+      acc[defect.defectType] = (acc[defect.defectType] || 0) + 1;
+      return acc;
+    }, {})).sort((a, b) => b[1] - a[1]).slice(0, 5).map(([type, count]) => ({ type, count }));
+    const vendorSpend = Object.entries(jobs.reduce((acc, job) => {
+      if (job.garageName && job.garageName !== "-") {
+        acc[job.garageName] = (acc[job.garageName] || 0) + Number(job.finalCostGbp ?? job.billAmountGbp ?? job.estimatedCostGbp);
+      }
+      return acc;
+    }, {})).sort((a, b) => b[1] - a[1]).slice(0, 6).map(([vendor, amount]) => ({ vendor, amountLabel: fmtAmount(amount) }));
+    const analytics = {
+      costByVehicle: costByVehicleRows,
+      repeatedDefects,
+      vendorSpend,
+      costPerKm: vehicleProfiles.map((profile) => {
+        const total = costByVehicle[profile.vehicle] || 0;
+        return {
+          vehicle: profile.vehicle,
+          currentKm: profile.currentKmLabel,
+          costPerKm: profile.currentKm ? `£${(total / profile.currentKm).toFixed(3)}/km` : "-"
+        };
+      })
+    };
+
+    const maintenanceAlerts = [
+      ...complianceItems
+        .filter((item) => item.itemType === "MOT" && item.daysLeft <= 30)
+        .map((item) => ({ title: `${item.vehicle} MOT due`, detail: item.dueLabel, tone: item.tone })),
+      ...complianceItems
+        .filter((item) => item.itemType === "Safety inspection" && item.daysLeft <= 7)
+        .map((item) => ({ title: `${item.vehicle} safety inspection due`, detail: item.dueLabel, tone: item.tone })),
+      ...vehicleProfiles.flatMap((profile) => profile.items
+        .filter((item) => item.type === "Full Service" && item.kmRemaining !== null && item.kmRemaining <= 5000)
+        .map((item) => ({ title: `${profile.vehicle} full service by odometer`, detail: item.kmRemainingLabel, tone: item.tone }))),
+      ...jobs
+        .filter((job) => job.billStatus === "pending" && (job.billAmountGbp || job.billAttachmentData))
+        .map((job) => ({ title: `${job.jobNumber} bill pending approval`, detail: `${job.vehicle} · ${job.billAmountLabel}`, tone: "warning" }))
+    ].slice(0, 12);
+
     const vehicles = rows.map((v) => ({
       id: v.id,
       label: `${v.registration_number} · ${v.fleet_code} · ${v.model_name}`,
@@ -647,15 +946,21 @@ exports.getMaintenancePortal = async (_req, res) => {
       ],
       health: [
         { label: "Open estimated cost", value: fmtAmount(openEstimated), description: "Open planned/booked/in-progress job estimates.", change: "Forecast", tone: "warning" },
-        { label: "Completed actual cost", value: fmtAmount(completedActual), description: "Final cost on completed jobs.", change: "History", tone: "success" },
-        { label: "Highest cost vehicle", value: highestCost ? highestCost[0] : "-", description: highestCost ? fmtAmount(highestCost[1]) : "No job costs yet.", change: "Cost trend", tone: "neutral" },
+        { label: "Bills pending approval", value: jobs.filter((job) => job.billStatus === "pending" && (job.billAmountGbp || job.billAttachmentData)).length, description: "Uploaded bills waiting admin approval.", change: "Finance check", tone: "warning" },
+        { label: "Tyres to replace", value: tyres.filter((tyre) => tyre.status === "replace").length, description: "Tyres marked for replacement.", change: "Tyre bay", tone: tyres.some((tyre) => tyre.status === "replace") ? "danger" : "success" },
         { label: "Ready after checks", value: available, description: "Available and clear beyond 14 days.", change: "Assignable", tone: "success" }
       ],
       weeklyBoard,
       plannerRows,
+      vehicleProfiles,
       vehicles,
       jobs,
       defects,
+      inventory,
+      tyres,
+      documentsVault,
+      maintenanceAlerts,
+      analytics,
       complianceItems,
       calendarEvents,
       history,
@@ -745,18 +1050,20 @@ exports.createJob = async (req, res) => {
         (job_number, vehicle_id, defect_id, service_type, due_date, garage_name, assigned_mechanic,
          estimated_cost_gbp, labour_cost_gbp, parts_cost_gbp, final_cost_gbp, service_date, road_tax_interval_months,
          completed_mileage_km, next_due_mileage_km, bill_number, bill_date, bill_amount_gbp, bill_notes, bill_attachment_data,
+         bill_status, bill_payment_status, vendor_invoice_ref,
          priority, status, notes, parts_required, completion_notes)
-       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
       [
         jobNumber, job.vehicle_id, job.defect_id, job.service_type, job.due_date, job.garage_name, job.assigned_mechanic,
         job.estimated_cost_gbp, job.labour_cost_gbp, job.parts_cost_gbp, job.final_cost_gbp,
         job.service_date, job.road_tax_interval_months, job.completed_mileage_km, job.next_due_mileage_km,
         job.bill_number, job.bill_date, job.bill_amount_gbp, job.bill_notes, job.bill_attachment_data,
+        job.bill_status, job.bill_payment_status, job.vendor_invoice_ref,
         job.priority, job.status, job.notes, job.parts_required, job.completion_notes
       ]
     );
     if (job.defect_id) {
-      await db.query(`UPDATE defect_reports SET status='in_progress' WHERE id=?`, [job.defect_id]);
+      await db.query(`UPDATE defect_reports SET status='in_progress', workflow_status='booked' WHERE id=?`, [job.defect_id]);
     }
     if (job.status === "completed") {
       await applyCompletedMaintenance({ id: result.insertId, ...job });
@@ -787,6 +1094,7 @@ exports.updateJob = async (req, res) => {
         estimated_cost_gbp=?, labour_cost_gbp=?, parts_cost_gbp=?, final_cost_gbp=?,
         service_date=?, road_tax_interval_months=?, completed_mileage_km=?, next_due_mileage_km=?,
         bill_number=?, bill_date=?, bill_amount_gbp=?, bill_notes=?, bill_attachment_data=?,
+        bill_status=?, bill_payment_status=?, vendor_invoice_ref=?,
         priority=?, status=?, notes=?, parts_required=?, completion_notes=?
        WHERE id=?`,
       [
@@ -794,6 +1102,7 @@ exports.updateJob = async (req, res) => {
         job.estimated_cost_gbp, job.labour_cost_gbp, job.parts_cost_gbp, job.final_cost_gbp,
         job.service_date, job.road_tax_interval_months, job.completed_mileage_km, job.next_due_mileage_km,
         job.bill_number, job.bill_date, job.bill_amount_gbp, job.bill_notes, job.bill_attachment_data,
+        job.bill_status, job.bill_payment_status, job.vendor_invoice_ref,
         job.priority, job.status, job.notes, job.parts_required, job.completion_notes, id
       ]
     );
@@ -801,6 +1110,59 @@ exports.updateJob = async (req, res) => {
     res.json({ message: "Maintenance job updated." });
   } catch (err) {
     res.status(500).json({ message: "Maintenance job update error", error: err.message });
+  }
+};
+
+exports.updateBillStatus = async (req, res) => {
+  try {
+    const id = Number(req.params.id);
+    const billStatus = req.body.bill_status || req.body.billStatus;
+    const paymentStatus = req.body.bill_payment_status || req.body.billPaymentStatus;
+    const validBill = ["pending", "approved", "rejected", "paid"];
+    const validPayment = ["unpaid", "scheduled", "paid"];
+    if (!id || (billStatus && !validBill.includes(billStatus)) || (paymentStatus && !validPayment.includes(paymentStatus))) {
+      return res.status(400).json({ message: "Valid bill status or payment status is required." });
+    }
+    await db.query(
+      `UPDATE maintenance_jobs
+       SET bill_status=COALESCE(?, bill_status),
+           bill_payment_status=COALESCE(?, bill_payment_status),
+           bill_approved_by=CASE WHEN ? IN ('approved','paid') THEN ? ELSE bill_approved_by END,
+           bill_approved_at=CASE WHEN ? IN ('approved','paid') THEN NOW() ELSE bill_approved_at END
+       WHERE id=?`,
+      [
+        billStatus || null,
+        paymentStatus || null,
+        billStatus || null,
+        req.sessionUser?.name || "Admin",
+        billStatus || null,
+        id
+      ]
+    );
+    res.json({ message: "Bill status updated." });
+  } catch (err) {
+    res.status(500).json({ message: "Bill status update error", error: err.message });
+  }
+};
+
+exports.updateDefectWorkflow = async (req, res) => {
+  try {
+    const defectId = Number(req.params.defectId);
+    const workflowStatus = req.body.workflow_status || req.body.workflowStatus;
+    const valid = ["reported", "reviewed", "booked", "fixed", "verified"];
+    if (!defectId || !valid.includes(workflowStatus)) {
+      return res.status(400).json({ message: "Valid defect workflow status is required." });
+    }
+    await db.query(
+      `UPDATE defect_reports
+       SET workflow_status=?, status=CASE WHEN ? IN ('fixed','verified') THEN 'resolved' ELSE status END,
+           resolved_at=CASE WHEN ? IN ('fixed','verified') THEN COALESCE(resolved_at, NOW()) ELSE resolved_at END
+       WHERE id=?`,
+      [workflowStatus, workflowStatus, workflowStatus, defectId]
+    );
+    res.json({ message: "Defect workflow updated." });
+  } catch (err) {
+    res.status(500).json({ message: "Defect workflow update error", error: err.message });
   }
 };
 
@@ -820,7 +1182,7 @@ exports.completeJob = async (req, res) => {
       billAmountGbp: req.body.bill_amount_gbp || req.body.billAmountGbp || job.bill_amount_gbp || null
     });
     if (job.defect_id) {
-      await db.query(`UPDATE defect_reports SET status='resolved', resolved_at=NOW() WHERE id=?`, [job.defect_id]);
+      await db.query(`UPDATE defect_reports SET status='resolved', workflow_status='verified', resolved_at=NOW() WHERE id=?`, [job.defect_id]);
     }
     const [[open]] = await db.query(
       `SELECT COUNT(*) AS count FROM maintenance_jobs WHERE vehicle_id=? AND status IN ('booked','in_progress')`,
@@ -862,7 +1224,7 @@ exports.createJobFromDefect = async (req, res) => {
         req.body.parts_required || null
       ]
     );
-    await db.query(`UPDATE defect_reports SET status='in_progress' WHERE id=?`, [defect.id]);
+    await db.query(`UPDATE defect_reports SET status='in_progress', workflow_status='booked' WHERE id=?`, [defect.id]);
     await db.query(`UPDATE vehicles SET status='maintenance' WHERE id=?`, [defect.vehicle_id]);
     res.status(201).json({ message: "Repair job created from defect.", id: result.insertId, jobNumber });
   } catch (err) {
