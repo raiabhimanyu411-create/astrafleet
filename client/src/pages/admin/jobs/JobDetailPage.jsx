@@ -249,6 +249,8 @@ export function JobDetailPage() {
               <SectionCard label="Load details" title={`${LOAD_ICONS[data.load.type] || "📦"} ${data.load.type} load`}>
                 <div className="detail-grid">
                   <DetailField label="Weight"      value={data.load.weightKg} />
+                  <DetailField label="Volume"      value={data.load.volumeCbm} />
+                  <DetailField label="Vehicle requirement" value={data.load.vehicleRequirement} />
                   <DetailField label="Freight"     value={data.load.freight} />
                   <div className="detail-wide"><DetailField label="Description" value={data.load.description} /></div>
                   {data.specialInstructions && (
@@ -263,6 +265,7 @@ export function JobDetailPage() {
                   <DetailField label="Pickup address"  value={data.route.pickupAddress || data.route.from} />
                   <DetailField label="Drop address"    value={data.route.dropAddress || data.route.to} />
                   <DetailField label="Planned departure" value={data.schedule.plannedDeparture} />
+                  <DetailField label="Delivery deadline" value={data.schedule.deliveryDeadline} />
                   <DetailField label="ETA"             value={data.schedule.eta} />
                   <DetailField label="Actual departure" value={data.schedule.actualDeparture} />
                   <DetailField label="Actual arrival"  value={data.schedule.actualArrival} />
@@ -318,6 +321,10 @@ export function JobDetailPage() {
                     </button>
                   </div>
                 )}
+              </SectionCard>
+
+              <SectionCard label="Dispatcher notes" title="Internal execution notes">
+                <DetailField label="Notes" value={data.dispatcherNotes} />
               </SectionCard>
             </div>
 

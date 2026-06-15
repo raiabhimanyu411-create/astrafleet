@@ -10,7 +10,11 @@ const vehicleColumns = [
   ["colour", "colour VARCHAR(40) DEFAULT NULL"],
   ["mot_expiry", "mot_expiry DATE DEFAULT NULL"],
   ["insurance_expiry", "insurance_expiry DATE DEFAULT NULL"],
-  ["road_tax_expiry", "road_tax_expiry DATE DEFAULT NULL"]
+  ["road_tax_expiry", "road_tax_expiry DATE DEFAULT NULL"],
+  ["permit_expiry", "permit_expiry DATE DEFAULT NULL"],
+  ["pollution_expiry", "pollution_expiry DATE DEFAULT NULL"],
+  ["fitness_expiry", "fitness_expiry DATE DEFAULT NULL"],
+  ["odometer_reading", "odometer_reading DECIMAL(12,1) DEFAULT NULL"]
 ];
 
 let schemaSyncPromise;
@@ -87,6 +91,20 @@ async function syncVehicleSchema() {
       CONSTRAINT fk_defect_reports_vehicle FOREIGN KEY (vehicle_id) REFERENCES vehicles (id) ON DELETE CASCADE
     ) ENGINE=InnoDB
   `);
+
+  await db.query(`
+    CREATE TABLE IF NOT EXISTS driver_expenses (
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      driver_id INT NOT NULL,
+      trip_id INT DEFAULT NULL,
+      expense_type VARCHAR(40) NOT NULL DEFAULT 'fuel',
+      amount_gbp DECIMAL(10,2) NOT NULL DEFAULT 0,
+      notes VARCHAR(255) DEFAULT NULL,
+      receipt_data LONGTEXT DEFAULT NULL,
+      expense_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    ) ENGINE=InnoDB
+  `);
 }
 
 exports.ensureVehicleSchema = async (_req, res, next) => {
@@ -156,12 +174,18 @@ exports.listVehicles = async (req, res) => {
           mot_expiry < CURDATE()
           OR insurance_expiry < CURDATE()
           OR road_tax_expiry < CURDATE()
+          OR permit_expiry < CURDATE()
+          OR pollution_expiry < CURDATE()
+          OR fitness_expiry < CURDATE()
           OR next_service_due < CURDATE()
         ), 0) as expired_items,
         COALESCE(SUM(
           mot_expiry BETWEEN CURDATE() AND DATE_ADD(CURDATE(), INTERVAL 90 DAY)
           OR insurance_expiry BETWEEN CURDATE() AND DATE_ADD(CURDATE(), INTERVAL 90 DAY)
           OR road_tax_expiry BETWEEN CURDATE() AND DATE_ADD(CURDATE(), INTERVAL 90 DAY)
+          OR permit_expiry BETWEEN CURDATE() AND DATE_ADD(CURDATE(), INTERVAL 90 DAY)
+          OR pollution_expiry BETWEEN CURDATE() AND DATE_ADD(CURDATE(), INTERVAL 90 DAY)
+          OR fitness_expiry BETWEEN CURDATE() AND DATE_ADD(CURDATE(), INTERVAL 90 DAY)
           OR next_service_due BETWEEN CURDATE() AND DATE_ADD(CURDATE(), INTERVAL 90 DAY)
         ), 0) as expiring_items
        FROM vehicles`
@@ -229,15 +253,30 @@ exports.listVehicles = async (req, res) => {
         colour: v.colour || "—",
         currentLocation: v.current_location || "—",
         motExpiry: fmtDate(v.mot_expiry),
+        motExpiryRaw: rawDate(v.mot_expiry),
         motDaysLeft: daysUntil(v.mot_expiry),
         motExpiryTone: expiryTone(v.mot_expiry),
         insuranceExpiry: fmtDate(v.insurance_expiry),
+        insuranceExpiryRaw: rawDate(v.insurance_expiry),
         insuranceDaysLeft: daysUntil(v.insurance_expiry),
         insuranceExpiryTone: expiryTone(v.insurance_expiry),
         roadTaxExpiry: fmtDate(v.road_tax_expiry),
+        roadTaxExpiryRaw: rawDate(v.road_tax_expiry),
         roadTaxDaysLeft: daysUntil(v.road_tax_expiry),
         roadTaxExpiryTone: expiryTone(v.road_tax_expiry),
+        permitExpiry: fmtDate(v.permit_expiry),
+        permitExpiryRaw: rawDate(v.permit_expiry),
+        permitExpiryTone: expiryTone(v.permit_expiry),
+        pollutionExpiry: fmtDate(v.pollution_expiry),
+        pollutionExpiryRaw: rawDate(v.pollution_expiry),
+        pollutionExpiryTone: expiryTone(v.pollution_expiry),
+        fitnessExpiry: fmtDate(v.fitness_expiry),
+        fitnessExpiryRaw: rawDate(v.fitness_expiry),
+        fitnessExpiryTone: expiryTone(v.fitness_expiry),
+        odometerReading: v.odometer_reading ? `${Number(v.odometer_reading).toLocaleString("en-GB")} km` : "—",
+        odometerReadingRaw: v.odometer_reading ?? "",
         nextServiceDue: fmtDate(v.next_service_due),
+        nextServiceDueRaw: rawDate(v.next_service_due),
         nextServiceDaysLeft: daysUntil(v.next_service_due),
         nextServiceTone: expiryTone(v.next_service_due),
         totalTrips: v.total_trips,
@@ -245,7 +284,7 @@ exports.listVehicles = async (req, res) => {
         openDefects: Number(v.open_defects || 0),
         criticalDefects: Number(v.critical_defects || 0),
         lastActivity: fmtDate(v.last_trip_at || v.created_at),
-        complianceRisk: [v.mot_expiry, v.insurance_expiry, v.road_tax_expiry, v.next_service_due].some(date => {
+        complianceRisk: [v.mot_expiry, v.insurance_expiry, v.road_tax_expiry, v.permit_expiry, v.pollution_expiry, v.fitness_expiry, v.next_service_due].some(date => {
           const days = daysUntil(date);
           return days !== null && days < 90;
         }) || Number(v.open_defects || 0) > 0,
@@ -285,6 +324,15 @@ exports.getVehicleById = async (req, res) => {
        WHERE t.vehicle_id = ?
        ORDER BY t.created_at DESC LIMIT 20`, [id]
     );
+    const [fuelHistory] = await db.query(
+      `SELECT e.id, e.amount_gbp, e.notes, e.expense_at, d.full_name, t.trip_code
+       FROM driver_expenses e
+       LEFT JOIN trips t ON t.id = e.trip_id
+       LEFT JOIN drivers d ON d.id = e.driver_id
+       WHERE t.vehicle_id = ? AND e.expense_type = 'fuel'
+       ORDER BY e.expense_at DESC LIMIT 20`,
+      [id]
+    );
 
     const statusTone       = { available: "success", planned: "neutral", in_transit: "warning", maintenance: "danger", stopped: "danger" };
     const verifyTone       = { valid: "success", expiring: "warning", expired: "danger", pending: "neutral" };
@@ -293,7 +341,7 @@ exports.getVehicleById = async (req, res) => {
     const defectStatusTone = { open: "danger", in_progress: "warning", resolved: "success" };
     const resultTone       = { pass: "success", advisory: "warning", fail: "danger" };
 
-    const tones = [expiryTone(v.mot_expiry), expiryTone(v.insurance_expiry), expiryTone(v.road_tax_expiry)];
+    const tones = [expiryTone(v.mot_expiry), expiryTone(v.insurance_expiry), expiryTone(v.road_tax_expiry), expiryTone(v.permit_expiry), expiryTone(v.pollution_expiry), expiryTone(v.fitness_expiry)];
     const complianceTone = tones.includes("danger") ? "danger" : tones.includes("warning") || tones.includes("neutral") ? "warning" : "success";
 
     res.json({
@@ -310,6 +358,7 @@ exports.getVehicleById = async (req, res) => {
       capacityTonnes: v.capacity_tonnes,
       yearOfManufacture: v.year_of_manufacture,
       colour: v.colour,
+      odometerReading: v.odometer_reading,
       currentLocation: v.current_location,
       nextServiceDue: fmtDate(v.next_service_due),
       nextServiceDueRaw: rawDate(v.next_service_due),
@@ -320,6 +369,9 @@ exports.getVehicleById = async (req, res) => {
       mot:       { expiry: fmtDate(v.mot_expiry),       raw: rawDate(v.mot_expiry),       tone: expiryTone(v.mot_expiry),       daysLeft: daysUntil(v.mot_expiry) },
       insurance: { expiry: fmtDate(v.insurance_expiry), raw: rawDate(v.insurance_expiry), tone: expiryTone(v.insurance_expiry), daysLeft: daysUntil(v.insurance_expiry) },
       roadTax:   { expiry: fmtDate(v.road_tax_expiry),  raw: rawDate(v.road_tax_expiry),  tone: expiryTone(v.road_tax_expiry),  daysLeft: daysUntil(v.road_tax_expiry) },
+      permit:    { expiry: fmtDate(v.permit_expiry),    raw: rawDate(v.permit_expiry),    tone: expiryTone(v.permit_expiry),    daysLeft: daysUntil(v.permit_expiry) },
+      pollution: { expiry: fmtDate(v.pollution_expiry), raw: rawDate(v.pollution_expiry), tone: expiryTone(v.pollution_expiry), daysLeft: daysUntil(v.pollution_expiry) },
+      fitness:   { expiry: fmtDate(v.fitness_expiry),   raw: rawDate(v.fitness_expiry),   tone: expiryTone(v.fitness_expiry),   daysLeft: daysUntil(v.fitness_expiry) },
 
       documents: docs.map(doc => ({
         id: doc.id,
@@ -377,6 +429,15 @@ exports.getVehicleById = async (req, res) => {
         status: t.dispatch_status,
         statusTone: dispatchTone[t.dispatch_status] || "neutral",
         freight: t.freight_amount_gbp ? `£${Number(t.freight_amount_gbp).toLocaleString("en-GB", { minimumFractionDigits: 2 })}` : "—"
+      })),
+
+      fuelHistory: fuelHistory.map(f => ({
+        id: f.id,
+        tripCode: f.trip_code || "—",
+        driver: f.full_name || "—",
+        amount: f.amount_gbp ? `£${Number(f.amount_gbp).toLocaleString("en-GB", { minimumFractionDigits: 2 })}` : "—",
+        notes: f.notes || "—",
+        at: fmtDateTime(f.expense_at)
       }))
     });
   } catch (err) {
@@ -390,7 +451,8 @@ exports.createVehicle = async (req, res) => {
     const {
       registration_number, fleet_code, make, model, model_name, truck_type, status,
       fuel_type, capacity_tonnes, year_of_manufacture, colour,
-      mot_expiry, insurance_expiry, road_tax_expiry, next_service_due
+      mot_expiry, insurance_expiry, road_tax_expiry, permit_expiry, pollution_expiry, fitness_expiry,
+      odometer_reading, next_service_due
     } = req.body;
     const finalModelName = combinedModelName(make, model, model_name);
 
@@ -402,13 +464,16 @@ exports.createVehicle = async (req, res) => {
       `INSERT INTO vehicles
          (registration_number, fleet_code, make, model, model_name, truck_type, status,
           fuel_type, capacity_tonnes, year_of_manufacture, colour,
-          mot_expiry, insurance_expiry, road_tax_expiry, next_service_due)
-       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+          mot_expiry, insurance_expiry, road_tax_expiry, permit_expiry, pollution_expiry, fitness_expiry,
+          odometer_reading, next_service_due)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
       [
         registration_number, fleet_code, make, model, finalModelName, truck_type,
         status || "available",
         fuel_type || null, capacity_tonnes || null, year_of_manufacture || null, colour || null,
-        mot_expiry || null, insurance_expiry || null, road_tax_expiry || null, next_service_due || null
+        mot_expiry || null, insurance_expiry || null, road_tax_expiry || null,
+        permit_expiry || null, pollution_expiry || null, fitness_expiry || null,
+        odometer_reading || null, next_service_due || null
       ]
     );
 
@@ -439,7 +504,8 @@ exports.updateVehicle = async (req, res) => {
     const {
       registration_number, fleet_code, make, model, model_name, truck_type, status,
       fuel_type, capacity_tonnes, year_of_manufacture, colour,
-      mot_expiry, insurance_expiry, road_tax_expiry, next_service_due, current_location
+      mot_expiry, insurance_expiry, road_tax_expiry, permit_expiry, pollution_expiry, fitness_expiry,
+      odometer_reading, next_service_due, current_location
     } = req.body;
     const finalModelName = combinedModelName(make, model, model_name);
 
@@ -448,6 +514,7 @@ exports.updateVehicle = async (req, res) => {
          registration_number=?, fleet_code=?, make=?, model=?, model_name=?, truck_type=?, status=?,
          fuel_type=?, capacity_tonnes=?, year_of_manufacture=?, colour=?,
          mot_expiry=?, insurance_expiry=?, road_tax_expiry=?,
+         permit_expiry=?, pollution_expiry=?, fitness_expiry=?, odometer_reading=?,
          next_service_due=?, current_location=?
        WHERE id=?`,
       [
@@ -455,6 +522,7 @@ exports.updateVehicle = async (req, res) => {
         status || "available",
         fuel_type || null, capacity_tonnes || null, year_of_manufacture || null, colour || null,
         mot_expiry || null, insurance_expiry || null, road_tax_expiry || null,
+        permit_expiry || null, pollution_expiry || null, fitness_expiry || null, odometer_reading || null,
         next_service_due || null, current_location || null,
         id
       ]
@@ -467,11 +535,79 @@ exports.updateVehicle = async (req, res) => {
       entityType: "vehicle",
       entityId: id,
       entityLabel: updated.registration_number,
-      details: { changes: buildChangeSet(existing, updated, ["registration_number", "fleet_code", "make", "model", "model_name", "truck_type", "status", "fuel_type", "capacity_tonnes", "mot_expiry", "insurance_expiry", "road_tax_expiry", "next_service_due", "current_location"]) }
+      details: { changes: buildChangeSet(existing, updated, ["registration_number", "fleet_code", "make", "model", "model_name", "truck_type", "status", "fuel_type", "capacity_tonnes", "mot_expiry", "insurance_expiry", "road_tax_expiry", "permit_expiry", "pollution_expiry", "fitness_expiry", "odometer_reading", "next_service_due", "current_location"]) }
     });
     res.json({ message: "Vehicle updated." });
   } catch (err) {
     res.status(500).json({ message: "Vehicle update error", error: err.message });
+  }
+};
+
+// PATCH /api/vehicles/:id/inline
+exports.updateVehicleInline = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const [[existing]] = await db.query(`SELECT * FROM vehicles WHERE id = ?`, [id]);
+    if (!existing) return res.status(404).json({ message: "Vehicle not found." });
+
+    const fieldMap = {
+      registrationNumber: "registration_number",
+      fleetCode: "fleet_code",
+      make: "make",
+      model: "model",
+      modelName: "model_name",
+      truckType: "truck_type",
+      status: "status",
+      fuelType: "fuel_type",
+      capacityTonnes: "capacity_tonnes",
+      yearOfManufacture: "year_of_manufacture",
+      colour: "colour",
+      currentLocation: "current_location",
+      motExpiry: "mot_expiry",
+      insuranceExpiry: "insurance_expiry",
+      roadTaxExpiry: "road_tax_expiry",
+      permitExpiry: "permit_expiry",
+      pollutionExpiry: "pollution_expiry",
+      fitnessExpiry: "fitness_expiry",
+      odometerReading: "odometer_reading",
+      nextServiceDue: "next_service_due"
+    };
+    const validStatus = ["available", "planned", "in_transit", "maintenance", "stopped"];
+    const updates = [];
+    const values = [];
+
+    Object.entries(req.body || {}).forEach(([field, value]) => {
+      const column = fieldMap[field];
+      if (!column) return;
+      if (field === "status" && !validStatus.includes(value)) return;
+      updates.push(`${column} = ?`);
+      values.push(value === "" ? null : value);
+    });
+
+    if (!updates.length) {
+      return res.status(400).json({ message: "No valid vehicle fields supplied." });
+    }
+
+    await db.query(`UPDATE vehicles SET ${updates.join(", ")} WHERE id = ?`, [...values, id]);
+    const [[updated]] = await db.query(`SELECT * FROM vehicles WHERE id = ?`, [id]);
+
+    await logActivity(req, {
+      module: "vehicles",
+      action: "inline_update",
+      entityType: "vehicle",
+      entityId: id,
+      entityLabel: updated.registration_number,
+      details: {
+        changes: buildChangeSet(existing, updated, Object.values(fieldMap))
+      }
+    });
+
+    res.json({ message: "Vehicle updated." });
+  } catch (err) {
+    if (err.code === "ER_DUP_ENTRY") {
+      return res.status(409).json({ message: "Registration number or fleet code already exists." });
+    }
+    res.status(500).json({ message: "Vehicle inline update error", error: err.message });
   }
 };
 

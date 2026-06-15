@@ -1,11 +1,17 @@
 const db = require("../db/connection");
 const { verifySessionToken } = require("./authController");
-const { emitDriverChatMessage, emitDriverLocationUpdate } = require("../realtime");
+const { emitDriverChatMessage, emitDriverLocationUpdate, emitJobUpdate } = require("../realtime");
 const { buildChangeSet, logActivity } = require("../utils/auditLogger");
 
 function fmtDate(d) {
   if (!d) return "—";
   return new Date(d).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" });
+}
+function rawDate(d) {
+  if (!d) return "";
+  const date = new Date(d);
+  const offsetMs = date.getTimezoneOffset() * 60000;
+  return new Date(date.getTime() - offsetMs).toISOString().slice(0, 10);
 }
 function fmtDateTime(d) {
   if (!d) return "—";
@@ -115,6 +121,24 @@ async function addColumnIfMissing(table, column, definition) {
 
 async function ensureDriverOpsSchema() {
   if (driverOpsSchemaReady) return;
+  await addColumnIfMissing("drivers", "assigned_vehicle_id", "INT DEFAULT NULL");
+  await addColumnIfMissing("drivers", "address", "TEXT DEFAULT NULL");
+  await addColumnIfMissing("drivers", "postcode", "VARCHAR(20) DEFAULT NULL");
+  await addColumnIfMissing("drivers", "date_of_birth", "DATE DEFAULT NULL");
+  await addColumnIfMissing("drivers", "national_insurance", "VARCHAR(40) DEFAULT NULL");
+  await addColumnIfMissing("drivers", "cpc_number", "VARCHAR(80) DEFAULT NULL");
+  await addColumnIfMissing("drivers", "cpc_expiry", "DATE DEFAULT NULL");
+  await addColumnIfMissing("drivers", "tacho_card_number", "VARCHAR(80) DEFAULT NULL");
+  await addColumnIfMissing("drivers", "tacho_card_expiry", "DATE DEFAULT NULL");
+  await addColumnIfMissing("drivers", "emergency_contact_name", "VARCHAR(120) DEFAULT NULL");
+  await addColumnIfMissing("drivers", "emergency_contact_phone", "VARCHAR(30) DEFAULT NULL");
+  await addColumnIfMissing("drivers", "bank_sort_code", "VARCHAR(20) DEFAULT NULL");
+  await addColumnIfMissing("drivers", "bank_account_number", "VARCHAR(30) DEFAULT NULL");
+  await addColumnIfMissing("drivers", "salary_gbp", "DECIMAL(10,2) DEFAULT NULL");
+  await addColumnIfMissing("drivers", "commission_rate", "DECIMAL(5,2) DEFAULT NULL");
+  await addColumnIfMissing("drivers", "internal_score", "INT DEFAULT NULL");
+  await addColumnIfMissing("drivers", "accident_incident_record", "TEXT DEFAULT NULL");
+  await addColumnIfMissing("drivers", "penalty_deduction_record", "TEXT DEFAULT NULL");
 
   for (const [column, definition] of Object.entries(tripColumnDefinitions)) {
     await addColumnIfMissing("trips", column, definition);
@@ -594,6 +618,8 @@ exports.updateMyJobStatus = async (req, res) => {
       });
     }
 
+    emitJobUpdate({ jobId: Number(jobId), source: "driver-status", status, dispatchStatus });
+
     res.json({ message: "Driver job status updated.", status });
   } catch (err) {
     res.status(500).json({ message: "Driver status update error", error: err.message });
@@ -618,7 +644,11 @@ exports.submitMyProofOfDelivery = async (req, res) => {
       return res.status(409).json({ message: "POD cannot be submitted for a failed or declined job." });
     }
     if (!(await hasActiveShift(driver.id))) {
-      return res.status(400).json({ message: "Start your shift before submitting POD." });
+      await db.query(
+        `INSERT INTO driver_shifts (driver_id, shift_start, status, start_note) VALUES (?, NOW(), 'active', ?)`,
+        [driver.id, `Auto-started when POD was submitted for job ${jobId}.`]
+      );
+      await db.query(`UPDATE drivers SET shift_status='ready' WHERE id=?`, [driver.id]);
     }
 
     await db.query(
@@ -630,6 +660,8 @@ exports.submitMyProofOfDelivery = async (req, res) => {
     if (job.vehicle_id) {
       await db.query(`UPDATE vehicles SET status='available' WHERE id=?`, [job.vehicle_id]);
     }
+
+    emitJobUpdate({ jobId: Number(jobId), source: "driver-pod", status: "delivered", dispatchStatus: "completed" });
 
     res.json({ message: "Proof of delivery submitted." });
   } catch (err) {
@@ -1057,7 +1089,7 @@ exports.getMyNotifications = async (req, res) => {
       `SELECT t.id, t.trip_code, r.origin_hub, r.destination_hub
        FROM trips t
        LEFT JOIN routes r ON t.route_id = r.id
-       WHERE t.driver_id = ? AND DATE(t.planned_departure) = ? AND t.driver_job_status = 'accepted'
+       WHERE t.driver_id = ? AND DATE(t.planned_departure) = ? AND t.driver_job_status IN ('offered', 'accepted')
        ORDER BY t.planned_departure ASC LIMIT 5`,
       [driver.id, todayKey]
     );
@@ -1136,8 +1168,10 @@ exports.listDrivers = async (req, res) => {
               d.license_number, d.license_expiry, d.medical_expiry,
               d.cpc_number, d.cpc_expiry, d.tacho_card_number, d.tacho_card_expiry,
               d.onboarding_status, d.shift_status, d.compliance_status,
+              d.assigned_vehicle_id, d.salary_gbp, d.commission_rate, d.internal_score,
               d.created_at,
               u.email,
+              av.registration_number AS assigned_vehicle,
               COALESCE(t.total_trips, 0) AS total_trips,
               COALESCE(t.open_trips, 0) AS open_trips,
               COALESCE(dd.total_docs, 0) AS total_docs,
@@ -1145,6 +1179,7 @@ exports.listDrivers = async (req, res) => {
               COALESCE(dm.unread_messages, 0) AS unread_messages
        FROM drivers d
        LEFT JOIN users         u  ON d.user_id  = u.id
+       LEFT JOIN vehicles      av ON av.id = d.assigned_vehicle_id
        LEFT JOIN (
           SELECT driver_id,
                  COUNT(*) AS total_trips,
@@ -1189,18 +1224,26 @@ exports.listDrivers = async (req, res) => {
         homeDepot: r.home_depot || "—",
         licenceNumber: r.license_number,
         licenceExpiry: fmtDate(r.license_expiry),
+        licenceExpiryRaw: rawDate(r.license_expiry),
         licenceExpiryTone: expiryTone(r.license_expiry),
         medicalExpiry: fmtDate(r.medical_expiry),
+        medicalExpiryRaw: rawDate(r.medical_expiry),
         medicalExpiryTone: expiryTone(r.medical_expiry),
         cpcExpiry: fmtDate(r.cpc_expiry),
+        cpcExpiryRaw: rawDate(r.cpc_expiry),
         cpcExpiryTone: expiryTone(r.cpc_expiry),
         tachoExpiry: fmtDate(r.tacho_card_expiry),
+        tachoExpiryRaw: rawDate(r.tacho_card_expiry),
         tachoExpiryTone: expiryTone(r.tacho_card_expiry),
         onboardingStatus: r.onboarding_status,
         shiftStatus: r.shift_status,
         shiftTone: shiftTone[r.shift_status] || "neutral",
         complianceStatus: r.compliance_status,
         complianceTone: complianceTone[r.compliance_status] || "neutral",
+        assignedVehicle: r.assigned_vehicle || "—",
+        salary: fmtAmount(r.salary_gbp),
+        commissionRate: r.commission_rate != null ? `${Number(r.commission_rate)}%` : "—",
+        internalScore: r.internal_score ?? "—",
         totalTrips: r.total_trips,
         openTrips: r.open_trips,
         totalDocs: r.total_docs,
@@ -1215,6 +1258,72 @@ exports.listDrivers = async (req, res) => {
     });
   } catch (err) {
     res.status(500).json({ message: "Driver list error", error: err.message });
+  }
+};
+
+// PATCH /api/drivers/:id/inline
+exports.updateDriverInline = async (req, res) => {
+  try {
+    await ensureDriverOpsSchema();
+    const { id } = req.params;
+    const [[existing]] = await db.query(`SELECT * FROM drivers WHERE id = ?`, [id]);
+    if (!existing) return res.status(404).json({ message: "Driver not found." });
+
+    const fieldMap = {
+      fullName: "full_name",
+      employeeCode: "employee_code",
+      phone: "phone",
+      homeDepot: "home_depot",
+      licenceExpiry: "license_expiry",
+      medicalExpiry: "medical_expiry",
+      cpcExpiry: "cpc_expiry",
+      tachoExpiry: "tacho_card_expiry",
+      onboardingStatus: "onboarding_status",
+      shiftStatus: "shift_status",
+      complianceStatus: "compliance_status",
+      internalScore: "internal_score"
+    };
+    const allowedValues = {
+      onboarding_status: new Set(["new", "docs_pending", "approved", "rejected"]),
+      shift_status: new Set(["ready", "on_trip", "rest", "review"]),
+      compliance_status: new Set(["clear", "review", "blocked"])
+    };
+
+    const updates = [];
+    const values = [];
+    for (const [clientField, column] of Object.entries(fieldMap)) {
+      if (!Object.prototype.hasOwnProperty.call(req.body, clientField)) continue;
+      let value = req.body[clientField];
+      if (allowedValues[column] && !allowedValues[column].has(value)) {
+        return res.status(400).json({ message: `Invalid ${clientField} value.` });
+      }
+      if (column === "internal_score") value = value === "" || value == null ? null : Number(value);
+      if (["license_expiry", "medical_expiry", "cpc_expiry", "tacho_card_expiry"].includes(column)) value = value || null;
+      if (["phone", "home_depot"].includes(column)) value = value || null;
+      updates.push(`${column}=?`);
+      values.push(value);
+    }
+
+    if (updates.length === 0) {
+      return res.status(400).json({ message: "No editable driver fields supplied." });
+    }
+
+    await db.query(`UPDATE drivers SET ${updates.join(", ")} WHERE id=?`, [...values, id]);
+    const [[updated]] = await db.query(`SELECT * FROM drivers WHERE id = ?`, [id]);
+    await logActivity(req, {
+      module: "drivers",
+      action: "inline_update",
+      entityType: "driver",
+      entityId: id,
+      entityLabel: updated.full_name,
+      details: { changes: buildChangeSet(existing, updated, Object.values(fieldMap)) }
+    });
+    res.json({ message: "Driver table updated." });
+  } catch (err) {
+    if (err.code === "ER_DUP_ENTRY") {
+      return res.status(409).json({ message: "Driver name/code conflicts with an existing record." });
+    }
+    res.status(500).json({ message: "Driver inline update error", error: err.message });
   }
 };
 
@@ -1267,6 +1376,12 @@ exports.getDriverById = async (req, res) => {
       shiftStatus: d.shift_status,
       complianceStatus: d.compliance_status,
       complianceTone: complianceTone[d.compliance_status] || "neutral",
+      assignedVehicleId: d.assigned_vehicle_id,
+      salaryGbp: d.salary_gbp,
+      commissionRate: d.commission_rate,
+      internalScore: d.internal_score,
+      accidentIncidentRecord: d.accident_incident_record,
+      penaltyDeductionRecord: d.penalty_deduction_record,
       since: fmtDate(d.created_at),
 
       licence: {
@@ -1340,6 +1455,7 @@ exports.getDriverById = async (req, res) => {
 exports.createDriver = async (req, res) => {
   const conn = await db.getConnection();
   try {
+    await ensureDriverOpsSchema();
     await conn.beginTransaction();
 
     const {
@@ -1351,6 +1467,8 @@ exports.createDriver = async (req, res) => {
       tacho_card_number, tacho_card_expiry,
       emergency_contact_name, emergency_contact_phone,
       bank_sort_code, bank_account_number,
+      assigned_vehicle_id, salary_gbp, commission_rate, internal_score,
+      accident_incident_record, penalty_deduction_record,
       onboarding_status, compliance_status,
       email, password
     } = req.body;
@@ -1380,18 +1498,22 @@ exports.createDriver = async (req, res) => {
           cpc_number, cpc_expiry, tacho_card_number, tacho_card_expiry,
           emergency_contact_name, emergency_contact_phone,
           bank_sort_code, bank_account_number,
+          assigned_vehicle_id, salary_gbp, commission_rate, internal_score,
+          accident_incident_record, penalty_deduction_record,
           onboarding_status, shift_status, compliance_status)
-       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
       [
         userId,
         employee_code, full_name, phone || null, home_depot || null,
         address || null, postcode || null,
         date_of_birth || null, national_insurance || null,
-        license_number, license_expiry, medical_expiry,
-        cpc_number || null, cpc_expiry || null,
-        tacho_card_number || null, tacho_card_expiry || null,
+        license_number, license_expiry || existing.license_expiry, medical_expiry || existing.medical_expiry,
+        cpc_number || null, cpc_expiry || existing.cpc_expiry || null,
+        tacho_card_number || null, tacho_card_expiry || existing.tacho_card_expiry || null,
         emergency_contact_name || null, emergency_contact_phone || null,
         bank_sort_code || null, bank_account_number || null,
+        assigned_vehicle_id || null, salary_gbp || null, commission_rate || null, internal_score || null,
+        accident_incident_record || null, penalty_deduction_record || null,
         onboarding_status || "new",
         "review",
         compliance_status || "review"
@@ -1422,6 +1544,7 @@ exports.createDriver = async (req, res) => {
 // PUT /api/drivers/:id
 exports.updateDriver = async (req, res) => {
   try {
+    await ensureDriverOpsSchema();
     const { id } = req.params;
     const [[existing]] = await db.query(`SELECT * FROM drivers WHERE id = ?`, [id]);
     if (!existing) return res.status(404).json({ message: "Driver not found." });
@@ -1433,6 +1556,8 @@ exports.updateDriver = async (req, res) => {
       cpc_number, cpc_expiry, tacho_card_number, tacho_card_expiry,
       emergency_contact_name, emergency_contact_phone,
       bank_sort_code, bank_account_number,
+      assigned_vehicle_id, salary_gbp, commission_rate, internal_score,
+      accident_incident_record, penalty_deduction_record,
       onboarding_status, shift_status, compliance_status
     } = req.body;
 
@@ -1444,6 +1569,8 @@ exports.updateDriver = async (req, res) => {
          cpc_number=?, cpc_expiry=?, tacho_card_number=?, tacho_card_expiry=?,
          emergency_contact_name=?, emergency_contact_phone=?,
          bank_sort_code=?, bank_account_number=?,
+         assigned_vehicle_id=?, salary_gbp=?, commission_rate=?, internal_score=?,
+         accident_incident_record=?, penalty_deduction_record=?,
          onboarding_status=?, shift_status=?, compliance_status=?
        WHERE id=?`,
       [
@@ -1455,6 +1582,8 @@ exports.updateDriver = async (req, res) => {
         tacho_card_number || null, tacho_card_expiry || null,
         emergency_contact_name || null, emergency_contact_phone || null,
         bank_sort_code || null, bank_account_number || null,
+        assigned_vehicle_id || null, salary_gbp || null, commission_rate || null, internal_score || null,
+        accident_incident_record || null, penalty_deduction_record || null,
         onboarding_status || "new",
         shift_status || "review",
         compliance_status || "review",
@@ -1469,7 +1598,7 @@ exports.updateDriver = async (req, res) => {
       entityType: "driver",
       entityId: id,
       entityLabel: updated.full_name,
-      details: { changes: buildChangeSet(existing, updated, ["full_name", "employee_code", "phone", "home_depot", "license_number", "license_expiry", "medical_expiry", "onboarding_status", "shift_status", "compliance_status"]) }
+      details: { changes: buildChangeSet(existing, updated, ["full_name", "employee_code", "phone", "home_depot", "license_number", "license_expiry", "medical_expiry", "assigned_vehicle_id", "salary_gbp", "commission_rate", "internal_score", "accident_incident_record", "penalty_deduction_record", "onboarding_status", "shift_status", "compliance_status"]) }
     });
     res.json({ message: "Driver updated." });
   } catch (err) {

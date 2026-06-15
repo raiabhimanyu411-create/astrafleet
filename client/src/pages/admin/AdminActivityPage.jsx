@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { getRealtimeSocket } from "../../api/realtime";
 import { getActivityReport, restoreActivityRecord } from "../../api/adminApi";
-import { StatCard } from "../../components/StatCard";
 import { StateNotice } from "../../components/StateNotice";
 import { StatusPill } from "../../components/StatusPill";
 import { AdminWorkspaceLayout } from "./AdminWorkspaceLayout";
@@ -77,6 +76,7 @@ export function AdminActivityPage() {
   const [error, setError] = useState("");
   const [actionError, setActionError] = useState("");
   const [restoringId, setRestoringId] = useState(null);
+  const [view, setView] = useState("audit");
 
   const params = useMemo(() => {
     return Object.fromEntries(Object.entries(filters).filter(([, value]) => value));
@@ -129,7 +129,7 @@ export function AdminActivityPage() {
     }
   }
 
-  const hasFilters = Boolean(filters.employeeId || filters.module || filters.action || filters.from);
+  const hasFilters = Boolean(filters.employeeId || filters.module || filters.action || filters.risk || filters.from || filters.to !== todayIso());
   const visibleLogs = useMemo(() => {
     return (data?.logs || []).filter(log => {
       if (filters.risk === "critical" && !["delete", "restore"].includes(log.action)) return false;
@@ -158,6 +158,7 @@ export function AdminActivityPage() {
       ]}
     >
       <StateNotice loading={loading} error={error} />
+
       {actionError && (
         <div className="state-card error" style={{ marginBottom: 16 }}>
           <span className="state-dot error" />
@@ -165,55 +166,124 @@ export function AdminActivityPage() {
         </div>
       )}
 
-      <section className="stats-grid">
-        {(data?.summary || []).map((item) => (
-          <StatCard item={item} key={item.label} />
+      <section className="activity-quick-grid">
+        {(data?.summary || []).map(item => (
+          <article className={`activity-quick-card ${item.tone || "neutral"}`} key={item.label}>
+            <span>{item.label}</span>
+            <strong>{item.value}</strong>
+            <p>{item.change}</p>
+          </article>
         ))}
       </section>
 
-      <section className="content-card">
-        <div className="section-head">
-          <div>
-            <span className="card-label">Filters</span>
-            <h2>Report controls</h2>
-          </div>
-          <StatusPill tone="neutral">{data?.logs?.length || 0} events</StatusPill>
-        </div>
-        <div className="employee-filter-card">
-          <select className="af-select" value={filters.employeeId} onChange={e => updateFilter("employeeId", e.target.value)}>
-            <option value="">All employees</option>
-            {(data?.employees || []).map(employee => (
-              <option key={employee.id} value={employee.id}>{employee.name} · {employee.email}</option>
-            ))}
-          </select>
-          <select className="af-select" value={filters.module} onChange={e => updateFilter("module", e.target.value)}>
-            <option value="">All panels</option>
-            {(data?.modules || []).map(module => <option key={module} value={module}>{module}</option>)}
-          </select>
-          <select className="af-select" value={filters.action} onChange={e => updateFilter("action", e.target.value)}>
-            <option value="">All actions</option>
-            {(data?.actions || []).map(action => <option key={action} value={action}>{actionLabels[action] || action}</option>)}
-          </select>
-          <select className="af-select" value={filters.risk} onChange={e => updateFilter("risk", e.target.value)}>
-            <option value="">All risk levels</option>
-            <option value="critical">Critical activity</option>
-            <option value="deleted">Deleted only</option>
-            <option value="restored">Restored only</option>
-          </select>
-          <input className="af-input" type="date" value={filters.from} onChange={e => updateFilter("from", e.target.value)} />
-          <input className="af-input" type="date" value={filters.to} onChange={e => updateFilter("to", e.target.value)} />
-          <button className="header-action-button" type="button" onClick={() => setFilters(current => ({ ...current, from: todayIso(), to: todayIso() }))}>Today</button>
-          <button className="header-action-button" type="button" onClick={() => {
-            const date = new Date();
-            date.setDate(date.getDate() - 6);
-            setFilters(current => ({ ...current, from: date.toISOString().slice(0, 10), to: todayIso() }));
-          }}>7 days</button>
-          <button className="header-action-button" type="button" onClick={exportActivity}>Export CSV</button>
-          <button className="header-action-button" disabled={!hasFilters} type="button" onClick={clearFilters}>Clear</button>
-        </div>
+      <section className="content-card activity-filter-card">
+        <select className="af-select" value={filters.employeeId} onChange={e => updateFilter("employeeId", e.target.value)}>
+          <option value="">All employees</option>
+          {(data?.employees || []).map(employee => (
+            <option key={employee.id} value={employee.id}>{employee.name} · {employee.email}</option>
+          ))}
+        </select>
+        <select className="af-select" value={filters.module} onChange={e => updateFilter("module", e.target.value)}>
+          <option value="">All panels</option>
+          {(data?.modules || []).map(module => <option key={module} value={module}>{module}</option>)}
+        </select>
+        <select className="af-select" value={filters.action} onChange={e => updateFilter("action", e.target.value)}>
+          <option value="">All actions</option>
+          {(data?.actions || []).map(action => <option key={action} value={action}>{actionLabels[action] || action}</option>)}
+        </select>
+        <select className="af-select" value={filters.risk} onChange={e => updateFilter("risk", e.target.value)}>
+          <option value="">All risk levels</option>
+          <option value="critical">Critical activity</option>
+          <option value="deleted">Deleted only</option>
+          <option value="restored">Restored only</option>
+        </select>
+        <input className="af-input" type="date" value={filters.from} onChange={e => updateFilter("from", e.target.value)} />
+        <input className="af-input" type="date" value={filters.to} onChange={e => updateFilter("to", e.target.value)} />
+        <button className="header-action-button" type="button" onClick={() => setFilters(current => ({ ...current, from: todayIso(), to: todayIso() }))}>Today</button>
+        <button className="header-action-button" type="button" onClick={() => {
+          const date = new Date();
+          date.setDate(date.getDate() - 6);
+          setFilters(current => ({ ...current, from: date.toISOString().slice(0, 10), to: todayIso() }));
+        }}>7 days</button>
+        <button className="header-action-button" type="button" onClick={exportActivity}>Export CSV</button>
+        <button className="header-action-button" disabled={!hasFilters} type="button" onClick={clearFilters}>Clear</button>
       </section>
 
-      <section className="content-card" style={{ marginTop: 16 }}>
+      <section className="activity-tabs" aria-label="Activity report views">
+        <button className={view === "audit" ? "active" : ""} type="button" onClick={() => setView("audit")}>
+          Audit feed
+        </button>
+        <button className={view === "sessions" ? "active" : ""} type="button" onClick={() => setView("sessions")}>
+          Sessions
+        </button>
+      </section>
+
+      {view === "audit" && (
+      <section className="content-card activity-table-card">
+        <div className="section-head">
+          <div>
+            <span className="card-label">Audit feed</span>
+            <h2>Employee actions</h2>
+          </div>
+          <div className="activity-head-actions">
+            <StatusPill tone="neutral">{visibleLogs.length} events</StatusPill>
+            <button className="header-action-button" type="button" onClick={() => load(false)}>Refresh</button>
+          </div>
+        </div>
+        <div className="activity-table-shell">
+          <table className="activity-audit-table">
+            <thead>
+              <tr>
+                <th>Time</th>
+                <th>Employee</th>
+                <th>Panel</th>
+                <th>Action</th>
+                <th>Record</th>
+                <th>Changes / reason</th>
+                <th>Hash</th>
+                <th>Control</th>
+              </tr>
+            </thead>
+            <tbody>
+              {visibleLogs.map(log => (
+                <tr key={log.id}>
+                  <td><strong>{log.at}</strong><small>{log.ipAddress}</small></td>
+                  <td><strong>{log.actorName}</strong><small>{log.actorRole}</small></td>
+                  <td><strong>{log.module}</strong><small>{log.entityType}</small></td>
+                  <td><StatusPill tone={actionTone[log.action] || "neutral"}>{actionLabels[log.action] || log.action}</StatusPill></td>
+                  <td><strong>{log.entityLabel}</strong><small>ID {log.entityId || "—"}</small></td>
+                  <td>
+                    {log.reason && <p className="activity-reason"><strong>Reason:</strong> {log.reasonCategory ? `${log.reasonCategory.replaceAll("_", " ")} · ` : ""}{log.reason}</p>}
+                    <ChangeList changes={log.details?.changes} />
+                    {!log.reason && !log.details?.changes && <small>No field changes recorded</small>}
+                  </td>
+                  <td>{log.hashVerified ? <small>{log.entryHash.slice(0, 12)}...</small> : <small>—</small>}</td>
+                  <td>
+                    <div className="activity-table-actions">
+                      {log.canRestore && (
+                        <button className="header-action-button" type="button" disabled={restoringId === log.id} onClick={() => restoreLog(log)}>
+                          {restoringId === log.id ? "Restoring..." : "Restore"}
+                        </button>
+                      )}
+                    </div>
+                  </td>
+                </tr>
+              ))}
+              {!loading && visibleLogs.length === 0 && (
+                <tr>
+                  <td colSpan="8">
+                    <p className="finance-empty">No audit events found. Change filters or wait for portal activity to appear.</p>
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </section>
+      )}
+
+      {view === "sessions" && (
+      <section className="content-card activity-table-card">
         <div className="section-head">
           <div>
             <span className="card-label">Sessions</span>
@@ -221,73 +291,41 @@ export function AdminActivityPage() {
           </div>
           <StatusPill tone="neutral">{data?.sessions?.length || 0} sessions</StatusPill>
         </div>
-        <div className="data-rows compact">
-          {(data?.sessions || []).slice(0, 8).map(session => (
-            <div className="data-row" key={session.id}>
-              <div>
-                <strong>{session.name}</strong>
-                <p>{session.email || session.role}</p>
-              </div>
-              <div>
-                <span>Login</span>
-                <p>{session.loginAt}</p>
-              </div>
-              <div>
-                <span>Last activity</span>
-                <p>{session.lastActivityAt}</p>
-              </div>
-              <StatusPill tone={session.active ? "success" : "neutral"}>
-                {session.active ? "Active" : `${session.durationMinutes} min`}
-              </StatusPill>
-            </div>
-          ))}
+        <div className="activity-table-shell">
+          <table className="activity-session-table">
+            <thead>
+              <tr>
+                <th>Employee</th>
+                <th>Role</th>
+                <th>Login</th>
+                <th>Last activity</th>
+                <th>Logout</th>
+                <th>Duration</th>
+                <th>Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              {(data?.sessions || []).map(session => (
+                <tr key={session.id}>
+                  <td><strong>{session.name}</strong><small>{session.email || "—"}</small></td>
+                  <td>{session.role}</td>
+                  <td>{session.loginAt}</td>
+                  <td>{session.lastActivityAt}</td>
+                  <td>{session.logoutAt}</td>
+                  <td><strong>{session.active ? "Running" : `${session.durationMinutes} min`}</strong></td>
+                  <td><StatusPill tone={session.active ? "success" : "neutral"}>{session.active ? "Active" : "Closed"}</StatusPill></td>
+                </tr>
+              ))}
+              {!loading && (data?.sessions || []).length === 0 && (
+                <tr>
+                  <td colSpan="7"><p className="finance-empty">No sessions found for this report.</p></td>
+                </tr>
+              )}
+            </tbody>
+          </table>
         </div>
       </section>
-
-      <section className="content-card" style={{ marginTop: 16 }}>
-        <div className="section-head">
-          <div>
-            <span className="card-label">Audit feed</span>
-            <h2>Employee actions</h2>
-          </div>
-          <button className="header-action-button" type="button" onClick={() => load(false)}>Refresh</button>
-        </div>
-        <div className="data-rows">
-          {visibleLogs.map(log => (
-            <div className="data-row" key={log.id}>
-              <div>
-                <strong>{log.actorName}</strong>
-                <p>{log.at} · {log.actorRole}</p>
-              </div>
-              <div>
-                <span>{log.module} / {log.entityType}</span>
-                <p>{log.entityLabel}</p>
-                {log.reason && <p><strong>Reason:</strong> {log.reasonCategory ? `${log.reasonCategory.replaceAll("_", " ")} · ` : ""}{log.reason}</p>}
-                <ChangeList changes={log.details?.changes} />
-                {log.hashVerified && <p>Audit hash: {log.entryHash.slice(0, 12)}...</p>}
-              </div>
-              <div className="finance-row-actions">
-                <StatusPill tone={actionTone[log.action] || "neutral"}>{actionLabels[log.action] || log.action}</StatusPill>
-                {log.canRestore && (
-                  <button className="header-action-button" type="button" disabled={restoringId === log.id} onClick={() => restoreLog(log)}>
-                    {restoringId === log.id ? "Restoring..." : "Restore"}
-                  </button>
-                )}
-              </div>
-            </div>
-          ))}
-          {!loading && visibleLogs.length === 0 && (
-            <div className="data-row">
-              <div>
-                <strong>No audit events found</strong>
-                <p>Change filters or wait for portal activity to appear.</p>
-              </div>
-              <div><span>Report</span><p>Clear for now</p></div>
-              <StatusPill tone="success">Clear</StatusPill>
-            </div>
-          )}
-        </div>
-      </section>
+      )}
     </AdminWorkspaceLayout>
   );
 }

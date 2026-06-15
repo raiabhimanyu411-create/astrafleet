@@ -38,7 +38,7 @@ function ExpiryField({ label, expiry, tone, daysLeft }) {
   );
 }
 
-const DOC_TYPES = ["MOT Certificate", "Insurance Certificate", "Road Tax (VED)", "Operator Licence", "Roadworthiness Test", "FORS Certificate", "Other"];
+const DOC_TYPES = ["MOT Certificate", "Insurance Certificate", "Fitness Certificate", "Permit Certificate", "Pollution Certificate", "Road Tax (VED)", "Operator Licence", "Roadworthiness Test", "FORS Certificate", "Other"];
 const INSPECTION_TYPES = ["Routine", "Pre-trip", "Post-trip", "Annual", "DVSA", "Other"];
 const DEFECT_TYPES = ["Tyre", "Brakes", "Lights", "Engine", "Bodywork", "Windscreen", "Mirrors", "Load Security", "Exhaust", "Other"];
 const SEVERITY_OPTS = ["low", "medium", "high", "critical"];
@@ -242,6 +242,7 @@ export function VehicleDetailPage() {
                 <DetailField label="Type"              value={data.truckType} />
                 <DetailField label="Fuel type"         value={data.fuelType} />
                 <DetailField label="Capacity"          value={data.capacityTonnes ? `${data.capacityTonnes} tonnes` : "—"} />
+                <DetailField label="Odometer"          value={data.odometerReading ? `${Number(data.odometerReading).toLocaleString("en-GB")} km` : "—"} />
                 <DetailField label="Year"              value={data.yearOfManufacture} />
                 <DetailField label="Colour"            value={data.colour} />
                 <div className="detail-wide"><DetailField label="Current location" value={data.currentLocation} /></div>
@@ -252,8 +253,8 @@ export function VehicleDetailPage() {
             <div className="content-card" style={{ marginBottom: 14 }}>
               <div className="section-head">
                 <div>
-                  <span className="card-label">UK compliance</span>
-                  <h2 style={{ margin: "4px 0 0", fontSize: "1rem" }}>MOT, insurance & road tax</h2>
+                  <span className="card-label">Vehicle compliance</span>
+                  <h2 style={{ margin: "4px 0 0", fontSize: "1rem" }}>MOT / fitness, insurance, permit, pollution and tax</h2>
                 </div>
                 <StatusPill tone={data.complianceTone}>
                   {data.complianceTone === "danger" ? "Action required" : data.complianceTone === "warning" ? "Expiring soon" : "All current"}
@@ -261,7 +262,10 @@ export function VehicleDetailPage() {
               </div>
               <div className="detail-grid">
                 <ExpiryField label="MOT expiry"       expiry={data.mot.expiry}       tone={data.mot.tone}       daysLeft={data.mot.daysLeft} />
+                <ExpiryField label="Fitness expiry"   expiry={data.fitness?.expiry}  tone={data.fitness?.tone}  daysLeft={data.fitness?.daysLeft} />
                 <ExpiryField label="Insurance expiry" expiry={data.insurance.expiry} tone={data.insurance.tone} daysLeft={data.insurance.daysLeft} />
+                <ExpiryField label="Permit expiry"    expiry={data.permit?.expiry}   tone={data.permit?.tone}   daysLeft={data.permit?.daysLeft} />
+                <ExpiryField label="Pollution expiry" expiry={data.pollution?.expiry} tone={data.pollution?.tone} daysLeft={data.pollution?.daysLeft} />
                 <ExpiryField label="Road tax expiry"  expiry={data.roadTax.expiry}   tone={data.roadTax.tone}   daysLeft={data.roadTax.daysLeft} />
                 <ExpiryField label="Next service due" expiry={data.nextServiceDue}   tone={data.nextServiceTone} daysLeft={null} />
               </div>
@@ -563,6 +567,35 @@ export function VehicleDetailPage() {
                         )}
                         {d.resolvedAt && <span style={{ fontSize: "0.76rem", color: "#64748b" }}>Resolved {d.resolvedAt}</span>}
                       </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <div className="content-card" style={{ marginBottom: 14 }}>
+              <div className="section-head">
+                <div>
+                  <span className="card-label">Fuel history</span>
+                  <h2 style={{ margin: "4px 0 0", fontSize: "1rem" }}>Fuel expenses logged by drivers</h2>
+                </div>
+                <StatusPill tone="neutral">{data.fuelHistory?.length || 0} entries</StatusPill>
+              </div>
+              {(!data.fuelHistory || data.fuelHistory.length === 0) ? (
+                <p style={{ color: "#94a3b8", fontSize: "0.86rem", margin: 0 }}>No fuel expenses logged for this vehicle.</p>
+              ) : (
+                <div className="data-rows">
+                  {data.fuelHistory.map(f => (
+                    <div className="data-row" key={f.id}>
+                      <div>
+                        <strong>{f.tripCode}</strong>
+                        <p>{f.driver} · {f.at}</p>
+                      </div>
+                      <div>
+                        <span>{f.amount}</span>
+                        <p>{f.notes}</p>
+                      </div>
+                      <StatusPill tone="warning">Fuel</StatusPill>
                     </div>
                   ))}
                 </div>

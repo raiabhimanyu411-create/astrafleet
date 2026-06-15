@@ -4,6 +4,7 @@ export const getVehicles            = ()                  => api.get("/api/vehic
 export const getVehicleById         = (id)                => api.get(`/api/vehicles/${id}`);
 export const createVehicle          = (data)              => api.post("/api/vehicles", data);
 export const updateVehicle          = (id, data)          => api.put(`/api/vehicles/${id}`, data);
+export const updateVehicleInline    = (id, data)          => api.patch(`/api/vehicles/${id}/inline`, data);
 export const updateVehicleStatus    = (id, data)          => api.patch(`/api/vehicles/${id}/status`, data);
 
 export const addVehicleDocument     = (id, data)          => api.post(`/api/vehicles/${id}/documents`, data);

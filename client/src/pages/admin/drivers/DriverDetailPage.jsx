@@ -198,10 +198,28 @@ export function DriverDetailPage() {
                     <h2 style={{ margin: "4px 0 0", fontSize: "1rem" }}>Bank details</h2>
                   </div>
                 </div>
-                <div className="detail-grid">
-                  <DetailField label="Sort code"      value={data.bank?.sortCode} />
-                  <DetailField label="Account number" value={data.bank?.accountNumber} />
+              <div className="detail-grid">
+                <DetailField label="Sort code"      value={data.bank?.sortCode} />
+                <DetailField label="Account number" value={data.bank?.accountNumber} />
+                <DetailField label="Salary" value={data.salaryGbp ? `£${Number(data.salaryGbp).toLocaleString("en-GB", { minimumFractionDigits: 2 })}` : "—"} />
+                <DetailField label="Commission" value={data.commissionRate != null ? `${data.commissionRate}%` : "—"} />
+              </div>
+            </div>
+          </div>
+
+            <div className="content-card" style={{ marginBottom: 14 }}>
+              <div className="section-head">
+                <div>
+                  <span className="card-label">Performance and records</span>
+                  <h2 style={{ margin: "4px 0 0", fontSize: "1rem" }}>Assigned vehicle, rating, incidents and deductions</h2>
                 </div>
+                <StatusPill tone="neutral">Score {data.internalScore || "—"}</StatusPill>
+              </div>
+              <div className="detail-grid">
+                <DetailField label="Assigned vehicle ID" value={data.assignedVehicleId || "—"} />
+                <DetailField label="Driver rating / internal score" value={data.internalScore || "—"} />
+                <div className="detail-wide"><DetailField label="Accident / incident record" value={data.accidentIncidentRecord || "—"} /></div>
+                <div className="detail-wide"><DetailField label="Penalty / deduction record" value={data.penaltyDeductionRecord || "—"} /></div>
               </div>
             </div>
 

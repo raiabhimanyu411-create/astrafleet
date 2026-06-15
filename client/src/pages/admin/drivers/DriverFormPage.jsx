@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { createDriver, getDriverById, updateDriver } from "../../../api/driverApi";
+import { getVehicles } from "../../../api/vehicleApi";
 import { AdminWorkspaceLayout } from "../AdminWorkspaceLayout";
 
 function Field({ label, hint, required, children }) {
@@ -23,6 +24,8 @@ const empty = {
   tacho_card_number: "", tacho_card_expiry: "",
   emergency_contact_name: "", emergency_contact_phone: "",
   bank_sort_code: "", bank_account_number: "",
+  assigned_vehicle_id: "", salary_gbp: "", commission_rate: "", internal_score: "",
+  accident_incident_record: "", penalty_deduction_record: "",
   onboarding_status: "new", shift_status: "review", compliance_status: "review",
   email: "", password: ""
 };
@@ -35,10 +38,12 @@ export function DriverFormPage() {
   const [fields, setFields]       = useState(empty);
   const [loading, setLoading]     = useState(isEdit);
   const [loadErr, setLoadErr]     = useState("");
+  const [vehicles, setVehicles]   = useState([]);
   const [submitting, setSubmitting] = useState(false);
   const [submitErr, setSubmitErr]   = useState("");
 
   useEffect(() => {
+    getVehicles().then(r => setVehicles(r.data.vehicles || [])).catch(() => {});
     if (!isEdit) return;
     getDriverById(id)
       .then(r => {
@@ -63,6 +68,12 @@ export function DriverFormPage() {
           emergency_contact_phone: d.emergency?.phone || "",
           bank_sort_code:          d.bank?.sortCode || "",
           bank_account_number:     d.bank?.accountNumber || "",
+          assigned_vehicle_id:     d.assignedVehicleId ? String(d.assignedVehicleId) : "",
+          salary_gbp:              d.salaryGbp || "",
+          commission_rate:         d.commissionRate || "",
+          internal_score:          d.internalScore || "",
+          accident_incident_record: d.accidentIncidentRecord || "",
+          penalty_deduction_record: d.penaltyDeductionRecord || "",
           onboarding_status:       d.onboardingStatus || "new",
           shift_status:            d.shiftStatus || "review",
           compliance_status:       d.complianceStatus || "review",
@@ -221,6 +232,35 @@ export function DriverFormPage() {
                 </Field>
                 <Field label="Account number">
                   <input className="af-input" type="text" placeholder="e.g. 12345678" value={fields.bank_account_number} onChange={e => set("bank_account_number", e.target.value)} />
+                </Field>
+              </div>
+            </div>
+
+            <div className="af-section">
+              <p className="af-section-title">Assignment, salary and performance</p>
+              <div className="af-grid-3">
+                <Field label="Assigned vehicle">
+                  <select className="af-select" value={fields.assigned_vehicle_id} onChange={e => set("assigned_vehicle_id", e.target.value)}>
+                    <option value="">No fixed vehicle</option>
+                    {vehicles.map(v => <option key={v.id} value={v.id}>{v.registrationNumber} · {v.truckType}</option>)}
+                  </select>
+                </Field>
+                <Field label="Driver salary (£)">
+                  <input className="af-input" type="number" min="0" step="0.01" value={fields.salary_gbp} onChange={e => set("salary_gbp", e.target.value)} />
+                </Field>
+                <Field label="Commission rate (%)">
+                  <input className="af-input" type="number" min="0" max="100" step="0.01" value={fields.commission_rate} onChange={e => set("commission_rate", e.target.value)} />
+                </Field>
+                <Field label="Driver rating / internal score">
+                  <input className="af-input" type="number" min="0" max="100" step="1" value={fields.internal_score} onChange={e => set("internal_score", e.target.value)} />
+                </Field>
+              </div>
+              <div className="af-grid-2" style={{ marginTop: 16 }}>
+                <Field label="Accident / incident record">
+                  <textarea className="af-input" style={{ minHeight: 82, resize: "vertical" }} value={fields.accident_incident_record} onChange={e => set("accident_incident_record", e.target.value)} />
+                </Field>
+                <Field label="Penalty / deduction record">
+                  <textarea className="af-input" style={{ minHeight: 82, resize: "vertical" }} value={fields.penalty_deduction_record} onChange={e => set("penalty_deduction_record", e.target.value)} />
                 </Field>
               </div>
             </div>

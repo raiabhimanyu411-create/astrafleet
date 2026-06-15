@@ -73,9 +73,23 @@ export function CustomerDetailPage() {
                 <DetailField label="Phone"           value={data.phone} />
                 <DetailField label="Postcode"        value={data.postcode} />
                 <DetailField label="VAT number"      value={data.vatNumber} />
+                <DetailField label="Tax details"     value={data.taxDetails} />
                 <DetailField label="Payment terms"   value={`Net ${data.paymentTermsDays} days`} />
+                <DetailField label="Credit limit"    value={data.creditLimitGbp ? `£${Number(data.creditLimitGbp).toLocaleString("en-GB", { minimumFractionDigits: 2 })}` : "—"} />
                 <div className="detail-wide">
                   <DetailField label="Address" value={data.address} />
+                </div>
+                <div className="detail-wide">
+                  <DetailField label="Billing address" value={data.billingAddress} />
+                </div>
+                <div className="detail-wide">
+                  <DetailField label="Saved pickup addresses" value={data.savedPickupAddresses || "—"} />
+                </div>
+                <div className="detail-wide">
+                  <DetailField label="Saved drop addresses" value={data.savedDropAddresses || "—"} />
+                </div>
+                <div className="detail-wide">
+                  <DetailField label="Rate contract" value={data.rateContract || "—"} />
                 </div>
               </div>
             </div>

@@ -1,6 +1,6 @@
 const db = require("../db/connection");
 const { ensureEmployeeAuthSchema, employeeModules, parseAccessModules } = require("./authController");
-const { emitDriverChatMessage, emitDriverLocationUpdate } = require("../realtime");
+const { emitDriverChatMessage, emitDriverLocationUpdate, emitJobUpdate } = require("../realtime");
 const { buildChangeSet, ensureActivitySchema, ensureSessionSchema, getActor, logActivity, requireDeleteReason } = require("../utils/auditLogger");
 
 function severityTone(s) {
@@ -110,6 +110,10 @@ async function ensureDriverOpsSchema() {
   await addColumnIfMissing("trips", "drop_address", "TEXT DEFAULT NULL");
   await addColumnIfMissing("trips", "load_type", "VARCHAR(80) DEFAULT 'general'");
   await addColumnIfMissing("trips", "load_weight_kg", "DECIMAL(10,2) DEFAULT NULL");
+  await addColumnIfMissing("trips", "load_volume_cbm", "DECIMAL(10,2) DEFAULT NULL");
+  await addColumnIfMissing("trips", "vehicle_type_requirement", "VARCHAR(80) DEFAULT NULL");
+  await addColumnIfMissing("trips", "delivery_deadline", "DATETIME DEFAULT NULL");
+  await addColumnIfMissing("trips", "dispatcher_notes", "TEXT DEFAULT NULL");
   await addColumnIfMissing("trips", "load_description", "TEXT DEFAULT NULL");
   await addColumnIfMissing("trips", "special_instructions", "TEXT DEFAULT NULL");
   await addColumnIfMissing("trips", "actual_departure", "DATETIME DEFAULT NULL");
@@ -125,6 +129,19 @@ async function ensureDriverOpsSchema() {
       status ENUM('open','in_progress','resolved') NOT NULL DEFAULT 'open',
       reported_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       resolved_at DATETIME DEFAULT NULL
+    ) ENGINE=InnoDB`
+  );
+  await db.query(
+    `CREATE TABLE IF NOT EXISTS driver_expenses (
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      driver_id INT NOT NULL,
+      trip_id INT DEFAULT NULL,
+      expense_type VARCHAR(40) NOT NULL DEFAULT 'fuel',
+      amount_gbp DECIMAL(10,2) NOT NULL DEFAULT 0,
+      notes VARCHAR(255) DEFAULT NULL,
+      receipt_data LONGTEXT DEFAULT NULL,
+      expense_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     ) ENGINE=InnoDB`
   );
   await addColumnIfMissing("defect_reports", "defect_type", "VARCHAR(80) NOT NULL DEFAULT 'Driver report'");
@@ -1464,6 +1481,7 @@ exports.updateAlertStatus = async (req, res) => {
 
 exports.getTrips = async (req, res) => {
   try {
+    await ensureDriverOpsSchema();
     await ensureTrailerSchema();
     await ensureSoftDeleteSchema();
 
@@ -1479,7 +1497,7 @@ exports.getTrips = async (req, res) => {
        WHERE deleted_at IS NULL`
     );
     const [tripRows] = await db.query(
-      `SELECT t.id, t.trip_code, t.dispatch_status, t.dock_window, t.eta, t.planned_departure,
+      `SELECT t.id, t.trip_code, t.client_name, t.dispatch_status, t.dock_window, t.eta, t.planned_departure,
               t.freight_amount_gbp, t.priority_level, t.driver_job_status,
               r.origin_hub, r.destination_hub, r.distance_km, r.standard_eta_hours,
               v.registration_number,
@@ -1499,6 +1517,7 @@ exports.getTrips = async (req, res) => {
     const routes = tripRows.map(r => ({
       id: r.id,
       trip: r.trip_code,
+      clientName: r.client_name || "Internal dispatch",
       lane: r.origin_hub && r.destination_hub ? `${r.origin_hub} → ${r.destination_hub}` : "Route TBD",
       schedule: r.planned_departure ? `Departure ${fmtDate(r.planned_departure)}` : "Schedule pending",
       departureRaw: rawDateTime(r.planned_departure),
@@ -1764,7 +1783,8 @@ exports.createTrip = async (req, res) => {
       planned_departure,
       dock_window,
       freight_amount,
-      priority_level
+      priority_level,
+      dispatcher_notes
     } = req.body;
 
     if (!route_id || !vehicle_id || !trailer_id || !driver_id || !planned_departure) {
@@ -1784,8 +1804,8 @@ exports.createTrip = async (req, res) => {
     const [result] = await db.query(
       `INSERT INTO trips
          (trip_code, route_id, vehicle_id, trailer_id, driver_id, client_name, dispatch_status,
-          priority_level, planned_departure, eta, dock_window, pod_status, freight_amount_gbp, driver_job_status)
-       VALUES (?, ?, ?, ?, ?, ?, 'planned', ?, ?, ?, ?, 'pending', ?, 'offered')`,
+          priority_level, planned_departure, eta, dock_window, pod_status, freight_amount_gbp, dispatcher_notes, driver_job_status)
+       VALUES (?, ?, ?, ?, ?, ?, 'planned', ?, ?, ?, ?, 'pending', ?, ?, 'offered')`,
       [
         tripCode, route_id, vehicle_id, trailer_id, driver_id,
         client_name || "Internal dispatch",
@@ -1793,7 +1813,8 @@ exports.createTrip = async (req, res) => {
         planned_departure,
         eta,
         dock_window || null,
-        freight_amount || null
+        freight_amount || null,
+        dispatcher_notes || null
       ]
     );
 
@@ -1848,7 +1869,8 @@ exports.updateTrip = async (req, res) => {
       planned_departure,
       dock_window,
       freight_amount,
-      priority_level
+      priority_level,
+      dispatcher_notes
     } = req.body;
 
     if (!route_id || !vehicle_id || !trailer_id || !driver_id || !planned_departure) {
@@ -1878,7 +1900,7 @@ exports.updateTrip = async (req, res) => {
     await conn.query(
       `UPDATE trips SET
          route_id=?, vehicle_id=?, trailer_id=?, driver_id=?, client_name=?, priority_level=?,
-         planned_departure=?, eta=?, dock_window=?, freight_amount_gbp=?,
+         planned_departure=?, eta=?, dock_window=?, freight_amount_gbp=?, dispatcher_notes=?,
          driver_job_status=IF(? = 1, 'offered', driver_job_status)
        WHERE id=? AND deleted_at IS NULL`,
       [
@@ -1892,6 +1914,7 @@ exports.updateTrip = async (req, res) => {
         eta,
         dock_window || null,
         freight_amount || 0,
+        dispatcher_notes || null,
         String(existing.driver_id || "") !== String(driver_id || "") && driver_id ? 1 : 0,
         id
       ]
@@ -1932,7 +1955,8 @@ exports.updateTrip = async (req, res) => {
       priority_level: priority_level || "standard",
       planned_departure,
       dock_window: dock_window || null,
-      freight_amount_gbp: freight_amount || 0
+      freight_amount_gbp: freight_amount || 0,
+      dispatcher_notes: dispatcher_notes || null
     };
     await logActivity(req, {
       module: "trips",
@@ -1987,6 +2011,8 @@ exports.updateTripStatus = async (req, res) => {
       entityId: id,
       details: { status, changes: buildChangeSet(trip, { ...trip, dispatch_status: status }, ["dispatch_status"]) }
     });
+
+    emitJobUpdate({ jobId: Number(id), source: "dispatch-status", status });
 
     res.json({ message: "Trip status updated." });
   } catch (error) {
@@ -2086,6 +2112,7 @@ exports.getTripById = async (req, res) => {
         priority_level: trip.priority_level,
         client_name: trip.client_name || ""
       },
+      dispatcherNotes: trip.dispatcher_notes || "—",
       route: {
         code: trip.route_code,
         from: trip.origin_hub,
@@ -2445,13 +2472,34 @@ exports.restoreActivityRecord = async (req, res) => {
 exports.getOverview = async (req, res) => {
   try {
     await ensureTrailerSchema();
+    await ensureDriverOpsSchema();
     await ensureEmployeeAuthSchema();
     await ensureSoftDeleteSchema();
 
-    const [[drivers]] = await db.query("SELECT COUNT(*) AS total FROM drivers");
-    const [[vehicles]] = await db.query("SELECT COUNT(*) AS total FROM vehicles");
-    const [[trips]] = await db.query("SELECT COUNT(*) AS total FROM trips WHERE deleted_at IS NULL");
-    const [[invoices]] = await db.query("SELECT COUNT(*) AS total FROM invoices WHERE deleted_at IS NULL");
+    const [[drivers]] = await db.query("SELECT COUNT(*) AS total, COALESCE(SUM(shift_status='ready' AND compliance_status='clear'),0) AS available FROM drivers");
+    const [[vehicles]] = await db.query("SELECT COUNT(*) AS total, COALESCE(SUM(status='available'),0) AS available FROM vehicles");
+    const [[trips]] = await db.query(
+      `SELECT COUNT(*) AS total,
+              COALESCE(SUM(dispatch_status IN ('loading','active')),0) AS active,
+              COALESCE(SUM(dispatch_status='planned'),0) AS pending,
+              COALESCE(SUM(dispatch_status='completed'),0) AS completed,
+              COALESCE(SUM(dispatch_status='blocked'),0) AS cancelled,
+              COALESCE(SUM(eta IS NOT NULL AND eta < NOW() AND dispatch_status IN ('planned','loading','active')),0) AS delayed_count
+       FROM trips WHERE deleted_at IS NULL`
+    );
+    const [[invoices]] = await db.query(
+      `SELECT COUNT(*) AS total,
+              COALESCE(SUM(payment_status!='paid'),0) AS pending,
+              COALESCE(SUM(CASE WHEN DATE(created_at)=CURDATE() THEN amount_gbp ELSE 0 END),0) AS today_revenue,
+              COALESCE(SUM(CASE WHEN payment_status='paid' THEN amount_gbp ELSE 0 END),0) AS paid_revenue
+       FROM invoices WHERE deleted_at IS NULL`
+    );
+    const [[expenses]] = await db.query(
+      `SELECT COALESCE(SUM(CASE WHEN expense_type='fuel' THEN amount_gbp ELSE 0 END),0) AS fuel_expense,
+              COALESCE(SUM(amount_gbp),0) AS total_expense
+       FROM driver_expenses`
+    );
+    const profitLoss = Number(invoices.paid_revenue || 0) - Number(expenses.total_expense || 0);
     const [employeeRows] = await db.query(
       `SELECT id, name, email, employee_code, department, job_title, approval_status, access_modules
        FROM users
@@ -2523,34 +2571,18 @@ exports.getOverview = async (req, res) => {
         "Live dashboard data is coming from the database."
       ],
       stats: [
-        {
-          label: "Fleet available",
-          value: vehicles.total,
-          description: "Total registered vehicles.",
-          change: "Live from database",
-          tone: "success"
-        },
-        {
-          label: "Drivers ready",
-          value: drivers.total,
-          description: "Total registered drivers.",
-          change: "Live from database",
-          tone: "warning"
-        },
-        {
-          label: "Trips in motion",
-          value: trips.total,
-          description: "Total trips in system.",
-          change: "Live from database",
-          tone: "neutral"
-        },
-        {
-          label: "Total invoices",
-          value: invoices.total,
-          description: "Total invoices generated.",
-          change: "Live from database",
-          tone: "danger"
-        }
+        { label: "Total bookings / jobs", value: trips.total, description: "All transport jobs.", change: "Live from database", tone: "neutral" },
+        { label: "Active trips", value: trips.active, description: "Loading or on road.", change: "Execution", tone: "success" },
+        { label: "Pending trips", value: trips.pending, description: "Planned dispatch queue.", change: "Dispatch", tone: "warning" },
+        { label: "Completed trips", value: trips.completed, description: "Delivered and closed.", change: "Closed loop", tone: "neutral" },
+        { label: "Cancelled trips", value: trips.cancelled, description: "Blocked/cancelled trips.", change: "Needs review", tone: trips.cancelled ? "danger" : "success" },
+        { label: "Available drivers", value: drivers.available, description: "Ready and compliant.", change: "Assignable", tone: "success" },
+        { label: "Available vehicles", value: vehicles.available, description: "Fleet assets ready.", change: "Assignable", tone: "success" },
+        { label: "Delayed deliveries", value: trips.delayed_count, description: "ETA passed on open trips.", change: "Timing watch", tone: trips.delayed_count ? "danger" : "success" },
+        { label: "Today's revenue", value: fmtAmount(invoices.today_revenue), description: "Invoices raised today.", change: "Today", tone: "success" },
+        { label: "Pending invoices", value: invoices.pending, description: "Invoices not marked paid.", change: "Collections", tone: invoices.pending ? "warning" : "success" },
+        { label: "Fuel expense", value: fmtAmount(expenses.fuel_expense), description: "Driver fuel expense logs.", change: "Cost control", tone: "warning" },
+        { label: "Profit / loss", value: fmtAmount(profitLoss), description: "Paid revenue minus expenses.", change: profitLoss >= 0 ? "Profit" : "Loss", tone: profitLoss >= 0 ? "success" : "danger" }
       ],
       modules: [
         {

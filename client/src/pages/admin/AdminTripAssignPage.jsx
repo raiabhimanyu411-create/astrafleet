@@ -37,7 +37,8 @@ export function AdminTripAssignPage() {
     planned_departure: "",
     dock_window: "",
     freight_amount: "",
-    priority_level: "standard"
+    priority_level: "standard",
+    dispatcher_notes: ""
   });
 
   const [submitting, setSubmitting] = useState(false);
@@ -61,7 +62,8 @@ export function AdminTripAssignPage() {
             planned_departure: trip.form?.planned_departure || "",
             dock_window: trip.form?.dock_window || "",
             freight_amount: trip.form?.freight_amount || "",
-            priority_level: trip.form?.priority_level || "standard"
+            priority_level: trip.form?.priority_level || "standard",
+            dispatcher_notes: trip.dispatcherNotes !== "—" ? trip.dispatcherNotes || "" : ""
           });
         }
       })
@@ -70,6 +72,8 @@ export function AdminTripAssignPage() {
   }, [id, isEdit]);
 
   const selectedRoute = formData.routes.find(r => String(r.id) === fields.route_id);
+  const suggestedDriver = formData.drivers.find(d => d.shift_status === "ready" && d.compliance_status !== "blocked") || formData.drivers[0];
+  const suggestedVehicle = formData.vehicles.find(v => v.status === "available") || formData.vehicles[0];
 
   function set(key, val) {
     setFields(prev => ({ ...prev, [key]: val }));
@@ -95,7 +99,8 @@ export function AdminTripAssignPage() {
         planned_departure: fields.planned_departure,
         dock_window: fields.dock_window || null,
         freight_amount: fields.freight_amount ? Number(fields.freight_amount) : null,
-        priority_level: fields.priority_level
+        priority_level: fields.priority_level,
+        dispatcher_notes: fields.dispatcher_notes || null
       };
 
       if (isEdit) {
@@ -176,6 +181,22 @@ export function AdminTripAssignPage() {
             {/* ── Section: Driver + Vehicle ── */}
             <div className="af-section">
               <p className="af-section-title">Assign driver, truck and trolley</p>
+              <div className="state-card" style={{ marginBottom: 14 }}>
+                <span className="state-dot loading" />
+                <div>
+                  <strong>Auto suggestions</strong>
+                  <p>
+                    Driver: {suggestedDriver ? `${suggestedDriver.full_name} (${suggestedDriver.shift_status})` : "No driver available"} ·
+                    Vehicle: {suggestedVehicle ? `${suggestedVehicle.registration_number} (${suggestedVehicle.truck_type || suggestedVehicle.status})` : "No vehicle available"}
+                  </p>
+                </div>
+                <button className="header-action-button" type="button" onClick={() => {
+                  if (suggestedDriver) set("driver_id", String(suggestedDriver.id));
+                  if (suggestedVehicle) set("vehicle_id", String(suggestedVehicle.id));
+                }}>
+                  Use suggestions
+                </button>
+              </div>
               <div className="af-grid-3">
                 <Field label="Driver">
                   <select
@@ -284,6 +305,13 @@ export function AdminTripAssignPage() {
                   </div>
                 </Field>
               </div>
+            </div>
+
+            <div className="af-section">
+              <p className="af-section-title">Trip sheet and dispatcher notes</p>
+              <Field label="Dispatcher notes" hint="Printed on the trip sheet and used for reassignment or reschedule context">
+                <textarea className="af-input" style={{ minHeight: 86, resize: "vertical" }} value={fields.dispatcher_notes} onChange={e => set("dispatcher_notes", e.target.value)} />
+              </Field>
             </div>
 
             {submitError && (

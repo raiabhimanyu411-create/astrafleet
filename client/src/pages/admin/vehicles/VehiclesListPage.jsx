@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { getVehicles, updateVehicleStatus } from "../../../api/vehicleApi";
-import { StatCard } from "../../../components/StatCard";
+import { getVehicles, updateVehicleInline } from "../../../api/vehicleApi";
 import { StateNotice } from "../../../components/StateNotice";
 import { StatusPill } from "../../../components/StatusPill";
 import { AdminWorkspaceLayout } from "../AdminWorkspaceLayout";
@@ -40,10 +39,6 @@ function exportCsv(name, rows) {
   URL.revokeObjectURL(url);
 }
 
-function ExpiryBadge({ label, tone }) {
-  return <StatusPill tone={tone}>{label}</StatusPill>;
-}
-
 export function VehiclesListPage() {
   const navigate = useNavigate();
   const [data, setData] = useState(null);
@@ -53,7 +48,8 @@ export function VehiclesListPage() {
   const [filterStatus, setFilterStatus] = useState("");
   const [filterType, setFilterType] = useState("");
   const [riskFilter, setRiskFilter] = useState("");
-  const [busyId, setBusyId] = useState(null);
+  const [view, setView] = useState("fleet");
+  const [savingCell, setSavingCell] = useState("");
 
   function load() {
     setLoading(true);
@@ -94,14 +90,17 @@ export function VehiclesListPage() {
     });
   }, [data, filterStatus, filterType, riskFilter, search]);
 
-  const visibleStats = useMemo(() => [
-    { label: "Visible vehicles", value: vehicles.length, description: "After current filters.", change: "Filtered", tone: "neutral" },
-    { label: "Ready assets", value: vehicles.filter(v => v.status === "available" && !v.complianceRisk).length, description: "Available with no visible risk.", change: "Assignable", tone: "success" },
-    { label: "Needs workshop", value: vehicles.filter(v => ["maintenance", "stopped"].includes(v.status) || v.openDefects > 0).length, description: "Stopped, maintenance, or defects.", change: "Workshop", tone: "danger" },
-    { label: "Open trips", value: vehicles.reduce((sum, v) => sum + Number(v.openTrips || 0), 0), description: "Planned/loading/active trips.", change: "Dispatch", tone: "warning" }
-  ], [vehicles]);
-
   const hasFilters = Boolean(search || filterStatus || filterType || riskFilter);
+
+  const quickFilters = useMemo(() => {
+    const rows = data?.vehicles || [];
+    return [
+      { key: "available", label: "Available", value: rows.filter(v => v.status === "available").length },
+      { key: "on_job", label: "On job", value: rows.filter(v => Number(v.openTrips || 0) > 0 || ["planned", "in_transit"].includes(v.status)).length },
+      { key: "maintenance", label: "Maintenance", value: rows.filter(v => ["maintenance", "stopped"].includes(v.status)).length },
+      { key: "compliance", label: "Compliance risk", value: rows.filter(v => v.complianceRisk).length }
+    ];
+  }, [data]);
 
   function clearFilters() {
     setSearch("");
@@ -110,17 +109,43 @@ export function VehiclesListPage() {
     setRiskFilter("");
   }
 
-  async function setStatus(vehicle, status) {
+  function applyQuickFilter(key) {
+    setFilterStatus("");
+    setRiskFilter("");
+    if (key === "available") setFilterStatus("available");
+    if (key === "on_job") setRiskFilter("open_trips");
+    if (key === "maintenance") setFilterStatus("maintenance");
+    if (key === "compliance") {
+      setRiskFilter("compliance");
+      setView("compliance");
+    }
+  }
+
+  async function updateCell(vehicle, field, value) {
+    const key = `${vehicle.id}-${field}`;
     setError("");
-    setBusyId(vehicle.id);
+    setSavingCell(key);
     try {
-      await updateVehicleStatus(vehicle.id, { status });
+      await updateVehicleInline(vehicle.id, { [field]: value });
       await load();
     } catch (err) {
-      setError(err?.response?.data?.message || "Vehicle status could not be updated.");
+      setError(err?.response?.data?.message || "Vehicle could not be updated.");
     } finally {
-      setBusyId(null);
+      setSavingCell("");
     }
+  }
+
+  function saveOnBlur(vehicle, field, oldValue) {
+    return e => {
+      const nextValue = e.target.value;
+      if (String(oldValue ?? "") !== String(nextValue ?? "")) {
+        updateCell(vehicle, field, nextValue);
+      }
+    };
+  }
+
+  function dateClass(tone) {
+    return ["danger", "warning"].includes(tone) ? tone : "";
   }
 
   function exportVehicles() {
@@ -164,67 +189,26 @@ export function VehiclesListPage() {
 
       <StateNotice loading={loading} error={error} />
 
-      <section className="stats-grid">
-        {(data?.stats || []).map(item => (
-          <StatCard key={item.label} item={item} />
-        ))}
-      </section>
-
-      <section className="stats-grid inline finance-position-grid">
-        {(data?.fleetHealth || []).map(item => (
-          <StatCard key={item.label} item={item} />
-        ))}
-      </section>
-
-      <section className="content-grid vehicle-overview-grid">
-        <article className="content-card">
-          <div className="section-head">
-            <div>
-              <span className="card-label">Fleet readiness</span>
-              <h2>Visible vehicle workload</h2>
-            </div>
-            <StatusPill tone="neutral">Filtered view</StatusPill>
-          </div>
-          <div className="billing-workflow-grid vehicle-workload-grid">
-            {visibleStats.map(item => (
-              <button className="billing-workflow-tile" key={item.label} type="button" onClick={() => {
-                if (item.label === "Needs workshop") setRiskFilter("defects");
-                if (item.label === "Open trips") setRiskFilter("open_trips");
-              }}>
-                <span>{item.label}</span>
-                <strong>{item.value}</strong>
-                <p>{item.description}</p>
-              </button>
-            ))}
-          </div>
-        </article>
-
-        <article className="content-card">
-          <div className="section-head">
-            <div>
-              <span className="card-label">Fleet exceptions</span>
-              <h2>Compliance and workshop watch</h2>
-            </div>
-            <StatusPill tone="warning">Ops review</StatusPill>
-          </div>
-          <div className="alert-stack">
-            {vehicles.filter(v => v.complianceRisk || v.openDefects > 0 || ["maintenance", "stopped"].includes(v.status)).slice(0, 6).map(v => (
-              <div className="alert-card" key={v.id} onClick={() => navigate(`/admin/vehicles/${v.id}`)} style={{ cursor: "pointer" }}>
-                <div className={`alert-bar ${v.criticalDefects > 0 || v.status === "stopped" ? "danger" : "warning"}`} />
-                <div>
-                  <strong>{v.registrationNumber}</strong>
-                  <p>{v.openDefects > 0 ? `${v.openDefects} open defect${v.openDefects === 1 ? "" : "s"}.` : v.complianceRisk ? "Compliance or service date needs review." : `Vehicle status is ${v.status.replace("_", " ")}.`}</p>
-                </div>
-              </div>
-            ))}
-            {!loading && vehicles.filter(v => v.complianceRisk || v.openDefects > 0 || ["maintenance", "stopped"].includes(v.status)).length === 0 && (
-              <p className="finance-empty">No fleet exceptions right now. Compliance risks, defects, and maintenance vehicles will appear here.</p>
-            )}
-          </div>
-        </article>
-      </section>
-
-      <section className="content-card vehicle-filter-card">
+      <section className="vehicle-control-strip">
+        <div className="vehicle-quick-strip">
+          {quickFilters.map(item => (
+            <button
+              className={(
+                (item.key === "available" && filterStatus === "available") ||
+                (item.key === "on_job" && riskFilter === "open_trips") ||
+                (item.key === "maintenance" && filterStatus === "maintenance") ||
+                (item.key === "compliance" && riskFilter === "compliance")
+              ) ? "active" : ""}
+              key={item.key}
+              type="button"
+              onClick={() => applyQuickFilter(item.key)}
+            >
+              <span>{item.label}</span>
+              <strong>{item.value}</strong>
+            </button>
+          ))}
+        </div>
+        <div className="vehicle-filter-card">
         <input
           className="af-input"
           type="text"
@@ -246,55 +230,237 @@ export function VehiclesListPage() {
           <option value="open_trips">Open trips</option>
         </select>
         <button className="header-action-button" disabled={!hasFilters} type="button" onClick={clearFilters}>Clear filters</button>
+        </div>
       </section>
 
-      <section className="content-card">
+      <section className="vehicle-tabs" aria-label="Vehicle views">
+        {[
+          ["fleet", "Fleet List"],
+          ["compliance", "Compliance"],
+          ["workshop", "Workshop"]
+        ].map(([key, label]) => (
+          <button className={view === key ? "active" : ""} key={key} type="button" onClick={() => setView(key)}>
+            {label}
+          </button>
+        ))}
+      </section>
+
+      <section className="vehicle-register-card">
         <div className="section-head">
           <div>
             <span className="card-label">Fleet register</span>
-            <h2>Vehicles, compliance and service readiness</h2>
+            <h2>{view === "fleet" ? "Fleet list" : view === "compliance" ? "Compliance dates" : "Workshop view"}</h2>
           </div>
           <StatusPill tone={vehicles.length ? "success" : "neutral"}>{vehicles.length} visible</StatusPill>
         </div>
 
-        <div className="data-rows compact finance-list">
-          {vehicles.map(v => (
-            <div className="data-row finance-row vehicle-row" key={v.id}>
-              <button className="finance-row-main vehicle-row-main" type="button" onClick={() => navigate(`/admin/vehicles/${v.id}`)}>
-                <div>
-                  <strong>{v.registrationNumber}</strong>
-                  <p>{v.fleetCode} · {v.make} · {v.model} · {v.truckType}</p>
-                </div>
-                <div>
-                  <span>{v.currentLocation}</span>
-                  <p>{v.totalTrips} trips · {v.openTrips} open</p>
-                </div>
-                <div className="vehicle-doc-strip">
-                  <ExpiryBadge label={`MOT ${v.motExpiry}`} tone={v.motExpiryTone} />
-                  <ExpiryBadge label={`Insurance ${v.insuranceExpiry}`} tone={v.insuranceExpiryTone} />
-                  <ExpiryBadge label={`Tax ${v.roadTaxExpiry}`} tone={v.roadTaxExpiryTone} />
-                  <ExpiryBadge label={`Service ${v.nextServiceDue}`} tone={v.nextServiceTone} />
-                </div>
-              </button>
-              <div className="finance-row-actions">
-                {v.openDefects > 0 && <StatusPill tone={v.criticalDefects > 0 ? "danger" : "warning"}>{v.openDefects} defects</StatusPill>}
-                <StatusPill tone={v.statusTone}>{v.status.replace("_", " ")}</StatusPill>
-                {v.status !== "available" && (
-                  <button className="header-action-button" disabled={busyId === v.id} type="button" onClick={() => setStatus(v, "available")}>Available</button>
-                )}
-                {v.status !== "maintenance" && (
-                  <button className="header-action-button" disabled={busyId === v.id} type="button" onClick={() => setStatus(v, "maintenance")}>Maintenance</button>
-                )}
-                {v.status !== "stopped" && (
-                  <button className="header-action-button danger" disabled={busyId === v.id} type="button" onClick={() => setStatus(v, "stopped")}>Stop</button>
-                )}
-                <button className="header-action-button" type="button" onClick={() => navigate(`/admin/vehicles/${v.id}/edit`)}>Edit</button>
-              </div>
-            </div>
-          ))}
-          {!loading && vehicles.length === 0 && (
-            <p className="finance-empty">{hasFilters ? "No vehicles match your filters." : "No vehicles yet. Add your first vehicle."}</p>
-          )}
+        <div className="vehicle-table-shell">
+          <table className={`vehicle-edit-table ${view}`}>
+            <thead>
+              {view === "fleet" && (
+              <tr>
+                <th>Registration</th>
+                <th>Fleet code</th>
+                <th>Vehicle</th>
+                <th>Type</th>
+                <th>Status</th>
+                <th>Location</th>
+                <th>Service</th>
+                <th>Trips</th>
+                <th>Defects</th>
+                <th>Actions</th>
+              </tr>
+              )}
+              {view === "compliance" && (
+              <tr>
+                <th>Registration</th>
+                <th>Fleet code</th>
+                <th>Vehicle</th>
+                <th>MOT</th>
+                <th>Insurance</th>
+                <th>Road tax</th>
+                <th>Permit</th>
+                <th>Pollution</th>
+                <th>Fitness</th>
+                <th>Risk</th>
+                <th>Actions</th>
+              </tr>
+              )}
+              {view === "workshop" && (
+              <tr>
+                <th>Registration</th>
+                <th>Fleet code</th>
+                <th>Vehicle</th>
+                <th>Status</th>
+                <th>Location</th>
+                <th>Odometer</th>
+                <th>Next service</th>
+                <th>Open defects</th>
+                <th>Trips</th>
+                <th>Last activity</th>
+                <th>Actions</th>
+              </tr>
+              )}
+            </thead>
+            <tbody>
+              {vehicles.map(v => (
+                <tr key={v.id}>
+                  {view === "fleet" && (
+                  <>
+                  <td>
+                    <input className="vehicle-table-input strong" defaultValue={v.registrationNumber || ""} onBlur={saveOnBlur(v, "registrationNumber", v.registrationNumber)} />
+                  </td>
+                  <td>
+                    <input className="vehicle-table-input code" defaultValue={v.fleetCode || ""} onBlur={saveOnBlur(v, "fleetCode", v.fleetCode)} />
+                  </td>
+                  <td>
+                    <strong>{v.make} {v.model}</strong>
+                    <small>{v.fuelType === "—" ? "Fuel not set" : v.fuelType} · {v.capacityTonnes === "—" ? "capacity not set" : `${v.capacityTonnes}t`}</small>
+                  </td>
+                  <td>
+                    <select className="vehicle-table-select" value={v.truckType || ""} disabled={savingCell === `${v.id}-truckType`} onChange={e => updateCell(v, "truckType", e.target.value)}>
+                      {TYPE_OPTIONS.filter(o => o.value).map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                    </select>
+                  </td>
+                  <td>
+                    <select className="vehicle-table-select" value={v.status || "available"} disabled={savingCell === `${v.id}-status`} onChange={e => updateCell(v, "status", e.target.value)}>
+                      {STATUS_OPTIONS.filter(o => o.value).map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                    </select>
+                  </td>
+                  <td>
+                    <input className="vehicle-table-input" defaultValue={v.currentLocation === "—" ? "" : v.currentLocation || ""} onBlur={saveOnBlur(v, "currentLocation", v.currentLocation === "—" ? "" : v.currentLocation)} />
+                  </td>
+                  <td>
+                    <input className={`vehicle-table-input date ${dateClass(v.nextServiceTone)}`} type="date" defaultValue={v.nextServiceDueRaw || ""} onBlur={saveOnBlur(v, "nextServiceDue", v.nextServiceDueRaw || "")} />
+                    <small>{v.nextServiceDue}</small>
+                  </td>
+                  <td>
+                    <strong>{v.totalTrips}</strong>
+                    <small>{v.openTrips} open</small>
+                  </td>
+                  <td>
+                    <StatusPill tone={v.openDefects > 0 ? (v.criticalDefects > 0 ? "danger" : "warning") : "success"}>
+                      {v.openDefects} open
+                    </StatusPill>
+                    <small>{v.criticalDefects} critical</small>
+                  </td>
+                  <td>
+                    <div className="vehicle-table-actions">
+                      <button className="header-action-button" type="button" onClick={() => navigate(`/admin/vehicles/${v.id}`)}>Open</button>
+                      <button className="header-action-button" type="button" onClick={() => navigate(`/admin/vehicles/${v.id}/edit`)}>Edit</button>
+                    </div>
+                  </td>
+                  </>
+                  )}
+
+                  {view === "compliance" && (
+                  <>
+                  <td>
+                    <input className="vehicle-table-input strong" defaultValue={v.registrationNumber || ""} onBlur={saveOnBlur(v, "registrationNumber", v.registrationNumber)} />
+                  </td>
+                  <td>
+                    <input className="vehicle-table-input code" defaultValue={v.fleetCode || ""} onBlur={saveOnBlur(v, "fleetCode", v.fleetCode)} />
+                  </td>
+                  <td>
+                    <strong>{v.make} {v.model}</strong>
+                    <small>{v.truckType}</small>
+                  </td>
+                  <td>
+                    <input className={`vehicle-table-input date ${dateClass(v.motExpiryTone)}`} type="date" defaultValue={v.motExpiryRaw || ""} onBlur={saveOnBlur(v, "motExpiry", v.motExpiryRaw || "")} />
+                    <small>{v.motExpiry}</small>
+                  </td>
+                  <td>
+                    <input className={`vehicle-table-input date ${dateClass(v.insuranceExpiryTone)}`} type="date" defaultValue={v.insuranceExpiryRaw || ""} onBlur={saveOnBlur(v, "insuranceExpiry", v.insuranceExpiryRaw || "")} />
+                    <small>{v.insuranceExpiry}</small>
+                  </td>
+                  <td>
+                    <input className={`vehicle-table-input date ${dateClass(v.roadTaxExpiryTone)}`} type="date" defaultValue={v.roadTaxExpiryRaw || ""} onBlur={saveOnBlur(v, "roadTaxExpiry", v.roadTaxExpiryRaw || "")} />
+                    <small>{v.roadTaxExpiry}</small>
+                  </td>
+                  <td>
+                    <input className={`vehicle-table-input date ${dateClass(v.permitExpiryTone)}`} type="date" defaultValue={v.permitExpiryRaw || ""} onBlur={saveOnBlur(v, "permitExpiry", v.permitExpiryRaw || "")} />
+                    <small>{v.permitExpiry}</small>
+                  </td>
+                  <td>
+                    <input className={`vehicle-table-input date ${dateClass(v.pollutionExpiryTone)}`} type="date" defaultValue={v.pollutionExpiryRaw || ""} onBlur={saveOnBlur(v, "pollutionExpiry", v.pollutionExpiryRaw || "")} />
+                    <small>{v.pollutionExpiry}</small>
+                  </td>
+                  <td>
+                    <input className={`vehicle-table-input date ${dateClass(v.fitnessExpiryTone)}`} type="date" defaultValue={v.fitnessExpiryRaw || ""} onBlur={saveOnBlur(v, "fitnessExpiry", v.fitnessExpiryRaw || "")} />
+                    <small>{v.fitnessExpiry}</small>
+                  </td>
+                  <td>
+                    <StatusPill tone={v.complianceRisk ? "warning" : "success"}>{v.complianceRisk ? "Review" : "Clear"}</StatusPill>
+                  </td>
+                  <td>
+                    <div className="vehicle-table-actions">
+                      <button className="header-action-button" type="button" onClick={() => navigate(`/admin/vehicles/${v.id}`)}>Open</button>
+                      <button className="header-action-button" type="button" onClick={() => navigate(`/admin/vehicles/${v.id}/edit`)}>Edit</button>
+                    </div>
+                  </td>
+                  </>
+                  )}
+
+                  {view === "workshop" && (
+                  <>
+                  <td>
+                    <input className="vehicle-table-input strong" defaultValue={v.registrationNumber || ""} onBlur={saveOnBlur(v, "registrationNumber", v.registrationNumber)} />
+                  </td>
+                  <td>
+                    <input className="vehicle-table-input code" defaultValue={v.fleetCode || ""} onBlur={saveOnBlur(v, "fleetCode", v.fleetCode)} />
+                  </td>
+                  <td>
+                    <strong>{v.make} {v.model}</strong>
+                    <small>{v.truckType}</small>
+                  </td>
+                  <td>
+                    <select className="vehicle-table-select" value={v.status || "available"} disabled={savingCell === `${v.id}-status`} onChange={e => updateCell(v, "status", e.target.value)}>
+                      {STATUS_OPTIONS.filter(o => o.value).map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                    </select>
+                  </td>
+                  <td>
+                    <input className="vehicle-table-input" defaultValue={v.currentLocation === "—" ? "" : v.currentLocation || ""} onBlur={saveOnBlur(v, "currentLocation", v.currentLocation === "—" ? "" : v.currentLocation)} />
+                  </td>
+                  <td>
+                    <input className="vehicle-table-input number" type="number" step="1" defaultValue={v.odometerReadingRaw || ""} onBlur={saveOnBlur(v, "odometerReading", v.odometerReadingRaw || "")} />
+                    <small>km</small>
+                  </td>
+                  <td>
+                    <input className={`vehicle-table-input date ${dateClass(v.nextServiceTone)}`} type="date" defaultValue={v.nextServiceDueRaw || ""} onBlur={saveOnBlur(v, "nextServiceDue", v.nextServiceDueRaw || "")} />
+                    <small>{v.nextServiceDue}</small>
+                  </td>
+                  <td>
+                    <StatusPill tone={v.openDefects > 0 ? (v.criticalDefects > 0 ? "danger" : "warning") : "success"}>
+                      {v.openDefects} open
+                    </StatusPill>
+                    <small>{v.criticalDefects} critical</small>
+                  </td>
+                  <td>
+                    <strong>{v.totalTrips}</strong>
+                    <small>{v.openTrips} open</small>
+                  </td>
+                  <td>
+                    <strong>{v.lastActivity}</strong>
+                  </td>
+                  <td>
+                    <div className="vehicle-table-actions">
+                      <button className="header-action-button" type="button" onClick={() => navigate(`/admin/vehicles/${v.id}`)}>Open</button>
+                      <button className="header-action-button" type="button" onClick={() => navigate(`/admin/vehicles/${v.id}/edit`)}>Edit</button>
+                    </div>
+                  </td>
+                  </>
+                  )}
+                </tr>
+              ))}
+              {!loading && vehicles.length === 0 && (
+                <tr>
+                  <td colSpan={view === "fleet" ? 10 : 11}>
+                    <p className="finance-empty">{hasFilters ? "No vehicles match your filters." : "No vehicles yet. Add your first vehicle."}</p>
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
         </div>
       </section>
     </AdminWorkspaceLayout>

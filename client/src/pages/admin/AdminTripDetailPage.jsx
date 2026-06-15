@@ -246,6 +246,19 @@ export function AdminTripDetailPage() {
               </div>
             </div>
 
+            <div className="content-card" style={{ marginBottom: 16 }}>
+              <div className="section-head">
+                <div>
+                  <span className="card-label">Trip sheet</span>
+                  <h2>Dispatcher notes and printable trip sheet</h2>
+                </div>
+                <button className="header-action-button" type="button" onClick={() => window.print()}>
+                  Print trip sheet
+                </button>
+              </div>
+              <DetailBlock label="Dispatcher notes" value={trip.dispatcherNotes} />
+            </div>
+
             <div className="af-actions">
               <button
                 className="header-action-button"

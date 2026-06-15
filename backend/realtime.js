@@ -26,9 +26,25 @@ function emitDriverChatMessage(message) {
   io.to(chatRoom(message.driverId)).emit("driver-chat:message", message);
 }
 
+function emitDriverJobAssigned(payload) {
+  if (!io || !payload?.driverId) return;
+  io.to(chatRoom(payload.driverId)).emit("driver-job:assigned", {
+    ...payload,
+    emittedAt: new Date().toISOString()
+  });
+}
+
 function emitAdminAuditEvent(payload) {
   if (!io) return;
   io.to("admin-audit").emit("admin-audit:event", {
+    ...payload,
+    emittedAt: new Date().toISOString()
+  });
+}
+
+function emitJobUpdate(payload) {
+  if (!io) return;
+  io.to("admin-jobs").emit("job:updated", {
     ...payload,
     emittedAt: new Date().toISOString()
   });
@@ -38,7 +54,9 @@ module.exports = {
   chatRoom,
   emitAdminAuditEvent,
   emitDriverChatMessage,
+  emitDriverJobAssigned,
   emitDriverLocationUpdate,
+  emitJobUpdate,
   getRealtimeServer,
   setRealtimeServer
 };

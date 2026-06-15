@@ -24,8 +24,9 @@ function Field({ label, hint, children }) {
 
 const empty = {
   company_name: "", contact_name: "", email: "", phone: "",
-  address: "", postcode: "", vat_number: "",
-  payment_terms_days: 30, account_status: "active"
+  address: "", billing_address: "", saved_pickup_addresses: "", saved_drop_addresses: "",
+  postcode: "", vat_number: "", tax_details: "", credit_limit_gbp: "",
+  payment_terms_days: 30, account_status: "active", rate_contract: ""
 };
 
 export function CustomerFormPage() {
@@ -50,10 +51,16 @@ export function CustomerFormPage() {
           email:              c.email !== "—" ? c.email || "" : "",
           phone:              c.phone !== "—" ? c.phone || "" : "",
           address:            c.address || "",
+          billing_address:    c.billingAddress || "",
+          saved_pickup_addresses: c.savedPickupAddresses || "",
+          saved_drop_addresses: c.savedDropAddresses || "",
           postcode:           c.postcode !== "—" ? c.postcode || "" : "",
           vat_number:         c.vatNumber || "",
+          tax_details:        c.taxDetails || "",
+          credit_limit_gbp:   c.creditLimitGbp || "",
           payment_terms_days: c.paymentTermsDays || 30,
-          account_status:     c.status || "active"
+          account_status:     c.status || "active",
+          rate_contract:      c.rateContract || ""
         });
       })
       .catch(() => setLoadErr("Could not load customer. Please go back and try again."))
@@ -147,6 +154,15 @@ export function CustomerFormPage() {
                     onChange={e => set("vat_number", e.target.value)}
                   />
                 </Field>
+                <Field label="GST / VAT / company tax details">
+                  <input
+                    className="af-input"
+                    type="text"
+                    placeholder="e.g. GSTIN, VAT registration, company tax ID"
+                    value={fields.tax_details}
+                    onChange={e => set("tax_details", e.target.value)}
+                  />
+                </Field>
               </div>
             </div>
 
@@ -197,6 +213,15 @@ export function CustomerFormPage() {
                     onChange={e => set("address", e.target.value)}
                   />
                 </Field>
+                <Field label="Billing address">
+                  <textarea
+                    className="af-input"
+                    style={{ minHeight: 80, resize: "vertical" }}
+                    placeholder="Billing address if different"
+                    value={fields.billing_address}
+                    onChange={e => set("billing_address", e.target.value)}
+                  />
+                </Field>
                 <Field label="Postcode">
                   <input
                     className="af-input"
@@ -205,6 +230,12 @@ export function CustomerFormPage() {
                     value={fields.postcode}
                     onChange={e => set("postcode", e.target.value)}
                   />
+                </Field>
+                <Field label="Saved pickup addresses" hint="One address per line">
+                  <textarea className="af-input" style={{ minHeight: 90, resize: "vertical" }} value={fields.saved_pickup_addresses} onChange={e => set("saved_pickup_addresses", e.target.value)} />
+                </Field>
+                <Field label="Saved drop addresses" hint="One address per line">
+                  <textarea className="af-input" style={{ minHeight: 90, resize: "vertical" }} value={fields.saved_drop_addresses} onChange={e => set("saved_drop_addresses", e.target.value)} />
                 </Field>
               </div>
             </div>
@@ -224,6 +255,14 @@ export function CustomerFormPage() {
                     ))}
                   </select>
                 </Field>
+                <Field label="Credit limit (£)">
+                  <input className="af-input" type="number" min="0" step="0.01" placeholder="e.g. 25000" value={fields.credit_limit_gbp} onChange={e => set("credit_limit_gbp", e.target.value)} />
+                </Field>
+                <div style={{ gridColumn: "1 / -1" }}>
+                  <Field label="Rate contract per customer">
+                    <textarea className="af-input" style={{ minHeight: 90, resize: "vertical" }} placeholder="Lane rates, per-tonne rates, minimum charges, fuel surcharge rules..." value={fields.rate_contract} onChange={e => set("rate_contract", e.target.value)} />
+                  </Field>
+                </div>
                 {isEdit && (
                   <Field label="Account status">
                     <select

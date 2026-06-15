@@ -27,6 +27,12 @@ async function addColumnIfMissing(table, column, definition) {
 async function ensureCustomerSchema() {
   if (customerSchemaReady) return;
   await addColumnIfMissing("trips", "customer_id", "INT DEFAULT NULL");
+  await addColumnIfMissing("customers", "billing_address", "TEXT DEFAULT NULL");
+  await addColumnIfMissing("customers", "saved_pickup_addresses", "TEXT DEFAULT NULL");
+  await addColumnIfMissing("customers", "saved_drop_addresses", "TEXT DEFAULT NULL");
+  await addColumnIfMissing("customers", "tax_details", "VARCHAR(160) DEFAULT NULL");
+  await addColumnIfMissing("customers", "credit_limit_gbp", "DECIMAL(12,2) DEFAULT NULL");
+  await addColumnIfMissing("customers", "rate_contract", "TEXT DEFAULT NULL");
   customerSchemaReady = true;
 }
 
@@ -53,7 +59,9 @@ exports.listCustomers = async (req, res) => {
 
     const [rows] = await db.query(
       `SELECT c.id, c.company_name, c.contact_name, c.email, c.phone,
-              c.postcode, c.payment_terms_days, c.account_status, c.created_at,
+              c.address, c.billing_address, c.saved_pickup_addresses, c.saved_drop_addresses,
+              c.postcode, c.vat_number, c.tax_details, c.payment_terms_days, c.credit_limit_gbp,
+              c.rate_contract, c.account_status, c.created_at,
               COALESCE(t.total_trips, 0) AS total_trips,
               COALESCE(t.last_trip_at, NULL) AS last_trip_at,
               COALESCE(i.total_invoices, 0) AS total_invoices,
@@ -100,8 +108,18 @@ exports.listCustomers = async (req, res) => {
         contactName: r.contact_name || "—",
         email: r.email || "—",
         phone: r.phone || "—",
+        address: r.address || "—",
+        billingAddress: r.billing_address || "—",
+        savedPickupAddresses: r.saved_pickup_addresses || "—",
+        savedDropAddresses: r.saved_drop_addresses || "—",
         postcode: r.postcode || "—",
+        vatNumber: r.vat_number || "—",
+        taxDetails: r.tax_details || "—",
+        paymentTermsDays: r.payment_terms_days || 30,
         paymentTerms: `Net ${r.payment_terms_days}`,
+        creditLimitRaw: r.credit_limit_gbp ?? "",
+        creditLimit: fmtAmount(r.credit_limit_gbp),
+        rateContract: r.rate_contract || "—",
         status: r.account_status,
         tone: r.account_status === "active" ? "success" : r.account_status === "suspended" ? "warning" : "neutral",
         totalTrips: r.total_trips,
@@ -150,6 +168,65 @@ exports.updateCustomerStatus = async (req, res) => {
   }
 };
 
+exports.updateCustomerInline = async (req, res) => {
+  try {
+    await ensureCustomerSchema();
+    const { id } = req.params;
+    const [[existing]] = await db.query(`SELECT * FROM customers WHERE id = ?`, [id]);
+    if (!existing) return res.status(404).json({ message: "Customer not found." });
+
+    const fieldMap = {
+      companyName: "company_name",
+      contactName: "contact_name",
+      email: "email",
+      phone: "phone",
+      address: "address",
+      billingAddress: "billing_address",
+      savedPickupAddresses: "saved_pickup_addresses",
+      savedDropAddresses: "saved_drop_addresses",
+      postcode: "postcode",
+      vatNumber: "vat_number",
+      taxDetails: "tax_details",
+      creditLimitGbp: "credit_limit_gbp",
+      paymentTermsDays: "payment_terms_days",
+      rateContract: "rate_contract",
+      status: "account_status"
+    };
+    const validStatus = ["active", "suspended", "closed"];
+    const updates = [];
+    const values = [];
+
+    Object.entries(req.body || {}).forEach(([field, value]) => {
+      const column = fieldMap[field];
+      if (!column) return;
+      if (field === "status" && !validStatus.includes(value)) return;
+      if (field === "companyName" && !String(value || "").trim()) return;
+      updates.push(`${column} = ?`);
+      values.push(value === "" ? null : value);
+    });
+
+    if (!updates.length) {
+      return res.status(400).json({ message: "No valid customer fields supplied." });
+    }
+
+    await db.query(`UPDATE customers SET ${updates.join(", ")} WHERE id = ?`, [...values, id]);
+    const [[updated]] = await db.query(`SELECT * FROM customers WHERE id = ?`, [id]);
+
+    await logActivity(req, {
+      module: "customers",
+      action: "inline_update",
+      entityType: "customer",
+      entityId: id,
+      entityLabel: updated.company_name,
+      details: { changes: buildChangeSet(existing, updated, Object.values(fieldMap)) }
+    });
+
+    res.json({ message: "Customer updated." });
+  } catch (err) {
+    res.status(500).json({ message: "Customer inline update error", error: err.message });
+  }
+};
+
 exports.getCustomerById = async (req, res) => {
   try {
     await ensureCustomerSchema();
@@ -191,8 +268,14 @@ exports.getCustomerById = async (req, res) => {
       email: c.email,
       phone: c.phone,
       address: c.address,
+      billingAddress: c.billing_address || c.address,
+      savedPickupAddresses: c.saved_pickup_addresses || "",
+      savedDropAddresses: c.saved_drop_addresses || "",
       postcode: c.postcode,
       vatNumber: c.vat_number,
+      taxDetails: c.tax_details,
+      creditLimitGbp: c.credit_limit_gbp,
+      rateContract: c.rate_contract,
       paymentTermsDays: c.payment_terms_days,
       status: c.account_status,
       tone: c.account_status === "active" ? "success" : "warning",
@@ -224,9 +307,11 @@ exports.getCustomerById = async (req, res) => {
 
 exports.createCustomer = async (req, res) => {
   try {
+    await ensureCustomerSchema();
     const {
       company_name, contact_name, email, phone,
-      address, postcode, vat_number, payment_terms_days
+      address, billing_address, saved_pickup_addresses, saved_drop_addresses,
+      postcode, vat_number, tax_details, credit_limit_gbp, payment_terms_days, rate_contract
     } = req.body;
 
     if (!company_name) {
@@ -235,8 +320,9 @@ exports.createCustomer = async (req, res) => {
 
     const [result] = await db.query(
       `INSERT INTO customers
-         (company_name, contact_name, email, phone, address, postcode, vat_number, payment_terms_days, account_status)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'active')`,
+         (company_name, contact_name, email, phone, address, postcode, vat_number, payment_terms_days, account_status,
+          billing_address, saved_pickup_addresses, saved_drop_addresses, tax_details, credit_limit_gbp, rate_contract)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'active', ?, ?, ?, ?, ?, ?)`,
       [
         company_name,
         contact_name || null,
@@ -245,7 +331,13 @@ exports.createCustomer = async (req, res) => {
         address || null,
         postcode || null,
         vat_number || null,
-        payment_terms_days || 30
+        payment_terms_days || 30,
+        billing_address || null,
+        saved_pickup_addresses || null,
+        saved_drop_addresses || null,
+        tax_details || null,
+        credit_limit_gbp || null,
+        rate_contract || null
       ]
     );
 
@@ -269,10 +361,12 @@ exports.createCustomer = async (req, res) => {
 
 exports.updateCustomer = async (req, res) => {
   try {
+    await ensureCustomerSchema();
     const { id } = req.params;
     const {
       company_name, contact_name, email, phone,
-      address, postcode, vat_number, payment_terms_days, account_status
+      address, billing_address, saved_pickup_addresses, saved_drop_addresses,
+      postcode, vat_number, tax_details, credit_limit_gbp, payment_terms_days, account_status, rate_contract
     } = req.body;
 
     if (!company_name) {
@@ -285,7 +379,8 @@ exports.updateCustomer = async (req, res) => {
     await db.query(
       `UPDATE customers SET
          company_name=?, contact_name=?, email=?, phone=?,
-         address=?, postcode=?, vat_number=?, payment_terms_days=?, account_status=?
+         address=?, billing_address=?, saved_pickup_addresses=?, saved_drop_addresses=?,
+         postcode=?, vat_number=?, tax_details=?, credit_limit_gbp=?, payment_terms_days=?, account_status=?, rate_contract=?
        WHERE id=?`,
       [
         company_name,
@@ -293,10 +388,16 @@ exports.updateCustomer = async (req, res) => {
         email || null,
         phone || null,
         address || null,
+        billing_address || null,
+        saved_pickup_addresses || null,
+        saved_drop_addresses || null,
         postcode || null,
         vat_number || null,
+        tax_details || null,
+        credit_limit_gbp || null,
         payment_terms_days || 30,
         account_status || "active",
+        rate_contract || null,
         id
       ]
     );
@@ -308,7 +409,7 @@ exports.updateCustomer = async (req, res) => {
       entityType: "customer",
       entityId: id,
       entityLabel: updated.company_name,
-      details: { changes: buildChangeSet(existing, updated, ["company_name", "contact_name", "email", "phone", "address", "postcode", "vat_number", "payment_terms_days", "account_status"]) }
+      details: { changes: buildChangeSet(existing, updated, ["company_name", "contact_name", "email", "phone", "address", "billing_address", "saved_pickup_addresses", "saved_drop_addresses", "postcode", "vat_number", "tax_details", "credit_limit_gbp", "payment_terms_days", "account_status", "rate_contract"]) }
     });
     res.json({ message: "Customer updated.", customer: updated });
   } catch (err) {

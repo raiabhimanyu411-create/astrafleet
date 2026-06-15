@@ -336,13 +336,20 @@ export function DriverPanel() {
       if (Number(message.driverId) !== Number(driverId)) return;
       setMessages(prev => prev.some(item => item.id === message.id) ? prev : [...prev, message]);
     }
+    function handleJobAssigned(payload) {
+      if (Number(payload.driverId) !== Number(driverId)) return;
+      loadPanel(payload.jobId);
+      loadMessages();
+    }
 
     socket.connect();
     socket.emit("driver-chat:join", driverId);
     socket.on("driver-chat:message", handleChatMessage);
+    socket.on("driver-job:assigned", handleJobAssigned);
 
     return () => {
       socket.off("driver-chat:message", handleChatMessage);
+      socket.off("driver-job:assigned", handleJobAssigned);
       socket.emit("driver-chat:leave", driverId);
     };
   }, [data?.driver?.id]);
@@ -540,6 +547,13 @@ export function DriverPanel() {
   const walkaroundAllChecked = WALKAROUND_CHECKS.every(c => walkaround.checks[c.key] !== undefined);
   const walkaroundAllClear   = WALKAROUND_CHECKS.every(c => walkaround.checks[c.key] === true);
   const hasPodEvidence       = Boolean(pod.signatureData || pod.photoData);
+  const podBlockedReason = !selectedJob
+    ? "Select a job before submitting POD."
+    : ["failed_delivery", "declined"].includes(selectedJob.status)
+      ? "POD cannot be submitted for a failed or declined job."
+      : !hasPodEvidence
+        ? "Signature or delivery photo is required before POD submission."
+        : "";
 
   return (
     <PanelLayout
@@ -1026,10 +1040,13 @@ export function DriverPanel() {
               </div>
             </div>
 
-            <button className="af-submit-btn" disabled={!selectedJob || !hasPodEvidence || busy === "pod"} type="submit">
+            <button className="af-submit-btn" disabled={Boolean(podBlockedReason) || busy === "pod"} type="submit">
               {busy === "pod" ? "Submitting..." : "Submit POD"}
             </button>
-            {!hasPodEvidence && <p className="driver-empty">Signature or delivery photo is required before POD submission.</p>}
+            {podBlockedReason && <p className="driver-empty">{podBlockedReason}</p>}
+            {!podBlockedReason && !data?.shift && (
+              <p className="driver-empty">Shift is not active. Submitting POD will start the shift record automatically.</p>
+            )}
           </form>
         </article>
 

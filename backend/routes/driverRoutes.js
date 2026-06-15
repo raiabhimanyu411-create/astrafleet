@@ -22,6 +22,7 @@ router.post("/me/location",                d.updateMyLocation);
 router.get("/",                          requireModuleAccess("drivers"), d.listDrivers);
 router.get("/:id",                       requireModuleAccess("drivers"), d.getDriverById);
 router.post("/",                         requireModuleAccess("drivers"), d.createDriver);
+router.patch("/:id/inline",              requireModuleAccess("drivers"), d.updateDriverInline);
 router.put("/:id",                       requireModuleAccess("drivers"), d.updateDriver);
 router.delete("/:id",                    requireModuleAccess("drivers"), d.deleteDriver);
 router.post("/:id/documents",            requireModuleAccess("drivers"), d.addDocument);

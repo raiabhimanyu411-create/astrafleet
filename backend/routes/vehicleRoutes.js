@@ -10,6 +10,7 @@ router.get("/",    v.listVehicles);
 router.get("/:id", v.getVehicleById);
 router.post("/",   v.createVehicle);
 router.put("/:id", v.updateVehicle);
+router.patch("/:id/inline", v.updateVehicleInline);
 router.patch("/:id/status", v.updateVehicleStatus);
 
 router.post("/:id/documents",              v.addDocument);

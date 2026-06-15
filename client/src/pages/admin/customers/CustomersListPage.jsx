@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { deleteCustomer, getCustomers, updateCustomerStatus } from "../../../api/customerApi";
-import { StatCard } from "../../../components/StatCard";
+import { deleteCustomer, getCustomers, updateCustomerInline } from "../../../api/customerApi";
 import { StateNotice } from "../../../components/StateNotice";
 import { StatusPill } from "../../../components/StatusPill";
 import { AdminWorkspaceLayout } from "../AdminWorkspaceLayout";
@@ -26,7 +25,7 @@ export function CustomersListPage() {
   const [search, setSearch] = useState("");
   const [status, setStatus] = useState("");
   const [risk, setRisk] = useState("");
-  const [busyId, setBusyId] = useState(null);
+  const [savingCell, setSavingCell] = useState("");
 
   function load() {
     setLoading(true);
@@ -59,13 +58,6 @@ export function CustomersListPage() {
     });
   }, [data, risk, search, status]);
 
-  const visibleStats = useMemo(() => [
-    { label: "Visible accounts", value: customers.length, description: "After current filters.", change: "Filtered", tone: "neutral" },
-    { label: "At-risk accounts", value: customers.filter(c => c.atRisk).length, description: "Overdue or not active.", change: "Review", tone: "danger" },
-    { label: "Open balance", value: `£${customers.reduce((sum, c) => sum + Number(c.outstandingValue || 0), 0).toLocaleString("en-GB", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`, description: "Outstanding in view.", change: "Receivables", tone: "warning" },
-    { label: "Trips booked", value: customers.reduce((sum, c) => sum + Number(c.totalTrips || 0), 0), description: "Trips from visible customers.", change: "Bookings", tone: "success" }
-  ], [customers]);
-
   const hasFilters = Boolean(search || status || risk);
 
   function clearFilters() {
@@ -74,21 +66,40 @@ export function CustomersListPage() {
     setRisk("");
   }
 
-  async function setAccountStatus(customer, nextStatus) {
-    if (nextStatus === "closed" && !window.confirm(`Close account for "${customer.companyName}"?`)) return;
+  async function updateCell(customer, field, value) {
+    const key = `${customer.id}-${field}`;
     setError("");
-    setBusyId(customer.id);
+    setSavingCell(key);
     try {
-      if (nextStatus === "closed") {
-        await deleteCustomer(customer.id);
-      } else {
-        await updateCustomerStatus(customer.id, { account_status: nextStatus });
-      }
+      await updateCustomerInline(customer.id, { [field]: value });
       await load();
     } catch (err) {
-      setError(err?.response?.data?.message || "Customer status could not be updated.");
+      setError(err?.response?.data?.message || "Customer could not be updated.");
     } finally {
-      setBusyId(null);
+      setSavingCell("");
+    }
+  }
+
+  function saveOnBlur(customer, field, oldValue) {
+    return e => {
+      const nextValue = e.target.value;
+      if (String(oldValue ?? "") !== String(nextValue ?? "")) {
+        updateCell(customer, field, nextValue);
+      }
+    };
+  }
+
+  async function closeAccount(customer) {
+    if (!window.confirm(`Close account for "${customer.companyName}"?`)) return;
+    setError("");
+    setSavingCell(`${customer.id}-close`);
+    try {
+      await deleteCustomer(customer.id);
+      await load();
+    } catch (err) {
+      setError(err?.response?.data?.message || "Customer could not be closed.");
+    } finally {
+      setSavingCell("");
     }
   }
 
@@ -134,66 +145,6 @@ export function CustomersListPage() {
 
       <StateNotice loading={loading} error={error} />
 
-      <section className="stats-grid">
-        {(data?.stats || []).map(item => (
-          <StatCard key={item.label} item={item} />
-        ))}
-      </section>
-
-      <section className="stats-grid inline finance-position-grid">
-        {(data?.accountHealth || []).map(item => (
-          <StatCard key={item.label} item={item} />
-        ))}
-      </section>
-
-      <section className="content-grid">
-        <article className="content-card">
-          <div className="section-head">
-            <div>
-              <span className="card-label">Account portfolio</span>
-              <h2>Visible customer workload</h2>
-            </div>
-            <StatusPill tone="neutral">Filtered view</StatusPill>
-          </div>
-          <div className="billing-workflow-grid">
-            {visibleStats.map(item => (
-              <button className="billing-workflow-tile" key={item.label} type="button" onClick={() => {
-                if (item.label === "At-risk accounts") setRisk("overdue");
-                if (item.label === "Open balance") setRisk("outstanding");
-              }}>
-                <span>{item.label}</span>
-                <strong>{item.value}</strong>
-                <p>{item.description}</p>
-              </button>
-            ))}
-          </div>
-        </article>
-
-        <article className="content-card">
-          <div className="section-head">
-            <div>
-              <span className="card-label">Customer risk</span>
-              <h2>Receivable and account exceptions</h2>
-            </div>
-            <StatusPill tone="warning">Review queue</StatusPill>
-          </div>
-          <div className="alert-stack">
-            {customers.filter(c => c.atRisk || c.outstandingValue > 0).slice(0, 6).map(c => (
-              <div className="alert-card" key={c.id} onClick={() => navigate(`/admin/customers/${c.id}`)} style={{ cursor: "pointer" }}>
-                <div className={`alert-bar ${c.overdueValue > 0 || c.status === "closed" ? "danger" : "warning"}`} />
-                <div>
-                  <strong>{c.companyName}</strong>
-                  <p>{c.overdueValue > 0 ? `${c.overdueAmount} overdue.` : c.outstandingValue > 0 ? `${c.outstandingAmount} outstanding.` : `Account status is ${c.status}.`}</p>
-                </div>
-              </div>
-            ))}
-            {!loading && customers.filter(c => c.atRisk || c.outstandingValue > 0).length === 0 && (
-              <p className="finance-empty">No customer account risks right now. Overdue balances and suspended accounts will appear here.</p>
-            )}
-          </div>
-        </article>
-      </section>
-
       <section className="content-card customer-filter-card">
         <input
           className="af-input"
@@ -217,58 +168,105 @@ export function CustomersListPage() {
         <button className="header-action-button" disabled={!hasFilters} type="button" onClick={clearFilters}>Clear filters</button>
       </section>
 
-      <section className="content-card">
+      <section className="content-card customer-register-card">
         <div className="section-head">
           <div>
             <span className="card-label">Customer register</span>
-            <h2>Client account records</h2>
+            <h2>Editable customer table</h2>
           </div>
           <StatusPill tone={customers.length ? "success" : "neutral"}>{customers.length} visible</StatusPill>
         </div>
 
-        <div className="data-rows compact finance-list">
-          {customers.map(c => (
-            <div className="data-row finance-row customer-row" key={c.id}>
-              <button className="finance-row-main customer-row-main" type="button" onClick={() => navigate(`/admin/customers/${c.id}`)}>
-                <div>
-                  <strong>{c.companyName}</strong>
-                  <p>{c.contactName} · {c.email}</p>
-                </div>
-                <div>
-                  <span>{c.paymentTerms}</span>
-                  <p>{c.phone} · {c.postcode}</p>
-                </div>
-                <div>
-                  <span>{c.billedAmount}</span>
-                  <p>{c.totalTrips} trips · {c.totalInvoices} invoices</p>
-                </div>
-                <div>
-                  <span>{c.outstandingAmount}</span>
-                  <p>Last activity {c.lastActivity}</p>
-                </div>
-              </button>
-              <div className="finance-row-actions">
-                <StatusPill tone={c.tone}>{c.status}</StatusPill>
-                {c.status !== "active" && (
-                  <button className="header-action-button" disabled={busyId === c.id} type="button" onClick={() => setAccountStatus(c, "active")}>Activate</button>
-                )}
-                {c.status === "active" && (
-                  <button className="header-action-button" disabled={busyId === c.id} type="button" onClick={() => setAccountStatus(c, "suspended")}>Suspend</button>
-                )}
-                <button className="header-action-button" type="button" onClick={() => navigate(`/admin/customers/${c.id}/edit`)}>Edit</button>
-                {c.status !== "closed" && (
-                  <button className="header-action-button danger" disabled={busyId === c.id} type="button" onClick={() => setAccountStatus(c, "closed")}>
-                    {busyId === c.id ? "Saving..." : "Close"}
-                  </button>
-                )}
-              </div>
-            </div>
-          ))}
-          {!loading && customers.length === 0 && (
-            <p className="finance-empty">
-              {hasFilters ? "No customers match your filters." : "No customers yet. Add your first customer."}
-            </p>
-          )}
+        <div className="customer-table-shell">
+          <table className="customer-edit-table">
+            <thead>
+              <tr>
+                <th>Company</th>
+                <th>Contact</th>
+                <th>Email</th>
+                <th>Phone</th>
+                <th>Postcode</th>
+                <th>Status</th>
+                <th>Terms</th>
+                <th>Credit limit</th>
+                <th>VAT</th>
+                <th>Tax / ref</th>
+                <th>Address</th>
+                <th>Billing address</th>
+                <th>Pickup notes</th>
+                <th>Drop notes</th>
+                <th>Rate contract</th>
+                <th>Trips</th>
+                <th>Invoices</th>
+                <th>Billed</th>
+                <th>Outstanding</th>
+                <th>Overdue</th>
+                <th>Last activity</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {customers.map(c => (
+                <tr key={c.id}>
+                  <td><input className="customer-table-input strong" defaultValue={c.companyName || ""} onBlur={saveOnBlur(c, "companyName", c.companyName)} /></td>
+                  <td><input className="customer-table-input" defaultValue={c.contactName === "—" ? "" : c.contactName || ""} onBlur={saveOnBlur(c, "contactName", c.contactName === "—" ? "" : c.contactName)} /></td>
+                  <td><input className="customer-table-input" type="email" defaultValue={c.email === "—" ? "" : c.email || ""} onBlur={saveOnBlur(c, "email", c.email === "—" ? "" : c.email)} /></td>
+                  <td><input className="customer-table-input" defaultValue={c.phone === "—" ? "" : c.phone || ""} onBlur={saveOnBlur(c, "phone", c.phone === "—" ? "" : c.phone)} /></td>
+                  <td><input className="customer-table-input code" defaultValue={c.postcode === "—" ? "" : c.postcode || ""} onBlur={saveOnBlur(c, "postcode", c.postcode === "—" ? "" : c.postcode)} /></td>
+                  <td>
+                    <select className="customer-table-select" value={c.status || "active"} disabled={savingCell === `${c.id}-status`} onChange={e => updateCell(c, "status", e.target.value)}>
+                      <option value="active">Active</option>
+                      <option value="suspended">Suspended</option>
+                      <option value="closed">Closed</option>
+                    </select>
+                  </td>
+                  <td>
+                    <input className="customer-table-input number" type="number" min="0" defaultValue={c.paymentTermsDays || 30} onBlur={saveOnBlur(c, "paymentTermsDays", c.paymentTermsDays || 30)} />
+                    <small>days</small>
+                  </td>
+                  <td>
+                    <input className="customer-table-input money" type="number" step="0.01" defaultValue={c.creditLimitRaw || ""} onBlur={saveOnBlur(c, "creditLimitGbp", c.creditLimitRaw || "")} />
+                    <small>{c.creditLimit}</small>
+                  </td>
+                  <td><input className="customer-table-input code" defaultValue={c.vatNumber === "—" ? "" : c.vatNumber || ""} onBlur={saveOnBlur(c, "vatNumber", c.vatNumber === "—" ? "" : c.vatNumber)} /></td>
+                  <td><input className="customer-table-input" defaultValue={c.taxDetails === "—" ? "" : c.taxDetails || ""} onBlur={saveOnBlur(c, "taxDetails", c.taxDetails === "—" ? "" : c.taxDetails)} /></td>
+                  <td><textarea className="customer-table-textarea" defaultValue={c.address === "—" ? "" : c.address || ""} onBlur={saveOnBlur(c, "address", c.address === "—" ? "" : c.address)} /></td>
+                  <td><textarea className="customer-table-textarea" defaultValue={c.billingAddress === "—" ? "" : c.billingAddress || ""} onBlur={saveOnBlur(c, "billingAddress", c.billingAddress === "—" ? "" : c.billingAddress)} /></td>
+                  <td><textarea className="customer-table-textarea" defaultValue={c.savedPickupAddresses === "—" ? "" : c.savedPickupAddresses || ""} onBlur={saveOnBlur(c, "savedPickupAddresses", c.savedPickupAddresses === "—" ? "" : c.savedPickupAddresses)} /></td>
+                  <td><textarea className="customer-table-textarea" defaultValue={c.savedDropAddresses === "—" ? "" : c.savedDropAddresses || ""} onBlur={saveOnBlur(c, "savedDropAddresses", c.savedDropAddresses === "—" ? "" : c.savedDropAddresses)} /></td>
+                  <td><textarea className="customer-table-textarea" defaultValue={c.rateContract === "—" ? "" : c.rateContract || ""} onBlur={saveOnBlur(c, "rateContract", c.rateContract === "—" ? "" : c.rateContract)} /></td>
+                  <td><strong>{c.totalTrips}</strong><small>bookings</small></td>
+                  <td><strong>{c.totalInvoices}</strong><small>invoices</small></td>
+                  <td><strong>{c.billedAmount}</strong></td>
+                  <td><strong>{c.outstandingAmount}</strong></td>
+                  <td>
+                    <StatusPill tone={c.overdueValue > 0 ? "danger" : "success"}>{c.overdueAmount}</StatusPill>
+                  </td>
+                  <td><strong>{c.lastActivity}</strong></td>
+                  <td>
+                    <div className="customer-table-actions">
+                      <button className="header-action-button" type="button" onClick={() => navigate(`/admin/customers/${c.id}`)}>Open</button>
+                      <button className="header-action-button" type="button" onClick={() => navigate(`/admin/customers/${c.id}/edit`)}>Edit</button>
+                      {c.status !== "closed" && (
+                        <button className="header-action-button danger" disabled={savingCell === `${c.id}-close`} type="button" onClick={() => closeAccount(c)}>
+                          Close
+                        </button>
+                      )}
+                    </div>
+                  </td>
+                </tr>
+              ))}
+              {!loading && customers.length === 0 && (
+                <tr>
+                  <td colSpan="22">
+                    <p className="finance-empty">
+                      {hasFilters ? "No customers match your filters." : "No customers yet. Add your first customer."}
+                    </p>
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
         </div>
       </section>
     </AdminWorkspaceLayout>

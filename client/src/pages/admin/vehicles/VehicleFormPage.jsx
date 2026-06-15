@@ -24,7 +24,8 @@ const empty = {
   registration_number: "", fleet_code: "", make: "", model: "",
   truck_type: "Rigid HGV", status: "available",
   fuel_type: "Diesel", capacity_tonnes: "", year_of_manufacture: "", colour: "",
-  mot_expiry: "", insurance_expiry: "", road_tax_expiry: "", next_service_due: "",
+  mot_expiry: "", insurance_expiry: "", road_tax_expiry: "", permit_expiry: "",
+  pollution_expiry: "", fitness_expiry: "", odometer_reading: "", next_service_due: "",
   current_location: ""
 };
 
@@ -64,6 +65,10 @@ export function VehicleFormPage() {
           mot_expiry:          v.mot?.raw || "",
           insurance_expiry:    v.insurance?.raw || "",
           road_tax_expiry:     v.roadTax?.raw || "",
+          permit_expiry:       v.permit?.raw || "",
+          pollution_expiry:    v.pollution?.raw || "",
+          fitness_expiry:      v.fitness?.raw || "",
+          odometer_reading:    v.odometerReading || "",
           next_service_due:    v.nextServiceDueRaw || "",
           current_location:    v.currentLocation !== "—" ? v.currentLocation || "" : ""
         });
@@ -152,6 +157,57 @@ export function VehicleFormPage() {
                 </Field>
                 <Field label="Year of manufacture">
                   <input className="af-input" type="number" placeholder="e.g. 2019" min="1990" max={new Date().getFullYear()} value={fields.year_of_manufacture} onChange={e => set("year_of_manufacture", e.target.value)} />
+                </Field>
+                <Field label="Capacity (tonnes)">
+                  <input className="af-input" type="number" min="0" step="0.01" value={fields.capacity_tonnes} onChange={e => set("capacity_tonnes", e.target.value)} />
+                </Field>
+                <Field label="Fuel type">
+                  <select className="af-select" value={fields.fuel_type} onChange={e => set("fuel_type", e.target.value)}>
+                    <option value="Diesel">Diesel</option>
+                    <option value="Petrol">Petrol</option>
+                    <option value="CNG">CNG</option>
+                    <option value="Electric">Electric</option>
+                    <option value="Hybrid">Hybrid</option>
+                  </select>
+                </Field>
+                <Field label="Current status">
+                  <select className="af-select" value={fields.status} onChange={e => set("status", e.target.value)}>
+                    <option value="available">Available</option>
+                    <option value="planned">On trip / planned</option>
+                    <option value="in_transit">In transit</option>
+                    <option value="maintenance">Maintenance</option>
+                    <option value="stopped">Inactive / stopped</option>
+                  </select>
+                </Field>
+              </div>
+            </div>
+
+            <div className="af-section">
+              <p className="af-section-title">Compliance and service dates</p>
+              <div className="af-grid-3">
+                <Field label="Insurance expiry">
+                  <input className="af-input" type="date" value={fields.insurance_expiry} onChange={e => set("insurance_expiry", e.target.value)} />
+                </Field>
+                <Field label="Fitness / MOT expiry">
+                  <input className="af-input" type="date" value={fields.fitness_expiry || fields.mot_expiry} onChange={e => { set("fitness_expiry", e.target.value); set("mot_expiry", e.target.value); }} />
+                </Field>
+                <Field label="Permit expiry">
+                  <input className="af-input" type="date" value={fields.permit_expiry} onChange={e => set("permit_expiry", e.target.value)} />
+                </Field>
+                <Field label="Pollution certificate expiry">
+                  <input className="af-input" type="date" value={fields.pollution_expiry} onChange={e => set("pollution_expiry", e.target.value)} />
+                </Field>
+                <Field label="Road tax expiry">
+                  <input className="af-input" type="date" value={fields.road_tax_expiry} onChange={e => set("road_tax_expiry", e.target.value)} />
+                </Field>
+                <Field label="Service due date">
+                  <input className="af-input" type="date" value={fields.next_service_due} onChange={e => set("next_service_due", e.target.value)} />
+                </Field>
+                <Field label="Odometer reading (km)">
+                  <input className="af-input" type="number" min="0" step="0.1" value={fields.odometer_reading} onChange={e => set("odometer_reading", e.target.value)} />
+                </Field>
+                <Field label="Current location">
+                  <input className="af-input" type="text" value={fields.current_location} onChange={e => set("current_location", e.target.value)} />
                 </Field>
               </div>
             </div>

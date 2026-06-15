@@ -1,4 +1,5 @@
 const db = require("../db/connection");
+const { emitDriverChatMessage, emitDriverJobAssigned, emitJobUpdate } = require("../realtime");
 const { logActivity, requireDeleteReason } = require("../utils/auditLogger");
 
 function fmtDate(d) {
@@ -78,6 +79,10 @@ async function ensureDriverOpsSchema() {
   await addColumnIfMissing("trips", "drop_address", "TEXT DEFAULT NULL");
   await addColumnIfMissing("trips", "load_type", "VARCHAR(80) DEFAULT 'general'");
   await addColumnIfMissing("trips", "load_weight_kg", "DECIMAL(10,2) DEFAULT NULL");
+  await addColumnIfMissing("trips", "load_volume_cbm", "DECIMAL(10,2) DEFAULT NULL");
+  await addColumnIfMissing("trips", "vehicle_type_requirement", "VARCHAR(80) DEFAULT NULL");
+  await addColumnIfMissing("trips", "delivery_deadline", "DATETIME DEFAULT NULL");
+  await addColumnIfMissing("trips", "dispatcher_notes", "TEXT DEFAULT NULL");
   await addColumnIfMissing("trips", "load_description", "TEXT DEFAULT NULL");
   await addColumnIfMissing("trips", "special_instructions", "TEXT DEFAULT NULL");
   await addColumnIfMissing("trips", "actual_departure", "DATETIME DEFAULT NULL");
@@ -207,14 +212,17 @@ exports.listJobs = async (req, res) => {
     }
 
     const [rows] = await db.query(
-      `SELECT t.id, t.trip_code, t.client_name, t.dispatch_status, t.priority_level,
-              t.planned_departure, t.eta, t.freight_amount_gbp, t.load_type, t.load_weight_kg,
+      `SELECT t.id, t.trip_code, t.customer_id, t.client_name, t.route_id, t.vehicle_id, t.trailer_id, t.driver_id,
+              t.dispatch_status, t.priority_level, t.driver_job_status,
+              t.planned_departure, t.eta, t.delivery_deadline, t.actual_departure, t.actual_arrival,
+              t.dock_window, t.freight_amount_gbp, t.load_type, t.load_weight_kg, t.load_volume_cbm,
+              t.vehicle_type_requirement, t.load_description, t.special_instructions, t.dispatcher_notes,
               t.pod_status, t.pickup_address, t.drop_address, t.created_at, t.cancellation_reason,
-              c.company_name as customer_name,
-              r.origin_hub, r.destination_hub,
-              d.full_name as driver_name,
-              v.registration_number,
-              tr.registration_number AS trailer_registration,
+              c.company_name as customer_name, c.contact_name as customer_contact, c.phone as customer_phone,
+              r.route_code, r.origin_hub, r.destination_hub, r.distance_km, r.standard_eta_hours,
+              d.full_name as driver_name, d.phone as driver_phone, d.employee_code,
+              v.registration_number, v.fleet_code, v.model_name, v.truck_type,
+              tr.trailer_code, tr.registration_number AS trailer_registration, tr.trailer_type,
               COUNT(DISTINCT js.id) as stop_count
        FROM trips t
        LEFT JOIN customers c  ON t.customer_id = c.id
@@ -227,6 +235,25 @@ exports.listJobs = async (req, res) => {
        GROUP BY t.id
        ORDER BY t.created_at DESC`,
       params
+    );
+
+    const [drivers] = await db.query(
+      `SELECT id, full_name, employee_code, phone, shift_status, compliance_status
+       FROM drivers
+       WHERE compliance_status != 'blocked'
+       ORDER BY shift_status='ready' DESC, full_name ASC`
+    );
+    const [vehicles] = await db.query(
+      `SELECT id, registration_number, fleet_code, model_name, truck_type, status, capacity_tonnes
+       FROM vehicles
+       WHERE status != 'stopped'
+       ORDER BY registration_number ASC`
+    );
+    const [trailers] = await db.query(
+      `SELECT id, trailer_code, registration_number, trailer_type, capacity_tonnes, status
+       FROM trailers
+       WHERE status != 'maintenance'
+       ORDER BY trailer_code ASC`
     );
 
     res.json({
@@ -242,26 +269,59 @@ exports.listJobs = async (req, res) => {
         { label: "ETA risk", value: counts.eta_risk, description: "ETA passed on open jobs.", change: "Ops review", tone: counts.eta_risk ? "danger" : "success" },
         { label: "Critical jobs", value: counts.critical, description: "Critical priority bookings.", change: "Priority desk", tone: counts.critical ? "danger" : "neutral" }
       ],
+      drivers,
+      vehicles,
+      trailers,
       jobs: rows.map(r => ({
         id: r.id,
         code: r.trip_code,
+        customerId: r.customer_id,
+        routeId: r.route_id,
+        driverId: r.driver_id,
+        vehicleId: r.vehicle_id,
+        trailerId: r.trailer_id,
         customer: r.customer_name || r.client_name || "—",
+        customerContact: r.customer_contact || "—",
+        customerPhone: r.customer_phone || "—",
         lane: r.origin_hub && r.destination_hub ? `${r.origin_hub} → ${r.destination_hub}` : (r.pickup_address ? "Custom route" : "Route TBD"),
+        routeCode: r.route_code || "—",
+        pickupAddress: r.pickup_address || r.origin_hub || "—",
+        dropAddress: r.drop_address || r.destination_hub || "—",
+        dockWindow: r.dock_window || "—",
+        distanceKm: r.distance_km,
+        etaHours: r.standard_eta_hours,
         driver: r.driver_name || "Unassigned",
+        driverPhone: r.driver_phone || "—",
+        driverEmployeeCode: r.employee_code || "—",
         driverAssigned: Boolean(r.driver_name),
+        driverJobStatus: r.driver_job_status || "—",
         vehicle: r.registration_number || "Unassigned",
+        vehicleFleetCode: r.fleet_code || "—",
+        vehicleModel: r.model_name || "—",
+        vehicleType: r.truck_type || "—",
         vehicleAssigned: Boolean(r.registration_number),
         trailer: r.trailer_registration || "Unassigned",
+        trailerCode: r.trailer_code || "—",
+        trailerType: r.trailer_type || "—",
         trailerAssigned: Boolean(r.trailer_registration),
         departure: fmtDate(r.planned_departure),
         departureRaw: rawDateTime(r.planned_departure),
         eta: fmtDate(r.eta),
         etaRaw: rawDateTime(r.eta),
+        deadline: fmtDateTime(r.delivery_deadline),
+        deadlineRaw: rawDateTime(r.delivery_deadline),
+        actualDeparture: fmtDateTime(r.actual_departure),
+        actualArrival: fmtDateTime(r.actual_arrival),
         etaRisk: r.eta && new Date(r.eta).getTime() < Date.now() && ["planned", "loading", "active"].includes(r.dispatch_status),
         freight: fmtAmount(r.freight_amount_gbp),
         freightValue: Number(r.freight_amount_gbp || 0),
         loadType: r.load_type || "general",
         loadWeightKg: r.load_weight_kg,
+        loadVolumeCbm: r.load_volume_cbm,
+        vehicleRequirement: r.vehicle_type_requirement || "—",
+        loadDescription: r.load_description || "—",
+        specialInstructions: r.special_instructions || "—",
+        dispatcherNotes: r.dispatcher_notes || "—",
         status: r.dispatch_status,
         statusTone: dispatchTone[r.dispatch_status] || "neutral",
         priority: r.priority_level,
@@ -273,6 +333,147 @@ exports.listJobs = async (req, res) => {
     });
   } catch (err) {
     res.status(500).json({ message: "Job list error", error: err.message });
+  }
+};
+
+// PATCH /api/jobs/:id/assignment
+exports.updateJobAssignment = async (req, res) => {
+  try {
+    await ensureDriverOpsSchema();
+    await ensureSoftDeleteSchema();
+
+    const { id } = req.params;
+    const driverId = req.body.driver_id || req.body.driverId || null;
+    const vehicleId = req.body.vehicle_id || req.body.vehicleId || null;
+    const trailerId = req.body.trailer_id || req.body.trailerId || null;
+    const hasFreight = Object.prototype.hasOwnProperty.call(req.body, "freight_amount") || Object.prototype.hasOwnProperty.call(req.body, "freightAmount");
+    const freightAmount = hasFreight ? (req.body.freight_amount ?? req.body.freightAmount) : undefined;
+    const priorityLevel = req.body.priority_level || req.body.priorityLevel || null;
+
+    const [[job]] = await db.query(
+      `SELECT id, trip_code, driver_id, vehicle_id, trailer_id, freight_amount_gbp, priority_level
+       FROM trips WHERE id = ? AND deleted_at IS NULL`,
+      [id]
+    );
+    if (!job) return res.status(404).json({ message: "Job not found." });
+
+    if (driverId) {
+      const [[driver]] = await db.query(
+        `SELECT id FROM drivers WHERE id = ? AND compliance_status != 'blocked'`,
+        [driverId]
+      );
+      if (!driver) return res.status(400).json({ message: "Selected driver is not available for assignment." });
+    }
+    if (vehicleId) {
+      const [[vehicle]] = await db.query(`SELECT id FROM vehicles WHERE id = ? AND status != 'stopped'`, [vehicleId]);
+      if (!vehicle) return res.status(400).json({ message: "Selected truck is not available for assignment." });
+    }
+    if (trailerId) {
+      const [[trailer]] = await db.query(`SELECT id FROM trailers WHERE id = ? AND status != 'maintenance'`, [trailerId]);
+      if (!trailer) return res.status(400).json({ message: "Selected trolley is not available for assignment." });
+    }
+
+    const driverChanged = Object.prototype.hasOwnProperty.call(req.body, "driver_id") || Object.prototype.hasOwnProperty.call(req.body, "driverId")
+      ? String(job.driver_id || "") !== String(driverId || "")
+      : false;
+    const updates = [];
+    const values = [];
+
+    if (Object.prototype.hasOwnProperty.call(req.body, "driver_id") || Object.prototype.hasOwnProperty.call(req.body, "driverId")) {
+      updates.push("driver_id = ?");
+      values.push(driverId || null);
+      updates.push("driver_job_status = IF(? = 1 AND ? IS NOT NULL, 'offered', driver_job_status)");
+      values.push(driverChanged ? 1 : 0, driverId || null);
+    }
+    if (Object.prototype.hasOwnProperty.call(req.body, "vehicle_id") || Object.prototype.hasOwnProperty.call(req.body, "vehicleId")) {
+      updates.push("vehicle_id = ?");
+      values.push(vehicleId || null);
+    }
+    if (Object.prototype.hasOwnProperty.call(req.body, "trailer_id") || Object.prototype.hasOwnProperty.call(req.body, "trailerId")) {
+      updates.push("trailer_id = ?");
+      values.push(trailerId || null);
+    }
+    if (hasFreight) {
+      updates.push("freight_amount_gbp = ?");
+      values.push(freightAmount === "" || freightAmount == null ? null : Number(freightAmount));
+    }
+    if (priorityLevel) {
+      updates.push("priority_level = ?");
+      values.push(priorityLevel);
+    }
+
+    if (updates.length === 0) {
+      return res.status(400).json({ message: "No editable job fields supplied." });
+    }
+
+    await db.query(
+      `UPDATE trips SET ${updates.join(", ")} WHERE id = ? AND deleted_at IS NULL`,
+      [...values, id]
+    );
+
+    if (driverChanged && driverId) {
+      const [[assignedJob]] = await db.query(
+        `SELECT t.trip_code, t.planned_departure,
+                COALESCE(c.company_name, t.client_name, 'Customer TBD') AS customer_name,
+                COALESCE(r.origin_hub, t.pickup_address, 'Pickup TBD') AS pickup_label,
+                COALESCE(r.destination_hub, t.drop_address, 'Drop TBD') AS drop_label,
+                d.full_name AS driver_name
+         FROM trips t
+         LEFT JOIN customers c ON c.id = t.customer_id
+         LEFT JOIN routes r ON r.id = t.route_id
+         LEFT JOIN drivers d ON d.id = t.driver_id
+         WHERE t.id = ?`,
+        [id]
+      );
+      const body = `New job assigned: ${assignedJob?.trip_code || job.trip_code}. ${assignedJob?.customer_name || "Customer TBD"} · ${assignedJob?.pickup_label || "Pickup TBD"} to ${assignedJob?.drop_label || "Drop TBD"}. Please open Driver Panel and accept/start the job.`;
+      const [messageResult] = await db.query(
+        `INSERT INTO driver_messages (driver_id, sender_role, sender_name, body, trip_id)
+         VALUES (?, 'dispatch', 'Dispatch', ?, ?)`,
+        [driverId, body, id]
+      );
+      const [[createdMessage]] = await db.query(`SELECT * FROM driver_messages WHERE id=?`, [messageResult.insertId]);
+      const message = {
+        id: createdMessage.id,
+        driverId: Number(driverId),
+        driverName: assignedJob?.driver_name || "Driver",
+        senderRole: createdMessage.sender_role,
+        senderName: createdMessage.sender_name || "Dispatch",
+        body: createdMessage.body,
+        tripId: createdMessage.trip_id,
+        isRead: Boolean(createdMessage.is_read),
+        at: fmtDateTime(createdMessage.sent_at),
+        sentAt: createdMessage.sent_at ? new Date(createdMessage.sent_at).toISOString() : null
+      };
+      emitDriverChatMessage(message);
+      emitDriverJobAssigned({
+        driverId: Number(driverId),
+        jobId: Number(id),
+        jobCode: assignedJob?.trip_code || job.trip_code,
+        message: body
+      });
+    }
+
+    await logActivity(req, {
+      module: "jobs",
+      action: "inline_update",
+      entityType: "job",
+      entityId: id,
+      entityLabel: job.trip_code,
+      details: {
+        previous_driver_id: job.driver_id,
+        driver_id: Object.prototype.hasOwnProperty.call(req.body, "driver_id") || Object.prototype.hasOwnProperty.call(req.body, "driverId") ? driverId || null : job.driver_id,
+        vehicle_id: Object.prototype.hasOwnProperty.call(req.body, "vehicle_id") || Object.prototype.hasOwnProperty.call(req.body, "vehicleId") ? vehicleId || null : job.vehicle_id,
+        trailer_id: Object.prototype.hasOwnProperty.call(req.body, "trailer_id") || Object.prototype.hasOwnProperty.call(req.body, "trailerId") ? trailerId || null : job.trailer_id,
+        freight_amount_gbp: hasFreight ? freightAmount : job.freight_amount_gbp,
+        priority_level: priorityLevel || job.priority_level
+      }
+    });
+
+    emitJobUpdate({ jobId: Number(id), source: "admin-planner" });
+
+    res.json({ message: "Job updated from planner." });
+  } catch (err) {
+    res.status(500).json({ message: "Planner update error", error: err.message });
   }
 };
 
@@ -342,7 +543,8 @@ exports.getJobById = async (req, res) => {
         driver_id: t.driver_id,
         vehicle_id: t.vehicle_id,
         trailer_id: t.trailer_id,
-        planned_departure: t.planned_departure ? new Date(t.planned_departure).toISOString().slice(0, 16) : ""
+        planned_departure: t.planned_departure ? new Date(t.planned_departure).toISOString().slice(0, 16) : "",
+        delivery_deadline: t.delivery_deadline ? new Date(t.delivery_deadline).toISOString().slice(0, 16) : ""
       },
       driverExecution: {
         status: driverStatus,
@@ -381,15 +583,19 @@ exports.getJobById = async (req, res) => {
         eta: fmtDateTime(t.eta),
         actualDeparture: fmtDateTime(t.actual_departure),
         actualArrival: fmtDateTime(t.actual_arrival),
+        deliveryDeadline: fmtDateTime(t.delivery_deadline),
         dockWindow: t.dock_window || "—"
       },
 
       load: {
         type: t.load_type || "general",
         weightKg: t.load_weight_kg ? `${t.load_weight_kg} kg` : "—",
+        volumeCbm: t.load_volume_cbm ? `${t.load_volume_cbm} cbm` : "—",
+        vehicleRequirement: t.vehicle_type_requirement || "—",
         description: t.load_description || "—",
         freight: fmtAmount(t.freight_amount_gbp)
       },
+      dispatcherNotes: t.dispatcher_notes || "—",
 
       driver: t.driver_name ? {
         name: t.driver_name,
@@ -465,9 +671,9 @@ exports.createJob = async (req, res) => {
       customer_id, client_name,
       route_id, pickup_address, drop_address,
       planned_departure, dock_window,
-      load_type, load_weight_kg, load_description,
+      load_type, load_weight_kg, load_volume_cbm, vehicle_type_requirement, delivery_deadline, load_description,
       freight_amount, priority_level, special_instructions,
-      driver_id, vehicle_id, trailer_id,
+      driver_id, vehicle_id, trailer_id, dispatcher_notes,
       stops = []
     } = req.body;
 
@@ -496,9 +702,10 @@ exports.createJob = async (req, res) => {
          (trip_code, customer_id, client_name, route_id, vehicle_id, trailer_id, driver_id,
           pickup_address, drop_address, dispatch_status, priority_level,
           planned_departure, eta, dock_window, pod_status,
-          load_type, load_weight_kg, load_description, freight_amount_gbp, special_instructions,
+          load_type, load_weight_kg, load_volume_cbm, vehicle_type_requirement, delivery_deadline,
+          load_description, freight_amount_gbp, special_instructions, dispatcher_notes,
           driver_job_status)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'planned', ?, ?, ?, ?, 'pending', ?, ?, ?, ?, ?, ?)`,
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'planned', ?, ?, ?, ?, 'pending', ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         jobCode,
         customer_id || null,
@@ -515,9 +722,13 @@ exports.createJob = async (req, res) => {
         dock_window || null,
         load_type || "general",
         load_weight_kg || null,
+        load_volume_cbm || null,
+        vehicle_type_requirement || null,
+        delivery_deadline || null,
         load_description || null,
         freight_amount || null,
         special_instructions || null,
+        dispatcher_notes || null,
         driver_id ? "offered" : null
       ]
     );
@@ -559,6 +770,7 @@ exports.createJob = async (req, res) => {
       entityLabel: newJob?.trip_code || jobCode,
       details: { customer_id, client_name: resolvedClientName, vehicle_id, trailer_id, driver_id }
     });
+    emitJobUpdate({ jobId, source: "admin-create" });
     res.status(201).json({ message: "Job created.", job: newJob });
   } catch (err) {
     await conn.rollback();
@@ -584,9 +796,9 @@ exports.updateJob = async (req, res) => {
       customer_id, client_name,
       route_id, pickup_address, drop_address,
       planned_departure, dock_window,
-      load_type, load_weight_kg, load_description,
+      load_type, load_weight_kg, load_volume_cbm, vehicle_type_requirement, delivery_deadline, load_description,
       freight_amount, priority_level, special_instructions,
-      driver_id, vehicle_id, trailer_id,
+      driver_id, vehicle_id, trailer_id, dispatcher_notes,
       stops = []
     } = req.body;
 
@@ -644,7 +856,8 @@ exports.updateJob = async (req, res) => {
          customer_id=?, client_name=?, route_id=?, vehicle_id=?, trailer_id=?, driver_id=?,
          pickup_address=?, drop_address=?, priority_level=?,
          planned_departure=?, eta=?, dock_window=?,
-         load_type=?, load_weight_kg=?, load_description=?, freight_amount_gbp=?, special_instructions=?,
+         load_type=?, load_weight_kg=?, load_volume_cbm=?, vehicle_type_requirement=?, delivery_deadline=?,
+         load_description=?, freight_amount_gbp=?, special_instructions=?, dispatcher_notes=?,
          driver_job_status=IF(? = 1, 'offered', driver_job_status)
        WHERE id=? AND deleted_at IS NULL`,
       [
@@ -654,8 +867,9 @@ exports.updateJob = async (req, res) => {
         priority_level || "standard",
         planned_departure || null, eta, dock_window || null,
         load_type || "general", load_weight_kg || null,
+        load_volume_cbm || null, vehicle_type_requirement || null, delivery_deadline || null,
         load_description || null, freight_amount || null,
-        special_instructions || null,
+        special_instructions || null, dispatcher_notes || null,
         String(existing.driver_id || "") !== String(driver_id || "") && driver_id ? 1 : 0,
         id
       ]
@@ -733,6 +947,8 @@ exports.updateJobStatus = async (req, res) => {
       details: { status }
     });
 
+    emitJobUpdate({ jobId: Number(id), source: "admin-status", status });
+
     res.json({ message: "Job status updated.", status });
   } catch (err) {
     res.status(500).json({ message: "Status update error", error: err.message });
@@ -773,6 +989,8 @@ exports.cancelJob = async (req, res) => {
       reasonCategory: reasonCheck.reasonCategory,
       details: { vehicle_id: job.vehicle_id, trailer_id: job.trailer_id }
     });
+
+    emitJobUpdate({ jobId: Number(id), source: "admin-cancel", status: "blocked" });
 
     res.json({ message: "Job cancelled." });
   } catch (err) {

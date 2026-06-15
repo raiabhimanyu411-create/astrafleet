@@ -38,10 +38,10 @@ const emptyStop = () => ({ stop_type: "delivery", address: "", contact_name: "",
 const emptyFields = {
   customer_id: "", client_name: "", route_id: "",
   pickup_address: "", drop_address: "",
-  planned_departure: "", dock_window: "",
-  load_type: "general", load_weight_kg: "", load_description: "", freight_amount: "",
+  planned_departure: "", delivery_deadline: "", dock_window: "",
+  load_type: "general", load_weight_kg: "", load_volume_cbm: "", vehicle_type_requirement: "", load_description: "", freight_amount: "",
   priority_level: "standard", special_instructions: "",
-  driver_id: "", vehicle_id: "", trailer_id: ""
+  driver_id: "", vehicle_id: "", trailer_id: "", dispatcher_notes: ""
 };
 
 export function JobFormPage() {
@@ -73,16 +73,20 @@ export function JobFormPage() {
             pickup_address:      j.route?.pickupAddress || "",
             drop_address:        j.route?.dropAddress || "",
             planned_departure:   j.form?.planned_departure || "",
+            delivery_deadline:    j.form?.delivery_deadline || "",
             dock_window:         j.schedule?.dockWindow !== "—" ? j.schedule?.dockWindow || "" : "",
             load_type:           j.load?.type || "general",
             load_weight_kg:      j.load?.weightKg !== "—" ? (j.load?.weightKg || "").replace(" kg", "") : "",
+            load_volume_cbm:      j.load?.volumeCbm !== "—" ? (j.load?.volumeCbm || "").replace(" cbm", "") : "",
+            vehicle_type_requirement: j.load?.vehicleRequirement !== "—" ? j.load?.vehicleRequirement || "" : "",
             load_description:    j.load?.description !== "—" ? j.load?.description || "" : "",
             freight_amount:      j.load?.freight !== "—" ? (j.load?.freight || "").replace("£", "").replace(/,/g, "") : "",
             priority_level:      j.priority || "standard",
             special_instructions: j.specialInstructions || "",
             driver_id:           j.form?.driver_id ? String(j.form.driver_id) : "",
             vehicle_id:          j.form?.vehicle_id ? String(j.form.vehicle_id) : "",
-            trailer_id:          j.form?.trailer_id ? String(j.form.trailer_id) : ""
+            trailer_id:          j.form?.trailer_id ? String(j.form.trailer_id) : "",
+            dispatcher_notes:    j.dispatcherNotes !== "—" ? j.dispatcherNotes || "" : ""
           });
           setStops(j.stops.map(s => ({
             stop_type:       s.type,
@@ -137,9 +141,12 @@ export function JobFormPage() {
       pickup_address:       fields.pickup_address || null,
       drop_address:         fields.drop_address || null,
       planned_departure:    fields.planned_departure || null,
+      delivery_deadline:    fields.delivery_deadline || null,
       dock_window:          fields.dock_window || null,
       load_type:            fields.load_type,
       load_weight_kg:       fields.load_weight_kg ? Number(fields.load_weight_kg) : null,
+      load_volume_cbm:      fields.load_volume_cbm ? Number(fields.load_volume_cbm) : null,
+      vehicle_type_requirement: fields.vehicle_type_requirement || null,
       load_description:     fields.load_description || null,
       freight_amount:       fields.freight_amount ? Number(fields.freight_amount) : null,
       priority_level:       fields.priority_level,
@@ -147,6 +154,7 @@ export function JobFormPage() {
       driver_id:            fields.driver_id ? Number(fields.driver_id) : null,
       vehicle_id:           fields.vehicle_id ? Number(fields.vehicle_id) : null,
       trailer_id:           fields.trailer_id ? Number(fields.trailer_id) : null,
+      dispatcher_notes:     fields.dispatcher_notes || null,
       stops:                stops.filter(s => s.address.trim())
     };
 
@@ -277,6 +285,10 @@ export function JobFormPage() {
                 <Field label="Planned departure date & time">
                   <input className="af-input" type="datetime-local" value={fields.planned_departure} onChange={e => set("planned_departure", e.target.value)} />
                 </Field>
+
+                <Field label="Delivery deadline">
+                  <input className="af-input" type="datetime-local" value={fields.delivery_deadline} onChange={e => set("delivery_deadline", e.target.value)} />
+                </Field>
               </div>
             </div>
 
@@ -292,6 +304,17 @@ export function JobFormPage() {
 
                 <Field label="Weight (kg)" hint="Total load weight in kilograms">
                   <input className="af-input" type="number" min="0" step="0.1" placeholder="e.g. 5000" value={fields.load_weight_kg} onChange={e => set("load_weight_kg", e.target.value)} />
+                </Field>
+
+                <Field label="Volume (cbm)" hint="Total load volume">
+                  <input className="af-input" type="number" min="0" step="0.1" placeholder="e.g. 24" value={fields.load_volume_cbm} onChange={e => set("load_volume_cbm", e.target.value)} />
+                </Field>
+
+                <Field label="Vehicle type requirement">
+                  <select className="af-select" value={fields.vehicle_type_requirement} onChange={e => set("vehicle_type_requirement", e.target.value)}>
+                    <option value="">Any suitable vehicle</option>
+                    {formData.vehicles.map(v => <option key={v.id} value={v.truck_type}>{v.truck_type}</option>)}
+                  </select>
                 </Field>
 
                 <Field label="Freight amount (£)" hint="Invoice value for this job">
@@ -313,6 +336,13 @@ export function JobFormPage() {
                   </Field>
                 </div>
               </div>
+            </div>
+
+            <div className="af-section">
+              <p className="af-section-title">Dispatch notes</p>
+              <Field label="Dispatcher notes">
+                <textarea className="af-input" style={{ minHeight: 72, resize: "vertical" }} placeholder="Internal notes for dispatcher, reassignment, trip sheet, or customer coordination" value={fields.dispatcher_notes} onChange={e => set("dispatcher_notes", e.target.value)} />
+              </Field>
             </div>
 
             {/* ── Section 4: Driver & Vehicle ── */}
