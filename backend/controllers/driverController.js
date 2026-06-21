@@ -40,6 +40,11 @@ function expiryTone(dateStr) {
   return "success";
 }
 
+async function nextDriverCode(conn) {
+  const [[row]] = await conn.query(`SELECT COALESCE(MAX(id), 0) + 1 AS next_id FROM drivers`);
+  return `DRV-${String(row.next_id).padStart(3, "0")}`;
+}
+
 const driverStatusFlow = [
   "offered",
   "accepted",
@@ -1458,7 +1463,7 @@ exports.createDriver = async (req, res) => {
     await ensureDriverOpsSchema();
     await conn.beginTransaction();
 
-    const {
+    let {
       full_name, employee_code, phone, home_depot, address, postcode,
       date_of_birth, national_insurance,
       license_number, license_expiry,
@@ -1473,9 +1478,14 @@ exports.createDriver = async (req, res) => {
       email, password
     } = req.body;
 
-    if (!full_name || !employee_code || !license_number || !license_expiry || !medical_expiry) {
-      return res.status(400).json({ message: "full_name, employee_code, license_number, license_expiry, and medical_expiry are required." });
+    if (!full_name) {
+      return res.status(400).json({ message: "Driver name is required." });
     }
+
+    employee_code = employee_code || await nextDriverCode(conn);
+    license_number = license_number || "Pending";
+    license_expiry = license_expiry || "2099-12-31";
+    medical_expiry = medical_expiry || "2099-12-31";
 
     let userId = null;
 
@@ -1507,9 +1517,9 @@ exports.createDriver = async (req, res) => {
         employee_code, full_name, phone || null, home_depot || null,
         address || null, postcode || null,
         date_of_birth || null, national_insurance || null,
-        license_number, license_expiry || existing.license_expiry, medical_expiry || existing.medical_expiry,
-        cpc_number || null, cpc_expiry || existing.cpc_expiry || null,
-        tacho_card_number || null, tacho_card_expiry || existing.tacho_card_expiry || null,
+        license_number, license_expiry, medical_expiry,
+        cpc_number || null, cpc_expiry || null,
+        tacho_card_number || null, tacho_card_expiry || null,
         emergency_contact_name || null, emergency_contact_phone || null,
         bank_sort_code || null, bank_account_number || null,
         assigned_vehicle_id || null, salary_gbp || null, commission_rate || null, internal_score || null,
@@ -1574,19 +1584,34 @@ exports.updateDriver = async (req, res) => {
          onboarding_status=?, shift_status=?, compliance_status=?
        WHERE id=?`,
       [
-        full_name, employee_code, phone || null, home_depot || null,
-        address || null, postcode || null,
-        date_of_birth || null, national_insurance || null,
-        license_number, license_expiry, medical_expiry,
-        cpc_number || null, cpc_expiry || null,
-        tacho_card_number || null, tacho_card_expiry || null,
-        emergency_contact_name || null, emergency_contact_phone || null,
-        bank_sort_code || null, bank_account_number || null,
-        assigned_vehicle_id || null, salary_gbp || null, commission_rate || null, internal_score || null,
-        accident_incident_record || null, penalty_deduction_record || null,
-        onboarding_status || "new",
-        shift_status || "review",
-        compliance_status || "review",
+        full_name || existing.full_name,
+        employee_code || existing.employee_code,
+        phone || null,
+        home_depot ?? existing.home_depot ?? null,
+        address ?? existing.address ?? null,
+        postcode ?? existing.postcode ?? null,
+        date_of_birth || existing.date_of_birth || null,
+        national_insurance ?? existing.national_insurance ?? null,
+        license_number || existing.license_number,
+        license_expiry || existing.license_expiry,
+        medical_expiry || existing.medical_expiry,
+        cpc_number || existing.cpc_number || null,
+        cpc_expiry || existing.cpc_expiry || null,
+        tacho_card_number || existing.tacho_card_number || null,
+        tacho_card_expiry || existing.tacho_card_expiry || null,
+        emergency_contact_name ?? existing.emergency_contact_name ?? null,
+        emergency_contact_phone ?? existing.emergency_contact_phone ?? null,
+        bank_sort_code ?? existing.bank_sort_code ?? null,
+        bank_account_number ?? existing.bank_account_number ?? null,
+        assigned_vehicle_id ?? existing.assigned_vehicle_id ?? null,
+        salary_gbp ?? existing.salary_gbp ?? null,
+        commission_rate ?? existing.commission_rate ?? null,
+        internal_score ?? existing.internal_score ?? null,
+        accident_incident_record ?? existing.accident_incident_record ?? null,
+        penalty_deduction_record ?? existing.penalty_deduction_record ?? null,
+        onboarding_status || existing.onboarding_status || "new",
+        shift_status || existing.shift_status || "review",
+        compliance_status || existing.compliance_status || "review",
         id
       ]
     );

@@ -23,6 +23,37 @@ const PRIORITY_OPTIONS = [
   { value: "critical", label: "Critical" }
 ];
 
+function driverTone(driver, assigned) {
+  if (!assigned) return "neutral";
+  if (!driver) return "warning";
+  if (driver.compliance_status === "blocked") return "danger";
+  if (driver.shift_status === "ready") return "success";
+  return "warning";
+}
+
+function vehicleTone(vehicle, assigned) {
+  if (!assigned) return "neutral";
+  if (!vehicle) return "warning";
+  if (["maintenance", "stopped"].includes(vehicle.status)) return "danger";
+  if (vehicle.status === "available") return "success";
+  return "warning";
+}
+
+function trolleyTone(trolley, assigned) {
+  if (!assigned) return "neutral";
+  if (!trolley) return "warning";
+  if (trolley.status === "maintenance") return "danger";
+  if (trolley.status === "available") return "success";
+  return "warning";
+}
+
+function assignmentLabel(tone, assignedText = "Assigned") {
+  if (tone === "success") return assignedText;
+  if (tone === "warning") return "Check";
+  if (tone === "danger") return "Blocked";
+  return "Assign";
+}
+
 function todayIso() {
   const now = new Date();
   const offsetMs = now.getTimezoneOffset() * 60000;
@@ -83,7 +114,7 @@ export function JobsListPage() {
   }
 
   function hasAssignmentGap(job) {
-    return !job.driverAssigned || !job.vehicleAssigned || !job.trailerId;
+    return !job.driverAssigned || !job.vehicleAssigned;
   }
 
   function isPodPending(job) {
@@ -323,7 +354,7 @@ export function JobsListPage() {
                 <th>Driver</th>
                 <th>Contact</th>
                 <th>Truck</th>
-                <th>Trailer</th>
+                <th>Trolley</th>
                 <th>Stops</th>
                 <th>Priority</th>
                 <th>Status</th>
@@ -334,7 +365,18 @@ export function JobsListPage() {
               </tr>
             </thead>
             <tbody>
-              {jobs.map((job, index) => (
+              {jobs.map((job, index) => {
+                const assignedDriver = (data?.drivers || []).find(driver => Number(driver.id) === Number(job.driverId));
+                const assignedVehicle = (data?.vehicles || []).find(vehicle => Number(vehicle.id) === Number(job.vehicleId));
+                const assignedTrolley = (data?.trailers || []).find(trolley => Number(trolley.id) === Number(job.trailerId));
+                const recommendedDriver = (data?.drivers || []).find(driver => driver.shift_status === "ready" && driver.compliance_status !== "blocked");
+                const recommendedVehicle = (data?.vehicles || []).find(vehicle => vehicle.status === "available");
+                const recommendedTrolley = (data?.trailers || []).find(trolley => trolley.status === "available");
+                const driverStatusTone = driverTone(assignedDriver, job.driverAssigned);
+                const vehicleStatusTone = vehicleTone(assignedVehicle, job.vehicleAssigned);
+                const trolleyStatusTone = trolleyTone(assignedTrolley, job.trailerAssigned);
+
+                return (
                 <tr className={`jobs-planner-row ${job.status} ${job.priority}`} key={job.id}>
                   <td className="jobs-planner-seq">{index + 1}</td>
                   <td>
@@ -373,7 +415,7 @@ export function JobsListPage() {
                   </td>
                   <td>
                     <select
-                      className="jobs-planner-select"
+                      className={`jobs-planner-select ${driverStatusTone}`}
                       disabled={busyId === `driver-${job.id}`}
                       value={job.driverId || ""}
                       onChange={(e) => updatePlannerField(job, { driver_id: e.target.value ? Number(e.target.value) : null }, "driver", "Driver could not be assigned.")}
@@ -381,10 +423,13 @@ export function JobsListPage() {
                       <option value="">Assign driver</option>
                       {(data?.drivers || []).map((driver) => (
                         <option key={driver.id} value={driver.id}>
-                          {driver.full_name} · {driver.employee_code || "Driver"} · {driver.shift_status}
+                          {driver.id === recommendedDriver?.id ? "Recommended · " : ""}{driver.full_name} · {driver.shift_status}
                         </option>
                       ))}
                     </select>
+                    <small className="jobs-assignment-pill">
+                      <StatusPill tone={driverStatusTone}>{assignmentLabel(driverStatusTone, "Driver ready")}</StatusPill>
+                    </small>
                     <small>{job.driver}</small>
                   </td>
                   <td>
@@ -393,7 +438,7 @@ export function JobsListPage() {
                   </td>
                   <td>
                     <select
-                      className="jobs-planner-select"
+                      className={`jobs-planner-select ${vehicleStatusTone}`}
                       disabled={busyId === `vehicle-${job.id}`}
                       value={job.vehicleId || ""}
                       onChange={(e) => updatePlannerField(job, { vehicle_id: e.target.value ? Number(e.target.value) : null }, "vehicle", "Truck could not be assigned.")}
@@ -401,15 +446,18 @@ export function JobsListPage() {
                       <option value="">Assign truck</option>
                       {(data?.vehicles || []).map((vehicle) => (
                         <option key={vehicle.id} value={vehicle.id}>
-                          {vehicle.registration_number} · {vehicle.truck_type || vehicle.model_name || "Truck"}
+                          {vehicle.id === recommendedVehicle?.id ? "Recommended · " : ""}{vehicle.registration_number} · {vehicle.truck_type || vehicle.model_name || "Truck"} · {vehicle.status}
                         </option>
                       ))}
                     </select>
-                    <small>{job.vehicle}</small>
+                    <small className="jobs-assignment-pill">
+                      <StatusPill tone={vehicleStatusTone}>{assignmentLabel(vehicleStatusTone, "Truck ready")}</StatusPill>
+                    </small>
+                    <small>{job.vehicleType !== "—" ? `${job.vehicle} · ${job.vehicleType}` : job.vehicle}</small>
                   </td>
                   <td>
                     <select
-                      className="jobs-planner-select"
+                      className={`jobs-planner-select ${trolleyStatusTone}`}
                       disabled={busyId === `trailer-${job.id}`}
                       value={job.trailerId || ""}
                       onChange={(e) => updatePlannerField(job, { trailer_id: e.target.value ? Number(e.target.value) : null }, "trailer", "Trolley could not be assigned.")}
@@ -417,11 +465,14 @@ export function JobsListPage() {
                       <option value="">Assign trolley</option>
                       {(data?.trailers || []).map((trailer) => (
                         <option key={trailer.id} value={trailer.id}>
-                          {trailer.registration_number} · {trailer.trailer_code}
+                          {trailer.id === recommendedTrolley?.id ? "Recommended · " : ""}{trailer.registration_number} · {trailer.trailer_type || "Trolley"} · {trailer.status}
                         </option>
                       ))}
                     </select>
-                    <small>{job.trailer}</small>
+                    <small className="jobs-assignment-pill">
+                      <StatusPill tone={trolleyStatusTone}>{assignmentLabel(trolleyStatusTone, "Trolley ready")}</StatusPill>
+                    </small>
+                    <small>{job.trailerType !== "—" ? `${job.trailer} · ${job.trailerType}` : job.trailer}</small>
                   </td>
                   <td>
                     <strong>{job.stopCount || 0}</strong>
@@ -481,7 +532,8 @@ export function JobsListPage() {
                     </div>
                   </td>
                 </tr>
-              ))}
+                );
+              })}
             </tbody>
           </table>
           {!loading && jobs.length === 0 && (

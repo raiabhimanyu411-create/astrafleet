@@ -7,6 +7,7 @@ router.use(v.ensureVehicleSchema);
 router.use(requireModuleAccess("vehicles"));
 
 router.get("/",    v.listVehicles);
+router.post("/trolleys", v.createTrolley);
 router.get("/:id", v.getVehicleById);
 router.post("/",   v.createVehicle);
 router.put("/:id", v.updateVehicle);

@@ -75,6 +75,7 @@ async function ensureDriverOpsSchema() {
   await addColumnIfMissing("trips", "failed_delivery_reason", "TEXT DEFAULT NULL");
   await addColumnIfMissing("trips", "trailer_id", "INT DEFAULT NULL");
   await addColumnIfMissing("trips", "customer_id", "INT DEFAULT NULL");
+  await addColumnIfMissing("trips", "client_phone", "VARCHAR(30) DEFAULT NULL");
   await addColumnIfMissing("trips", "pickup_address", "TEXT DEFAULT NULL");
   await addColumnIfMissing("trips", "drop_address", "TEXT DEFAULT NULL");
   await addColumnIfMissing("trips", "load_type", "VARCHAR(80) DEFAULT 'general'");
@@ -153,7 +154,11 @@ exports.getFormData = async (req, res) => {
     await ensureSoftDeleteSchema();
 
     const [customers] = await db.query(
-      `SELECT id, company_name, contact_name, phone, email FROM customers WHERE account_status='active' ORDER BY company_name ASC`
+      `SELECT id, company_name, contact_name, phone, email,
+              address, billing_address, saved_pickup_addresses, saved_drop_addresses
+       FROM customers
+       WHERE account_status='active'
+       ORDER BY company_name ASC`
     );
     const [drivers] = await db.query(
       `SELECT id, full_name, employee_code, phone, shift_status, compliance_status
@@ -217,7 +222,7 @@ exports.listJobs = async (req, res) => {
               t.planned_departure, t.eta, t.delivery_deadline, t.actual_departure, t.actual_arrival,
               t.dock_window, t.freight_amount_gbp, t.load_type, t.load_weight_kg, t.load_volume_cbm,
               t.vehicle_type_requirement, t.load_description, t.special_instructions, t.dispatcher_notes,
-              t.pod_status, t.pickup_address, t.drop_address, t.created_at, t.cancellation_reason,
+              t.pod_status, t.pickup_address, t.drop_address, t.client_phone, t.created_at, t.cancellation_reason,
               c.company_name as customer_name, c.contact_name as customer_contact, c.phone as customer_phone,
               r.route_code, r.origin_hub, r.destination_hub, r.distance_km, r.standard_eta_hours,
               d.full_name as driver_name, d.phone as driver_phone, d.employee_code,
@@ -282,7 +287,7 @@ exports.listJobs = async (req, res) => {
         trailerId: r.trailer_id,
         customer: r.customer_name || r.client_name || "—",
         customerContact: r.customer_contact || "—",
-        customerPhone: r.customer_phone || "—",
+        customerPhone: r.customer_phone || r.client_phone || "—",
         lane: r.origin_hub && r.destination_hub ? `${r.origin_hub} → ${r.destination_hub}` : (r.pickup_address ? "Custom route" : "Route TBD"),
         routeCode: r.route_code || "—",
         pickupAddress: r.pickup_address || r.origin_hub || "—",
@@ -488,6 +493,7 @@ exports.getJobById = async (req, res) => {
     const [[t]] = await db.query(
       `SELECT t.*,
               c.company_name, c.contact_name as cust_contact, c.email as cust_email, c.phone as cust_phone,
+              t.client_phone,
               r.route_code, r.origin_hub, r.destination_hub, r.distance_km, r.standard_eta_hours, r.toll_estimate_gbp,
               d.full_name as driver_name, d.phone as driver_phone, d.employee_code, d.license_number, d.compliance_status,
               v.registration_number, v.model_name, v.truck_type, v.fleet_code, v.capacity_tonnes,
@@ -565,7 +571,7 @@ exports.getJobById = async (req, res) => {
         contact: t.cust_contact,
         email: t.cust_email,
         phone: t.cust_phone
-      } : { name: t.client_name || "—" },
+      } : { name: t.client_name || "—", phone: t.client_phone || "—" },
 
       route: {
         code: t.route_code,
@@ -668,7 +674,7 @@ exports.createJob = async (req, res) => {
     await conn.beginTransaction();
 
     const {
-      customer_id, client_name,
+      customer_id, client_name, client_phone,
       route_id, pickup_address, drop_address,
       planned_departure, dock_window,
       load_type, load_weight_kg, load_volume_cbm, vehicle_type_requirement, delivery_deadline, load_description,
@@ -699,17 +705,18 @@ exports.createJob = async (req, res) => {
 
     const [result] = await conn.query(
       `INSERT INTO trips
-         (trip_code, customer_id, client_name, route_id, vehicle_id, trailer_id, driver_id,
+         (trip_code, customer_id, client_name, client_phone, route_id, vehicle_id, trailer_id, driver_id,
           pickup_address, drop_address, dispatch_status, priority_level,
           planned_departure, eta, dock_window, pod_status,
           load_type, load_weight_kg, load_volume_cbm, vehicle_type_requirement, delivery_deadline,
           load_description, freight_amount_gbp, special_instructions, dispatcher_notes,
           driver_job_status)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'planned', ?, ?, ?, ?, 'pending', ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'planned', ?, ?, ?, ?, 'pending', ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         jobCode,
         customer_id || null,
         resolvedClientName,
+        client_phone || null,
         route_id || null,
         vehicle_id || null,
         trailer_id || null,
@@ -768,7 +775,7 @@ exports.createJob = async (req, res) => {
       entityType: "job",
       entityId: jobId,
       entityLabel: newJob?.trip_code || jobCode,
-      details: { customer_id, client_name: resolvedClientName, vehicle_id, trailer_id, driver_id }
+      details: { customer_id, client_name: resolvedClientName, client_phone, vehicle_id, trailer_id, driver_id }
     });
     emitJobUpdate({ jobId, source: "admin-create" });
     res.status(201).json({ message: "Job created.", job: newJob });
@@ -793,7 +800,7 @@ exports.updateJob = async (req, res) => {
     if (!existing) return res.status(404).json({ message: "Job not found." });
 
     const {
-      customer_id, client_name,
+      customer_id, client_name, client_phone,
       route_id, pickup_address, drop_address,
       planned_departure, dock_window,
       load_type, load_weight_kg, load_volume_cbm, vehicle_type_requirement, delivery_deadline, load_description,
@@ -851,9 +858,12 @@ exports.updateJob = async (req, res) => {
       await conn.query(`UPDATE trailers SET status='planned' WHERE id=?`, [trailer_id]);
     }
 
+    const valueOrExisting = (key, currentValue, fallback = null) =>
+      Object.prototype.hasOwnProperty.call(req.body, key) ? (req.body[key] || fallback) : currentValue;
+
     await conn.query(
       `UPDATE trips SET
-         customer_id=?, client_name=?, route_id=?, vehicle_id=?, trailer_id=?, driver_id=?,
+         customer_id=?, client_name=?, client_phone=?, route_id=?, vehicle_id=?, trailer_id=?, driver_id=?,
          pickup_address=?, drop_address=?, priority_level=?,
          planned_departure=?, eta=?, dock_window=?,
          load_type=?, load_weight_kg=?, load_volume_cbm=?, vehicle_type_requirement=?, delivery_deadline=?,
@@ -861,15 +871,20 @@ exports.updateJob = async (req, res) => {
          driver_job_status=IF(? = 1, 'offered', driver_job_status)
        WHERE id=? AND deleted_at IS NULL`,
       [
-        customer_id || null, resolvedClientName, route_id || null,
+        customer_id || null, resolvedClientName, client_phone || null, route_id || null,
         vehicle_id || null, trailer_id || null, driver_id || null,
         pickup_address || null, drop_address || null,
         priority_level || "standard",
         planned_departure || null, eta, dock_window || null,
-        load_type || "general", load_weight_kg || null,
-        load_volume_cbm || null, vehicle_type_requirement || null, delivery_deadline || null,
-        load_description || null, freight_amount || null,
-        special_instructions || null, dispatcher_notes || null,
+        valueOrExisting("load_type", "general", "general"),
+        valueOrExisting("load_weight_kg", null),
+        valueOrExisting("load_volume_cbm", null),
+        valueOrExisting("vehicle_type_requirement", null),
+        delivery_deadline || null,
+        load_description || null,
+        freight_amount || null,
+        valueOrExisting("special_instructions", null),
+        valueOrExisting("dispatcher_notes", null),
         String(existing.driver_id || "") !== String(driver_id || "") && driver_id ? 1 : 0,
         id
       ]
@@ -893,7 +908,7 @@ exports.updateJob = async (req, res) => {
       action: "update",
       entityType: "job",
       entityId: id,
-      details: { customer_id, client_name: resolvedClientName, vehicle_id, trailer_id, driver_id }
+      details: { customer_id, client_name: resolvedClientName, client_phone, vehicle_id, trailer_id, driver_id }
     });
     res.json({ message: "Job updated." });
   } catch (err) {

@@ -34,6 +34,19 @@ async function syncVehicleSchema() {
   }
 
   await db.query(`
+    CREATE TABLE IF NOT EXISTS trailers (
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      trailer_code VARCHAR(40) NOT NULL UNIQUE,
+      registration_number VARCHAR(40) NOT NULL UNIQUE,
+      trailer_type VARCHAR(80) NOT NULL,
+      capacity_tonnes DECIMAL(6,2) DEFAULT NULL,
+      status ENUM('available','planned','in_use','maintenance') NOT NULL DEFAULT 'available',
+      current_location VARCHAR(160) DEFAULT NULL,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    ) ENGINE=InnoDB
+  `);
+
+  await db.query(`
     CREATE TABLE IF NOT EXISTS vehicle_documents (
       id                  INT AUTO_INCREMENT PRIMARY KEY,
       vehicle_id          INT NOT NULL,
@@ -158,6 +171,16 @@ function vehicleModel(row) {
 
 function combinedModelName(make, model, modelName) {
   return String(modelName || [make, model].filter(Boolean).join(" ")).trim();
+}
+
+function nextFleetCode(registrationNumber) {
+  const suffix = String(registrationNumber || Date.now()).replace(/[^A-Z0-9]/gi, "").slice(-6).toUpperCase();
+  return `TRK-${suffix || Date.now().toString().slice(-5)}`;
+}
+
+function nextTrolleyCode(registrationNumber) {
+  const suffix = String(registrationNumber || Date.now()).replace(/[^A-Z0-9]/gi, "").slice(-6).toUpperCase();
+  return `TLY-${suffix || Date.now().toString().slice(-5)}`;
 }
 
 // GET /api/vehicles
@@ -456,9 +479,10 @@ exports.createVehicle = async (req, res) => {
     } = req.body;
     const finalModelName = combinedModelName(make, model, model_name);
 
-    if (!registration_number || !fleet_code || !make || !model || !truck_type) {
-      return res.status(400).json({ message: "registration_number, fleet_code, make, model, and truck_type are required." });
+    if (!registration_number || !truck_type) {
+      return res.status(400).json({ message: "Registration number and vehicle type are required." });
     }
+    const finalFleetCode = fleet_code || nextFleetCode(registration_number);
 
     const [result] = await db.query(
       `INSERT INTO vehicles
@@ -466,9 +490,9 @@ exports.createVehicle = async (req, res) => {
           fuel_type, capacity_tonnes, year_of_manufacture, colour,
           mot_expiry, insurance_expiry, road_tax_expiry, permit_expiry, pollution_expiry, fitness_expiry,
           odometer_reading, next_service_due)
-       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
       [
-        registration_number, fleet_code, make, model, finalModelName, truck_type,
+        registration_number, finalFleetCode, make || null, model || null, finalModelName || truck_type, truck_type,
         status || "available",
         fuel_type || null, capacity_tonnes || null, year_of_manufacture || null, colour || null,
         mot_expiry || null, insurance_expiry || null, road_tax_expiry || null,
@@ -483,7 +507,7 @@ exports.createVehicle = async (req, res) => {
       entityType: "vehicle",
       entityId: result.insertId,
       entityLabel: registration_number,
-      details: { registration_number, fleet_code, make, model, model_name: finalModelName, truck_type, status: status || "available" }
+      details: { registration_number, fleet_code: finalFleetCode, make, model, model_name: finalModelName || truck_type, truck_type, status: status || "available" }
     });
     res.status(201).json({ message: "Vehicle created.", id: result.insertId });
   } catch (err) {
@@ -491,6 +515,45 @@ exports.createVehicle = async (req, res) => {
       return res.status(409).json({ message: "Registration number or fleet code already exists." });
     }
     res.status(500).json({ message: "Vehicle create error", error: err.message });
+  }
+};
+
+// POST /api/vehicles/trolleys
+exports.createTrolley = async (req, res) => {
+  try {
+    const {
+      trailer_code,
+      registration_number,
+      trailer_type = "Curtain side",
+      capacity_tonnes,
+      status = "available"
+    } = req.body;
+
+    if (!registration_number || !trailer_type) {
+      return res.status(400).json({ message: "Trolley registration and type are required." });
+    }
+
+    const finalCode = trailer_code || nextTrolleyCode(registration_number);
+    const [result] = await db.query(
+      `INSERT INTO trailers (trailer_code, registration_number, trailer_type, capacity_tonnes, status)
+       VALUES (?, ?, ?, ?, ?)`,
+      [finalCode, registration_number, trailer_type, capacity_tonnes || null, status || "available"]
+    );
+
+    await logActivity(req, {
+      module: "vehicles",
+      action: "create",
+      entityType: "trolley",
+      entityId: result.insertId,
+      entityLabel: registration_number,
+      details: { trailer_code: finalCode, registration_number, trailer_type, status: status || "available" }
+    });
+    res.status(201).json({ message: "Trolley created.", id: result.insertId });
+  } catch (err) {
+    if (err.code === "ER_DUP_ENTRY") {
+      return res.status(409).json({ message: "Trolley code or registration already exists." });
+    }
+    res.status(500).json({ message: "Trolley create error", error: err.message });
   }
 };
 

@@ -3,6 +3,7 @@ import api from "./axios";
 export const getVehicles            = ()                  => api.get("/api/vehicles");
 export const getVehicleById         = (id)                => api.get(`/api/vehicles/${id}`);
 export const createVehicle          = (data)              => api.post("/api/vehicles", data);
+export const createTrolley          = (data)              => api.post("/api/vehicles/trolleys", data);
 export const updateVehicle          = (id, data)          => api.put(`/api/vehicles/${id}`, data);
 export const updateVehicleInline    = (id, data)          => api.patch(`/api/vehicles/${id}/inline`, data);
 export const updateVehicleStatus    = (id, data)          => api.patch(`/api/vehicles/${id}/status`, data);

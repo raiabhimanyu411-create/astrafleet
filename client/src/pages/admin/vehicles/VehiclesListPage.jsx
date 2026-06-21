@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { getVehicles, updateVehicleInline } from "../../../api/vehicleApi";
+import { createTrolley, getVehicles, updateVehicleInline } from "../../../api/vehicleApi";
 import { StateNotice } from "../../../components/StateNotice";
 import { StatusPill } from "../../../components/StatusPill";
 import { AdminWorkspaceLayout } from "../AdminWorkspaceLayout";
@@ -27,6 +27,88 @@ const TYPE_OPTIONS = [
   { value: "Other", label: "Other" }
 ];
 
+const TROLLEY_TYPES = ["Curtain side", "Box", "Flatbed", "Refrigerated", "Low loader", "Tanker", "Other"];
+
+function TrolleyModal({ onClose, onSaved }) {
+  const [fields, setFields] = useState({
+    registration_number: "",
+    trailer_code: "",
+    trailer_type: "Curtain side",
+    capacity_tonnes: "",
+    status: "available"
+  });
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+
+  function set(key, value) {
+    setError("");
+    setFields(prev => ({ ...prev, [key]: value }));
+  }
+
+  async function submit(e) {
+    e.preventDefault();
+    setSaving(true);
+    setError("");
+    try {
+      await createTrolley(fields);
+      await onSaved();
+      onClose();
+    } catch (err) {
+      setError(err?.response?.data?.message || "Could not add trolley.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="maintenance-modal-backdrop">
+      <form className="maintenance-modal" onSubmit={submit}>
+        <div className="section-head">
+          <div>
+            <span className="card-label">Fleet asset</span>
+            <h2>Add trolley / trailer</h2>
+          </div>
+          <button className="header-action-button" type="button" onClick={onClose}>Close</button>
+        </div>
+        <div className="af-grid-2">
+          <div className="af-field">
+            <label className="af-label">Registration number <span style={{ color: "#dc2626" }}>*</span></label>
+            <input className="af-input" type="text" placeholder="e.g. TR12 ABC" value={fields.registration_number} onChange={e => set("registration_number", e.target.value.toUpperCase())} required />
+          </div>
+          <div className="af-field">
+            <label className="af-label">Trolley code</label>
+            <input className="af-input" type="text" placeholder="Auto if blank" value={fields.trailer_code} onChange={e => set("trailer_code", e.target.value)} />
+          </div>
+          <div className="af-field">
+            <label className="af-label">Trolley type</label>
+            <select className="af-select" value={fields.trailer_type} onChange={e => set("trailer_type", e.target.value)}>
+              {TROLLEY_TYPES.map(type => <option key={type} value={type}>{type}</option>)}
+            </select>
+          </div>
+          <div className="af-field">
+            <label className="af-label">Capacity (tonnes)</label>
+            <input className="af-input" type="number" min="0" step="0.01" value={fields.capacity_tonnes} onChange={e => set("capacity_tonnes", e.target.value)} />
+          </div>
+          <div className="af-field">
+            <label className="af-label">Status</label>
+            <select className="af-select" value={fields.status} onChange={e => set("status", e.target.value)}>
+              <option value="available">Available</option>
+              <option value="planned">Planned</option>
+              <option value="in_use">In use</option>
+              <option value="maintenance">Maintenance</option>
+            </select>
+          </div>
+        </div>
+        {error && <p className="state-card error" style={{ marginTop: 14 }}>{error}</p>}
+        <div className="af-actions">
+          <button className="header-action-button" type="button" onClick={onClose}>Cancel</button>
+          <button className="af-submit-btn" type="submit" disabled={saving}>{saving ? "Saving..." : "Add trolley →"}</button>
+        </div>
+      </form>
+    </div>
+  );
+}
+
 function exportCsv(name, rows) {
   const csv = rows
     .map(row => row.map(value => `"${String(value ?? "").replaceAll('"', '""')}"`).join(","))
@@ -50,6 +132,7 @@ export function VehiclesListPage() {
   const [riskFilter, setRiskFilter] = useState("");
   const [view, setView] = useState("fleet");
   const [savingCell, setSavingCell] = useState("");
+  const [showTrolleyModal, setShowTrolleyModal] = useState(false);
 
   function load() {
     setLoading(true);
@@ -184,8 +267,13 @@ export function VehiclesListPage() {
       <div className="finance-command-bar">
         <button className="header-action-button" type="button" onClick={load}>Refresh</button>
         <button className="header-action-button" type="button" onClick={exportVehicles}>Export CSV</button>
+        <button className="header-action-button" type="button" onClick={() => setShowTrolleyModal(true)}>+ Add trolley</button>
         <button className="af-submit-btn" type="button" onClick={() => navigate("/admin/vehicles/new")}>+ Add vehicle</button>
       </div>
+
+      {showTrolleyModal && (
+        <TrolleyModal onClose={() => setShowTrolleyModal(false)} onSaved={load} />
+      )}
 
       <StateNotice loading={loading} error={error} />
 
