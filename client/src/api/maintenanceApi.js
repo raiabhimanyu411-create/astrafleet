@@ -1,7 +1,9 @@
 import api from "./axios";
 
 export const getMaintenancePortal = () => api.get("/api/maintenance");
+export const autoPlanMaintenanceWork = () => api.post("/api/maintenance/automation/plan");
 export const createMaintenanceJob = (data) => api.post("/api/maintenance/jobs", data);
+export const createBulkMaintenanceJobs = (data) => api.post("/api/maintenance/jobs/bulk", data);
 export const updateMaintenanceJob = (id, data) => api.put(`/api/maintenance/jobs/${id}`, data);
 export const updateMaintenanceBill = (id, data) => api.patch(`/api/maintenance/jobs/${id}/bill`, data);
 export const completeMaintenanceJob = (id, data) => api.patch(`/api/maintenance/jobs/${id}/complete`, data);
