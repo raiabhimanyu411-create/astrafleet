@@ -906,6 +906,34 @@ export function AdminMaintenancePage() {
       </nav>
 
       {activeView === "planner" && (
+      <section className="content-card maintenance-filter-card">
+        <input className="af-input" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search job, vehicle, vendor, owner..." />
+        <select className="af-select" value={filters.status} onChange={(e) => setFilter("status", e.target.value)}>
+          <option value="">All statuses</option>
+          {statusOptions.map((status) => <option key={status} value={status}>{status.replace("_", " ")}</option>)}
+        </select>
+        <select className="af-select" value={filters.priority} onChange={(e) => setFilter("priority", e.target.value)}>
+          <option value="">All priorities</option>
+          {priorityOptions.map((priority) => <option key={priority} value={priority}>{priority}</option>)}
+        </select>
+        <select className="af-select" value={filters.vendor} onChange={(e) => setFilter("vendor", e.target.value)}>
+          <option value="">All vendors</option>
+          {(data?.filterOptions?.vendors || []).map((vendor) => <option key={vendor} value={vendor}>{vendor}</option>)}
+        </select>
+        <select className="af-select" value={filters.type} onChange={(e) => setFilter("type", e.target.value)}>
+          <option value="">All vehicle types</option>
+          {(data?.filterOptions?.vehicleTypes || []).map((type) => <option key={type} value={type}>{type}</option>)}
+        </select>
+        <select className="af-select" value={filters.window} onChange={(e) => setFilter("window", e.target.value)}>
+          {dueWindows.map((window) => <option key={window.value} value={window.value}>{window.label}</option>)}
+        </select>
+        <input className="af-input" type="date" value={filters.from} onChange={(e) => setFilter("from", e.target.value)} />
+        <input className="af-input" type="date" value={filters.to} onChange={(e) => setFilter("to", e.target.value)} />
+        <button className="header-action-button" disabled={!hasFilters} type="button" onClick={clearFilters}>Clear filters</button>
+      </section>
+      )}
+
+      {activeView === "planner" && (
       <section className="content-card maintenance-year-card">
         <div className="section-head">
           <div>
@@ -1187,34 +1215,6 @@ export function AdminMaintenancePage() {
           </article>
         </section>
       </details>
-      )}
-
-      {activeView === "planner" && (
-      <section className="content-card maintenance-filter-card">
-        <input className="af-input" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search job, vehicle, vendor, owner..." />
-        <select className="af-select" value={filters.status} onChange={(e) => setFilter("status", e.target.value)}>
-          <option value="">All statuses</option>
-          {statusOptions.map((status) => <option key={status} value={status}>{status.replace("_", " ")}</option>)}
-        </select>
-        <select className="af-select" value={filters.priority} onChange={(e) => setFilter("priority", e.target.value)}>
-          <option value="">All priorities</option>
-          {priorityOptions.map((priority) => <option key={priority} value={priority}>{priority}</option>)}
-        </select>
-        <select className="af-select" value={filters.vendor} onChange={(e) => setFilter("vendor", e.target.value)}>
-          <option value="">All vendors</option>
-          {(data?.filterOptions?.vendors || []).map((vendor) => <option key={vendor} value={vendor}>{vendor}</option>)}
-        </select>
-        <select className="af-select" value={filters.type} onChange={(e) => setFilter("type", e.target.value)}>
-          <option value="">All vehicle types</option>
-          {(data?.filterOptions?.vehicleTypes || []).map((type) => <option key={type} value={type}>{type}</option>)}
-        </select>
-        <select className="af-select" value={filters.window} onChange={(e) => setFilter("window", e.target.value)}>
-          {dueWindows.map((window) => <option key={window.value} value={window.value}>{window.label}</option>)}
-        </select>
-        <input className="af-input" type="date" value={filters.from} onChange={(e) => setFilter("from", e.target.value)} />
-        <input className="af-input" type="date" value={filters.to} onChange={(e) => setFilter("to", e.target.value)} />
-        <button className="header-action-button" disabled={!hasFilters} type="button" onClick={clearFilters}>Clear filters</button>
-      </section>
       )}
 
       {activeView === "fleet" && (

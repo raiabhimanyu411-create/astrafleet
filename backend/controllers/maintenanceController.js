@@ -952,8 +952,9 @@ exports.getMaintenancePortal = async (_req, res) => {
           : buildFuturePlanDates(seed.dueDateRaw, seed.type, planStart, planEnd, seed.roadTaxIntervalMonths);
         for (const dueDateRaw of dates) {
           const daysLeft = daysUntil(dueDateRaw);
+          const displayDateRaw = dueDateRaw < rawDate(planStart) ? rawDate(planStart) : dueDateRaw;
           const tone = daysLeft < 0 ? "danger" : daysLeft <= 30 ? "warning" : "success";
-          const week = planWeeks.find((item) => dueDateRaw >= item.startRaw && dueDateRaw <= item.endRaw);
+          const week = planWeeks.find((item) => displayDateRaw >= item.startRaw && displayDateRaw <= item.endRaw);
           if (!week) continue;
           events.push({
             id: `${v.id}-${seed.type}-${dueDateRaw}`,
@@ -964,6 +965,7 @@ exports.getMaintenancePortal = async (_req, res) => {
             type: seed.type,
             code: planCodeForType(seed.type),
             dueDateRaw,
+            displayDateRaw,
             dueDate: fmtDate(dueDateRaw),
             dueLabel: dueLabel(daysLeft),
             daysLeft,

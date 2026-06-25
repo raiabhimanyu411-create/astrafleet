@@ -4773,19 +4773,20 @@ p.lp-success {
 ════════════════════════════════════════════════════════════ */
 
 .maintenance-command-bar {
-  display: flex;
+  display: grid;
+  grid-template-columns: minmax(220px, 0.7fr) minmax(0, 1.3fr);
   align-items: center;
-  justify-content: space-between;
   gap: 16px;
   margin-bottom: 18px;
-  padding: 14px 16px;
+  padding: 16px;
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
   background: var(--surface);
+  box-shadow: var(--shadow-xs);
 }
 
 .maintenance-command-bar > div:first-child {
-  min-width: 180px;
+  min-width: 0;
 }
 
 .maintenance-command-bar strong {
@@ -4801,23 +4802,26 @@ p.lp-success {
   justify-content: flex-end;
   gap: 8px;
   flex-wrap: wrap;
+  min-width: 0;
 }
 
 .maintenance-command-actions .af-submit-btn,
 .maintenance-command-actions .header-action-button {
   height: 38px;
-  min-width: 106px;
+  min-width: 118px;
   padding-inline: 14px;
+  white-space: nowrap;
 }
 
 .maintenance-view-tabs {
   position: sticky;
   top: 0;
   z-index: 20;
-  display: flex;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   align-items: center;
   gap: 4px;
-  margin: 18px 0;
+  margin: 18px 0 16px;
   padding: 5px;
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
@@ -4826,6 +4830,7 @@ p.lp-success {
 }
 
 .maintenance-view-tabs button {
+  width: 100%;
   min-height: 36px;
   padding: 0 14px;
   border: 0;
@@ -4843,6 +4848,12 @@ p.lp-success {
   color: var(--surface);
 }
 
+.maintenance-command-bar ~ .content-card,
+.maintenance-command-bar ~ .content-grid,
+.maintenance-command-bar ~ .maintenance-more-tools {
+  margin-bottom: 18px;
+}
+
 .maintenance-kpi-grid {
   margin-bottom: 10px;
 }
@@ -4855,13 +4866,13 @@ p.lp-success {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 12px;
-  margin-bottom: 18px;
+  margin-bottom: 16px;
 }
 
 .maintenance-summary-card {
   display: grid;
   align-content: start;
-  min-height: 104px;
+  min-height: 112px;
   padding: 14px;
   border: 1px solid var(--border);
   border-left: 5px solid var(--border-strong);
@@ -4887,7 +4898,7 @@ p.lp-success {
   display: block;
   margin-top: 8px;
   color: var(--text);
-  font-size: 2rem;
+  font-size: 1.85rem;
   font-weight: 800;
   line-height: 1;
 }
@@ -5024,12 +5035,26 @@ p.lp-success {
 }
 
 .maintenance-filter-card {
-  display: grid;
-  grid-template-columns: minmax(260px, 1.4fr) repeat(4, minmax(135px, 1fr)) minmax(160px, 1fr) 140px 140px auto;
-  gap: 8px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
   align-items: center;
   margin-bottom: 18px;
   padding: 14px;
+  border-radius: var(--radius-sm);
+}
+
+.maintenance-filter-card > .af-input:first-child {
+  flex: 2 1 300px;
+}
+
+.maintenance-filter-card > .af-select,
+.maintenance-filter-card > .af-input:not(:first-child) {
+  flex: 1 1 145px;
+}
+
+.maintenance-filter-card > .header-action-button {
+  flex: 0 0 132px;
 }
 
 .maintenance-filter-card .af-input,
@@ -5044,7 +5069,8 @@ p.lp-success {
 .maintenance-filter-card .af-select,
 .maintenance-filter-card .header-action-button {
   width: 100%;
-  height: 38px;
+  height: 40px;
+  min-width: 0;
 }
 
 .af-textarea {
@@ -5096,12 +5122,14 @@ p.lp-success {
 
 .maintenance-year-card {
   overflow: hidden;
+  padding: 18px;
 }
 
 .maintenance-year-layout {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 320px;
-  gap: 14px;
+  grid-template-columns: minmax(0, 1fr) minmax(300px, 360px);
+  gap: 16px;
+  align-items: start;
 }
 
 .maintenance-year-table-wrap {
@@ -5110,22 +5138,23 @@ p.lp-success {
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
   background: var(--surface);
+  max-height: 640px;
 }
 
 .maintenance-year-table {
-  min-width: 1680px;
+  min-width: 1820px;
 }
 
 .maintenance-year-head,
 .maintenance-year-row {
   display: grid;
-  grid-template-columns: 190px repeat(52, 1fr);
+  grid-template-columns: 170px repeat(52, minmax(31px, 1fr));
 }
 
 .maintenance-year-head {
   position: sticky;
   top: 0;
-  z-index: 2;
+  z-index: 3;
   background: var(--surface-2);
   border-bottom: 1px solid var(--border);
 }
@@ -5140,9 +5169,10 @@ p.lp-success {
 
 .maintenance-year-vehicle-head,
 .maintenance-year-week-head {
-  padding: 8px 7px;
+  min-height: 48px;
+  padding: 8px 6px;
   color: var(--muted);
-  font-size: 0.66rem;
+  font-size: 0.62rem;
   font-weight: 800;
   text-align: left;
   text-transform: uppercase;
@@ -5157,12 +5187,12 @@ p.lp-success {
 .maintenance-year-week-head strong {
   margin-top: 2px;
   color: var(--text);
-  font-size: 0.68rem;
+  font-size: 0.64rem;
 }
 
 .maintenance-year-row {
   width: 100%;
-  min-height: 58px;
+  min-height: 52px;
   padding: 0;
   border: 0;
   border-bottom: 1px solid var(--border);
@@ -5180,14 +5210,19 @@ p.lp-success {
 .maintenance-year-vehicle {
   position: sticky;
   left: 0;
-  z-index: 1;
+  z-index: 2;
   display: flex;
   flex-direction: column;
   justify-content: center;
   gap: 2px;
-  padding: 9px 10px;
-  background: inherit;
+  padding: 8px 10px;
+  background: var(--surface);
   box-shadow: 1px 0 0 var(--border);
+}
+
+.maintenance-year-row:hover .maintenance-year-vehicle,
+.maintenance-year-row.active .maintenance-year-vehicle {
+  background: var(--primary-soft);
 }
 
 .maintenance-year-vehicle strong {
@@ -5203,23 +5238,23 @@ p.lp-success {
 
 .maintenance-year-cell {
   display: flex;
-  min-height: 58px;
+  min-height: 52px;
   flex-direction: column;
   justify-content: center;
-  gap: 3px;
-  padding: 4px;
+  gap: 2px;
+  padding: 3px;
 }
 
 .maintenance-year-event {
   display: block;
-  min-height: 18px;
-  padding: 3px 4px;
+  min-height: 17px;
+  padding: 2px 4px;
   border: 1px solid var(--border);
   border-left: 4px solid var(--primary);
   border-radius: 5px;
   background: var(--surface);
   color: var(--text);
-  font-size: 0.62rem;
+  font-size: 0.56rem;
   font-weight: 800;
   line-height: 1.15;
   white-space: nowrap;
@@ -5232,6 +5267,8 @@ p.lp-success {
 .maintenance-year-event.danger { border-left-color: var(--danger); background: var(--danger-soft); }
 
 .maintenance-year-detail {
+  position: sticky;
+  top: 64px;
   min-width: 0;
   padding: 14px;
   border: 1px solid var(--border);
@@ -5255,7 +5292,7 @@ p.lp-success {
   display: flex;
   flex-direction: column;
   gap: 8px;
-  max-height: 520px;
+  max-height: 500px;
   overflow: auto;
 }
 
@@ -5345,7 +5382,7 @@ p.lp-success {
 }
 
 .maintenance-calendar-day {
-  min-height: 112px;
+  min-height: 126px;
   padding: 9px;
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
@@ -5416,7 +5453,7 @@ p.lp-success {
 .maintenance-profile-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 12px;
+  gap: 14px;
 }
 
 .maintenance-profile-card {
@@ -5454,7 +5491,7 @@ p.lp-success {
 
 .maintenance-profile-items {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(118px, 1fr));
   gap: 8px;
   height: 100%;
 }
@@ -5586,8 +5623,11 @@ p.lp-success {
 }
 
 .maintenance-table {
-  overflow-x: auto;
+  overflow: hidden;
   padding-bottom: 2px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
 }
 
 .maintenance-inspection-grid {
@@ -5630,14 +5670,19 @@ p.lp-success {
 .maintenance-table-head,
 .maintenance-table-row {
   display: grid;
-  grid-template-columns: minmax(160px, 1.05fr) minmax(130px, 0.85fr) minmax(190px, 1.2fr) 105px 115px 105px 95px minmax(140px, 0.95fr) 105px minmax(130px, 0.85fr) minmax(160px, auto);
-  gap: 10px;
-  align-items: stretch;
-  min-width: 1510px;
+  grid-template-columns: minmax(120px, 0.95fr) minmax(110px, 0.8fr) minmax(180px, 1.35fr) minmax(88px, 0.65fr) minmax(96px, 0.7fr) minmax(88px, 0.66fr) minmax(82px, 0.62fr) minmax(108px, 0.78fr) minmax(86px, 0.62fr) minmax(112px, 0.75fr) minmax(146px, 0.95fr);
+  gap: 8px;
+  align-items: center;
+  min-width: 0;
 }
 
 .maintenance-table-head {
-  padding: 0 12px 10px;
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface-2);
   color: var(--muted);
   font-size: 0.72rem;
   font-weight: 800;
@@ -5645,12 +5690,17 @@ p.lp-success {
 }
 
 .maintenance-table-row {
-  margin-bottom: 8px;
+  margin: 0;
   padding: 12px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
+  border: 0;
+  border-bottom: 1px solid var(--border);
+  border-radius: 0;
   background: var(--surface);
   cursor: pointer;
+}
+
+.maintenance-table-row:last-child {
+  border-bottom: 0;
 }
 
 .maintenance-table-row > div {
@@ -5661,7 +5711,6 @@ p.lp-success {
 }
 
 .maintenance-table-row:hover {
-  border-color: var(--border-strong);
   background: var(--surface-3);
 }
 
@@ -5669,6 +5718,7 @@ p.lp-success {
   display: block;
   color: var(--text);
   font-size: 0.86rem;
+  overflow-wrap: anywhere;
 }
 
 .maintenance-table-row p {
@@ -5684,10 +5734,12 @@ p.lp-success {
   justify-content: flex-end;
   flex-direction: row;
   gap: 6px;
+  flex-wrap: wrap;
 }
 
 .maintenance-table-row .finance-row-actions .header-action-button {
   height: 30px;
+  min-width: 64px;
   padding-inline: 9px;
 }
 
@@ -5983,8 +6035,8 @@ p.lp-success {
   }
 
   .maintenance-command-bar {
-    align-items: flex-start;
-    flex-direction: column;
+    grid-template-columns: 1fr;
+    align-items: stretch;
   }
 
   .maintenance-command-actions {
@@ -5994,11 +6046,11 @@ p.lp-success {
 
   .maintenance-command-actions .af-submit-btn,
   .maintenance-command-actions .header-action-button {
-    flex: 1 1 150px;
+    flex: 1 1 160px;
   }
 
   .maintenance-filter-card {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+    grid-template-columns: minmax(260px, 1.4fr) repeat(2, minmax(150px, 1fr));
   }
 
   .maintenance-form-grid,
@@ -6019,6 +6071,7 @@ p.lp-success {
   .maintenance-view-tabs {
     overflow-x: auto;
     position: static;
+    display: flex;
   }
 
   .maintenance-view-tabs button {
@@ -6063,16 +6116,25 @@ p.lp-success {
   }
 
   .maintenance-year-table {
-    min-width: 1480px;
+    min-width: 1800px;
   }
 
   .maintenance-year-head,
   .maintenance-year-row {
-    grid-template-columns: 160px repeat(52, 1fr);
+    grid-template-columns: 150px repeat(52, minmax(32px, 1fr));
+  }
+
+  .maintenance-year-detail {
+    position: static;
   }
 
   .maintenance-table-head {
     display: none;
+  }
+
+  .maintenance-table {
+    border: 0;
+    background: transparent;
   }
 
   .maintenance-table-row {
@@ -6080,6 +6142,9 @@ p.lp-success {
     min-width: 0;
     gap: 12px;
     padding: 14px;
+    margin-bottom: 10px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
   }
 
   .maintenance-table-row > div {
