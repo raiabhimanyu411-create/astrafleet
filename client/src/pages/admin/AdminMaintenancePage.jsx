@@ -124,6 +124,10 @@ function cleanExportValue(value) {
   return text && text !== "-" ? text : "";
 }
 
+function normalizeSearch(value) {
+  return String(value || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+}
+
 function escapeExcelValue(value) {
   return cleanExportValue(value)
     .replaceAll("&", "&amp;")
@@ -535,6 +539,7 @@ export function AdminMaintenancePage() {
   const [showModal, setShowModal] = useState(false);
   const [editingJob, setEditingJob] = useState(null);
   const [drawerJob, setDrawerJob] = useState(null);
+  const [selectedPlanVehicleId, setSelectedPlanVehicleId] = useState(null);
   const [modalForm, setModalForm] = useState(emptyJob);
   const [savingAction, setSavingAction] = useState("");
   const [automationMessage, setAutomationMessage] = useState("");
@@ -556,6 +561,7 @@ export function AdminMaintenancePage() {
 
   const jobs = useMemo(() => {
     const query = search.trim().toLowerCase();
+    const compactQuery = normalizeSearch(search);
     return (data?.jobs || []).filter((job) => {
       if (filters.status && job.status !== filters.status) return false;
       if (filters.priority && job.priority !== filters.priority) return false;
@@ -566,18 +572,40 @@ export function AdminMaintenancePage() {
       if (filters.from && job.dueDateRaw < filters.from) return false;
       if (filters.to && job.dueDateRaw > filters.to) return false;
       if (!query) return true;
-      return (
-        job.jobNumber.toLowerCase().includes(query) ||
-        job.vehicle.toLowerCase().includes(query) ||
-        job.serviceType.toLowerCase().includes(query) ||
-        job.garageName.toLowerCase().includes(query) ||
-        job.assignedMechanic.toLowerCase().includes(query)
-      );
+      const haystack = [
+        job.jobNumber,
+        job.vehicle,
+        job.fleetCode,
+        job.make,
+        job.truckType,
+        job.serviceType,
+        job.garageName,
+        job.assignedMechanic,
+        job.notes,
+        job.defectType,
+        job.defectDescription
+      ].join(" ").toLowerCase();
+      return haystack.includes(query) || normalizeSearch(haystack).includes(compactQuery);
     });
   }, [data, filters, search]);
 
+  const yearPlanRows = useMemo(() => {
+    const query = search.trim().toLowerCase();
+    const compactQuery = normalizeSearch(search);
+    return (data?.yearPlan?.rows || []).filter((row) => {
+      if (!query) return true;
+      const haystack = [row.vehicle, row.fleetCode, row.make, row.status, ...(row.events || []).map((event) => `${event.type} ${event.code}`)].join(" ").toLowerCase();
+      return haystack.includes(query) || normalizeSearch(haystack).includes(compactQuery);
+    });
+  }, [data, search]);
+
+  const selectedPlanRow = useMemo(() => {
+    if (!data?.yearPlan?.rows?.length) return null;
+    return data.yearPlan.rows.find((row) => Number(row.vehicleId) === Number(selectedPlanVehicleId)) || yearPlanRows[0] || data.yearPlan.rows[0];
+  }, [data, selectedPlanVehicleId, yearPlanRows]);
+
   const calendarData = useMemo(() => {
-    const events = data?.calendarEvents || [];
+    const events = (data?.calendarEvents || []).filter((event) => !selectedPlanVehicleId || Number(event.vehicleId) === Number(selectedPlanVehicleId));
     const today = new Date();
     today.setHours(0, 0, 0, 0);
     const days = buildCalendarDays(calendarMode);
@@ -597,7 +625,7 @@ export function AdminMaintenancePage() {
         .slice(0, 4)
     }));
     return { overdue, days: grouped };
-  }, [calendarMode, data]);
+  }, [calendarMode, data, selectedPlanVehicleId]);
 
   const hasFilters = Boolean(search || Object.values(filters).some(Boolean));
 
@@ -608,6 +636,11 @@ export function AdminMaintenancePage() {
   function clearFilters() {
     setSearch("");
     setFilters({ status: "", priority: "", vendor: "", type: "", window: "", from: "", to: "" });
+  }
+
+  function openVehiclePlan(vehicleId) {
+    setSelectedPlanVehicleId(vehicleId);
+    setActiveView("planner");
   }
 
   function openAddJob(prefill = {}) {
@@ -832,6 +865,7 @@ export function AdminMaintenancePage() {
         <div>
           <span className="card-label">Maintenance desk</span>
           <strong>{openJobs.length} open jobs</strong>
+          {selectedPlanVehicleId && <p className="finance-empty">Calendar filtered to {selectedPlanRow?.vehicle}. Clear from yearly planner search if needed.</p>}
         </div>
         <div className="maintenance-command-actions">
           <button className="af-submit-btn" type="button" onClick={() => openAddJob()}>Add job</button>
@@ -840,6 +874,7 @@ export function AdminMaintenancePage() {
           </button>
           <button className="header-action-button" type="button" onClick={exportJobs}>Export Excel</button>
           <button className="header-action-button" type="button" onClick={load}>Refresh</button>
+          {selectedPlanVehicleId && <button className="header-action-button" type="button" onClick={() => setSelectedPlanVehicleId(null)}>Show all vehicles</button>}
           <button className="header-action-button" type="button" onClick={() => navigate("/admin/vehicles")}>Vehicle register</button>
         </div>
       </div>
@@ -869,6 +904,86 @@ export function AdminMaintenancePage() {
           </button>
         ))}
       </nav>
+
+      {activeView === "planner" && (
+      <section className="content-card maintenance-year-card">
+        <div className="section-head">
+          <div>
+            <span className="card-label">52-week maintenance planner</span>
+            <h2>Vehicle yearly compliance plan</h2>
+            <p className="finance-empty">
+              Excel-style view for IB, MOT, Road Tax, Insurance, Tacho and service dates from {data?.yearPlan?.startDate || "-"} to {data?.yearPlan?.endDate || "-"}.
+            </p>
+          </div>
+          <StatusPill tone="neutral">{yearPlanRows.length} vehicles</StatusPill>
+        </div>
+
+        <div className="maintenance-year-layout">
+          <div className="maintenance-year-table-wrap">
+            <div className="maintenance-year-table">
+              <div className="maintenance-year-head">
+                <div className="maintenance-year-vehicle-head">Vehicle / fleet</div>
+                {(data?.yearPlan?.weeks || []).map((week) => (
+                  <div className="maintenance-year-week-head" key={week.key}>
+                    <span>{week.month}</span>
+                    <strong>{week.label}</strong>
+                  </div>
+                ))}
+              </div>
+              {yearPlanRows.slice(0, 18).map((row) => (
+                <button
+                  className={`maintenance-year-row${Number(selectedPlanRow?.vehicleId) === Number(row.vehicleId) ? " active" : ""}`}
+                  key={row.vehicleId}
+                  type="button"
+                  onClick={() => openVehiclePlan(row.vehicleId)}
+                >
+                  <div className="maintenance-year-vehicle">
+                    <strong>{row.vehicle}</strong>
+                    <span>{row.fleetCode} · {row.make}</span>
+                  </div>
+                  {(data?.yearPlan?.weeks || []).map((week) => {
+                    const events = (row.events || []).filter((event) => event.weekKey === week.key);
+                    return (
+                      <div className="maintenance-year-cell" key={`${row.vehicleId}-${week.key}`}>
+                        {events.slice(0, 2).map((event) => (
+                          <span className={`maintenance-year-event ${event.tone}`} key={event.id} title={`${event.type} · ${event.dueDate}`}>
+                            {event.code} {event.dueDateRaw.slice(5)}
+                          </span>
+                        ))}
+                      </div>
+                    );
+                  })}
+                </button>
+              ))}
+              {!loading && yearPlanRows.length === 0 && <p className="finance-empty">No vehicles match this yearly planner search.</p>}
+            </div>
+          </div>
+
+          <aside className="maintenance-year-detail">
+            <span className="card-label">Selected vehicle</span>
+            <h3>{selectedPlanRow?.vehicle || "Select a vehicle"}</h3>
+            <p>{selectedPlanRow ? `${selectedPlanRow.fleetCode} · ${selectedPlanRow.make} · ${selectedPlanRow.inspectionFrequency}` : "Click any row to open its full yearly plan."}</p>
+            <div className="maintenance-year-detail-list">
+              {(selectedPlanRow?.events || []).slice(0, 12).map((event) => (
+                <button
+                  className="maintenance-year-detail-item"
+                  key={event.id}
+                  type="button"
+                  onClick={() => openAddJob({ vehicle_id: event.vehicleId, service_type: event.type, due_date: event.dueDateRaw, priority: event.tone === "danger" ? "critical" : event.tone === "warning" ? "high" : "normal" })}
+                >
+                  <StatusPill tone={event.tone}>{event.code}</StatusPill>
+                  <div>
+                    <strong>{event.type}</strong>
+                    <p>{event.dueDate} · {event.dueLabel}</p>
+                  </div>
+                </button>
+              ))}
+              {selectedPlanRow && selectedPlanRow.events.length === 0 && <p className="finance-empty">No future dates found for this vehicle.</p>}
+            </div>
+          </aside>
+        </div>
+      </section>
+      )}
 
       {activeView === "fleet" && (
       <section className="content-card">
@@ -1017,7 +1132,7 @@ export function AdminMaintenancePage() {
               {calendarData.overdue.length > 0 && (
                 <div className="maintenance-overdue-strip">
                   {calendarData.overdue.map((event) => (
-                    <button className={`maintenance-calendar-item ${event.tone}`} key={event.id} type="button">
+                    <button className={`maintenance-calendar-item ${event.tone}`} key={event.id} type="button" onClick={() => event.vehicleId && openVehiclePlan(event.vehicleId)}>
                       <span>Overdue · {event.date}</span>
                       <strong>{event.label}</strong>
                       <p>{event.type} · {event.status}</p>
@@ -1031,7 +1146,7 @@ export function AdminMaintenancePage() {
                     <strong>{day.label}</strong>
                     <div className="maintenance-calendar-events">
                       {day.events.map((event) => (
-                        <button className={`maintenance-calendar-chip ${event.tone}`} key={event.id} type="button">
+                        <button className={`maintenance-calendar-chip ${event.tone}`} key={event.id} type="button" onClick={() => event.vehicleId && openVehiclePlan(event.vehicleId)}>
                           <span>{event.type}</span>
                           <p>{event.label}</p>
                         </button>

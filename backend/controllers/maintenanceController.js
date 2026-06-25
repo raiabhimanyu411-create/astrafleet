@@ -312,6 +312,56 @@ function addMonths(date, months) {
   return next;
 }
 
+function startOfWeek(date) {
+  const next = new Date(date);
+  next.setHours(0, 0, 0, 0);
+  const day = next.getDay() || 7;
+  next.setDate(next.getDate() - day + 1);
+  return next;
+}
+
+function planCodeForType(type) {
+  return {
+    "Safety inspection": "IB",
+    "Roller brake test": "RBT",
+    MOT: "MOT",
+    "Road Tax": "TAX",
+    Insurance: "INS",
+    "Tacho Calibration": "T",
+    "Full Service": "SRV"
+  }[type] || type;
+}
+
+function addIntervalForPlan(date, type, roadTaxIntervalMonths = 12) {
+  if (["Safety inspection", "Roller brake test"].includes(type)) return addDays(date, INSPECTION_INTERVAL_DAYS);
+  if (type === "Road Tax") return addMonths(date, Number(roadTaxIntervalMonths || 12));
+  if (type === "Tacho Calibration") return addMonths(date, 24);
+  if (["MOT", "Insurance"].includes(type)) return addMonths(date, 12);
+  return null;
+}
+
+function buildFuturePlanDates(seedDateRaw, type, horizonStart, horizonEnd, roadTaxIntervalMonths) {
+  if (!seedDateRaw) return [];
+  let cursor = new Date(`${seedDateRaw}T00:00:00`);
+  if (Number.isNaN(cursor.getTime())) return [];
+  let guard = 0;
+  while (cursor < horizonStart && guard < 80) {
+    const next = addIntervalForPlan(cursor, type, roadTaxIntervalMonths);
+    if (!next) break;
+    cursor = next;
+    guard += 1;
+  }
+  const dates = [];
+  while (cursor <= horizonEnd && guard < 120) {
+    dates.push(rawDate(cursor));
+    const next = addIntervalForPlan(cursor, type, roadTaxIntervalMonths);
+    if (!next) break;
+    cursor = next;
+    guard += 1;
+  }
+  return dates;
+}
+
 function calculateNextDueDate(serviceType, serviceDate, roadTaxIntervalMonths) {
   if (!serviceType || !serviceDate) return "";
   if (serviceType === "Road Tax") {
@@ -522,6 +572,11 @@ async function applyCompletedMaintenance(job, completion = {}) {
        VALUES (?, ?, ?, ?, 'pass', ?, ?)`,
       [job.vehicle_id, serviceDate, job.service_type, job.assigned_mechanic || job.garage_name, completionNotes || job.notes, nextDueDate]
     );
+  }
+  if (job.trailer_id || job.asset_type === "trailer") {
+    await db.query(`UPDATE trailers SET status='available' WHERE id=? AND status='maintenance'`, [job.trailer_id]);
+  } else {
+    await db.query(`UPDATE vehicles SET status='available' WHERE id=? AND status='maintenance'`, [job.vehicle_id]);
   }
   return { finalCost, completionNotes, serviceDate, nextDueDate, completedMileageKm, nextDueMileageKm, billAmountGbp };
 }
@@ -784,21 +839,6 @@ exports.getMaintenancePortal = async (_req, res) => {
     `);
     const odometerByVehicle = new Map(odometerRows.map((row) => [Number(row.vehicle_id), Number(row.reading_km || 0)]));
 
-    const complianceItems = rows.flatMap((v) => [
-      { vehicleId: v.id, vehicle: v.registration_number, itemType: "MOT", dueDateRaw: rawDate(v.mot_expiry), dueDate: fmtDate(v.mot_expiry), daysLeft: daysUntil(v.mot_expiry) },
-      { vehicleId: v.id, vehicle: v.registration_number, itemType: "Insurance", dueDateRaw: rawDate(v.insurance_expiry), dueDate: fmtDate(v.insurance_expiry), daysLeft: daysUntil(v.insurance_expiry) },
-      { vehicleId: v.id, vehicle: v.registration_number, itemType: "Road Tax", dueDateRaw: rawDate(v.road_tax_expiry), dueDate: fmtDate(v.road_tax_expiry), daysLeft: daysUntil(v.road_tax_expiry) },
-      { vehicleId: v.id, vehicle: v.registration_number, itemType: "Full Service", dueDateRaw: rawDate(v.next_service_due), dueDate: fmtDate(v.next_service_due), daysLeft: daysUntil(v.next_service_due) },
-      { vehicleId: v.id, vehicle: v.registration_number, itemType: "Roller brake test", dueDateRaw: rawDate(v.next_inspection_due), dueDate: fmtDate(v.next_inspection_due), daysLeft: daysUntil(v.next_inspection_due) },
-      { vehicleId: v.id, vehicle: v.registration_number, itemType: "Safety inspection", dueDateRaw: rawDate(v.next_inspection_due), dueDate: fmtDate(v.next_inspection_due), daysLeft: daysUntil(v.next_inspection_due) }
-    ]).filter((item) => item.dueDateRaw).map((item) => ({
-      ...item,
-      dueLabel: dueLabel(item.daysLeft),
-      tone: item.daysLeft < 0 ? "danger" : item.daysLeft <= 30 ? "warning" : "success",
-      reminder: item.daysLeft <= 30 ? "Reminder due" : "Scheduled"
-    })).sort((a, b) => (a.daysLeft ?? 9999) - (b.daysLeft ?? 9999));
-
-    const profileItemTypes = ["MOT", "Road Tax", "Tacho Calibration", "Safety inspection", "Roller brake test", "Full Service"];
     const latestServiceByVehicleAndType = new Map();
     for (const job of jobs) {
       const key = `${job.vehicleId}:${job.serviceType}`;
@@ -807,6 +847,30 @@ exports.getMaintenancePortal = async (_req, res) => {
         latestServiceByVehicleAndType.set(key, job);
       }
     }
+
+    const complianceItems = rows.flatMap((v) => [
+      { vehicleId: v.id, vehicle: v.registration_number, itemType: "MOT", dueDateRaw: rawDate(v.mot_expiry), dueDate: fmtDate(v.mot_expiry), daysLeft: daysUntil(v.mot_expiry) },
+      { vehicleId: v.id, vehicle: v.registration_number, itemType: "Insurance", dueDateRaw: rawDate(v.insurance_expiry), dueDate: fmtDate(v.insurance_expiry), daysLeft: daysUntil(v.insurance_expiry) },
+      { vehicleId: v.id, vehicle: v.registration_number, itemType: "Road Tax", dueDateRaw: rawDate(v.road_tax_expiry), dueDate: fmtDate(v.road_tax_expiry), daysLeft: daysUntil(v.road_tax_expiry) },
+      { vehicleId: v.id, vehicle: v.registration_number, itemType: "Full Service", dueDateRaw: rawDate(v.next_service_due), dueDate: fmtDate(v.next_service_due), daysLeft: daysUntil(v.next_service_due) },
+      { vehicleId: v.id, vehicle: v.registration_number, itemType: "Roller brake test", dueDateRaw: rawDate(v.next_inspection_due), dueDate: fmtDate(v.next_inspection_due), daysLeft: daysUntil(v.next_inspection_due) },
+      { vehicleId: v.id, vehicle: v.registration_number, itemType: "Safety inspection", dueDateRaw: rawDate(v.next_inspection_due), dueDate: fmtDate(v.next_inspection_due), daysLeft: daysUntil(v.next_inspection_due) },
+      {
+        vehicleId: v.id,
+        vehicle: v.registration_number,
+        itemType: "Tacho Calibration",
+        dueDateRaw: latestServiceByVehicleAndType.get(`${v.id}:Tacho Calibration`)?.dueDateRaw || "",
+        dueDate: fmtDate(latestServiceByVehicleAndType.get(`${v.id}:Tacho Calibration`)?.dueDateRaw),
+        daysLeft: daysUntil(latestServiceByVehicleAndType.get(`${v.id}:Tacho Calibration`)?.dueDateRaw)
+      }
+    ]).filter((item) => item.dueDateRaw).map((item) => ({
+      ...item,
+      dueLabel: dueLabel(item.daysLeft),
+      tone: item.daysLeft < 0 ? "danger" : item.daysLeft <= 30 ? "warning" : "success",
+      reminder: item.daysLeft <= 30 ? "Reminder due" : "Scheduled"
+    })).sort((a, b) => (a.daysLeft ?? 9999) - (b.daysLeft ?? 9999));
+
+    const profileItemTypes = ["MOT", "Road Tax", "Tacho Calibration", "Safety inspection", "Roller brake test", "Full Service"];
     const vehicleProfiles = rows.map((v) => {
       const currentKm = odometerByVehicle.get(Number(v.id)) || null;
       return {
@@ -822,9 +886,13 @@ exports.getMaintenancePortal = async (_req, res) => {
             ? rawDate(v.mot_expiry)
             : type === "Road Tax"
               ? rawDate(v.road_tax_expiry)
-              : type === "Full Service"
-                ? rawDate(v.next_service_due)
-                : latest?.dueDateRaw || rawDate(v.next_inspection_due);
+              : type === "Insurance"
+                ? rawDate(v.insurance_expiry)
+                : type === "Tacho Calibration"
+                  ? latest?.dueDateRaw || ""
+                  : type === "Full Service"
+                    ? rawDate(v.next_service_due)
+                    : latest?.dueDateRaw || rawDate(v.next_inspection_due);
           const daysLeft = daysUntil(dueDateRaw);
           const serviceStatus = statusFromDays(daysLeft);
           const kmRemaining = type === "Full Service" && latest?.nextDueMileageKm && currentKm
@@ -851,17 +919,95 @@ exports.getMaintenancePortal = async (_req, res) => {
       };
     });
 
+    const planStart = startOfWeek(new Date());
+    const planWeeks = Array.from({ length: 52 }, (_, index) => {
+      const start = addDays(planStart, index * 7);
+      const end = addDays(start, 6);
+      const month = start.toLocaleDateString("en-GB", { month: "short" });
+      return {
+        key: rawDate(start),
+        weekNumber: index + 1,
+        label: `WK${index + 1}`,
+        month,
+        startRaw: rawDate(start),
+        endRaw: rawDate(end),
+        range: `${fmtDate(start)} - ${fmtDate(end)}`
+      };
+    });
+    const planEnd = addDays(planStart, (52 * 7) - 1);
+    const yearPlanRows = rows.map((v) => {
+      const profile = vehicleProfiles.find((item) => Number(item.vehicleId) === Number(v.id));
+      const events = [];
+      const seeds = [
+        { type: "Safety inspection", dueDateRaw: rawDate(v.next_inspection_due), roadTaxIntervalMonths: 12 },
+        { type: "MOT", dueDateRaw: rawDate(v.mot_expiry), roadTaxIntervalMonths: 12 },
+        { type: "Road Tax", dueDateRaw: rawDate(v.road_tax_expiry), roadTaxIntervalMonths: latestServiceByVehicleAndType.get(`${v.id}:Road Tax`)?.roadTaxIntervalMonths || 12 },
+        { type: "Insurance", dueDateRaw: rawDate(v.insurance_expiry), roadTaxIntervalMonths: 12 },
+        { type: "Tacho Calibration", dueDateRaw: latestServiceByVehicleAndType.get(`${v.id}:Tacho Calibration`)?.dueDateRaw || "", roadTaxIntervalMonths: 12 },
+        { type: "Full Service", dueDateRaw: rawDate(v.next_service_due), roadTaxIntervalMonths: 12 }
+      ];
+      for (const seed of seeds) {
+        const dates = seed.type === "Full Service"
+          ? [seed.dueDateRaw].filter(Boolean)
+          : buildFuturePlanDates(seed.dueDateRaw, seed.type, planStart, planEnd, seed.roadTaxIntervalMonths);
+        for (const dueDateRaw of dates) {
+          const daysLeft = daysUntil(dueDateRaw);
+          const tone = daysLeft < 0 ? "danger" : daysLeft <= 30 ? "warning" : "success";
+          const week = planWeeks.find((item) => dueDateRaw >= item.startRaw && dueDateRaw <= item.endRaw);
+          if (!week) continue;
+          events.push({
+            id: `${v.id}-${seed.type}-${dueDateRaw}`,
+            vehicleId: v.id,
+            vehicle: v.registration_number,
+            fleetCode: v.fleet_code,
+            make: v.model_name,
+            type: seed.type,
+            code: planCodeForType(seed.type),
+            dueDateRaw,
+            dueDate: fmtDate(dueDateRaw),
+            dueLabel: dueLabel(daysLeft),
+            daysLeft,
+            tone,
+            weekKey: week.key,
+            weekLabel: week.label
+          });
+        }
+      }
+      return {
+        vehicleId: v.id,
+        vehicle: v.registration_number,
+        fleetCode: v.fleet_code,
+        make: v.model_name,
+        inspectionFrequency: "6 weeks",
+        status: v.status,
+        currentKmLabel: profile?.currentKmLabel || "-",
+        searchText: `${v.registration_number} ${v.fleet_code} ${v.model_name} ${v.truck_type}`.toLowerCase(),
+        events: events.sort((a, b) => a.dueDateRaw.localeCompare(b.dueDateRaw))
+      };
+    });
+
     const calendarEvents = [
       ...complianceItems.map((item) => ({
         id: `compliance-${item.vehicleId}-${item.itemType}`,
+        vehicleId: item.vehicleId,
         date: item.dueDateRaw,
         label: `${item.vehicle} ${item.itemType}`,
         type: item.itemType,
         tone: item.tone,
         status: item.reminder
       })),
+      ...yearPlanRows.flatMap((row) => row.events.map((event) => ({
+        id: `year-${event.id}`,
+        vehicleId: event.vehicleId,
+        date: event.dueDateRaw,
+        label: `${event.vehicle} ${event.code}`,
+        type: event.type,
+        tone: event.tone,
+        status: event.dueLabel
+      }))),
       ...jobs.map((job) => ({
         id: `job-${job.id}`,
+        vehicleId: job.vehicleId,
         date: job.dueDateRaw,
         label: `${job.vehicle} ${job.serviceType}`,
         type: "Workshop job",
@@ -1128,6 +1274,13 @@ exports.getMaintenancePortal = async (_req, res) => {
       weeklyBoard,
       plannerRows,
       vehicleProfiles,
+      yearPlan: {
+        generatedAt: rawDate(new Date()),
+        startDate: rawDate(planStart),
+        endDate: rawDate(planEnd),
+        weeks: planWeeks,
+        rows: yearPlanRows
+      },
       vehicles: assetOptions,
       jobs,
       defects,

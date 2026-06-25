@@ -5094,6 +5094,197 @@ p.lp-success {
   gap: 10px;
 }
 
+.maintenance-year-card {
+  overflow: hidden;
+}
+
+.maintenance-year-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 320px;
+  gap: 14px;
+}
+
+.maintenance-year-table-wrap {
+  min-width: 0;
+  overflow: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+}
+
+.maintenance-year-table {
+  min-width: 1680px;
+}
+
+.maintenance-year-head,
+.maintenance-year-row {
+  display: grid;
+  grid-template-columns: 190px repeat(52, 1fr);
+}
+
+.maintenance-year-head {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: var(--surface-2);
+  border-bottom: 1px solid var(--border);
+}
+
+.maintenance-year-vehicle-head,
+.maintenance-year-week-head,
+.maintenance-year-vehicle,
+.maintenance-year-cell {
+  min-width: 0;
+  border-right: 1px solid var(--border);
+}
+
+.maintenance-year-vehicle-head,
+.maintenance-year-week-head {
+  padding: 8px 7px;
+  color: var(--muted);
+  font-size: 0.66rem;
+  font-weight: 800;
+  text-align: left;
+  text-transform: uppercase;
+}
+
+.maintenance-year-week-head span,
+.maintenance-year-week-head strong {
+  display: block;
+  line-height: 1.15;
+}
+
+.maintenance-year-week-head strong {
+  margin-top: 2px;
+  color: var(--text);
+  font-size: 0.68rem;
+}
+
+.maintenance-year-row {
+  width: 100%;
+  min-height: 58px;
+  padding: 0;
+  border: 0;
+  border-bottom: 1px solid var(--border);
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.maintenance-year-row:hover,
+.maintenance-year-row.active {
+  background: var(--primary-soft);
+}
+
+.maintenance-year-vehicle {
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 2px;
+  padding: 9px 10px;
+  background: inherit;
+  box-shadow: 1px 0 0 var(--border);
+}
+
+.maintenance-year-vehicle strong {
+  color: var(--text);
+  font-size: 0.82rem;
+}
+
+.maintenance-year-vehicle span {
+  color: var(--muted);
+  font-size: 0.7rem;
+  font-weight: 700;
+}
+
+.maintenance-year-cell {
+  display: flex;
+  min-height: 58px;
+  flex-direction: column;
+  justify-content: center;
+  gap: 3px;
+  padding: 4px;
+}
+
+.maintenance-year-event {
+  display: block;
+  min-height: 18px;
+  padding: 3px 4px;
+  border: 1px solid var(--border);
+  border-left: 4px solid var(--primary);
+  border-radius: 5px;
+  background: var(--surface);
+  color: var(--text);
+  font-size: 0.62rem;
+  font-weight: 800;
+  line-height: 1.15;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.maintenance-year-event.success { border-left-color: var(--success); background: var(--success-soft); }
+.maintenance-year-event.warning { border-left-color: var(--warning); background: var(--warning-soft); }
+.maintenance-year-event.danger { border-left-color: var(--danger); background: var(--danger-soft); }
+
+.maintenance-year-detail {
+  min-width: 0;
+  padding: 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+}
+
+.maintenance-year-detail h3 {
+  margin: 4px 0;
+  color: var(--text);
+  font-size: 1.1rem;
+}
+
+.maintenance-year-detail > p {
+  margin: 0 0 12px;
+  color: var(--muted);
+  font-size: 0.78rem;
+}
+
+.maintenance-year-detail-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 520px;
+  overflow: auto;
+}
+
+.maintenance-year-detail-item {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 9px;
+  width: 100%;
+  padding: 9px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: inherit;
+  text-align: left;
+}
+
+.maintenance-year-detail-item strong {
+  display: block;
+  color: var(--text);
+  font-size: 0.82rem;
+}
+
+.maintenance-year-detail-item p {
+  margin: 2px 0 0;
+  color: var(--muted);
+  font-size: 0.72rem;
+}
+
 .maintenance-overdue-strip {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -5787,6 +5978,10 @@ p.lp-success {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
+  .maintenance-year-layout {
+    grid-template-columns: 1fr;
+  }
+
   .maintenance-command-bar {
     align-items: flex-start;
     flex-direction: column;
@@ -5853,6 +6048,7 @@ p.lp-success {
   .maintenance-job-card-grid,
   .maintenance-profile-grid,
   .maintenance-profile-items,
+  .maintenance-year-layout,
   .maintenance-inventory-item,
   .maintenance-analytics-grid,
   .maintenance-bulk-list,
@@ -5864,6 +6060,15 @@ p.lp-success {
   .maintenance-defect-row,
   .maintenance-detail-grid {
     grid-template-columns: 1fr;
+  }
+
+  .maintenance-year-table {
+    min-width: 1480px;
+  }
+
+  .maintenance-year-head,
+  .maintenance-year-row {
+    grid-template-columns: 160px repeat(52, 1fr);
   }
 
   .maintenance-table-head {
