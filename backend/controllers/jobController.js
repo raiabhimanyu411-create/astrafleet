@@ -121,6 +121,24 @@ async function ensureDriverOpsSchema() {
     ) ENGINE=InnoDB`
   );
   await db.query(
+    `CREATE TABLE IF NOT EXISTS job_stops (
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      trip_id INT NOT NULL,
+      stop_order INT NOT NULL DEFAULT 1,
+      stop_type ENUM('pickup','delivery','waypoint') NOT NULL DEFAULT 'delivery',
+      address TEXT NOT NULL,
+      contact_name VARCHAR(120) DEFAULT NULL,
+      contact_phone VARCHAR(30) DEFAULT NULL,
+      planned_arrival DATETIME DEFAULT NULL,
+      actual_arrival DATETIME DEFAULT NULL,
+      status ENUM('pending','arrived','completed','skipped') NOT NULL DEFAULT 'pending',
+      notes TEXT DEFAULT NULL,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      INDEX idx_job_stops_trip (trip_id),
+      CONSTRAINT fk_job_stops_trip FOREIGN KEY (trip_id) REFERENCES trips (id) ON DELETE CASCADE
+    ) ENGINE=InnoDB`
+  );
+  await db.query(
     `CREATE TABLE IF NOT EXISTS defect_reports (
       id INT AUTO_INCREMENT PRIMARY KEY,
       vehicle_id INT NOT NULL,
@@ -690,6 +708,7 @@ exports.createJob = async (req, res) => {
     }
 
     if (!customer_id && !resolvedClientName) {
+      await conn.rollback();
       return res.status(400).json({ message: "Select a customer or enter a client name." });
     }
 
@@ -797,7 +816,10 @@ exports.updateJob = async (req, res) => {
     const { id } = req.params;
 
     const [[existing]] = await conn.query(`SELECT id, vehicle_id, trailer_id, driver_id FROM trips WHERE id = ? AND deleted_at IS NULL`, [id]);
-    if (!existing) return res.status(404).json({ message: "Job not found." });
+    if (!existing) {
+      await conn.rollback();
+      return res.status(404).json({ message: "Job not found." });
+    }
 
     const {
       customer_id, client_name, client_phone,
@@ -816,6 +838,7 @@ exports.updateJob = async (req, res) => {
     }
 
     if (!customer_id && !resolvedClientName) {
+      await conn.rollback();
       return res.status(400).json({ message: "Select a customer or enter a client name." });
     }
 

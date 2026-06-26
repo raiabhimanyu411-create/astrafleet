@@ -3,11 +3,12 @@ import { useNavigate, useParams } from "react-router-dom";
 import { createJob, getJobById, getJobFormData, updateJob } from "../../../api/jobApi";
 import { AdminWorkspaceLayout } from "../AdminWorkspaceLayout";
 
-function Field({ label, hint, required, children }) {
+function Field({ label, hint, required, error, children }) {
   return (
     <div className="af-field">
       <label className="af-label">{label}{required && <span style={{ color: "#dc2626" }}> *</span>}</label>
       {children}
+      {error && <p className="af-field-error">{error}</p>}
       {hint && <p className="af-hint">{hint}</p>}
     </div>
   );
@@ -62,6 +63,20 @@ function addressLines(value) {
     .filter(Boolean);
 }
 
+function getApiErrorMessage(err) {
+  const data = err?.response?.data;
+  return data?.error || data?.message || err?.message || "Could not save job. Please try again.";
+}
+
+function validateJobForm(fields) {
+  const errors = {};
+  if (!fields.client_name.trim()) errors.client_name = "Enter the client name.";
+  if (!fields.pickup_address.trim()) errors.pickup_address = "Enter the pickup address.";
+  if (!fields.drop_address.trim()) errors.drop_address = "Enter the delivery address.";
+  if (!fields.load_description.trim()) errors.load_description = "Enter the goods or load details.";
+  return errors;
+}
+
 export function JobFormPage() {
   const { id } = useParams();
   const navigate = useNavigate();
@@ -73,6 +88,7 @@ export function JobFormPage() {
   const [loadErr, setLoadErr] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [submitErr, setSubmitErr] = useState("");
+  const [fieldErrors, setFieldErrors] = useState({});
 
   useEffect(() => {
     async function init() {
@@ -110,6 +126,7 @@ export function JobFormPage() {
 
   function set(key, value) {
     setSubmitErr("");
+    setFieldErrors(prev => ({ ...prev, [key]: "" }));
     setFields(prev => ({ ...prev, [key]: value }));
   }
 
@@ -125,6 +142,7 @@ export function JobFormPage() {
       pickup_address: customer ? pickupOptions[0] || customer.address || prev.pickup_address : prev.pickup_address,
       drop_address: customer ? dropOptions[0] || prev.drop_address : prev.drop_address
     }));
+    setFieldErrors(prev => ({ ...prev, client_name: "", pickup_address: "", drop_address: "" }));
   }
 
   function handleRouteChange(routeId) {
@@ -139,6 +157,7 @@ export function JobFormPage() {
         delivery_deadline: prev.delivery_deadline || suggestedDeadline
       };
     });
+    if (route) setFieldErrors(prev => ({ ...prev, pickup_address: "", drop_address: "" }));
   }
 
   function handleDepartureChange(value) {
@@ -174,6 +193,12 @@ export function JobFormPage() {
   async function handleSubmit(e) {
     e.preventDefault();
     setSubmitErr("");
+    const validationErrors = validateJobForm(fields);
+    setFieldErrors(validationErrors);
+    if (Object.keys(validationErrors).length > 0) {
+      setSubmitErr("Please amend the highlighted fields.");
+      return;
+    }
 
     const payload = {
       customer_id: fields.customer_id ? Number(fields.customer_id) : null,
@@ -204,7 +229,7 @@ export function JobFormPage() {
         navigate(`/admin/jobs/${res.data.job.id}`);
       }
     } catch (err) {
-      setSubmitErr(err?.response?.data?.message || "Could not save job. Please try again.");
+      setSubmitErr(getApiErrorMessage(err));
     } finally {
       setSubmitting(false);
     }
@@ -237,7 +262,7 @@ export function JobFormPage() {
             <div><strong>Loading...</strong><p>Fetching form data</p></div>
           </div>
         ) : (
-          <form className="af-form" onSubmit={handleSubmit}>
+          <form className="af-form" onSubmit={handleSubmit} noValidate>
             <div className="af-section">
               <p className="af-section-title">Client details</p>
               <div className="af-grid-2">
@@ -247,8 +272,8 @@ export function JobFormPage() {
                     {formData.customers.map(c => <option key={c.id} value={c.id}>{c.company_name}</option>)}
                   </select>
                 </Field>
-                <Field label="Client name" required>
-                  <input className="af-input" type="text" placeholder="e.g. Northline Retail" value={fields.client_name} onChange={e => set("client_name", e.target.value)} required />
+                <Field label="Client name" required error={fieldErrors.client_name}>
+                  <input className="af-input" type="text" placeholder="e.g. Northline Retail" value={fields.client_name} onChange={e => set("client_name", e.target.value)} aria-invalid={Boolean(fieldErrors.client_name)} />
                 </Field>
                 <Field label="Contact number">
                   <input className="af-input" type="tel" placeholder="e.g. 07700 900000" value={fields.client_phone} onChange={e => set("client_phone", e.target.value)} />
@@ -278,23 +303,23 @@ export function JobFormPage() {
                 <Field label="Pickup date & time">
                   <input className="af-input" type="datetime-local" value={fields.planned_departure} onChange={e => handleDepartureChange(e.target.value)} />
                 </Field>
-                <Field label="Pickup address" required>
+                <Field label="Pickup address" required error={fieldErrors.pickup_address}>
                   {pickupOptions.length > 0 && (
                     <select className="af-select" style={{ marginBottom: 8 }} value="" onChange={e => e.target.value && set("pickup_address", e.target.value)}>
                       <option value="">Choose saved pickup address</option>
                       {pickupOptions.map((address, index) => <option key={`${address}-${index}`} value={address}>{address}</option>)}
                     </select>
                   )}
-                  <textarea className="af-input" style={{ minHeight: 72, resize: "vertical" }} placeholder="Full pickup address" value={fields.pickup_address} onChange={e => set("pickup_address", e.target.value)} required />
+                  <textarea className="af-input" style={{ minHeight: 72, resize: "vertical" }} placeholder="Full pickup address" value={fields.pickup_address} onChange={e => set("pickup_address", e.target.value)} aria-invalid={Boolean(fieldErrors.pickup_address)} />
                 </Field>
-                <Field label="Delivery address" required>
+                <Field label="Delivery address" required error={fieldErrors.drop_address}>
                   {dropOptions.length > 0 && (
                     <select className="af-select" style={{ marginBottom: 8 }} value="" onChange={e => e.target.value && set("drop_address", e.target.value)}>
                       <option value="">Choose saved delivery address</option>
                       {dropOptions.map((address, index) => <option key={`${address}-${index}`} value={address}>{address}</option>)}
                     </select>
                   )}
-                  <textarea className="af-input" style={{ minHeight: 72, resize: "vertical" }} placeholder="Full delivery address" value={fields.drop_address} onChange={e => set("drop_address", e.target.value)} required />
+                  <textarea className="af-input" style={{ minHeight: 72, resize: "vertical" }} placeholder="Full delivery address" value={fields.drop_address} onChange={e => set("drop_address", e.target.value)} aria-invalid={Boolean(fieldErrors.drop_address)} />
                 </Field>
               </div>
 
@@ -325,8 +350,8 @@ export function JobFormPage() {
             <div className="af-section">
               <p className="af-section-title">Load & assignment</p>
               <div className="af-grid-2">
-                <Field label="Goods / load details" required>
-                  <textarea className="af-input" style={{ minHeight: 78, resize: "vertical" }} placeholder="e.g. 20 pallets of retail goods" value={fields.load_description} onChange={e => set("load_description", e.target.value)} required />
+                <Field label="Goods / load details" required error={fieldErrors.load_description}>
+                  <textarea className="af-input" style={{ minHeight: 78, resize: "vertical" }} placeholder="e.g. 20 pallets of retail goods" value={fields.load_description} onChange={e => set("load_description", e.target.value)} aria-invalid={Boolean(fieldErrors.load_description)} />
                 </Field>
                 <Field label="Freight amount (£)">
                   <div className="af-input-prefix-wrap">

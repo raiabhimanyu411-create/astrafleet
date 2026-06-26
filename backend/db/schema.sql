@@ -213,6 +213,23 @@ CREATE TABLE IF NOT EXISTS trips (
   CONSTRAINT fk_trips_customer FOREIGN KEY (customer_id) REFERENCES customers (id) ON DELETE SET NULL
 ) ENGINE=InnoDB;
 
+CREATE TABLE IF NOT EXISTS job_stops (
+  id              INT AUTO_INCREMENT PRIMARY KEY,
+  trip_id         INT NOT NULL,
+  stop_order      INT NOT NULL DEFAULT 1,
+  stop_type       ENUM('pickup','delivery','waypoint') NOT NULL DEFAULT 'delivery',
+  address         TEXT NOT NULL,
+  contact_name    VARCHAR(120) DEFAULT NULL,
+  contact_phone   VARCHAR(30) DEFAULT NULL,
+  planned_arrival DATETIME DEFAULT NULL,
+  actual_arrival  DATETIME DEFAULT NULL,
+  status          ENUM('pending','arrived','completed','skipped') NOT NULL DEFAULT 'pending',
+  notes           TEXT DEFAULT NULL,
+  created_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  INDEX idx_job_stops_trip (trip_id),
+  CONSTRAINT fk_job_stops_trip FOREIGN KEY (trip_id) REFERENCES trips (id) ON DELETE CASCADE
+) ENGINE=InnoDB;
+
 CREATE TABLE IF NOT EXISTS driver_documents (
   id                  INT AUTO_INCREMENT PRIMARY KEY,
   driver_id           INT NOT NULL,

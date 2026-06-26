@@ -14,6 +14,7 @@ import {
 import { StateNotice } from "../../components/StateNotice";
 import { StatusPill } from "../../components/StatusPill";
 import { AdminWorkspaceLayout } from "./AdminWorkspaceLayout";
+import "./AdminMaintenancePage.css";
 
 const emptyJob = {
   vehicle_id: "",
@@ -166,7 +167,7 @@ function exportExcel(name, rows) {
 function toJobForm(job) {
   if (!job) return emptyJob;
   return {
-    vehicle_id: job.assetType === "trailer" ? `trailer:${job.trailerId}` : job.vehicleId ? `vehicle:${job.vehicleId}` : "",
+    vehicle_id: job.vehicleId ? `vehicle:${job.vehicleId}` : "",
     defect_id: job.defectId || "",
     service_type: job.serviceType || "",
     service_date: job.serviceDateRaw || "",
@@ -281,9 +282,9 @@ function JobModal({ vehicles, defects, editingJob, initialForm, onClose, onSaved
         </div>
 
         <div className="maintenance-form-grid">
-          <Field label="Vehicle / trailer">
+          <Field label="Vehicle">
             <select className="af-select" value={form.vehicle_id} onChange={(e) => set("vehicle_id", e.target.value)} required>
-              <option value="">Select vehicle or trailer</option>
+              <option value="">Select vehicle</option>
               {vehicles.map((vehicle) => <option key={vehicle.assetId || vehicle.id} value={vehicle.assetId || `vehicle:${vehicle.id}`}>{vehicle.label}</option>)}
             </select>
           </Field>
@@ -758,7 +759,7 @@ export function AdminMaintenancePage() {
     exportExcel("maintenance-jobs.xls", [
       [
         "Job",
-        "Vehicle / trailer",
+        "Vehicle",
         "Fleet code",
         "Make / type",
         "Due item",

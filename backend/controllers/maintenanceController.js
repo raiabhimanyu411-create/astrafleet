@@ -721,6 +721,7 @@ exports.getMaintenancePortal = async (_req, res) => {
       LEFT JOIN vehicles v ON v.id = j.vehicle_id
       LEFT JOIN trailers tr ON tr.id = j.trailer_id
       LEFT JOIN defect_reports d ON d.id = j.defect_id
+      WHERE COALESCE(j.asset_type, 'vehicle') = 'vehicle' AND j.vehicle_id IS NOT NULL
       ORDER BY
         FIELD(j.status, 'in_progress','booked','planned','completed','cancelled'),
         j.due_date ASC,
@@ -1230,25 +1231,6 @@ exports.getMaintenancePortal = async (_req, res) => {
       make: v.model_name,
       truckType: v.truck_type
     }));
-    const [trailerAssetRows] = await db.query(`
-      SELECT id, trailer_code, registration_number, trailer_type, status
-      FROM trailers
-      ORDER BY registration_number ASC
-    `);
-    const assetOptions = [
-      ...vehicles,
-      ...trailerAssetRows.map((trailer) => ({
-        id: trailer.id,
-        assetId: `trailer:${trailer.id}`,
-        assetType: "trailer",
-        label: `${trailer.registration_number} · ${trailer.trailer_code} · ${trailer.trailer_type}`,
-        registrationNumber: trailer.registration_number,
-        fleetCode: trailer.trailer_code,
-        make: trailer.trailer_type,
-        truckType: trailer.trailer_type,
-        status: trailer.status
-      }))
-    ];
 
     res.json({
       header: {
@@ -1283,7 +1265,7 @@ exports.getMaintenancePortal = async (_req, res) => {
         weeks: planWeeks,
         rows: yearPlanRows
       },
-      vehicles: assetOptions,
+      vehicles,
       jobs,
       defects,
       inventory,
