@@ -1525,7 +1525,7 @@ exports.getTrips = async (req, res) => {
       etaRaw: rawDateTime(r.eta),
       etaRisk: r.eta && new Date(r.eta).getTime() < Date.now() && ["planned", "loading", "active"].includes(r.dispatch_status),
       vehicle: r.registration_number || "Unassigned",
-      trailer: r.trailer_registration || r.trailer_code || "No trolley assigned",
+      trailer: r.trailer_registration || r.trailer_code || "No trailer assigned",
       driver: r.driver_name || "Unassigned",
       assignmentGap: !r.driver_name || !r.registration_number || !(r.trailer_registration || r.trailer_code),
       freight: fmtAmount(r.freight_amount_gbp),
@@ -1550,10 +1550,10 @@ exports.getTrips = async (req, res) => {
     const allocations = tripRows.map(r => ({
       id: r.id,
       vehicle: r.registration_number || "Unassigned",
-      trailer: r.trailer_registration || r.trailer_code || "No trolley assigned",
+      trailer: r.trailer_registration || r.trailer_code || "No trailer assigned",
       trip: r.trip_code,
       driver: r.driver_name || "Unassigned",
-      note: r.standard_eta_hours ? `${r.trailer_registration || r.trailer_code || "No trolley"} · Est. ${r.standard_eta_hours}h · ${r.distance_km || "—"} km` : r.trailer_registration || r.trailer_code || "Details TBD",
+      note: r.standard_eta_hours ? `${r.trailer_registration || r.trailer_code || "No trailer"} · Est. ${r.standard_eta_hours}h · ${r.distance_km || "—"} km` : r.trailer_registration || r.trailer_code || "Details TBD",
       assignmentGap: !r.driver_name || !r.registration_number || !(r.trailer_registration || r.trailer_code),
       etaRisk: r.eta && new Date(r.eta).getTime() < Date.now() && ["planned", "loading", "active"].includes(r.dispatch_status),
       status: r.dispatch_status,
@@ -1579,7 +1579,7 @@ exports.getTrips = async (req, res) => {
       ],
       dispatchHealth: [
         { label: "Freight value", value: fmtAmount(counts.freight_value), description: "Total trip value.", change: "GBP", tone: "neutral" },
-        { label: "Assignment gaps", value: counts.assignment_gaps, description: "Missing driver, truck, or trolley.", change: "Fleet desk", tone: counts.assignment_gaps ? "danger" : "success" },
+        { label: "Assignment gaps", value: counts.assignment_gaps, description: "Missing driver, truck, or trailer.", change: "Fleet desk", tone: counts.assignment_gaps ? "danger" : "success" },
         { label: "ETA risk", value: counts.eta_risk, description: "ETA passed on open trips.", change: "Timing watch", tone: counts.eta_risk ? "danger" : "success" },
         { label: "Blocked queue", value: counts.blocked, description: "Trips needing resolution.", change: "Dispatch action", tone: counts.blocked ? "danger" : "success" }
       ],
@@ -2439,7 +2439,7 @@ exports.restoreActivityRecord = async (req, res) => {
            LIMIT 1`,
           [log.entity_id, trip.trailer_id]
         );
-        if (trailerConflict) return res.status(409).json({ message: `Trolley is already assigned to ${trailerConflict.trip_code}.` });
+        if (trailerConflict) return res.status(409).json({ message: `Trailer is already assigned to ${trailerConflict.trip_code}.` });
       }
     }
 
@@ -2651,7 +2651,7 @@ exports.getOverview = async (req, res) => {
       tripPlans: tripPlanRows.map(t => ({
         id: t.id,
         route: t.origin_hub && t.destination_hub ? `${t.origin_hub} → ${t.destination_hub}` : t.trip_code,
-        vehicle: `${t.registration_number || "Unassigned truck"} · ${t.trailer_registration || t.trailer_code || "No trolley"} · ${t.driver_name || "No driver"}`,
+        vehicle: `${t.registration_number || "Unassigned truck"} · ${t.trailer_registration || t.trailer_code || "No trailer"} · ${t.driver_name || "No driver"}`,
         schedule: t.planned_departure ? fmtDate(t.planned_departure) : "Not scheduled",
         status: t.dispatch_status,
         tone: dispatchTone[t.dispatch_status] || "neutral"

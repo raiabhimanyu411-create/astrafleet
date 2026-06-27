@@ -533,7 +533,7 @@ exports.createTrolley = async (req, res) => {
     } = req.body;
 
     if (!registration_number || !trailer_type) {
-      return res.status(400).json({ message: "Trolley registration and type are required." });
+      return res.status(400).json({ message: "Trailer registration and type are required." });
     }
 
     const finalCode = trailer_code || nextTrolleyCode(registration_number);
@@ -551,12 +551,12 @@ exports.createTrolley = async (req, res) => {
       entityLabel: registration_number,
       details: { trailer_code: finalCode, registration_number, trailer_type, status: status || "available" }
     });
-    res.status(201).json({ message: "Trolley created.", id: result.insertId });
+    res.status(201).json({ message: "Trailer created.", id: result.insertId });
   } catch (err) {
     if (err.code === "ER_DUP_ENTRY") {
-      return res.status(409).json({ message: "Trolley code or registration already exists." });
+      return res.status(409).json({ message: "Trailer code or registration already exists." });
     }
-    res.status(500).json({ message: "Trolley create error", error: err.message });
+    res.status(500).json({ message: "Trailer create error", error: err.message });
   }
 };
 

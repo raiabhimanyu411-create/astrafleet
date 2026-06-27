@@ -279,7 +279,7 @@ export function JobDetailPage() {
               </SectionCard>
 
               {/* Driver & Vehicle */}
-              <SectionCard label="Dispatch" title="Driver, truck & trolley">
+              <SectionCard label="Dispatch" title="Driver, truck & trailer">
                 {data.driver ? (
                   <div className="detail-grid" style={{ marginBottom: data.vehicle ? 12 : 0 }}>
                     <DetailField label="Driver name"   value={data.driver.name} />
@@ -307,17 +307,17 @@ export function JobDetailPage() {
                   <>
                     <div style={{ height: 1, background: "#e2e8f0", margin: "12px 0" }} />
                     <div className="detail-grid">
-                      <DetailField label="Trolley registration" value={data.trailer.registration} />
-                      <DetailField label="Trolley code" value={data.trailer.code} />
-                      <DetailField label="Trolley type" value={data.trailer.type} />
-                      <DetailField label="Trolley capacity" value={data.trailer.capacity} />
+                      <DetailField label="Trailer registration" value={data.trailer.registration} />
+                      <DetailField label="Trailer code" value={data.trailer.code} />
+                      <DetailField label="Trailer type" value={data.trailer.type} />
+                      <DetailField label="Trailer capacity" value={data.trailer.capacity} />
                     </div>
                   </>
                 )}
                 {!data.driver && !data.vehicle && !data.trailer && (
                   <div style={{ display: "flex", justifyContent: "center" }}>
                     <button className="header-action-button" type="button" onClick={() => navigate(`/admin/jobs/${id}/edit`)}>
-                      Assign driver, truck & trolley →
+                      Assign driver, truck & trailer →
                     </button>
                   </div>
                 )}
@@ -468,7 +468,7 @@ export function JobDetailPage() {
         open={showCancelModal}
         title="Cancel job"
         recordLabel={data ? data.code : ""}
-        body="The job will be blocked, its vehicle and trolley will be released, and this reason will be visible to admin."
+        body="The job will be blocked, its vehicle and trailer will be released, and this reason will be visible to admin."
         confirmLabel="Cancel job"
         loading={updating}
         onCancel={() => setShowCancelModal(false)}

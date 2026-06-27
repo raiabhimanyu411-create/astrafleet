@@ -208,7 +208,7 @@ export function AdminTripDetailPage() {
                 <div className="section-head">
                   <div>
                     <span className="card-label">Vehicle</span>
-                    <h2>Assigned truck and trolley</h2>
+                    <h2>Assigned truck and trailer</h2>
                   </div>
                 </div>
                 <div className="detail-grid">
@@ -219,11 +219,11 @@ export function AdminTripDetailPage() {
                   <DetailBlock label="Type" value={trip.vehicle?.type} />
                   <DetailBlock label="Fleet code" value={trip.vehicle?.fleetCode} />
                   <div className="detail-wide">
-                    <DetailBlock label="Trailer / Trolley" value={trip.trailer?.registration} />
+                    <DetailBlock label="Trailer" value={trip.trailer?.registration} />
                   </div>
-                  <DetailBlock label="Trolley code" value={trip.trailer?.code} />
-                  <DetailBlock label="Trolley type" value={trip.trailer?.type} />
-                  <DetailBlock label="Trolley capacity" value={trip.trailer?.capacityTonnes ? `${trip.trailer.capacityTonnes} tonnes` : null} />
+                  <DetailBlock label="Trailer code" value={trip.trailer?.code} />
+                  <DetailBlock label="Trailer type" value={trip.trailer?.type} />
+                  <DetailBlock label="Trailer capacity" value={trip.trailer?.capacityTonnes ? `${trip.trailer.capacityTonnes} tonnes` : null} />
                 </div>
               </div>
             </div>

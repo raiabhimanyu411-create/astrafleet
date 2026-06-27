@@ -54,7 +54,7 @@ function TrolleyModal({ onClose, onSaved }) {
       await onSaved();
       onClose();
     } catch (err) {
-      setError(err?.response?.data?.message || "Could not add trolley.");
+      setError(err?.response?.data?.message || "Could not add trailer.");
     } finally {
       setSaving(false);
     }
@@ -66,7 +66,7 @@ function TrolleyModal({ onClose, onSaved }) {
         <div className="section-head">
           <div>
             <span className="card-label">Fleet asset</span>
-            <h2>Add trolley / trailer</h2>
+            <h2>Add trailer</h2>
           </div>
           <button className="header-action-button" type="button" onClick={onClose}>Close</button>
         </div>
@@ -76,11 +76,11 @@ function TrolleyModal({ onClose, onSaved }) {
             <input className="af-input" type="text" placeholder="e.g. TR12 ABC" value={fields.registration_number} onChange={e => set("registration_number", e.target.value.toUpperCase())} required />
           </div>
           <div className="af-field">
-            <label className="af-label">Trolley code</label>
+            <label className="af-label">Trailer code</label>
             <input className="af-input" type="text" placeholder="Auto if blank" value={fields.trailer_code} onChange={e => set("trailer_code", e.target.value)} />
           </div>
           <div className="af-field">
-            <label className="af-label">Trolley type</label>
+            <label className="af-label">Trailer type</label>
             <select className="af-select" value={fields.trailer_type} onChange={e => set("trailer_type", e.target.value)}>
               {TROLLEY_TYPES.map(type => <option key={type} value={type}>{type}</option>)}
             </select>
@@ -102,7 +102,7 @@ function TrolleyModal({ onClose, onSaved }) {
         {error && <p className="state-card error" style={{ marginTop: 14 }}>{error}</p>}
         <div className="af-actions">
           <button className="header-action-button" type="button" onClick={onClose}>Cancel</button>
-          <button className="af-submit-btn" type="submit" disabled={saving}>{saving ? "Saving..." : "Add trolley →"}</button>
+          <button className="af-submit-btn" type="submit" disabled={saving}>{saving ? "Saving..." : "Add trailer →"}</button>
         </div>
       </form>
     </div>
@@ -267,7 +267,7 @@ export function VehiclesListPage() {
       <div className="finance-command-bar">
         <button className="header-action-button" type="button" onClick={load}>Refresh</button>
         <button className="header-action-button" type="button" onClick={exportVehicles}>Export CSV</button>
-        <button className="header-action-button" type="button" onClick={() => setShowTrolleyModal(true)}>+ Add trolley</button>
+        <button className="header-action-button" type="button" onClick={() => setShowTrolleyModal(true)}>+ Add trailer</button>
         <button className="af-submit-btn" type="button" onClick={() => navigate("/admin/vehicles/new")}>+ Add vehicle</button>
       </div>
 

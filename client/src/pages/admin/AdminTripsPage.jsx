@@ -344,7 +344,7 @@ export function AdminTripsPage() {
 
   function exportTrips() {
     exportCsv("dispatch-trips.csv", [
-      ["Trip", "Lane", "Driver", "Vehicle", "Trolley", "Departure", "ETA", "Priority", "Status", "Freight GBP", "Risk"],
+      ["Trip", "Lane", "Driver", "Vehicle", "Trailer", "Departure", "ETA", "Priority", "Status", "Freight GBP", "Risk"],
       ...trips.map(trip => [
         trip.trip,
         trip.lane,
@@ -366,7 +366,7 @@ export function AdminTripsPage() {
       badge={data?.header?.badge || "Trip / route planning"}
       title="Dispatch control board"
       description={
-        "Monitor live trips, assignment gaps, ETA risk, docks, trucks, and trolley allocation from one simple board."
+        "Monitor live trips, assignment gaps, ETA risk, docks, trucks, and trailer allocation from one simple board."
       }
       highlights={[]}
     >
@@ -413,7 +413,7 @@ export function AdminTripsPage() {
       <section className="content-card dispatch-filter-card">
         <input
           className="af-input"
-          placeholder="Search trip, lane, driver, truck, or trolley..."
+          placeholder="Search trip, lane, driver, truck, or trailer..."
           value={search}
           onChange={e => {
             setSearch(e.target.value);
@@ -471,7 +471,7 @@ export function AdminTripsPage() {
                 <th>Time</th>
                 <th>Driver</th>
                 <th>Truck</th>
-                <th>Trolley</th>
+                <th>Trailer</th>
                 <th>Status</th>
                 <th>Issue</th>
                 <th>Actions</th>

@@ -375,12 +375,12 @@ export function JobFormPage() {
                     ))}
                   </select>
                 </Field>
-                <Field label="Assign trolley / trailer">
+                <Field label="Assign trailer">
                   <select className="af-select" value={fields.trailer_id} onChange={e => set("trailer_id", e.target.value)}>
                     <option value="">Assign later</option>
                     {(formData.trailers || []).map(t => (
                       <option key={t.id} value={t.id}>
-                        {t.registration_number} · {t.trailer_type || "Trolley"} · {t.status}
+                        {t.registration_number} · {t.trailer_type || "Trailer"} · {t.status}
                       </option>
                     ))}
                   </select>

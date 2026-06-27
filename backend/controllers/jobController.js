@@ -393,7 +393,7 @@ exports.updateJobAssignment = async (req, res) => {
     }
     if (trailerId) {
       const [[trailer]] = await db.query(`SELECT id FROM trailers WHERE id = ? AND status != 'maintenance'`, [trailerId]);
-      if (!trailer) return res.status(400).json({ message: "Selected trolley is not available for assignment." });
+      if (!trailer) return res.status(400).json({ message: "Selected trailer is not available for assignment." });
     }
 
     const driverChanged = Object.prototype.hasOwnProperty.call(req.body, "driver_id") || Object.prototype.hasOwnProperty.call(req.body, "driverId")

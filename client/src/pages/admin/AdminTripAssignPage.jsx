@@ -84,7 +84,7 @@ export function AdminTripAssignPage() {
     setSubmitError("");
 
     if (!fields.route_id || !fields.vehicle_id || !fields.trailer_id || !fields.driver_id || !fields.planned_departure) {
-      setSubmitError("Route, truck, trailer/trolley, driver, and departure date/time are required.");
+      setSubmitError("Route, truck, trailer, driver, and departure date/time are required.");
       return;
     }
 
@@ -121,7 +121,7 @@ export function AdminTripAssignPage() {
     <AdminWorkspaceLayout
       badge={isEdit ? "Trip editing" : "Trip assignment"}
       title={isEdit ? "Edit trip" : "Assign a new trip"}
-      description={isEdit ? "Update the route, driver, truck, trolley, schedule, and freight details for this dispatch." : "Select a driver, route, truck, trolley, and schedule to create a new dispatch."}
+      description={isEdit ? "Update the route, driver, truck, trailer, schedule, and freight details for this dispatch." : "Select a driver, route, truck, trailer, and schedule to create a new dispatch."}
       highlights={[]}
     >
       <div className="af-page">
@@ -180,7 +180,7 @@ export function AdminTripAssignPage() {
 
             {/* ── Section: Driver + Vehicle ── */}
             <div className="af-section">
-              <p className="af-section-title">Assign driver, truck and trolley</p>
+              <p className="af-section-title">Assign driver, truck and trailer</p>
               <div className="state-card" style={{ marginBottom: 14 }}>
                 <span className="state-dot loading" />
                 <div>
@@ -230,14 +230,14 @@ export function AdminTripAssignPage() {
                   </select>
                 </Field>
 
-                <Field label="Trailer / Trolley">
+                <Field label="Trailer">
                   <select
                     className="af-select"
                     value={fields.trailer_id}
                     onChange={e => set("trailer_id", e.target.value)}
                     required
                   >
-                    <option value="">— Select trolley —</option>
+                    <option value="">— Select trailer —</option>
                     {formData.trailers.map(t => (
                       <option key={t.id} value={t.id}>
                         {t.registration_number} · {t.trailer_type} ({t.trailer_code}) · {t.status}

@@ -814,12 +814,12 @@ export function JobsListPage() {
                             className={`jobs-planner-select ${trolleyToneVal}`}
                             disabled={busyId === `trailer-${job.id}`}
                             value={job.trailerId || ""}
-                            onChange={e => updatePlannerField(job, { trailer_id: e.target.value ? Number(e.target.value) : null }, "trailer", "Trolley could not be assigned.")}
+                            onChange={e => updatePlannerField(job, { trailer_id: e.target.value ? Number(e.target.value) : null }, "trailer", "Trailer could not be assigned.")}
                           >
-                            <option value="">Assign trolley</option>
+                            <option value="">Assign trailer</option>
                             {(data?.trailers || []).map(trailer => (
                               <option key={trailer.id} value={trailer.id}>
-                                {trailer.registration_number} · {trailer.trailer_type || "Trolley"} · {trailer.status}
+                                {trailer.registration_number} · {trailer.trailer_type || "Trailer"} · {trailer.status}
                               </option>
                             ))}
                           </select>
@@ -894,7 +894,7 @@ export function JobsListPage() {
         open={Boolean(blockTarget)}
         title="Block job"
         recordLabel={blockTarget ? `${blockTarget.code} · ${blockTarget.customer}` : ""}
-        body="The job will be blocked, its vehicle and trolley will be released, and this reason will be logged."
+        body="The job will be blocked, its vehicle and trailer will be released, and this reason will be logged."
         confirmLabel="Block job"
         loading={Boolean(busyId)}
         onCancel={() => setBlockTarget(null)}

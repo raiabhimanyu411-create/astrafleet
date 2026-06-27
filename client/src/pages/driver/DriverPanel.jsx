@@ -807,7 +807,7 @@ export function DriverPanel() {
                 <Detail label="ETA"          value={selectedJob.schedule.eta} />
                 <Detail label="Dock window"  value={selectedJob.schedule.dockWindow} />
                 <Detail label="Vehicle"      value={selectedJob.vehicle} />
-                <Detail label="Trailer / Trolley" value={selectedJob.trailer} />
+                <Detail label="Trailer" value={selectedJob.trailer} />
                 <Detail label="Load"         value={`${selectedJob.load.type} · ${selectedJob.load.weight}`} />
                 <Detail label="Load detail"  value={selectedJob.load.description} />
                 <Detail label="Instructions" value={selectedJob.specialInstructions} />
