@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   autoPlanMaintenanceWork,
@@ -528,6 +528,150 @@ function JobDrawer({ job, history, onClose, onEdit, onComplete, onBillStatus, sa
   );
 }
 
+const EVENT_COLORS = {
+  TAX: { bg: "#f97316", text: "#fff", label: "Road Tax" },
+  IB:  { bg: "#3b82f6", text: "#fff", label: "Safety Inspection" },
+  MOT: { bg: "#eab308", text: "#1a1a1a", label: "MOT" },
+  RBT: { bg: "#14b8a6", text: "#fff", label: "Roller Brake Test" },
+  INS: { bg: "#22c55e", text: "#fff", label: "Insurance" },
+  T:   { bg: "#a855f7", text: "#fff", label: "Tacho Calibration" },
+  SRV: { bg: "#64748b", text: "#fff", label: "Full Service" }
+};
+
+const COMPANY_COLORS = [
+  "#c0392b", "#1a5276", "#117a65", "#6c3483", "#784212", "#0e6655", "#1f3a5f"
+];
+
+function isoWeekNumber(dateStr) {
+  if (!dateStr) return 0;
+  const d = new Date(`${dateStr}T12:00:00`);
+  const day = (d.getDay() + 6) % 7;
+  d.setDate(d.getDate() - day + 3);
+  const firstThu = new Date(d.getFullYear(), 0, 4);
+  firstThu.setDate(firstThu.getDate() - ((firstThu.getDay() + 6) % 7) + 3);
+  return Math.round((d - firstThu) / 604800000) + 1;
+}
+
+function ExcelScheduleView({ data, onAddJob }) {
+  const weeks = useMemo(() => data?.yearPlan?.weeks || [], [data]);
+  const allRows = useMemo(() => data?.yearPlan?.rows || [], [data]);
+
+  const monthGroups = useMemo(() => {
+    const groups = [];
+    let current = null;
+    for (const week of weeks) {
+      const month = week.month;
+      if (!current || current.month !== month) {
+        current = { month, count: 1 };
+        groups.push(current);
+      } else {
+        current.count++;
+      }
+    }
+    return groups;
+  }, [weeks]);
+
+  const companies = useMemo(() => {
+    const map = new Map();
+    for (const row of allRows) {
+      const co = row.companyName || "Fleet";
+      if (!map.has(co)) map.set(co, []);
+      map.get(co).push(row);
+    }
+    return [...map.entries()];
+  }, [allRows]);
+
+  const totalCols = 3 + weeks.length;
+
+  if (!weeks.length) {
+    return <p className="finance-empty">No annual schedule data available.</p>;
+  }
+
+  return (
+    <div className="excel-schedule-wrap">
+      <table className="excel-schedule-table">
+        <thead>
+          <tr className="excel-month-row">
+            <th className="excel-fixed-head" rowSpan={2}>Registration / Fleet No</th>
+            <th className="excel-fixed-head" rowSpan={2}>Inspection Frequency</th>
+            <th className="excel-fixed-head" rowSpan={2}>Make</th>
+            {monthGroups.map((group) => (
+              <th key={group.month} colSpan={group.count} className="excel-month-head">
+                {group.month.toUpperCase()}
+              </th>
+            ))}
+          </tr>
+          <tr className="excel-week-row">
+            {weeks.map((week) => (
+              <th key={week.key} className="excel-week-head">
+                WK{isoWeekNumber(week.startRaw || week.key)}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {companies.map(([company, rows], coIndex) => (
+            <React.Fragment key={`co-${company}`}>
+              <tr className="excel-company-row">
+                <td
+                  colSpan={totalCols}
+                  className="excel-company-cell"
+                  style={{ background: COMPANY_COLORS[coIndex % COMPANY_COLORS.length] }}
+                >
+                  {company.toUpperCase()}
+                </td>
+              </tr>
+              {rows.map((row) => (
+                <tr key={row.vehicleId} className="excel-vehicle-row">
+                  <td className="excel-reg-cell">
+                    <strong>{row.vehicle}</strong>
+                    {row.fleetCode && <span>{row.fleetCode}</span>}
+                  </td>
+                  <td className="excel-freq-cell">{row.inspectionFrequency}</td>
+                  <td className="excel-make-cell">{row.make}</td>
+                  {weeks.map((week) => {
+                    const events = (row.events || []).filter((ev) => ev.weekKey === week.key);
+                    return (
+                      <td key={`${row.vehicleId}-${week.key}`} className="excel-event-cell">
+                        {events.map((ev) => {
+                          const color = EVENT_COLORS[ev.code] || { bg: "#94a3b8", text: "#fff" };
+                          const day = ev.dueDateRaw?.slice(8, 10);
+                          const mon = ev.dueDateRaw?.slice(5, 7);
+                          return (
+                            <button
+                              key={ev.id}
+                              className="excel-event-chip"
+                              style={{ background: color.bg, color: color.text }}
+                              title={`${ev.type} · ${ev.dueDate} · ${ev.dueLabel}`}
+                              onClick={() => onAddJob({
+                                vehicle_id: ev.vehicleId,
+                                service_type: ev.type,
+                                due_date: ev.dueDateRaw,
+                                priority: ev.tone === "danger" ? "critical" : ev.tone === "warning" ? "high" : "normal"
+                              })}
+                            >
+                              {ev.code} {day}/{mon}
+                            </button>
+                          );
+                        })}
+                      </td>
+                    );
+                  })}
+                </tr>
+              ))}
+            </React.Fragment>
+          ))}
+          {companies.length === 0 && (
+            <tr>
+              <td colSpan={totalCols} className="finance-empty">No vehicles found. Add vehicles to see the annual schedule.</td>
+            </tr>
+          )}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
 export function AdminMaintenancePage() {
   const navigate = useNavigate();
   const [data, setData] = useState(null);
@@ -850,6 +994,7 @@ export function AdminMaintenancePage() {
   ];
   const maintenanceViews = [
     { id: "planner", label: "Jobs" },
+    { id: "annual", label: "Annual Schedule" },
     { id: "fleet", label: "Fleet checks" },
     { id: "assets", label: "Parts & tyres" },
     { id: "records", label: "History & docs" }
@@ -1011,6 +1156,27 @@ export function AdminMaintenancePage() {
             </div>
           </aside>
         </div>
+      </section>
+      )}
+
+      {activeView === "annual" && (
+      <section className="content-card excel-schedule-card">
+        <div className="section-head">
+          <div>
+            <span className="card-label">Vehicle Maintenance Program</span>
+            <h2>Annual schedule — Excel view</h2>
+            <p className="finance-empty">
+              Color-coded week-by-week schedule for all vehicles. TAX&nbsp;= Road Tax, IB&nbsp;= Safety Inspection, MOT&nbsp;= MOT, RBT&nbsp;= Roller Brake Test, INS&nbsp;= Insurance, T&nbsp;= Tacho, SRV&nbsp;= Full Service.
+              Set company names on each vehicle from the vehicle register.
+            </p>
+          </div>
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+            {Object.entries(EVENT_COLORS).map(([code, { bg, text, label }]) => (
+              <span key={code} className="excel-legend-chip" style={{ background: bg, color: text }} title={label}>{code}</span>
+            ))}
+          </div>
+        </div>
+        <ExcelScheduleView data={data} onAddJob={openAddJob} />
       </section>
       )}
 

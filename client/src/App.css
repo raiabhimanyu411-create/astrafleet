@@ -1863,6 +1863,1025 @@ p.lp-success {
   min-height: 22px;
 }
 
+/* ════════════════════════════════════════════════════════
+   RELAY DISPATCH BOARD  (Amazon Relay–style jobs page)
+   ════════════════════════════════════════════════════════ */
+
+.relay-page {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+/* ── Tab bar ── */
+.relay-tabs {
+  display: flex;
+  align-items: center;
+  border-bottom: 2px solid var(--border);
+  margin-bottom: 16px;
+  gap: 0;
+}
+
+.relay-tabs button {
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -2px;
+  padding: 10px 22px;
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--muted);
+  cursor: pointer;
+  transition: color 0.15s, border-color 0.15s;
+  white-space: nowrap;
+}
+
+.relay-tabs button.active {
+  color: var(--primary);
+  border-bottom-color: var(--primary);
+}
+
+.relay-tabs button:hover:not(.active) {
+  color: var(--text-soft);
+}
+
+.relay-tabs-spacer { flex: 1; }
+
+.relay-tab-count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--neutral-soft);
+  color: var(--muted);
+  font-size: 0.7rem;
+  font-weight: 700;
+  border-radius: 10px;
+  padding: 1px 7px;
+  margin-left: 6px;
+  vertical-align: middle;
+}
+
+.relay-tab-count--live {
+  background: var(--success-soft);
+  color: var(--success-text);
+}
+
+.relay-new-btn {
+  background: var(--primary);
+  color: #fff;
+  border: none;
+  border-radius: var(--radius-sm);
+  padding: 7px 16px;
+  font-size: 0.84rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s;
+  white-space: nowrap;
+  margin-left: 8px;
+  border-bottom: none !important;
+  margin-bottom: 0 !important;
+}
+
+.relay-new-btn:hover { background: var(--primary-hover); }
+
+/* ── Filter bar ── */
+.relay-filter-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+  flex-wrap: wrap;
+}
+
+.relay-search-wrap {
+  position: relative;
+  flex: 1;
+  min-width: 220px;
+  max-width: 380px;
+}
+
+.relay-search-icon {
+  position: absolute;
+  left: 10px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 15px;
+  height: 15px;
+  pointer-events: none;
+}
+
+.relay-search-input {
+  width: 100%;
+  height: 36px;
+  padding: 0 12px 0 33px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  font-size: 0.84rem;
+  color: var(--text);
+  background: var(--surface);
+  outline: none;
+  transition: border-color 0.15s;
+}
+
+.relay-search-input:focus { border-color: var(--primary); }
+
+.relay-date-nav {
+  display: flex;
+  align-items: center;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+  background: var(--surface);
+  flex-shrink: 0;
+}
+
+.relay-date-arrow {
+  background: none;
+  border: none;
+  padding: 0 11px;
+  height: 36px;
+  font-size: 1.2rem;
+  color: var(--muted);
+  cursor: pointer;
+  transition: background 0.12s;
+  line-height: 1;
+}
+
+.relay-date-arrow:hover { background: var(--surface-3); color: var(--text); }
+
+.relay-date-label {
+  padding: 0 14px;
+  font-size: 0.84rem;
+  font-weight: 600;
+  color: var(--text-soft);
+  white-space: nowrap;
+  border-left: 1px solid var(--border);
+  border-right: 1px solid var(--border);
+  line-height: 36px;
+}
+
+.relay-filter-select {
+  height: 36px;
+  padding: 0 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  font-size: 0.84rem;
+  color: var(--text-soft);
+  cursor: pointer;
+  outline: none;
+}
+
+.relay-toggle-wrap {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
+  flex-shrink: 0;
+}
+
+.relay-toggle-label {
+  font-size: 0.82rem;
+  color: var(--muted);
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.relay-toggle {
+  position: relative;
+  width: 38px;
+  height: 22px;
+  border-radius: 11px;
+  background: var(--border-strong);
+  border: none;
+  cursor: pointer;
+  transition: background 0.2s;
+  flex-shrink: 0;
+  padding: 0;
+}
+
+.relay-toggle.on { background: var(--primary); }
+
+.relay-toggle-thumb {
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.18);
+  transition: left 0.2s;
+  display: block;
+}
+
+.relay-toggle.on .relay-toggle-thumb { left: 19px; }
+
+/* ── Results bar ── */
+.relay-results-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 10px;
+  padding: 0 2px;
+}
+
+.relay-results-count {
+  font-size: 0.82rem;
+  color: var(--muted);
+}
+
+.relay-results-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.relay-sort-label {
+  font-size: 0.82rem;
+  color: var(--muted);
+}
+
+.relay-sort-label strong {
+  color: var(--text-soft);
+  font-weight: 600;
+}
+
+/* ── Job list ── */
+.relay-job-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.relay-empty {
+  text-align: center;
+  padding: 60px 20px;
+  color: var(--muted);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+
+.relay-empty p { font-size: 0.9rem; }
+
+/* ── Job card ── */
+.relay-job-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+  transition: box-shadow 0.15s;
+}
+
+.relay-job-card:hover { box-shadow: var(--shadow-sm); }
+.relay-job-card.cancelled { opacity: 0.72; }
+.relay-job-card.critical { border-left: 3px solid var(--danger); }
+.relay-job-card.eta-risk { border-left: 3px solid var(--warning); }
+
+/* ── Collapsed header ── */
+.relay-job-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 11px 14px;
+  cursor: pointer;
+  user-select: none;
+  transition: background 0.12s;
+}
+
+.relay-job-header:hover { background: var(--surface-2); }
+
+.relay-chevron {
+  font-size: 1rem;
+  color: var(--muted);
+  transition: transform 0.2s;
+  display: inline-block;
+  width: 14px;
+  flex-shrink: 0;
+  line-height: 1;
+}
+
+.relay-chevron.open { transform: rotate(90deg); }
+
+.relay-job-code {
+  background: none;
+  border: none;
+  color: var(--primary);
+  font-size: 0.85rem;
+  font-weight: 700;
+  cursor: pointer;
+  padding: 0;
+  width: 104px;
+  flex-shrink: 0;
+  text-align: left;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.relay-job-code:hover { color: var(--primary-hover); }
+
+/* ── Route visualization ── */
+.relay-route-vis {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+  min-width: 0;
+}
+
+.relay-stop-node {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  flex-shrink: 0;
+  max-width: 200px;
+}
+
+.relay-stop-bubble {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: var(--text);
+  color: #fff;
+  font-size: 0.67rem;
+  font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.relay-stop-name {
+  font-size: 0.81rem;
+  color: var(--text-soft);
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.relay-route-arrow {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex: 1;
+  min-width: 32px;
+}
+
+.relay-route-line {
+  flex: 1;
+  height: 1px;
+  background: var(--border-strong);
+  display: block;
+}
+
+.relay-route-mid {
+  font-size: 0.7rem;
+  color: var(--primary);
+  font-weight: 700;
+  background: var(--primary-soft);
+  border-radius: 10px;
+  padding: 1px 6px;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.relay-route-arrowhead {
+  color: var(--muted);
+  font-size: 0.88rem;
+  flex-shrink: 0;
+}
+
+/* ── Header meta cells ── */
+.relay-job-stats {
+  display: flex;
+  gap: 5px;
+  flex-shrink: 0;
+}
+
+.relay-job-stats span {
+  font-size: 0.76rem;
+  color: var(--muted);
+  background: var(--surface-3);
+  border-radius: 4px;
+  padding: 2px 7px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.relay-job-vehicle-cell {
+  display: flex;
+  flex-direction: column;
+  width: 120px;
+  flex-shrink: 0;
+  font-size: 0.79rem;
+  font-weight: 600;
+  color: var(--text-soft);
+  overflow: hidden;
+}
+
+.relay-job-vehicle-cell small {
+  color: var(--muted);
+  font-weight: 400;
+  font-size: 0.72rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.relay-job-freight {
+  width: 84px;
+  flex-shrink: 0;
+  font-size: 0.84rem;
+  font-weight: 700;
+  color: var(--text);
+  white-space: nowrap;
+}
+
+.relay-job-driver-cell {
+  width: 120px;
+  flex-shrink: 0;
+  font-size: 0.8rem;
+  color: var(--text-soft);
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.relay-job-status-cell {
+  display: flex;
+  gap: 4px;
+  flex-shrink: 0;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.relay-unassigned {
+  color: var(--warning-text);
+  font-weight: 500;
+  font-style: normal;
+}
+
+/* ── Expanded body ── */
+.relay-job-body {
+  border-top: 1px solid var(--border);
+  background: var(--surface-2);
+}
+
+.relay-status-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 16px;
+  font-size: 0.81rem;
+  font-weight: 600;
+  gap: 12px;
+}
+
+.relay-status-banner.danger {
+  background: var(--danger-soft);
+  color: var(--danger-text);
+}
+
+.relay-status-banner.warning {
+  background: var(--warning-soft);
+  color: var(--warning-text);
+}
+
+/* ── Stop table ── */
+.relay-stop-table {
+  border-bottom: 1px solid var(--border);
+}
+
+.relay-stop-table-head {
+  display: grid;
+  grid-template-columns: 2.2fr 1.8fr 1.4fr 1.4fr;
+  padding: 7px 16px;
+  background: var(--surface-3);
+  font-size: 0.7rem;
+  font-weight: 700;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  border-bottom: 1px solid var(--border);
+}
+
+.relay-stop-row {
+  display: grid;
+  grid-template-columns: 2.2fr 1.8fr 1.4fr 1.4fr;
+  padding: 13px 16px;
+  border-bottom: 1px solid var(--border);
+  align-items: start;
+  gap: 0;
+}
+
+.relay-stop-row:last-child { border-bottom: none; }
+
+.relay-stop-location {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+}
+
+.relay-stop-location .relay-stop-bubble {
+  margin-top: 2px;
+  flex-shrink: 0;
+}
+
+.relay-stop-location strong {
+  font-size: 0.84rem;
+  font-weight: 700;
+  color: var(--text);
+  display: block;
+}
+
+.relay-stop-location small {
+  font-size: 0.72rem;
+  color: var(--muted);
+  display: block;
+  margin-top: 2px;
+  line-height: 1.4;
+}
+
+.relay-stop-equipment {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 0.77rem;
+  color: var(--text-soft);
+}
+
+.relay-stop-equipment strong {
+  font-weight: 600;
+  color: var(--text);
+}
+
+.relay-drop-trailer {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--muted);
+  font-size: 0.76rem;
+}
+
+.relay-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  border: 1.5px solid var(--muted);
+  display: inline-block;
+  flex-shrink: 0;
+}
+
+.relay-dot.filled {
+  background: var(--text);
+  border-color: var(--text);
+}
+
+.relay-live-badge {
+  display: inline-block;
+  background: var(--warning-soft);
+  color: var(--warning-text);
+  font-size: 0.68rem;
+  font-weight: 700;
+  border-radius: 4px;
+  padding: 2px 7px;
+  margin-top: 2px;
+  width: fit-content;
+}
+
+.relay-live-badge.success {
+  background: var(--success-soft);
+  color: var(--success-text);
+}
+
+.relay-pod-status {
+  color: var(--muted);
+  font-size: 0.73rem;
+}
+
+.relay-stop-time {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding-right: 8px;
+}
+
+.relay-stop-time strong {
+  font-size: 0.81rem;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.relay-stop-time small {
+  font-size: 0.72rem;
+  color: var(--muted);
+}
+
+.relay-time-dash {
+  font-size: 1rem;
+  color: var(--subtle);
+  line-height: 1;
+}
+
+/* ── Instructions ── */
+.relay-instructions-bar {
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--border);
+}
+
+.relay-instructions-toggle {
+  background: none;
+  border: none;
+  color: var(--primary);
+  font-size: 0.79rem;
+  font-weight: 600;
+  cursor: pointer;
+  padding: 0;
+}
+
+.relay-instructions-toggle:hover { text-decoration: underline; }
+
+.relay-instructions-body {
+  margin-top: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 0.81rem;
+  color: var(--text-soft);
+}
+
+/* ── Dispatch controls ── */
+.relay-dispatch-controls {
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface);
+}
+
+.relay-dispatch-label {
+  font-size: 0.69rem;
+  font-weight: 700;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-bottom: 8px;
+}
+
+.relay-dispatch-selects {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.relay-dispatch-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  flex: 1;
+  min-width: 150px;
+}
+
+.relay-dispatch-field label {
+  font-size: 0.69rem;
+  font-weight: 700;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+/* ── Footer row ── */
+.relay-job-footer {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  padding: 10px 16px;
+  background: var(--surface-3);
+  flex-wrap: wrap;
+  border-top: 1px solid var(--border);
+}
+
+.relay-footer-label {
+  font-size: 0.68rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--muted);
+  display: block;
+  margin-bottom: 2px;
+}
+
+.relay-footer-section {
+  display: flex;
+  flex-direction: column;
+  font-size: 0.8rem;
+  color: var(--text-soft);
+}
+
+.relay-footer-actions {
+  display: flex;
+  gap: 8px;
+  margin-left: auto;
+  flex-wrap: wrap;
+}
+
+/* ── Attention / Disruption chips ── */
+.relay-attention-strip {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-bottom: 10px;
+}
+
+.relay-attention-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  padding: 4px 11px;
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--muted);
+  cursor: pointer;
+  transition: all 0.15s;
+  white-space: nowrap;
+}
+
+.relay-attention-chip strong {
+  font-size: 0.72rem;
+  background: var(--surface-3);
+  border-radius: 10px;
+  padding: 0 5px;
+  color: var(--muted);
+  font-weight: 700;
+}
+
+.relay-attention-chip:hover:not(.empty) {
+  border-color: var(--border-strong);
+  color: var(--text-soft);
+}
+
+.relay-attention-chip.active {
+  background: var(--primary-soft);
+  border-color: var(--primary);
+  color: var(--primary);
+}
+
+.relay-attention-chip.active strong {
+  background: var(--primary);
+  color: #fff;
+}
+
+.relay-attention-chip.danger.active {
+  background: var(--danger-soft);
+  border-color: var(--danger);
+  color: var(--danger-text);
+}
+
+.relay-attention-chip.danger.active strong {
+  background: var(--danger);
+  color: #fff;
+}
+
+.relay-attention-chip.warning.active {
+  background: var(--warning-soft);
+  border-color: var(--warning);
+  color: var(--warning-text);
+}
+
+.relay-attention-chip.warning.active strong {
+  background: var(--warning);
+  color: #fff;
+}
+
+.relay-attention-chip.empty {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.relay-attention-chip.clear {
+  color: var(--primary);
+  border-color: var(--primary);
+  background: none;
+}
+
+.relay-attention-chip.clear:hover {
+  background: var(--primary-soft);
+}
+
+/* ── Sort wrap ── */
+.relay-sort-wrap {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.relay-sort-select {
+  height: 32px;
+  padding: 0 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  font-size: 0.82rem;
+  color: var(--text-soft);
+  font-weight: 600;
+  cursor: pointer;
+  outline: none;
+}
+
+/* ── Filter active dot ── */
+.relay-filter-active-dot {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--primary);
+  margin-left: 5px;
+  vertical-align: middle;
+}
+
+/* ── Cancelled watermark ── */
+.relay-job-card.cancelled {
+  position: relative;
+  opacity: 0.75;
+}
+
+.relay-job-card.cancelled::after {
+  content: "blocked";
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%) rotate(-15deg);
+  font-size: 2.8rem;
+  font-weight: 900;
+  color: rgba(220, 38, 38, 0.12);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  pointer-events: none;
+  z-index: 0;
+}
+
+/* ── Time color coding ── */
+.relay-time-late  { color: var(--danger-text) !important; }
+.relay-time-early { color: var(--success-text) !important; }
+.relay-time-ontime { color: var(--success-text) !important; }
+
+/* ── Driver status badge in header ── */
+.relay-driver-status-badge {
+  display: block;
+  font-size: 0.68rem;
+  font-weight: 700;
+  border-radius: 4px;
+  padding: 1px 5px;
+  margin-top: 2px;
+  width: fit-content;
+}
+
+.relay-driver-status-badge.success { background: var(--success-soft); color: var(--success-text); }
+.relay-driver-status-badge.warning { background: var(--warning-soft); color: var(--warning-text); }
+.relay-driver-status-badge.danger  { background: var(--danger-soft);  color: var(--danger-text);  }
+.relay-driver-status-badge.neutral { background: var(--neutral-soft); color: var(--neutral-text); }
+
+/* ── Driver status in stop equipment column ── */
+.relay-driver-stop-status {
+  font-size: 0.73rem;
+  font-weight: 600;
+  border-radius: 4px;
+  padding: 1px 6px;
+  width: fit-content;
+}
+
+.relay-driver-stop-status.success { background: var(--success-soft); color: var(--success-text); }
+.relay-driver-stop-status.warning { background: var(--warning-soft); color: var(--warning-text); }
+.relay-driver-stop-status.danger  { background: var(--danger-soft);  color: var(--danger-text);  }
+.relay-driver-stop-status.neutral { background: var(--neutral-soft); color: var(--neutral-text); }
+
+/* ── Load type icon ── */
+.relay-load-icon {
+  margin-right: 4px;
+  font-size: 0.88em;
+}
+
+/* ── Dock label ── */
+.relay-dock-label {
+  color: var(--primary) !important;
+  font-weight: 600;
+}
+
+/* ── Report delay button ── */
+.relay-report-delay-btn {
+  background: none;
+  border: none;
+  color: var(--primary);
+  font-size: 0.73rem;
+  font-weight: 600;
+  cursor: pointer;
+  padding: 0;
+  margin-top: 2px;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  text-align: left;
+}
+
+.relay-report-delay-btn:hover { color: var(--primary-hover); }
+
+/* ── Footer sub text ── */
+.relay-footer-sub {
+  font-size: 0.74rem;
+  color: var(--muted);
+  display: block;
+}
+
+/* ── Report delay modal ── */
+.relay-modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.45);
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+}
+
+.relay-modal {
+  background: var(--surface);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-xl);
+  width: 100%;
+  max-width: 480px;
+  overflow: hidden;
+}
+
+.relay-modal-header {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 18px 20px 14px;
+  border-bottom: 1px solid var(--border);
+}
+
+.relay-modal-header strong {
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.relay-modal-header span {
+  font-size: 0.82rem;
+  color: var(--muted);
+}
+
+.relay-modal-body {
+  padding: 16px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.relay-modal-label {
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.relay-modal-footer {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+  padding: 14px 20px;
+  border-top: 1px solid var(--border);
+  background: var(--surface-2);
+}
+
+/* ── ETA risk border ── */
+.relay-job-card.eta-risk {
+  border-left: 3px solid var(--warning);
+}
+
+/* ── POD pending border ── */
+.relay-job-card.pod-pending {
+  border-left: 3px solid var(--warning);
+}
+
+/* ── Critical takes priority over other left borders ── */
+.relay-job-card.critical {
+  border-left: 3px solid var(--danger);
+}
+
+/* ──────────────────────────────────────────────────────── */
+
 .customer-filter-card {
   display: grid;
   grid-template-columns: minmax(260px, 1fr) 160px 190px auto;

@@ -375,6 +375,8 @@ exports.getVehicleById = async (req, res) => {
       model: vehicleModel(v),
       modelName: v.model_name,
       truckType: v.truck_type,
+      companyName: v.company_name || "",
+      inspectionFrequencyWeeks: v.inspection_frequency_weeks || 6,
       status: v.status,
       statusTone: statusTone[v.status] || "neutral",
       fuelType: v.fuel_type,
@@ -475,7 +477,7 @@ exports.createVehicle = async (req, res) => {
       registration_number, fleet_code, make, model, model_name, truck_type, status,
       fuel_type, capacity_tonnes, year_of_manufacture, colour,
       mot_expiry, insurance_expiry, road_tax_expiry, permit_expiry, pollution_expiry, fitness_expiry,
-      odometer_reading, next_service_due
+      odometer_reading, next_service_due, company_name, inspection_frequency_weeks
     } = req.body;
     const finalModelName = combinedModelName(make, model, model_name);
 
@@ -489,15 +491,16 @@ exports.createVehicle = async (req, res) => {
          (registration_number, fleet_code, make, model, model_name, truck_type, status,
           fuel_type, capacity_tonnes, year_of_manufacture, colour,
           mot_expiry, insurance_expiry, road_tax_expiry, permit_expiry, pollution_expiry, fitness_expiry,
-          odometer_reading, next_service_due)
-       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+          odometer_reading, next_service_due, company_name, inspection_frequency_weeks)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
       [
         registration_number, finalFleetCode, make || null, model || null, finalModelName || truck_type, truck_type,
         status || "available",
         fuel_type || null, capacity_tonnes || null, year_of_manufacture || null, colour || null,
         mot_expiry || null, insurance_expiry || null, road_tax_expiry || null,
         permit_expiry || null, pollution_expiry || null, fitness_expiry || null,
-        odometer_reading || null, next_service_due || null
+        odometer_reading || null, next_service_due || null,
+        company_name || null, inspection_frequency_weeks ? Number(inspection_frequency_weeks) : 6
       ]
     );
 
@@ -633,7 +636,9 @@ exports.updateVehicleInline = async (req, res) => {
       pollutionExpiry: "pollution_expiry",
       fitnessExpiry: "fitness_expiry",
       odometerReading: "odometer_reading",
-      nextServiceDue: "next_service_due"
+      nextServiceDue: "next_service_due",
+      companyName: "company_name",
+      inspectionFrequencyWeeks: "inspection_frequency_weeks"
     };
     const validStatus = ["available", "planned", "in_transit", "maintenance", "stopped"];
     const updates = [];

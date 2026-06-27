@@ -85,6 +85,9 @@ async function syncMaintenanceSchema() {
   await addColumnIfMissing("vehicle_inspections", "notes", "TEXT DEFAULT NULL");
   await addColumnIfMissing("vehicle_inspections", "next_due", "DATE DEFAULT NULL");
 
+  await addColumnIfMissing("vehicles", "company_name", "VARCHAR(160) DEFAULT NULL");
+  await addColumnIfMissing("vehicles", "inspection_frequency_weeks", "INT DEFAULT 6");
+
   await db.query(`
     CREATE TABLE IF NOT EXISTS defect_reports (
       id          INT AUTO_INCREMENT PRIMARY KEY,
@@ -596,6 +599,8 @@ exports.getMaintenancePortal = async (_req, res) => {
         v.insurance_expiry,
         v.road_tax_expiry,
         v.current_location,
+        v.company_name,
+        COALESCE(v.inspection_frequency_weeks, 6) AS inspection_frequency_weeks,
         last_m.service_date AS last_service_date,
         last_m.service_type AS last_service_type,
         last_m.garage_name AS last_garage_name,
@@ -981,7 +986,8 @@ exports.getMaintenancePortal = async (_req, res) => {
         vehicle: v.registration_number,
         fleetCode: v.fleet_code,
         make: v.model_name,
-        inspectionFrequency: "6 weeks",
+        inspectionFrequency: `${v.inspection_frequency_weeks || 6} WEEKS`,
+        companyName: v.company_name || "",
         status: v.status,
         currentKmLabel: profile?.currentKmLabel || "-",
         searchText: `${v.registration_number} ${v.fleet_code} ${v.model_name} ${v.truck_type}`.toLowerCase(),

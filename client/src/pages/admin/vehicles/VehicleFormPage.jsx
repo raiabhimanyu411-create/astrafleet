@@ -26,7 +26,7 @@ const empty = {
   fuel_type: "Diesel", capacity_tonnes: "", year_of_manufacture: "", colour: "",
   mot_expiry: "", insurance_expiry: "", road_tax_expiry: "", permit_expiry: "",
   pollution_expiry: "", fitness_expiry: "", odometer_reading: "", next_service_due: "",
-  current_location: ""
+  current_location: "", company_name: "", inspection_frequency_weeks: "6"
 };
 
 function splitVehicleModelName(modelName = "") {
@@ -69,9 +69,11 @@ export function VehicleFormPage() {
           permit_expiry:       v.permit?.raw || "",
           pollution_expiry:    v.pollution?.raw || "",
           fitness_expiry:      v.fitness?.raw || "",
-          odometer_reading:    v.odometerReading || "",
-          next_service_due:    v.nextServiceDueRaw || "",
-          current_location:    v.currentLocation !== "—" ? v.currentLocation || "" : ""
+          odometer_reading:            v.odometerReading || "",
+          next_service_due:            v.nextServiceDueRaw || "",
+          current_location:            v.currentLocation !== "—" ? v.currentLocation || "" : "",
+          company_name:                v.companyName || "",
+          inspection_frequency_weeks:  String(v.inspectionFrequencyWeeks || "6")
         });
       })
       .catch(() => setLoadErr("Could not load vehicle. Please go back and try again."))
@@ -165,6 +167,16 @@ export function VehicleFormPage() {
             <div className="af-section">
               <p className="af-section-title">Extra details</p>
               <div className="af-grid-3">
+                <Field label="Company / operator name" hint="Used to group vehicles in Annual Schedule">
+                  <input className="af-input" type="text" placeholder="e.g. AAT Haulage Limited" value={fields.company_name} onChange={e => set("company_name", e.target.value)} />
+                </Field>
+                <Field label="Inspection frequency (weeks)">
+                  <select className="af-select" value={fields.inspection_frequency_weeks} onChange={e => set("inspection_frequency_weeks", e.target.value)}>
+                    <option value="6">6 weeks</option>
+                    <option value="10">10 weeks</option>
+                    <option value="12">12 weeks</option>
+                  </select>
+                </Field>
                 <Field label="Fleet code" hint="Leave blank to auto-generate">
                   <input className="af-input" type="text" placeholder="e.g. FLT-001" value={fields.fleet_code} onChange={e => set("fleet_code", e.target.value)} />
                 </Field>

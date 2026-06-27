@@ -48,7 +48,7 @@
   top: 0;
   z-index: 20;
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(5, minmax(0, 1fr));
   align-items: center;
   gap: 4px;
   margin: 18px 0 16px;
@@ -1414,4 +1414,198 @@
   .maintenance-compliance-item span {
     text-align: left;
   }
+}
+
+/* ═══════════════════════════════════════════════════════════
+   EXCEL-STYLE ANNUAL SCHEDULE
+════════════════════════════════════════════════════════════ */
+
+.excel-schedule-card {
+  padding: 18px;
+}
+
+.excel-schedule-wrap {
+  overflow: auto;
+  max-height: 75vh;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  margin-top: 14px;
+}
+
+.excel-schedule-table {
+  border-collapse: collapse;
+  min-width: 100%;
+  font-size: 0.7rem;
+  font-family: inherit;
+}
+
+.excel-schedule-table th,
+.excel-schedule-table td {
+  border: 1px solid #cbd5e1;
+  padding: 0;
+  white-space: nowrap;
+}
+
+/* ── Fixed header rows ── */
+.excel-month-row th,
+.excel-week-row th {
+  position: sticky;
+  z-index: 4;
+  text-align: center;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.excel-month-row { top: 0; }
+.excel-week-row { top: 32px; }
+
+.excel-month-head {
+  top: 0;
+  background: #0f172a;
+  color: #fff;
+  padding: 6px 4px;
+  font-size: 0.65rem;
+  letter-spacing: 0.04em;
+  border-color: #334155;
+}
+
+.excel-week-head {
+  top: 32px;
+  background: #1e293b;
+  color: #94a3b8;
+  padding: 4px 2px;
+  font-size: 0.58rem;
+  min-width: 60px;
+  border-color: #334155;
+}
+
+/* Fixed left columns */
+.excel-fixed-head {
+  position: sticky;
+  left: 0;
+  z-index: 6 !important;
+  background: #0f172a;
+  color: #fff;
+  padding: 6px 8px;
+  text-align: left;
+  font-size: 0.65rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  min-width: 120px;
+  border-color: #334155;
+}
+
+.excel-fixed-head:nth-child(1) { left: 0; min-width: 140px; }
+.excel-fixed-head:nth-child(2) { left: 140px; min-width: 100px; }
+.excel-fixed-head:nth-child(3) { left: 240px; min-width: 90px; }
+
+/* ── Company header row ── */
+.excel-company-row td {
+  padding: 5px 10px;
+  color: #fff;
+  font-weight: 900;
+  font-size: 0.72rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+/* ── Vehicle rows ── */
+.excel-vehicle-row {
+  background: #fff;
+}
+
+.excel-vehicle-row:nth-child(even) {
+  background: #f8fafc;
+}
+
+.excel-vehicle-row:hover {
+  background: #eff6ff;
+}
+
+/* Sticky left cells in vehicle rows */
+.excel-reg-cell,
+.excel-freq-cell,
+.excel-make-cell {
+  position: sticky;
+  background: inherit;
+  z-index: 2;
+  padding: 5px 8px;
+  vertical-align: middle;
+  border-color: #e2e8f0;
+}
+
+.excel-reg-cell { left: 0; min-width: 140px; }
+.excel-freq-cell { left: 140px; min-width: 100px; text-align: center; color: var(--muted); font-size: 0.65rem; font-weight: 700; }
+.excel-make-cell { left: 240px; min-width: 90px; color: var(--muted); font-size: 0.65rem; }
+
+.excel-reg-cell strong {
+  display: block;
+  color: var(--text);
+  font-size: 0.72rem;
+  font-weight: 800;
+}
+
+.excel-reg-cell span {
+  display: block;
+  color: var(--muted);
+  font-size: 0.6rem;
+  margin-top: 1px;
+}
+
+/* ── Event cells ── */
+.excel-event-cell {
+  padding: 2px 2px;
+  vertical-align: middle;
+  text-align: center;
+  min-width: 60px;
+  border-color: #e2e8f0;
+}
+
+.excel-event-chip {
+  display: inline-block;
+  width: calc(100% - 2px);
+  margin: 1px;
+  padding: 2px 2px;
+  border: none;
+  border-radius: 3px;
+  font-size: 0.6rem;
+  font-weight: 800;
+  cursor: pointer;
+  line-height: 1.3;
+  text-align: center;
+  letter-spacing: 0.01em;
+  box-shadow: 0 1px 2px rgba(0,0,0,0.15);
+  transition: opacity 0.1s;
+}
+
+.excel-event-chip:hover {
+  opacity: 0.85;
+  transform: scale(1.05);
+}
+
+/* ── Legend chips ── */
+.excel-legend-chip {
+  display: inline-block;
+  padding: 3px 8px;
+  border-radius: 4px;
+  font-size: 0.65rem;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+}
+
+@media (max-width: 900px) {
+  .excel-schedule-wrap {
+    max-height: 60vh;
+  }
+
+  .excel-fixed-head:nth-child(2),
+  .excel-fixed-head:nth-child(3),
+  .excel-freq-cell,
+  .excel-make-cell {
+    display: none;
+  }
+
+  .excel-fixed-head:nth-child(1) { min-width: 100px; }
+  .excel-reg-cell { left: 0; min-width: 100px; }
 }
