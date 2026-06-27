@@ -247,6 +247,8 @@ exports.listVehicles = async (req, res) => {
       in_transit: "warning", maintenance: "danger", stopped: "danger"
     };
 
+    const [trailerRows] = await db.query(`SELECT * FROM trailers ORDER BY created_at DESC`);
+
     res.json({
       stats: [
         { label: "Total vehicles", value: counts.total, description: "All fleet assets.", change: "Live from database", tone: "neutral" },
@@ -260,6 +262,16 @@ exports.listVehicles = async (req, res) => {
         { label: "Open defects", value: rows.reduce((sum, v) => sum + Number(v.open_defects || 0), 0), description: "Unresolved defect reports.", change: "Workshop", tone: rows.some(v => Number(v.open_defects || 0) > 0) ? "danger" : "success" },
         { label: "Open trips", value: rows.reduce((sum, v) => sum + Number(v.open_trips || 0), 0), description: "Planned, loading, or active trips.", change: "Dispatch", tone: "neutral" }
       ],
+      trailers: trailerRows.map(t => ({
+        id: t.id,
+        trailerCode: t.trailer_code,
+        registrationNumber: t.registration_number,
+        trailerType: t.trailer_type,
+        capacityTonnes: t.capacity_tonnes || "—",
+        status: t.status,
+        currentLocation: t.current_location || "—",
+        since: fmtDate(t.created_at)
+      })),
       vehicles: rows.map(v => ({
         id: v.id,
         registrationNumber: v.registration_number,
@@ -846,5 +858,33 @@ exports.updateDefectStatus = async (req, res) => {
     res.json({ message: "Defect status updated." });
   } catch (err) {
     res.status(500).json({ message: "Defect update error", error: err.message });
+  }
+};
+
+// DELETE /api/vehicles/:id
+exports.deleteVehicle = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const [[existing]] = await db.query(`SELECT registration_number FROM vehicles WHERE id = ?`, [id]);
+    if (!existing) return res.status(404).json({ message: "Vehicle not found." });
+    await db.query(`DELETE FROM vehicles WHERE id = ?`, [id]);
+    await logActivity(req, { module: "vehicles", action: "delete", entityType: "vehicle", entityId: id, entityLabel: existing.registration_number, details: { registration_number: existing.registration_number } });
+    res.json({ message: "Vehicle deleted." });
+  } catch (err) {
+    res.status(500).json({ message: "Vehicle delete error", error: err.message });
+  }
+};
+
+// DELETE /api/vehicles/trolleys/:id
+exports.deleteTrolley = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const [[existing]] = await db.query(`SELECT registration_number, trailer_code FROM trailers WHERE id = ?`, [id]);
+    if (!existing) return res.status(404).json({ message: "Trailer not found." });
+    await db.query(`DELETE FROM trailers WHERE id = ?`, [id]);
+    await logActivity(req, { module: "vehicles", action: "delete", entityType: "trolley", entityId: id, entityLabel: existing.registration_number, details: { registration_number: existing.registration_number, trailer_code: existing.trailer_code } });
+    res.json({ message: "Trailer deleted." });
+  } catch (err) {
+    res.status(500).json({ message: "Trailer delete error", error: err.message });
   }
 };

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { createTrolley, getVehicles, updateVehicleInline } from "../../../api/vehicleApi";
+import { createTrolley, deleteVehicle, deleteTrolley, getVehicles, updateVehicleInline } from "../../../api/vehicleApi";
 import { StateNotice } from "../../../components/StateNotice";
 import { StatusPill } from "../../../components/StatusPill";
 import { AdminWorkspaceLayout } from "../AdminWorkspaceLayout";
@@ -131,8 +131,10 @@ export function VehiclesListPage() {
   const [filterType, setFilterType] = useState("");
   const [riskFilter, setRiskFilter] = useState("");
   const [view, setView] = useState("fleet");
+  const [assetTab, setAssetTab] = useState("vehicles");
   const [savingCell, setSavingCell] = useState("");
   const [showTrolleyModal, setShowTrolleyModal] = useState(false);
+  const [deletingId, setDeletingId] = useState(null);
 
   function load() {
     setLoading(true);
@@ -227,6 +229,34 @@ export function VehiclesListPage() {
     };
   }
 
+  async function handleDeleteVehicle(vehicle) {
+    if (!window.confirm(`"${vehicle.registrationNumber}" ko delete karna chahte ho? Yeh action undo nahi hoga.`)) return;
+    setDeletingId(vehicle.id);
+    setError("");
+    try {
+      await deleteVehicle(vehicle.id);
+      await load();
+    } catch (err) {
+      setError(err?.response?.data?.message || "Vehicle delete nahi hua.");
+    } finally {
+      setDeletingId(null);
+    }
+  }
+
+  async function handleDeleteTrolley(trailer) {
+    if (!window.confirm(`Trailer "${trailer.registrationNumber}" ko delete karna chahte ho? Yeh action undo nahi hoga.`)) return;
+    setDeletingId(trailer.id);
+    setError("");
+    try {
+      await deleteTrolley(trailer.id);
+      await load();
+    } catch (err) {
+      setError(err?.response?.data?.message || "Trailer delete nahi hua.");
+    } finally {
+      setDeletingId(null);
+    }
+  }
+
   function dateClass(tone) {
     return ["danger", "warning"].includes(tone) ? tone : "";
   }
@@ -266,10 +296,21 @@ export function VehiclesListPage() {
     >
       <div className="finance-command-bar">
         <button className="header-action-button" type="button" onClick={load}>Refresh</button>
-        <button className="header-action-button" type="button" onClick={exportVehicles}>Export CSV</button>
+        {assetTab === "vehicles" && (
+          <button className="header-action-button" type="button" onClick={exportVehicles}>Export CSV</button>
+        )}
         <button className="header-action-button" type="button" onClick={() => setShowTrolleyModal(true)}>+ Add trailer</button>
         <button className="af-submit-btn" type="button" onClick={() => navigate("/admin/vehicles/new")}>+ Add vehicle</button>
       </div>
+
+      <section className="vehicle-tabs" aria-label="Asset type">
+        <button className={assetTab === "vehicles" ? "active" : ""} type="button" onClick={() => setAssetTab("vehicles")}>
+          Vehicles ({(data?.vehicles || []).length})
+        </button>
+        <button className={assetTab === "trailers" ? "active" : ""} type="button" onClick={() => setAssetTab("trailers")}>
+          Trailers ({(data?.trailers || []).length})
+        </button>
+      </section>
 
       {showTrolleyModal && (
         <TrolleyModal onClose={() => setShowTrolleyModal(false)} onSaved={load} />
@@ -277,6 +318,7 @@ export function VehiclesListPage() {
 
       <StateNotice loading={loading} error={error} />
 
+      {assetTab === "vehicles" && (
       <section className="vehicle-control-strip">
         <div className="vehicle-quick-strip">
           {quickFilters.map(item => (
@@ -320,19 +362,23 @@ export function VehiclesListPage() {
         <button className="header-action-button" disabled={!hasFilters} type="button" onClick={clearFilters}>Clear filters</button>
         </div>
       </section>
+      )}
 
-      <section className="vehicle-tabs" aria-label="Vehicle views">
-        {[
-          ["fleet", "Fleet List"],
-          ["compliance", "Compliance"],
-          ["workshop", "Workshop"]
-        ].map(([key, label]) => (
-          <button className={view === key ? "active" : ""} key={key} type="button" onClick={() => setView(key)}>
-            {label}
-          </button>
-        ))}
-      </section>
+      {assetTab === "vehicles" && (
+        <section className="vehicle-tabs" aria-label="Vehicle views">
+          {[
+            ["fleet", "Fleet List"],
+            ["compliance", "Compliance"],
+            ["workshop", "Workshop"]
+          ].map(([key, label]) => (
+            <button className={view === key ? "active" : ""} key={key} type="button" onClick={() => setView(key)}>
+              {label}
+            </button>
+          ))}
+        </section>
+      )}
 
+      {assetTab === "vehicles" && (
       <section className="vehicle-register-card">
         <div className="section-head">
           <div>
@@ -436,6 +482,9 @@ export function VehiclesListPage() {
                     <div className="vehicle-table-actions">
                       <button className="header-action-button" type="button" onClick={() => navigate(`/admin/vehicles/${v.id}`)}>Open</button>
                       <button className="header-action-button" type="button" onClick={() => navigate(`/admin/vehicles/${v.id}/edit`)}>Edit</button>
+                      <button className="header-action-button danger" type="button" disabled={deletingId === v.id} onClick={() => handleDeleteVehicle(v)}>
+                        {deletingId === v.id ? "Deleting..." : "Delete"}
+                      </button>
                     </div>
                   </td>
                   </>
@@ -484,6 +533,9 @@ export function VehiclesListPage() {
                     <div className="vehicle-table-actions">
                       <button className="header-action-button" type="button" onClick={() => navigate(`/admin/vehicles/${v.id}`)}>Open</button>
                       <button className="header-action-button" type="button" onClick={() => navigate(`/admin/vehicles/${v.id}/edit`)}>Edit</button>
+                      <button className="header-action-button danger" type="button" disabled={deletingId === v.id} onClick={() => handleDeleteVehicle(v)}>
+                        {deletingId === v.id ? "Deleting..." : "Delete"}
+                      </button>
                     </div>
                   </td>
                   </>
@@ -534,6 +586,9 @@ export function VehiclesListPage() {
                     <div className="vehicle-table-actions">
                       <button className="header-action-button" type="button" onClick={() => navigate(`/admin/vehicles/${v.id}`)}>Open</button>
                       <button className="header-action-button" type="button" onClick={() => navigate(`/admin/vehicles/${v.id}/edit`)}>Edit</button>
+                      <button className="header-action-button danger" type="button" disabled={deletingId === v.id} onClick={() => handleDeleteVehicle(v)}>
+                        {deletingId === v.id ? "Deleting..." : "Delete"}
+                      </button>
                     </div>
                   </td>
                   </>
@@ -551,6 +606,66 @@ export function VehiclesListPage() {
           </table>
         </div>
       </section>
+      )}
+
+      {assetTab === "trailers" && (
+      <section className="vehicle-register-card">
+        <div className="section-head">
+          <div>
+            <span className="card-label">Trailer register</span>
+            <h2>Trailers list</h2>
+          </div>
+          <StatusPill tone={(data?.trailers || []).length ? "success" : "neutral"}>{(data?.trailers || []).length} trailers</StatusPill>
+        </div>
+        <div className="vehicle-table-shell">
+          <table className="vehicle-edit-table fleet">
+            <thead>
+              <tr>
+                <th>Registration</th>
+                <th>Trailer code</th>
+                <th>Type</th>
+                <th>Capacity</th>
+                <th>Status</th>
+                <th>Location</th>
+                <th>Added</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {(data?.trailers || []).map(t => (
+                <tr key={t.id}>
+                  <td><strong>{t.registrationNumber}</strong></td>
+                  <td><span className="vehicle-table-input code" style={{ display: "block" }}>{t.trailerCode}</span></td>
+                  <td>{t.trailerType}</td>
+                  <td>{t.capacityTonnes === "—" ? "—" : `${t.capacityTonnes}t`}</td>
+                  <td>
+                    <StatusPill tone={t.status === "available" ? "success" : t.status === "maintenance" ? "danger" : "neutral"}>
+                      {t.status}
+                    </StatusPill>
+                  </td>
+                  <td>{t.currentLocation}</td>
+                  <td>{t.since}</td>
+                  <td>
+                    <div className="vehicle-table-actions">
+                      <button className="header-action-button danger" type="button" disabled={deletingId === t.id} onClick={() => handleDeleteTrolley(t)}>
+                        {deletingId === t.id ? "Deleting..." : "Delete"}
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+              {!loading && (data?.trailers || []).length === 0 && (
+                <tr>
+                  <td colSpan={8}>
+                    <p className="finance-empty">Koi trailer nahi hai. Upar se "Add trailer" karke add karo.</p>
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </section>
+      )}
     </AdminWorkspaceLayout>
   );
 }
