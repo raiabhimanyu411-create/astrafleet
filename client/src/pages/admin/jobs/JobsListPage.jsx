@@ -857,7 +857,7 @@ export function JobsListPage() {
                           <span className="relay-time-calc-label">Travel</span>
                           <strong>
                             {job.economics?.distanceMiles
-                              ? fmtMins(Math.round((job.economics.distanceMiles / (job.settings?.avgSpeedMph || 50)) * 60))
+                              ? fmtMins(Math.round((job.economics.distanceMiles / (job.settings?.avgSpeedMph || 40)) * 60))
                               : "—"}
                           </strong>
                           <small>{job.economics?.distanceMiles?.toFixed(1)} mi</small>

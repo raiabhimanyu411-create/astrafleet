@@ -5,7 +5,7 @@ const DEFAULTS = {
   mpg: "11.5",
   driver_rate_per_hour: "30.00",
   margin_pct: "29",
-  avg_speed_mph: "50"
+  avg_speed_mph: "40"
 };
 
 let tableReady = false;
@@ -26,6 +26,11 @@ async function ensureSettingsTable() {
       [key, value]
     );
   }
+  await db.query(
+    `UPDATE system_settings
+     SET setting_value = '40'
+     WHERE setting_key = 'avg_speed_mph' AND setting_value = '50'`
+  );
   tableReady = true;
 }
 

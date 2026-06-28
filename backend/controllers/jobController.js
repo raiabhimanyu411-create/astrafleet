@@ -266,7 +266,7 @@ async function estimateDrivingRoute(fromPoint, toPoint, settings) {
     // Fall back to a road-biased straight-line estimate if routing is unavailable.
   }
   const fallbackKm = haversineKm(fromPoint, toPoint) * 1.25;
-  const avgSpeed = Number(settings?.avg_speed_mph || 50) * 1.60934;
+  const avgSpeed = Number(settings?.avg_speed_mph || 40) * 1.60934;
   return {
     distanceKm: Math.round(fallbackKm * 10) / 10,
     durationMins: Math.max(1, Math.round((fallbackKm / avgSpeed) * 60)),
@@ -315,7 +315,7 @@ async function backfillTiming(row, settings) {
   const distanceMiles = Number(row.distance_km) * 0.621371;
   const travelMins = row.standard_eta_hours
     ? Math.round(Number(row.standard_eta_hours) * 60)
-    : Math.round((distanceMiles / Number(settings?.avg_speed_mph || 50)) * 60);
+    : Math.round((distanceMiles / Number(settings?.avg_speed_mph || 40)) * 60);
   const loadingMins = effectiveLoadingMins(row);
   const unloadingMins = effectiveUnloadingMins(row);
   const calculatedArrival = new Date(departure.getTime() + travelMins * 60000);

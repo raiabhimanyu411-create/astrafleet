@@ -338,7 +338,7 @@ export function JobFormPage() {
       : "";
 
   const distanceMiles = selectedRoute ? selectedRoute.distance_km * 0.621371 : routeEstimate?.distanceMiles || null;
-  const avgSpeedMph = sysSettings?.avg_speed_mph || 50;
+  const avgSpeedMph = sysSettings?.avg_speed_mph || 40;
   const loadingMins = parseInt(fields.loading_duration_mins) || 90;
   const unloadingMins = parseInt(fields.unloading_duration_mins) || 90;
 
