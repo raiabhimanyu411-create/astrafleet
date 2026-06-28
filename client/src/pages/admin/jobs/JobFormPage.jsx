@@ -84,6 +84,22 @@ function toInputDateTime(date) {
   return new Date(next.getTime() - offsetMs).toISOString().slice(0, 16);
 }
 
+function toInputTime(value) {
+  if (!value) return "";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  return date.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit", hour12: false });
+}
+
+function combineDateAndTime(dateValue, timeValue) {
+  if (!timeValue) return "";
+  const date = dateValue ? new Date(dateValue) : new Date();
+  if (Number.isNaN(date.getTime())) return "";
+  const [hours, minutes] = timeValue.split(":").map(Number);
+  date.setHours(hours || 0, minutes || 0, 0, 0);
+  return toInputDateTime(date);
+}
+
 function addHours(value, hours, extraStops = 0) {
   if (!value || !hours) return "";
   const date = new Date(value);
@@ -268,8 +284,9 @@ export function JobFormPage() {
     });
   }
 
-  function handleRouteDepartureChange(value) {
+  function handleRouteDepartureChange(timeValue) {
     setFields(prev => {
+      const value = combineDateAndTime(prev.planned_departure, timeValue);
       const route = formData.routes.find(r => String(r.id) === prev.route_id);
       const currentValidStops = stops.filter(s => s.address.trim()).length;
       const suggestedDeadline = route
@@ -281,6 +298,16 @@ export function JobFormPage() {
         ...prev,
         loading_done_time: value,
         delivery_deadline: prev.delivery_deadline || suggestedDeadline
+      };
+    });
+  }
+
+  function handleDeliveryDepartureChange(timeValue) {
+    setFields(prev => {
+      const fallbackArrival = prev.delivery_arrival_time || timingCalc?.arrival;
+      return {
+        ...prev,
+        delivery_departure_time: combineDateAndTime(fallbackArrival, timeValue)
       };
     });
   }
@@ -507,8 +534,8 @@ export function JobFormPage() {
                 <Field label="Arrival date & time" hint="When the truck reaches pickup/loading.">
                   <input className="af-input" type="datetime-local" value={fields.planned_departure} onChange={e => handleArrivalChange(e.target.value)} />
                 </Field>
-                <Field label="Departure date & time" hint="When loading is done and the truck leaves. Used for ETA and cost.">
-                  <input className="af-input" type="datetime-local" value={fields.loading_done_time} onChange={e => handleRouteDepartureChange(e.target.value)} />
+                <Field label="Departure time" hint="Same date as pickup arrival. Used for ETA and cost.">
+                  <input className="af-input" type="time" value={toInputTime(fields.loading_done_time)} onChange={e => handleRouteDepartureChange(e.target.value)} />
                 </Field>
                 <Field label="Pickup address" required error={fieldErrors.pickup_address}>
                   {pickupOptions.length > 0 && (
@@ -531,8 +558,8 @@ export function JobFormPage() {
                 <Field label="Delivery arrival date & time" hint="When the truck reaches the delivery point. Auto-calculated if left blank.">
                   <input className="af-input" type="datetime-local" value={fields.delivery_arrival_time} onChange={e => set("delivery_arrival_time", e.target.value)} />
                 </Field>
-                <Field label="Delivery departure date & time" hint="When unloading is done and the truck leaves delivery. Auto-calculated if left blank.">
-                  <input className="af-input" type="datetime-local" value={fields.delivery_departure_time} onChange={e => set("delivery_departure_time", e.target.value)} />
+                <Field label="Delivery departure time" hint="Same date as delivery arrival. Auto-calculated if left blank.">
+                  <input className="af-input" type="time" value={toInputTime(fields.delivery_departure_time)} onChange={e => handleDeliveryDepartureChange(e.target.value)} />
                 </Field>
               </div>
 
