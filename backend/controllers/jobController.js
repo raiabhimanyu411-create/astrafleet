@@ -1066,15 +1066,16 @@ exports.createJob = async (req, res) => {
       return res.status(400).json({ message: "Select a customer or enter a client name." });
     }
 
+    const routeStartTime = loading_done_time || planned_departure;
     let eta = null;
-    if (route_id && planned_departure) {
+    if (route_id && routeStartTime) {
       const [[route]] = await conn.query(`SELECT standard_eta_hours FROM routes WHERE id = ?`, [route_id]);
       if (route) {
-        eta = new Date(new Date(planned_departure).getTime() + route.standard_eta_hours * 3600 * 1000);
+        eta = new Date(new Date(routeStartTime).getTime() + route.standard_eta_hours * 3600 * 1000);
       }
-    } else if (estimated_eta_mins && planned_departure) {
+    } else if (estimated_eta_mins && routeStartTime) {
       const stopBufferMins = stops.filter(s => s.address).length * 30;
-      eta = new Date(new Date(planned_departure).getTime() + (Number(estimated_eta_mins) + stopBufferMins) * 60000);
+      eta = new Date(new Date(routeStartTime).getTime() + (Number(estimated_eta_mins) + stopBufferMins) * 60000);
     }
 
     const jobCode = `JOB-${Date.now().toString().slice(-7)}`;
@@ -1213,13 +1214,14 @@ exports.updateJob = async (req, res) => {
       return res.status(400).json({ message: "Select a customer or enter a client name." });
     }
 
+    const routeStartTime = loading_done_time || planned_departure;
     let eta = null;
-    if (route_id && planned_departure) {
+    if (route_id && routeStartTime) {
       const [[route]] = await conn.query(`SELECT standard_eta_hours FROM routes WHERE id = ?`, [route_id]);
-      if (route) eta = new Date(new Date(planned_departure).getTime() + route.standard_eta_hours * 3600 * 1000);
-    } else if (estimated_eta_mins && planned_departure) {
+      if (route) eta = new Date(new Date(routeStartTime).getTime() + route.standard_eta_hours * 3600 * 1000);
+    } else if (estimated_eta_mins && routeStartTime) {
       const stopBufferMins = stops.filter(s => s.address).length * 30;
-      eta = new Date(new Date(planned_departure).getTime() + (Number(estimated_eta_mins) + stopBufferMins) * 60000);
+      eta = new Date(new Date(routeStartTime).getTime() + (Number(estimated_eta_mins) + stopBufferMins) * 60000);
     }
 
     // Reset old vehicle if changed
@@ -1311,19 +1313,19 @@ exports.updateJob = async (req, res) => {
     }
 
     // Recalc ETA with stop buffer when route data is available
-    if (route_id && planned_departure && validStops.length > 0) {
+    if (route_id && routeStartTime && validStops.length > 0) {
       const [[route]] = await conn.query(`SELECT standard_eta_hours FROM routes WHERE id = ?`, [route_id]);
       if (route) {
         eta = new Date(
-          new Date(planned_departure).getTime()
+          new Date(routeStartTime).getTime()
           + route.standard_eta_hours * 3600 * 1000
           + validStops.length * 30 * 60 * 1000
         );
         await conn.query(`UPDATE trips SET eta = ? WHERE id = ? AND deleted_at IS NULL`, [eta, id]);
       }
-    } else if (!route_id && estimated_eta_mins && planned_departure && validStops.length > 0) {
+    } else if (!route_id && estimated_eta_mins && routeStartTime && validStops.length > 0) {
       eta = new Date(
-        new Date(planned_departure).getTime()
+        new Date(routeStartTime).getTime()
         + (Number(estimated_eta_mins) + validStops.length * 30) * 60 * 1000
       );
       await conn.query(`UPDATE trips SET eta = ? WHERE id = ? AND deleted_at IS NULL`, [eta, id]);

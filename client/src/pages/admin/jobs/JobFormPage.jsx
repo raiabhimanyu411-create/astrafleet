@@ -30,6 +30,8 @@ const emptyFields = {
   vehicle_id: "",
   trailer_id: "",
   loading_done_time: "",
+  delivery_arrival_time: "",
+  delivery_departure_time: "",
   loading_duration_mins: "90",
   unloading_duration_mins: "90"
 };
@@ -172,6 +174,8 @@ export function JobFormPage() {
             vehicle_id: j.form?.vehicle_id ? String(j.form.vehicle_id) : "",
             trailer_id: j.form?.trailer_id ? String(j.form.trailer_id) : "",
             loading_done_time: j.timing?.loadingDoneTime || "",
+            delivery_arrival_time: j.timing?.calculatedArrival || "",
+            delivery_departure_time: j.timing?.calculatedUnloadEnd || "",
             loading_duration_mins: j.timing?.loadingDurationMins ? String(j.timing.loadingDurationMins) : "90",
             unloading_duration_mins: j.timing?.unloadingDurationMins ? String(j.timing.unloadingDurationMins) : "90"
           });
@@ -234,7 +238,8 @@ export function JobFormPage() {
   function handleRouteChange(routeId) {
     const route = formData.routes.find(r => String(r.id) === routeId);
     setFields(prev => {
-      const suggestedDeadline = route ? addHours(prev.planned_departure, route.standard_eta_hours) : "";
+      const routeStartTime = prev.loading_done_time || prev.planned_departure;
+      const suggestedDeadline = route ? addHours(routeStartTime, route.standard_eta_hours) : "";
       return {
         ...prev,
         route_id: routeId,
@@ -248,14 +253,32 @@ export function JobFormPage() {
     if (route) setFieldErrors(prev => ({ ...prev, pickup_address: "", drop_address: "" }));
   }
 
-  function handleDepartureChange(value) {
+  function handleArrivalChange(value) {
     setFields(prev => {
       const route = formData.routes.find(r => String(r.id) === prev.route_id);
+      const routeStartTime = prev.loading_done_time || value;
       const currentValidStops = stops.filter(s => s.address.trim()).length;
       return {
         ...prev,
         planned_departure: value,
-        delivery_deadline: prev.delivery_deadline || (route ? addHours(value, route.standard_eta_hours, currentValidStops) : "")
+        delivery_deadline: prev.delivery_deadline || (route ? addHours(routeStartTime, route.standard_eta_hours, currentValidStops) : "")
+      };
+    });
+  }
+
+  function handleRouteDepartureChange(value) {
+    setFields(prev => {
+      const route = formData.routes.find(r => String(r.id) === prev.route_id);
+      const currentValidStops = stops.filter(s => s.address.trim()).length;
+      const suggestedDeadline = route
+        ? addHours(value, route.standard_eta_hours, currentValidStops)
+        : routeEstimate?.durationMins
+          ? addMinutes(value, routeEstimate.durationMins, currentValidStops)
+          : "";
+      return {
+        ...prev,
+        loading_done_time: value,
+        delivery_deadline: prev.delivery_deadline || suggestedDeadline
       };
     });
   }
@@ -278,10 +301,11 @@ export function JobFormPage() {
   }, [selectedCustomer]);
 
   const validStops = stops.filter(s => s.address.trim());
+  const routeStartTime = fields.loading_done_time || fields.planned_departure;
   const etaPreview = selectedRoute
-    ? addHours(fields.planned_departure, selectedRoute.standard_eta_hours, validStops.length)
+    ? addHours(routeStartTime, selectedRoute.standard_eta_hours, validStops.length)
     : routeEstimate?.durationMins
-      ? addMinutes(fields.planned_departure, routeEstimate.durationMins, validStops.length)
+      ? addMinutes(routeStartTime, routeEstimate.durationMins, validStops.length)
       : "";
 
   const distanceMiles = selectedRoute ? selectedRoute.distance_km * 0.621371 : routeEstimate?.distanceMiles || null;
@@ -293,10 +317,25 @@ export function JobFormPage() {
     () => calcTiming(fields.loading_done_time, distanceMiles, loadingMins, unloadingMins, avgSpeedMph),
     [fields.loading_done_time, distanceMiles, loadingMins, unloadingMins, avgSpeedMph]
   );
+  const manualDeliveryArrival = fields.delivery_arrival_time ? new Date(fields.delivery_arrival_time) : null;
+  const manualDeliveryDeparture = fields.delivery_departure_time ? new Date(fields.delivery_departure_time) : null;
+  const hasManualDeliveryTimes =
+    manualDeliveryArrival && manualDeliveryDeparture &&
+    !Number.isNaN(manualDeliveryArrival.getTime()) &&
+    !Number.isNaN(manualDeliveryDeparture.getTime()) &&
+    manualDeliveryDeparture >= manualDeliveryArrival;
   const estimatedTravelMins = selectedRoute?.standard_eta_hours
     ? Math.round(Number(selectedRoute.standard_eta_hours) * 60)
     : routeEstimate?.durationMins || null;
-  const estimatedTotalMins = timingCalc?.totalMins || (estimatedTravelMins ? loadingMins + estimatedTravelMins + unloadingMins : null);
+  const manualTravelMins = hasManualDeliveryTimes && fields.loading_done_time
+    ? Math.max(0, Math.round((manualDeliveryArrival - new Date(fields.loading_done_time)) / 60000))
+    : null;
+  const manualUnloadingMins = hasManualDeliveryTimes
+    ? Math.max(0, Math.round((manualDeliveryDeparture - manualDeliveryArrival) / 60000))
+    : null;
+  const estimatedTotalMins = hasManualDeliveryTimes
+    ? loadingMins + manualTravelMins + manualUnloadingMins
+    : timingCalc?.totalMins || (estimatedTravelMins ? loadingMins + estimatedTravelMins + unloadingMins : null);
 
   const costCalc = useMemo(
     () => calcCost(distanceMiles, estimatedTotalMins, sysSettings),
@@ -322,7 +361,7 @@ export function JobFormPage() {
       setRouteEstimate(res.data);
       setFields(prev => ({
         ...prev,
-        delivery_deadline: prev.delivery_deadline || (prev.planned_departure ? addMinutes(prev.planned_departure, res.data.durationMins, validStops.length) : "")
+        delivery_deadline: prev.delivery_deadline || ((prev.loading_done_time || prev.planned_departure) ? addMinutes(prev.loading_done_time || prev.planned_departure, res.data.durationMins, validStops.length) : "")
       }));
     } catch (err) {
       setEstimateErr(err?.response?.data?.message || "Could not calculate distance from postcodes.");
@@ -341,12 +380,12 @@ export function JobFormPage() {
       return;
     }
 
-    const calcArrivalStr = timingCalc?.arrival
+    const calcArrivalStr = fields.delivery_arrival_time || (timingCalc?.arrival
       ? new Date(timingCalc.arrival.getTime() - timingCalc.arrival.getTimezoneOffset() * 60000).toISOString().slice(0, 16)
-      : null;
-    const calcUnloadEndStr = timingCalc?.unloadEnd
+      : null);
+    const calcUnloadEndStr = fields.delivery_departure_time || (timingCalc?.unloadEnd
       ? new Date(timingCalc.unloadEnd.getTime() - timingCalc.unloadEnd.getTimezoneOffset() * 60000).toISOString().slice(0, 16)
-      : null;
+      : null);
 
     const payload = {
       customer_id: fields.customer_id ? Number(fields.customer_id) : null,
@@ -371,7 +410,7 @@ export function JobFormPage() {
       estimated_eta_mins: selectedRoute ? null : routeEstimate?.durationMins || null,
       calculated_arrival: calcArrivalStr,
       calculated_unload_end: calcUnloadEndStr,
-      total_job_duration_mins: timingCalc?.totalMins || null,
+      total_job_duration_mins: estimatedTotalMins || null,
       stops: stops.filter(s => s.address.trim()).map(s => ({
         address: s.address.trim(),
         stop_type: s.stop_type,
@@ -463,8 +502,11 @@ export function JobFormPage() {
                     ))}
                   </select>
                 </Field>
-                <Field label="Pickup date & time">
-                  <input className="af-input" type="datetime-local" value={fields.planned_departure} onChange={e => handleDepartureChange(e.target.value)} />
+                <Field label="Arrival date & time" hint="When the truck reaches pickup/loading.">
+                  <input className="af-input" type="datetime-local" value={fields.planned_departure} onChange={e => handleArrivalChange(e.target.value)} />
+                </Field>
+                <Field label="Departure date & time" hint="When loading is done and the truck leaves. Used for ETA and cost.">
+                  <input className="af-input" type="datetime-local" value={fields.loading_done_time} onChange={e => handleRouteDepartureChange(e.target.value)} />
                 </Field>
                 <Field label="Pickup address" required error={fieldErrors.pickup_address}>
                   {pickupOptions.length > 0 && (
@@ -483,6 +525,12 @@ export function JobFormPage() {
                     </select>
                   )}
                   <textarea className="af-input" style={{ minHeight: 72, resize: "vertical" }} placeholder="Full delivery address" value={fields.drop_address} onChange={e => set("drop_address", e.target.value)} aria-invalid={Boolean(fieldErrors.drop_address)} />
+                </Field>
+                <Field label="Delivery arrival date & time" hint="When the truck reaches the delivery point. Auto-calculated if left blank.">
+                  <input className="af-input" type="datetime-local" value={fields.delivery_arrival_time} onChange={e => set("delivery_arrival_time", e.target.value)} />
+                </Field>
+                <Field label="Delivery departure date & time" hint="When unloading is done and the truck leaves delivery. Auto-calculated if left blank.">
+                  <input className="af-input" type="datetime-local" value={fields.delivery_departure_time} onChange={e => set("delivery_departure_time", e.target.value)} />
                 </Field>
               </div>
 
@@ -580,14 +628,6 @@ export function JobFormPage() {
             <div className="af-section">
               <p className="af-section-title">Time &amp; cost calculation</p>
               <div className="af-grid-2">
-                <Field label="Loading done / truck departure time" hint="Enter when the truck leaves the loading dock.">
-                  <input
-                    className="af-input"
-                    type="datetime-local"
-                    value={fields.loading_done_time}
-                    onChange={e => set("loading_done_time", e.target.value)}
-                  />
-                </Field>
                 <Field label="Loading duration (minutes)" hint="Default: 90 min. Included in driver cost.">
                   <input
                     className="af-input"
@@ -629,12 +669,12 @@ export function JobFormPage() {
                     <div className="job-timing-sep">→</div>
                     <div className="job-timing-item">
                       <span className="job-timing-label">Arrive at drop</span>
-                      <strong>{timingCalc ? fmtTime(timingCalc.arrival) : "—"}</strong>
+                      <strong>{fields.delivery_arrival_time ? fmtTime(new Date(fields.delivery_arrival_time)) : timingCalc ? fmtTime(timingCalc.arrival) : "—"}</strong>
                     </div>
                     <div className="job-timing-sep">→</div>
                     <div className="job-timing-item">
-                      <span className="job-timing-label">Unloading done</span>
-                      <strong>{timingCalc ? fmtTime(timingCalc.unloadEnd) : "—"}</strong>
+                      <span className="job-timing-label">Depart drop</span>
+                      <strong>{fields.delivery_departure_time ? fmtTime(new Date(fields.delivery_departure_time)) : timingCalc ? fmtTime(timingCalc.unloadEnd) : "—"}</strong>
                     </div>
                     <div className="job-timing-total">
                       <span className="job-timing-label">Total job time</span>
