@@ -169,6 +169,7 @@ async function ensureDriverOpsSchema() {
       CONSTRAINT fk_job_stops_trip FOREIGN KEY (trip_id) REFERENCES trips (id) ON DELETE CASCADE
     ) ENGINE=InnoDB`
   );
+  await addColumnIfMissing("job_stops", "planned_departure", "DATETIME DEFAULT NULL");
   await db.query(
     `CREATE TABLE IF NOT EXISTS defect_reports (
       id INT AUTO_INCREMENT PRIMARY KEY,
@@ -271,6 +272,34 @@ async function estimateDrivingRoute(fromPoint, toPoint, settings) {
     distanceKm: Math.round(fallbackKm * 10) / 10,
     durationMins: Math.max(1, Math.round((fallbackKm / avgSpeed) * 60)),
     source: "postcode-estimate"
+  };
+}
+
+async function estimateDrivingPath(points, settings) {
+  if (!points || points.length < 2) return null;
+  const coords = points.map(point => `${point.longitude},${point.latitude}`).join(";");
+  try {
+    const data = await fetchJson(`https://router.project-osrm.org/route/v1/driving/${coords}?overview=false&alternatives=false&steps=false`, 10000);
+    const route = data?.routes?.[0];
+    if (route?.distance && route?.duration) {
+      return {
+        distanceKm: Math.round((route.distance / 1000) * 10) / 10,
+        durationMins: Math.max(1, Math.round(route.duration / 60)),
+        source: points.length > 2 ? "postcode-driving-multistop" : "postcode-driving"
+      };
+    }
+  } catch {
+    // Fall back to a road-biased straight-line estimate if routing is unavailable.
+  }
+
+  const fallbackKm = points.slice(1).reduce((sum, point, index) => (
+    sum + haversineKm(points[index], point) * 1.25
+  ), 0);
+  const avgSpeed = Number(settings?.avg_speed_mph || 40) * 1.60934;
+  return {
+    distanceKm: Math.round(fallbackKm * 10) / 10,
+    durationMins: Math.max(1, Math.round((fallbackKm / avgSpeed) * 60)),
+    source: points.length > 2 ? "postcode-estimate-multistop" : "postcode-estimate"
   };
 }
 
@@ -429,9 +458,12 @@ exports.getFormData = async (req, res) => {
 // POST /api/jobs/estimate-route
 exports.estimateRouteFromAddresses = async (req, res) => {
   try {
-    const { pickup_address, drop_address } = req.body;
+    const { pickup_address, drop_address, stops = [] } = req.body;
     const pickupPostcode = extractUkPostcode(pickup_address);
     const dropPostcode = extractUkPostcode(drop_address);
+    const stopPostcodes = stops
+      .map(stop => extractUkPostcode(stop?.address || stop))
+      .filter(Boolean);
 
     if (!pickupPostcode || !dropPostcode) {
       return res.status(400).json({ message: "Pickup and delivery addresses need valid UK postcodes." });
@@ -439,21 +471,21 @@ exports.estimateRouteFromAddresses = async (req, res) => {
 
     const settingsMap = await getSettingsMap();
     const settings = { avg_speed_mph: parseFloat(settingsMap.avg_speed_mph) };
-    const [pickup, drop] = await Promise.all([
-      lookupPostcode(pickupPostcode),
-      lookupPostcode(dropPostcode)
-    ]);
+    const postcodes = [pickupPostcode, ...stopPostcodes, dropPostcode];
+    const points = await Promise.all(postcodes.map(postcode => lookupPostcode(postcode)));
 
-    if (!pickup || !drop) {
-      return res.status(404).json({ message: "Could not find one of the postcodes." });
+    if (points.some(point => !point)) {
+      return res.status(404).json({ message: "Could not find one of the route postcodes." });
     }
 
-    const estimate = await estimateDrivingRoute(pickup, drop, settings);
+    const estimate = await estimateDrivingPath(points, settings);
     const distanceMiles = Math.round(estimate.distanceKm * 0.621371 * 10) / 10;
 
     res.json({
-      pickupPostcode: pickup.postcode,
-      dropPostcode: drop.postcode,
+      pickupPostcode: points[0].postcode,
+      dropPostcode: points[points.length - 1].postcode,
+      stopPostcodes: points.slice(1, -1).map(point => point.postcode),
+      stopCount: points.length - 2,
       distanceKm: estimate.distanceKm,
       distanceMiles,
       durationMins: estimate.durationMins,
@@ -519,8 +551,8 @@ exports.listJobs = async (req, res) => {
               t.calculated_unload_end, t.total_job_duration_mins,
               c.company_name as customer_name, c.contact_name as customer_contact, c.phone as customer_phone,
               r.route_code, r.origin_hub, r.destination_hub,
-              COALESCE(r.distance_km, t.estimated_distance_km) AS distance_km,
-              COALESCE(r.standard_eta_hours, t.estimated_eta_mins / 60) AS standard_eta_hours,
+              COALESCE(t.estimated_distance_km, r.distance_km) AS distance_km,
+              COALESCE(t.estimated_eta_mins / 60, r.standard_eta_hours) AS standard_eta_hours,
               d.full_name as driver_name, d.phone as driver_phone, d.employee_code,
               v.registration_number, v.fleet_code, v.model_name, v.truck_type,
               tr.trailer_code, tr.registration_number AS trailer_registration, tr.trailer_type,
@@ -829,8 +861,8 @@ exports.getJobById = async (req, res) => {
               c.company_name, c.contact_name as cust_contact, c.email as cust_email, c.phone as cust_phone,
               t.client_phone,
               r.route_code, r.origin_hub, r.destination_hub,
-              COALESCE(r.distance_km, t.estimated_distance_km) AS distance_km,
-              COALESCE(r.standard_eta_hours, t.estimated_eta_mins / 60) AS standard_eta_hours,
+              COALESCE(t.estimated_distance_km, r.distance_km) AS distance_km,
+              COALESCE(t.estimated_eta_mins / 60, r.standard_eta_hours) AS standard_eta_hours,
               r.toll_estimate_gbp,
               d.full_name as driver_name, d.phone as driver_phone, d.employee_code, d.license_number, d.compliance_status,
               v.registration_number, v.model_name, v.truck_type, v.fleet_code, v.capacity_tonnes,
@@ -1006,6 +1038,9 @@ exports.getJobById = async (req, res) => {
         contactName: s.contact_name || "—",
         contactPhone: s.contact_phone || "—",
         plannedArrival: fmtDateTime(s.planned_arrival),
+        plannedArrivalRaw: rawDateTime(s.planned_arrival),
+        plannedDeparture: fmtDateTime(s.planned_departure),
+        plannedDepartureRaw: rawDateTime(s.planned_departure),
         actualArrival: fmtDateTime(s.actual_arrival),
         status: s.status,
         tone: stopStatusTone[s.status] || "neutral",
@@ -1072,14 +1107,13 @@ exports.createJob = async (req, res) => {
 
     const routeStartTime = loading_done_time || planned_departure;
     let eta = null;
-    if (route_id && routeStartTime) {
+    if (estimated_eta_mins && routeStartTime) {
+      eta = new Date(new Date(routeStartTime).getTime() + Number(estimated_eta_mins) * 60000);
+    } else if (route_id && routeStartTime) {
       const [[route]] = await conn.query(`SELECT standard_eta_hours FROM routes WHERE id = ?`, [route_id]);
       if (route) {
         eta = new Date(new Date(routeStartTime).getTime() + route.standard_eta_hours * 3600 * 1000);
       }
-    } else if (estimated_eta_mins && routeStartTime) {
-      const stopBufferMins = stops.filter(s => s.address).length * 30;
-      eta = new Date(new Date(routeStartTime).getTime() + (Number(estimated_eta_mins) + stopBufferMins) * 60000);
     }
 
     const jobCode = `JOB-${Date.now().toString().slice(-7)}`;
@@ -1123,8 +1157,8 @@ exports.createJob = async (req, res) => {
         loading_done_time || null,
         loading_duration_mins ? Number(loading_duration_mins) : DEFAULT_LOADING_MINS,
         unloading_duration_mins ? Number(unloading_duration_mins) : DEFAULT_UNLOADING_MINS,
-        route_id ? null : (estimated_distance_km ? Number(estimated_distance_km) : null),
-        route_id ? null : (estimated_eta_mins ? Number(estimated_eta_mins) : null),
+        estimated_distance_km ? Number(estimated_distance_km) : null,
+        estimated_eta_mins ? Number(estimated_eta_mins) : null,
         calculated_arrival || null,
         calculated_unload_end || null,
         total_job_duration_mins ? Number(total_job_duration_mins) : null
@@ -1151,9 +1185,9 @@ exports.createJob = async (req, res) => {
       const s = stops[i];
       if (!s.address) continue;
       await conn.query(
-        `INSERT INTO job_stops (trip_id, stop_order, stop_type, address, contact_name, contact_phone, planned_arrival, notes)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-        [jobId, i + 1, s.stop_type || "delivery", s.address, s.contact_name || null, s.contact_phone || null, s.planned_arrival || null, s.notes || null]
+        `INSERT INTO job_stops (trip_id, stop_order, stop_type, address, contact_name, contact_phone, planned_arrival, planned_departure, notes)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [jobId, i + 1, s.stop_type || "delivery", s.address, s.contact_name || null, s.contact_phone || null, s.planned_arrival || null, s.planned_departure || null, s.notes || null]
       );
     }
 
@@ -1220,12 +1254,11 @@ exports.updateJob = async (req, res) => {
 
     const routeStartTime = loading_done_time || planned_departure;
     let eta = null;
-    if (route_id && routeStartTime) {
+    if (estimated_eta_mins && routeStartTime) {
+      eta = new Date(new Date(routeStartTime).getTime() + Number(estimated_eta_mins) * 60000);
+    } else if (route_id && routeStartTime) {
       const [[route]] = await conn.query(`SELECT standard_eta_hours FROM routes WHERE id = ?`, [route_id]);
       if (route) eta = new Date(new Date(routeStartTime).getTime() + route.standard_eta_hours * 3600 * 1000);
-    } else if (estimated_eta_mins && routeStartTime) {
-      const stopBufferMins = stops.filter(s => s.address).length * 30;
-      eta = new Date(new Date(routeStartTime).getTime() + (Number(estimated_eta_mins) + stopBufferMins) * 60000);
     }
 
     // Reset old vehicle if changed
@@ -1294,8 +1327,8 @@ exports.updateJob = async (req, res) => {
         loading_done_time || null,
         loading_duration_mins ? Number(loading_duration_mins) : DEFAULT_LOADING_MINS,
         unloading_duration_mins ? Number(unloading_duration_mins) : DEFAULT_UNLOADING_MINS,
-        route_id ? null : (estimated_distance_km ? Number(estimated_distance_km) : null),
-        route_id ? null : (estimated_eta_mins ? Number(estimated_eta_mins) : null),
+        estimated_distance_km ? Number(estimated_distance_km) : null,
+        estimated_eta_mins ? Number(estimated_eta_mins) : null,
         calculated_arrival || null,
         calculated_unload_end || null,
         total_job_duration_mins ? Number(total_job_duration_mins) : null,
@@ -1310,14 +1343,17 @@ exports.updateJob = async (req, res) => {
     for (let i = 0; i < validStops.length; i++) {
       const s = validStops[i];
       await conn.query(
-        `INSERT INTO job_stops (trip_id, stop_order, stop_type, address, contact_name, contact_phone, planned_arrival, notes)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-        [id, i + 1, s.stop_type || "delivery", s.address, s.contact_name || null, s.contact_phone || null, s.planned_arrival || null, s.notes || null]
+        `INSERT INTO job_stops (trip_id, stop_order, stop_type, address, contact_name, contact_phone, planned_arrival, planned_departure, notes)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [id, i + 1, s.stop_type || "delivery", s.address, s.contact_name || null, s.contact_phone || null, s.planned_arrival || null, s.planned_departure || null, s.notes || null]
       );
     }
 
-    // Recalc ETA with stop buffer when route data is available
-    if (route_id && routeStartTime && validStops.length > 0) {
+    // Recalc ETA with stop buffer only when an exact postcode estimate was not supplied.
+    if (estimated_eta_mins && routeStartTime) {
+      eta = new Date(new Date(routeStartTime).getTime() + Number(estimated_eta_mins) * 60 * 1000);
+      await conn.query(`UPDATE trips SET eta = ? WHERE id = ? AND deleted_at IS NULL`, [eta, id]);
+    } else if (route_id && routeStartTime && validStops.length > 0) {
       const [[route]] = await conn.query(`SELECT standard_eta_hours FROM routes WHERE id = ?`, [route_id]);
       if (route) {
         eta = new Date(
@@ -1327,12 +1363,6 @@ exports.updateJob = async (req, res) => {
         );
         await conn.query(`UPDATE trips SET eta = ? WHERE id = ? AND deleted_at IS NULL`, [eta, id]);
       }
-    } else if (!route_id && estimated_eta_mins && routeStartTime && validStops.length > 0) {
-      eta = new Date(
-        new Date(routeStartTime).getTime()
-        + (Number(estimated_eta_mins) + validStops.length * 30) * 60 * 1000
-      );
-      await conn.query(`UPDATE trips SET eta = ? WHERE id = ? AND deleted_at IS NULL`, [eta, id]);
     }
 
     // Notify driver if stops changed and driver is assigned
@@ -1482,12 +1512,13 @@ exports.addJobStop = async (req, res) => {
   try {
     await ensureDriverOpsSchema();
     const { id } = req.params;
-    const { address, stop_type, contact_name, contact_phone, planned_arrival, notes } = req.body;
+    const { address, stop_type, contact_name, contact_phone, planned_arrival, planned_departure, notes } = req.body;
 
     if (!address?.trim()) return res.status(400).json({ message: "Stop address is required." });
 
     const [[job]] = await db.query(
-      `SELECT t.id, t.trip_code, t.driver_id, t.route_id, t.planned_departure,
+      `SELECT t.id, t.trip_code, t.driver_id, t.route_id, t.planned_departure, t.loading_done_time,
+              t.estimated_eta_mins,
               d.full_name as driver_name, r.standard_eta_hours
        FROM trips t
        LEFT JOIN drivers d ON d.id = t.driver_id
@@ -1503,18 +1534,22 @@ exports.addJobStop = async (req, res) => {
     );
 
     await db.query(
-      `INSERT INTO job_stops (trip_id, stop_order, stop_type, address, contact_name, contact_phone, planned_arrival, notes)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-      [id, maxOrder + 1, stop_type || "delivery", address.trim(), contact_name || null, contact_phone || null, planned_arrival || null, notes || null]
+      `INSERT INTO job_stops (trip_id, stop_order, stop_type, address, contact_name, contact_phone, planned_arrival, planned_departure, notes)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [id, maxOrder + 1, stop_type || "delivery", address.trim(), contact_name || null, contact_phone || null, planned_arrival || null, planned_departure || null, notes || null]
     );
 
-    // Recalc ETA: base route ETA + 30 min per stop
-    if (job.route_id && job.planned_departure && job.standard_eta_hours != null) {
+    // Recalc ETA: exact postcode estimate when present, otherwise base route ETA + 30 min per stop.
+    const routeStartTime = job.loading_done_time || job.planned_departure;
+    if (job.estimated_eta_mins && routeStartTime) {
+      const newEta = new Date(new Date(routeStartTime).getTime() + Number(job.estimated_eta_mins) * 60 * 1000);
+      await db.query(`UPDATE trips SET eta = ? WHERE id = ?`, [newEta, id]);
+    } else if (job.route_id && routeStartTime && job.standard_eta_hours != null) {
       const [[{ stopCount }]] = await db.query(
         `SELECT COUNT(*) as stopCount FROM job_stops WHERE trip_id = ?`, [id]
       );
       const newEta = new Date(
-        new Date(job.planned_departure).getTime()
+        new Date(routeStartTime).getTime()
         + job.standard_eta_hours * 3600 * 1000
         + stopCount * 30 * 60 * 1000
       );
@@ -1561,7 +1596,8 @@ exports.deleteJobStop = async (req, res) => {
     if (!stop) return res.status(404).json({ message: "Stop not found." });
 
     const [[job]] = await db.query(
-      `SELECT t.id, t.trip_code, t.driver_id, t.route_id, t.planned_departure,
+      `SELECT t.id, t.trip_code, t.driver_id, t.route_id, t.planned_departure, t.loading_done_time,
+              t.estimated_eta_mins,
               d.full_name as driver_name, r.standard_eta_hours
        FROM trips t
        LEFT JOIN drivers d ON d.id = t.driver_id
@@ -1582,12 +1618,16 @@ exports.deleteJobStop = async (req, res) => {
     }
 
     // Recalc ETA
-    if (job.route_id && job.planned_departure && job.standard_eta_hours != null) {
+    const routeStartTime = job.loading_done_time || job.planned_departure;
+    if (job.estimated_eta_mins && routeStartTime) {
+      const newEta = new Date(new Date(routeStartTime).getTime() + Number(job.estimated_eta_mins) * 60 * 1000);
+      await db.query(`UPDATE trips SET eta = ? WHERE id = ?`, [newEta, id]);
+    } else if (job.route_id && routeStartTime && job.standard_eta_hours != null) {
       const [[{ stopCount }]] = await db.query(
         `SELECT COUNT(*) as stopCount FROM job_stops WHERE trip_id = ?`, [id]
       );
       const newEta = new Date(
-        new Date(job.planned_departure).getTime()
+        new Date(routeStartTime).getTime()
         + job.standard_eta_hours * 3600 * 1000
         + stopCount * 30 * 60 * 1000
       );

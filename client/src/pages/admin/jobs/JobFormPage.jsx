@@ -116,7 +116,7 @@ function addMinutes(value, minutes, extraStops = 0) {
   return toInputDateTime(date);
 }
 
-const emptyStop = { address: "", stop_type: "delivery", contact_name: "", contact_phone: "", planned_arrival: "", notes: "" };
+const emptyStop = { address: "", stop_type: "delivery", contact_name: "", contact_phone: "", planned_arrival: "", planned_departure: "", notes: "" };
 
 function displayDateTime(value) {
   if (!value) return "Select route and pickup time";
@@ -212,7 +212,8 @@ export function JobFormPage() {
               stop_type: s.type || "delivery",
               contact_name: s.contactName !== "—" ? s.contactName || "" : "",
               contact_phone: s.contactPhone !== "—" ? s.contactPhone || "" : "",
-              planned_arrival: "",
+              planned_arrival: s.plannedArrivalRaw || "",
+              planned_departure: s.plannedDepartureRaw || "",
               notes: s.notes !== "—" ? s.notes || "" : ""
             })));
           }
@@ -226,14 +227,21 @@ export function JobFormPage() {
     init();
   }, [id, isEdit]);
 
+  function clearRouteEstimate() {
+    setEstimateErr("");
+    setRouteEstimate(null);
+  }
+
   function set(key, value) {
     setSubmitErr("");
-    if (["pickup_address", "drop_address", "route_id"].includes(key)) {
-      setEstimateErr("");
-      setRouteEstimate(null);
-    }
+    if (["pickup_address", "drop_address", "route_id"].includes(key)) clearRouteEstimate();
     setFieldErrors(prev => ({ ...prev, [key]: "" }));
     setFields(prev => ({ ...prev, [key]: value }));
+  }
+
+  function updateStop(index, patch, shouldClearRoute = false) {
+    if (shouldClearRoute) clearRouteEstimate();
+    setStops(prev => prev.map((s, idx) => idx === index ? { ...s, ...patch } : s));
   }
 
   function handleCustomerChange(customerId) {
@@ -292,7 +300,7 @@ export function JobFormPage() {
       const suggestedDeadline = route
         ? addHours(value, route.standard_eta_hours, currentValidStops)
         : routeEstimate?.durationMins
-          ? addMinutes(value, routeEstimate.durationMins, currentValidStops)
+          ? addMinutes(value, routeEstimate.durationMins, 0)
           : "";
       return {
         ...prev,
@@ -310,6 +318,16 @@ export function JobFormPage() {
         delivery_departure_time: combineDateAndTime(fallbackArrival, timeValue)
       };
     });
+  }
+
+  function handleStopDepartureChange(index, timeValue) {
+    setStops(prev => prev.map((stop, idx) => {
+      if (idx !== index) return stop;
+      return {
+        ...stop,
+        planned_departure: combineDateAndTime(stop.planned_arrival, timeValue)
+      };
+    }));
   }
 
   const selectedRoute = useMemo(
@@ -331,13 +349,13 @@ export function JobFormPage() {
 
   const validStops = stops.filter(s => s.address.trim());
   const routeStartTime = fields.loading_done_time || fields.planned_departure;
-  const etaPreview = selectedRoute
-    ? addHours(routeStartTime, selectedRoute.standard_eta_hours, validStops.length)
-    : routeEstimate?.durationMins
-      ? addMinutes(routeStartTime, routeEstimate.durationMins, validStops.length)
+  const etaPreview = routeEstimate?.durationMins
+    ? addMinutes(routeStartTime, routeEstimate.durationMins, 0)
+    : selectedRoute
+      ? addHours(routeStartTime, selectedRoute.standard_eta_hours, validStops.length)
       : "";
 
-  const distanceMiles = selectedRoute ? selectedRoute.distance_km * 0.621371 : routeEstimate?.distanceMiles || null;
+  const distanceMiles = routeEstimate?.distanceMiles || (selectedRoute ? selectedRoute.distance_km * 0.621371 : null);
   const avgSpeedMph = sysSettings?.avg_speed_mph || 40;
   const loadingMins = parseInt(fields.loading_duration_mins) || 90;
   const unloadingMins = parseInt(fields.unloading_duration_mins) || 90;
@@ -353,9 +371,9 @@ export function JobFormPage() {
     !Number.isNaN(manualDeliveryArrival.getTime()) &&
     !Number.isNaN(manualDeliveryDeparture.getTime()) &&
     manualDeliveryDeparture >= manualDeliveryArrival;
-  const estimatedTravelMins = selectedRoute?.standard_eta_hours
+  const estimatedTravelMins = routeEstimate?.durationMins || (selectedRoute?.standard_eta_hours
     ? Math.round(Number(selectedRoute.standard_eta_hours) * 60)
-    : routeEstimate?.durationMins || null;
+    : null);
   const manualTravelMins = hasManualDeliveryTimes && fields.loading_done_time
     ? Math.max(0, Math.round((manualDeliveryArrival - new Date(fields.loading_done_time)) / 60000))
     : null;
@@ -374,26 +392,31 @@ export function JobFormPage() {
   const freightValue = parseFloat(fields.freight_amount) || 0;
   const profitLoss = costCalc ? freightValue - costCalc.totalCost : null;
 
+  async function fetchRouteEstimate() {
+    if (!fields.pickup_address.trim() || !fields.drop_address.trim()) {
+      throw new Error("Enter pickup and delivery addresses with UK postcodes.");
+    }
+    const res = await estimateJobRoute({
+      pickup_address: fields.pickup_address,
+      drop_address: fields.drop_address,
+      stops: validStops.map(stop => ({ address: stop.address }))
+    });
+    return res.data;
+  }
+
   async function calculateRouteEstimate() {
     setEstimateErr("");
     setRouteEstimate(null);
-    if (!fields.pickup_address.trim() || !fields.drop_address.trim()) {
-      setEstimateErr("Enter pickup and delivery addresses with UK postcodes.");
-      return;
-    }
     setEstimateBusy(true);
     try {
-      const res = await estimateJobRoute({
-        pickup_address: fields.pickup_address,
-        drop_address: fields.drop_address
-      });
-      setRouteEstimate(res.data);
+      const estimate = await fetchRouteEstimate();
+      setRouteEstimate(estimate);
       setFields(prev => ({
         ...prev,
-        delivery_deadline: prev.delivery_deadline || ((prev.loading_done_time || prev.planned_departure) ? addMinutes(prev.loading_done_time || prev.planned_departure, res.data.durationMins, validStops.length) : "")
+        delivery_deadline: prev.delivery_deadline || ((prev.loading_done_time || prev.planned_departure) ? addMinutes(prev.loading_done_time || prev.planned_departure, estimate.durationMins, 0) : "")
       }));
     } catch (err) {
-      setEstimateErr(err?.response?.data?.message || "Could not calculate distance from postcodes.");
+      setEstimateErr(err?.response?.data?.message || err?.message || "Could not calculate distance from postcodes.");
     } finally {
       setEstimateBusy(false);
     }
@@ -409,11 +432,37 @@ export function JobFormPage() {
       return;
     }
 
-    const calcArrivalStr = fields.delivery_arrival_time || (timingCalc?.arrival
-      ? new Date(timingCalc.arrival.getTime() - timingCalc.arrival.getTimezoneOffset() * 60000).toISOString().slice(0, 16)
+    setSubmitting(true);
+
+    let submitRouteEstimate = routeEstimate;
+    if (!submitRouteEstimate && validStops.length > 0) {
+      try {
+        submitRouteEstimate = await fetchRouteEstimate();
+        setRouteEstimate(submitRouteEstimate);
+      } catch (err) {
+        setSubmitErr(err?.response?.data?.message || err?.message || "Could not calculate route with intermediate stops.");
+        setSubmitting(false);
+        return;
+      }
+    }
+
+    const submitDistanceMiles = submitRouteEstimate?.distanceMiles || distanceMiles;
+    const submitTravelMins = submitRouteEstimate?.durationMins || estimatedTravelMins;
+    const submitTimingCalc = submitRouteEstimate && fields.loading_done_time
+      ? calcTiming(fields.loading_done_time, submitDistanceMiles, loadingMins, unloadingMins, avgSpeedMph)
+      : timingCalc;
+    const submitTotalMins = hasManualDeliveryTimes
+      ? loadingMins + manualTravelMins + manualUnloadingMins
+      : submitTimingCalc?.totalMins || (submitTravelMins ? loadingMins + submitTravelMins + unloadingMins : null);
+    const submitEtaPreview = submitRouteEstimate?.durationMins
+      ? addMinutes(routeStartTime, submitRouteEstimate.durationMins, 0)
+      : etaPreview;
+
+    const calcArrivalStr = fields.delivery_arrival_time || (submitTimingCalc?.arrival
+      ? new Date(submitTimingCalc.arrival.getTime() - submitTimingCalc.arrival.getTimezoneOffset() * 60000).toISOString().slice(0, 16)
       : null);
-    const calcUnloadEndStr = fields.delivery_departure_time || (timingCalc?.unloadEnd
-      ? new Date(timingCalc.unloadEnd.getTime() - timingCalc.unloadEnd.getTimezoneOffset() * 60000).toISOString().slice(0, 16)
+    const calcUnloadEndStr = fields.delivery_departure_time || (submitTimingCalc?.unloadEnd
+      ? new Date(submitTimingCalc.unloadEnd.getTime() - submitTimingCalc.unloadEnd.getTimezoneOffset() * 60000).toISOString().slice(0, 16)
       : null);
 
     const payload = {
@@ -424,7 +473,7 @@ export function JobFormPage() {
       pickup_address: fields.pickup_address || null,
       drop_address: fields.drop_address || null,
       planned_departure: fields.planned_departure || null,
-      delivery_deadline: fields.delivery_deadline || etaPreview || null,
+      delivery_deadline: fields.delivery_deadline || submitEtaPreview || null,
       load_type: "general",
       load_description: fields.load_description || null,
       freight_amount: fields.freight_amount ? Number(fields.freight_amount) : null,
@@ -435,22 +484,22 @@ export function JobFormPage() {
       loading_done_time: fields.loading_done_time || null,
       loading_duration_mins: loadingMins,
       unloading_duration_mins: unloadingMins,
-      estimated_distance_km: selectedRoute ? null : routeEstimate?.distanceKm || null,
-      estimated_eta_mins: selectedRoute ? null : routeEstimate?.durationMins || null,
+      estimated_distance_km: submitRouteEstimate?.distanceKm || null,
+      estimated_eta_mins: submitRouteEstimate?.durationMins || null,
       calculated_arrival: calcArrivalStr,
       calculated_unload_end: calcUnloadEndStr,
-      total_job_duration_mins: estimatedTotalMins || null,
+      total_job_duration_mins: submitTotalMins || null,
       stops: stops.filter(s => s.address.trim()).map(s => ({
         address: s.address.trim(),
         stop_type: s.stop_type,
         contact_name: s.contact_name || null,
         contact_phone: s.contact_phone || null,
         planned_arrival: s.planned_arrival || null,
+        planned_departure: s.planned_departure || null,
         notes: s.notes || null
       }))
     };
 
-    setSubmitting(true);
     try {
       if (isEdit) {
         await updateJob(id, payload);
@@ -568,20 +617,20 @@ export function JobFormPage() {
                   <div>
                     <span className="card-label">Distance</span>
                     <strong style={{ display: "block", color: "#1e3a8a" }}>
-                      {selectedRoute?.distance_km
-                        ? `${Math.round(selectedRoute.distance_km * 0.621371)} mi`
-                        : routeEstimate?.distanceMiles
-                          ? `${routeEstimate.distanceMiles} mi`
+                      {routeEstimate?.distanceMiles
+                        ? `${routeEstimate.distanceMiles} mi`
+                        : selectedRoute?.distance_km
+                          ? `${Math.round(selectedRoute.distance_km * 0.621371)} mi`
                           : "Not calculated"}
                     </strong>
                   </div>
                   <div>
                     <span className="card-label">ETA</span>
                     <strong style={{ display: "block", color: "#1e3a8a" }}>
-                      {selectedRoute?.standard_eta_hours
-                        ? `${selectedRoute.standard_eta_hours}h travel + 30m buffer`
-                        : routeEstimate?.durationMins
-                          ? `${fmtMins(routeEstimate.durationMins)} travel + 30m buffer`
+                      {routeEstimate?.durationMins
+                        ? `${fmtMins(routeEstimate.durationMins)} travel`
+                        : selectedRoute?.standard_eta_hours
+                          ? `${selectedRoute.standard_eta_hours}h travel${validStops.length ? " + stop buffer until calculated" : ""}`
                           : "Calculate from postcode"}
                     </strong>
                   </div>
@@ -590,14 +639,14 @@ export function JobFormPage() {
                     <strong style={{ display: "block", color: "#1e3a8a" }}>{displayDateTime(etaPreview)}</strong>
                   </div>
                 </div>
-                {!selectedRoute && (
+                {(!selectedRoute || validStops.length > 0) && (
                   <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 14, flexWrap: "wrap" }}>
                     <button className="header-action-button" type="button" disabled={estimateBusy} onClick={calculateRouteEstimate}>
-                      {estimateBusy ? "Calculating..." : "Calculate distance"}
+                      {estimateBusy ? "Calculating..." : validStops.length > 0 ? "Calculate with stops" : "Calculate distance"}
                     </button>
                     {routeEstimate && (
                       <span style={{ color: "#1e40af", fontSize: "0.84rem", fontWeight: 700 }}>
-                        {routeEstimate.pickupPostcode} → {routeEstimate.dropPostcode}
+                        {routeEstimate.pickupPostcode} → {routeEstimate.stopPostcodes?.length ? `${routeEstimate.stopPostcodes.join(" → ")} → ` : ""}{routeEstimate.dropPostcode}
                       </span>
                     )}
                     {estimateErr && <span style={{ color: "#b91c1c", fontSize: "0.84rem", fontWeight: 700 }}>{estimateErr}</span>}
@@ -763,14 +812,17 @@ export function JobFormPage() {
                   Intermediate stops
                   {validStops.length > 0 && (
                     <span style={{ marginLeft: 8, fontSize: "0.75rem", fontWeight: 600, color: "#2563eb", background: "#eff6ff", borderRadius: 20, padding: "2px 8px" }}>
-                      {validStops.length} stop{validStops.length > 1 ? "s" : ""} · +{validStops.length * 30} min ETA
+                      {validStops.length} stop{validStops.length > 1 ? "s" : ""} · calculate route for exact miles
                     </span>
                   )}
                 </p>
                 <button
                   type="button"
                   className="header-action-button"
-                  onClick={() => setStops(prev => [...prev, { ...emptyStop }])}
+                  onClick={() => {
+                    clearRouteEstimate();
+                    setStops(prev => [...prev, { ...emptyStop }]);
+                  }}
                 >
                   + Add stop
                 </button>
@@ -790,36 +842,42 @@ export function JobFormPage() {
                       type="button"
                       className="header-action-button danger"
                       style={{ padding: "4px 10px", fontSize: "0.75rem" }}
-                      onClick={() => setStops(prev => prev.filter((_, idx) => idx !== i))}
+                      onClick={() => {
+                        clearRouteEstimate();
+                        setStops(prev => prev.filter((_, idx) => idx !== i));
+                      }}
                     >
                       Remove
                     </button>
                   </div>
                   <div className="af-grid-2">
                     <Field label="Stop type">
-                      <select className="af-select" value={stop.stop_type} onChange={e => setStops(prev => prev.map((s, idx) => idx === i ? { ...s, stop_type: e.target.value } : s))}>
+                      <select className="af-select" value={stop.stop_type} onChange={e => updateStop(i, { stop_type: e.target.value })}>
                         <option value="delivery">Delivery</option>
                         <option value="pickup">Pickup</option>
                         <option value="waypoint">Waypoint</option>
                       </select>
                     </Field>
                     <Field label="Planned arrival at stop">
-                      <input className="af-input" type="datetime-local" value={stop.planned_arrival} onChange={e => setStops(prev => prev.map((s, idx) => idx === i ? { ...s, planned_arrival: e.target.value } : s))} />
+                      <input className="af-input" type="datetime-local" value={stop.planned_arrival} onChange={e => updateStop(i, { planned_arrival: e.target.value })} />
+                    </Field>
+                    <Field label="Departure time at stop">
+                      <input className="af-input" type="time" value={toInputTime(stop.planned_departure)} onChange={e => handleStopDepartureChange(i, e.target.value)} />
                     </Field>
                     <div style={{ gridColumn: "1 / -1" }}>
                       <Field label="Stop address" required>
-                        <textarea className="af-input" style={{ minHeight: 60, resize: "vertical" }} placeholder="Full address for this stop" value={stop.address} onChange={e => setStops(prev => prev.map((s, idx) => idx === i ? { ...s, address: e.target.value } : s))} />
+                        <textarea className="af-input" style={{ minHeight: 60, resize: "vertical" }} placeholder="Full address for this stop" value={stop.address} onChange={e => updateStop(i, { address: e.target.value }, true)} />
                       </Field>
                     </div>
                     <Field label="Contact name">
-                      <input className="af-input" type="text" placeholder="e.g. John Smith" value={stop.contact_name} onChange={e => setStops(prev => prev.map((s, idx) => idx === i ? { ...s, contact_name: e.target.value } : s))} />
+                      <input className="af-input" type="text" placeholder="e.g. John Smith" value={stop.contact_name} onChange={e => updateStop(i, { contact_name: e.target.value })} />
                     </Field>
                     <Field label="Contact phone">
-                      <input className="af-input" type="tel" placeholder="e.g. 07700 900123" value={stop.contact_phone} onChange={e => setStops(prev => prev.map((s, idx) => idx === i ? { ...s, contact_phone: e.target.value } : s))} />
+                      <input className="af-input" type="tel" placeholder="e.g. 07700 900123" value={stop.contact_phone} onChange={e => updateStop(i, { contact_phone: e.target.value })} />
                     </Field>
                     <div style={{ gridColumn: "1 / -1" }}>
                       <Field label="Notes">
-                        <input className="af-input" type="text" placeholder="Any special notes for this stop" value={stop.notes} onChange={e => setStops(prev => prev.map((s, idx) => idx === i ? { ...s, notes: e.target.value } : s))} />
+                        <input className="af-input" type="text" placeholder="Any special notes for this stop" value={stop.notes} onChange={e => updateStop(i, { notes: e.target.value })} />
                       </Field>
                     </div>
                   </div>
@@ -828,7 +886,7 @@ export function JobFormPage() {
 
               {validStops.length > 0 && (selectedRoute || routeEstimate) && (
                 <div style={{ marginTop: 8, padding: "10px 14px", background: "#eff6ff", border: "1px solid #bfdbfe", borderRadius: 8, fontSize: "0.84rem", color: "#1e40af" }}>
-                  <strong>ETA with stops:</strong> {displayDateTime(etaPreview)} — base travel ({selectedRoute ? `${selectedRoute.standard_eta_hours}h` : fmtMins(routeEstimate.durationMins)}) + 30 min × {validStops.length} stop{validStops.length > 1 ? "s" : ""}
+                  <strong>ETA with stops:</strong> {displayDateTime(etaPreview)} — {routeEstimate ? `${routeEstimate.distanceMiles} mi, ${fmtMins(routeEstimate.durationMins)} travel` : `base route (${selectedRoute.standard_eta_hours}h) + 30 min × ${validStops.length} stop${validStops.length > 1 ? "s" : ""}`}
                 </div>
               )}
             </div>
