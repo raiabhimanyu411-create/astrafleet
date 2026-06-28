@@ -584,8 +584,9 @@ export function JobsListPage() {
 
             const pickupShort = abbrevAddr(job.pickupAddress);
             const dropShort = abbrevAddr(job.dropAddress);
-            const stopCount = Number(job.stopCount || 0);
-            const totalStops = Math.max(stopCount, 2);
+            const routeStops = Array.isArray(job.stops) ? job.stops : [];
+            const stopCount = routeStops.length;
+            const totalStops = stopCount + 2;
             const hasGap = !job.driverAssigned || !job.vehicleAssigned;
             const podPending = isPodPending(job);
             const loadIcon = LOAD_ICONS[job.loadType] || "📦";
@@ -639,7 +640,7 @@ export function JobsListPage() {
                     </div>
                     <div className="relay-route-arrow">
                       <span className="relay-route-line" />
-                      {stopCount > 2 && <span className="relay-route-mid">+{stopCount - 2} stops</span>}
+                      {stopCount > 0 && <span className="relay-route-mid">+{stopCount} stops</span>}
                       <span className="relay-route-arrowhead">→</span>
                     </div>
                     <div className="relay-stop-node">
@@ -795,7 +796,38 @@ export function JobsListPage() {
                         </div>
                       </div>
 
-                      {/* Stop 2 — Drop */}
+                      {/* Intermediate stops */}
+                      {routeStops.map((stop, index) => (
+                        <div className="relay-stop-row" key={stop.id || `${job.id}-stop-${index}`}>
+                          <div className="relay-stop-location">
+                            <span className="relay-stop-bubble">{index + 2}</span>
+                            <div>
+                              <strong>{abbrevAddr(stop.address)}</strong>
+                              <small>{stop.address !== "—" ? stop.address : "Address not set"}</small>
+                              <small className="relay-dock-label">
+                                {(stop.type || "stop").replace(/^./, c => c.toUpperCase())} stop{stop.status ? ` · ${stop.status}` : ""}
+                              </small>
+                              {stop.notes !== "—" && <small className="relay-dock-label">Notes: {stop.notes}</small>}
+                            </div>
+                          </div>
+                          <div className="relay-stop-equipment">
+                            <span>Stop type <strong>{stop.type || "—"}</strong></span>
+                            <span>Contact <strong>{stop.contactName !== "—" ? stop.contactName : "—"}</strong></span>
+                            <span>Phone <strong>{stop.contactPhone !== "—" ? stop.contactPhone : "—"}</strong></span>
+                          </div>
+                          <div className="relay-stop-time">
+                            <strong>{stop.actualArrival !== "—" ? stop.actualArrival : stop.plannedArrival !== "—" ? stop.plannedArrival : "TBD"}</strong>
+                            {stop.actualArrival !== "—" && stop.plannedArrival !== "—" && (
+                              <small>Sch. {stop.plannedArrival}</small>
+                            )}
+                          </div>
+                          <div className="relay-stop-time">
+                            <strong>{stop.plannedDeparture !== "—" ? stop.plannedDeparture : "—"}</strong>
+                          </div>
+                        </div>
+                      ))}
+
+                      {/* Final Drop */}
                       <div className="relay-stop-row">
                         <div className="relay-stop-location">
                           <span className="relay-stop-bubble">{totalStops}</span>

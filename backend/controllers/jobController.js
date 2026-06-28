@@ -594,6 +594,23 @@ exports.listJobs = async (req, res) => {
       const estimatedRow = await backfillRouteEstimate(row, settings);
       hydratedRows.push(await backfillTiming(estimatedRow, settings));
     }
+    const jobIds = hydratedRows.map(row => row.id);
+    const stopsByTrip = new Map();
+    if (jobIds.length > 0) {
+      const [stopRows] = await db.query(
+        `SELECT id, trip_id, stop_order, stop_type, address, contact_name, contact_phone,
+                planned_arrival, planned_departure, actual_arrival, status, notes
+         FROM job_stops
+         WHERE trip_id IN (?)
+         ORDER BY trip_id ASC, stop_order ASC`,
+        [jobIds]
+      );
+      for (const stop of stopRows) {
+        const list = stopsByTrip.get(stop.trip_id) || [];
+        list.push(stop);
+        stopsByTrip.set(stop.trip_id, list);
+      }
+    }
 
     res.json({
       stats: [
@@ -677,6 +694,22 @@ exports.listJobs = async (req, res) => {
           priorityTone: priorityTone[r.priority_level] || "neutral",
           podStatus: r.pod_status,
           stopCount: r.stop_count,
+          stops: (stopsByTrip.get(r.id) || []).map((s, i) => ({
+            id: s.id,
+            order: i + 1,
+            type: s.stop_type,
+            label: `${(s.stop_type || "stop").toUpperCase()} ${i + 1}`,
+            address: s.address || "—",
+            contactName: s.contact_name || "—",
+            contactPhone: s.contact_phone || "—",
+            plannedArrival: fmtDateTime(s.planned_arrival),
+            plannedArrivalRaw: rawDateTime(s.planned_arrival),
+            plannedDeparture: fmtDateTime(s.planned_departure),
+            plannedDepartureRaw: rawDateTime(s.planned_departure),
+            actualArrival: fmtDateTime(s.actual_arrival),
+            status: s.status || "pending",
+            notes: s.notes || "—"
+          })),
           cancellationReason: r.cancellation_reason || "",
           loadingDoneTime: rawDateTime(r.loading_done_time),
           loadingDurationMins: loadingMins,
