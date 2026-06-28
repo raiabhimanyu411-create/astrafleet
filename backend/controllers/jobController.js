@@ -51,6 +51,7 @@ let softDeleteSchemaReady = false;
 let jobCostSchemaReady = false;
 const DEFAULT_LOADING_MINS = 90;
 const DEFAULT_UNLOADING_MINS = 90;
+const FLEET_COST_PER_HOUR_GBP = 12.05;
 
 function effectiveLoadingMins(rowOrValue) {
   const value = typeof rowOrValue === "object" ? rowOrValue?.loading_duration_mins : rowOrValue;
@@ -359,13 +360,16 @@ function calcJobEconomics(distanceKm, totalJobMins, settings, fallbackTravelMins
     : 0);
   const totalHours = totalMinutes / 60;
   const driverCost = totalHours * settings.driver_rate_per_hour;
-  const totalCost = fuelCost + driverCost;
+  const fleetCost = totalHours * FLEET_COST_PER_HOUR_GBP;
+  const totalCost = fuelCost + driverCost + fleetCost;
   const suggestedPrice = totalCost * (1 + settings.margin_pct / 100);
   return {
     distanceMiles: Math.round(distanceMiles * 10) / 10,
     fuelCostPerMile: Math.round(fuelCostPerMile * 100) / 100,
     fuelCost: Math.round(fuelCost * 100) / 100,
     driverCost: Math.round(driverCost * 100) / 100,
+    fleetCost: Math.round(fleetCost * 100) / 100,
+    fleetCostPerHour: FLEET_COST_PER_HOUR_GBP,
     totalCost: Math.round(totalCost * 100) / 100,
     suggestedPrice: Math.round(suggestedPrice * 100) / 100,
     totalHours: Math.round(totalHours * 100) / 100,

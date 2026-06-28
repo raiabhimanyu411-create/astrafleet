@@ -893,6 +893,11 @@ export function JobsListPage() {
                           <small>{fmtMins(job.totalJobDurationMins)} job time</small>
                         </div>
                         <div className="relay-economics-col">
+                          <span className="relay-economics-label">Fleet cost</span>
+                          <strong>{fmtGBP(job.economics.fleetCost)}</strong>
+                          <small>{fmtGBP(job.economics.fleetCostPerHour)}/hr</small>
+                        </div>
+                        <div className="relay-economics-col">
                           <span className="relay-economics-label">Total cost</span>
                           <strong>{fmtGBP(job.economics.totalCost)}</strong>
                         </div>

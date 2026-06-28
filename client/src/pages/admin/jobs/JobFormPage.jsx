@@ -35,6 +35,7 @@ const emptyFields = {
   loading_duration_mins: "90",
   unloading_duration_mins: "90"
 };
+const FLEET_COST_PER_HOUR_GBP = 12.05;
 
 function calcTiming(loadingDoneTime, distanceMiles, loadingMins, unloadingMins, avgSpeedMph) {
   if (!loadingDoneTime || !distanceMiles) return null;
@@ -53,9 +54,10 @@ function calcCost(distanceMiles, totalMins, settings) {
   const fuelCost = distanceMiles * fuelCostPerMile;
   const totalHours = (totalMins || 0) / 60;
   const driverCost = totalHours * settings.driver_rate_per_hour;
-  const totalCost = fuelCost + driverCost;
+  const fleetCost = totalHours * FLEET_COST_PER_HOUR_GBP;
+  const totalCost = fuelCost + driverCost + fleetCost;
   const suggestedPrice = totalCost * (1 + settings.margin_pct / 100);
-  return { fuelCost, driverCost, totalCost, suggestedPrice, fuelCostPerMile };
+  return { fuelCost, driverCost, fleetCost, fleetCostPerHour: FLEET_COST_PER_HOUR_GBP, totalCost, suggestedPrice, fuelCostPerMile };
 }
 
 function fmtGBP(n) {
@@ -702,6 +704,10 @@ export function JobFormPage() {
                       <span>Driver ({fmtMins(estimatedTotalMins)} @ £{sysSettings?.driver_rate_per_hour}/hr)</span>
                       <strong>{fmtGBP(costCalc.driverCost)}</strong>
                     </div>
+                    <div className="job-economics-row">
+                      <span>Fleet ({fmtMins(estimatedTotalMins)} @ {fmtGBP(costCalc.fleetCostPerHour)}/hr)</span>
+                      <strong>{fmtGBP(costCalc.fleetCost)}</strong>
+                    </div>
                     <div className="job-economics-row total">
                       <span>Total cost</span>
                       <strong>{fmtGBP(costCalc.totalCost)}</strong>
@@ -718,7 +724,7 @@ export function JobFormPage() {
                     )}
                   </div>
                   <p className="job-economics-hint">
-                    Fuel: £{sysSettings?.fuel_price_per_litre}/L · {sysSettings?.mpg} MPG · Driver: £{sysSettings?.driver_rate_per_hour}/hr
+                    Fuel: £{sysSettings?.fuel_price_per_litre}/L · {sysSettings?.mpg} MPG · Driver: £{sysSettings?.driver_rate_per_hour}/hr · Fleet: {fmtGBP(FLEET_COST_PER_HOUR_GBP)}/hr
                   </p>
                 </div>
               )}
