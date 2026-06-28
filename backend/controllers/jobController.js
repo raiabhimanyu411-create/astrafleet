@@ -384,6 +384,7 @@ exports.listJobs = async (req, res) => {
           dropAddress: r.drop_address || r.destination_hub || "—",
           dockWindow: r.dock_window || "—",
           distanceKm: r.distance_km,
+          distanceMiles: r.distance_km ? Math.round(r.distance_km * 0.621371 * 10) / 10 : null,
           etaHours: r.standard_eta_hours,
           driver: r.driver_name || "Unassigned",
           driverPhone: r.driver_phone || "—",
@@ -692,6 +693,7 @@ exports.getJobById = async (req, res) => {
         pickupAddress: t.pickup_address,
         dropAddress: t.drop_address,
         distanceKm: t.distance_km,
+        distanceMiles: t.distance_km ? Math.round(t.distance_km * 0.621371 * 10) / 10 : null,
         etaHours: t.standard_eta_hours,
         tollEstimate: fmtAmount(t.toll_estimate_gbp)
       },

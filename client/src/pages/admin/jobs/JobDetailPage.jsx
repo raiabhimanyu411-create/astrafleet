@@ -331,7 +331,7 @@ export function JobDetailPage() {
                     <DetailField label="Dock window" value={data.schedule.dockWindow} />
                   )}
                   {data.route.distanceKm && (
-                    <DetailField label="Distance" value={`${data.route.distanceKm} km`} />
+                    <DetailField label="Distance" value={`${Math.round(data.route.distanceKm * 0.621371)} mi`} />
                   )}
                 </div>
               </SectionCard>

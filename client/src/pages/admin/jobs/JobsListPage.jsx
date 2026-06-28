@@ -415,10 +415,10 @@ export function JobsListPage() {
   function exportJobs() {
     exportCsv("jobs-dispatch.csv", [
       ["Job code", "Customer", "Lane", "Load", "Priority", "Driver", "Vehicle", "Trailer",
-       "Departure", "ETA", "Distance km", "Status", "Freight GBP", "POD Status"],
+       "Departure", "ETA", "Distance (mi)", "Status", "Freight GBP", "POD Status"],
       ...jobs.map(job => [job.code, job.customer, job.lane, job.loadType, job.priority,
         job.driver, job.vehicle, job.trailer, job.departureRaw, job.etaRaw,
-        job.distanceKm, job.status, job.freightValue, job.podStatus])
+        job.distanceKm ? Math.round(job.distanceKm * 0.621371) : "", job.status, job.freightValue, job.podStatus])
     ]);
   }
 
@@ -650,7 +650,7 @@ export function JobsListPage() {
 
                   {/* Distance / ETA */}
                   <div className="relay-job-stats">
-                    {job.distanceKm && <span>{job.distanceKm} km</span>}
+                    {job.distanceKm && <span>{Math.round(job.distanceKm * 0.621371)} mi</span>}
                     {job.etaHours && <span>{job.etaHours}h route</span>}
                   </div>
 

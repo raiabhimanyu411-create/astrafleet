@@ -423,7 +423,7 @@ export function JobFormPage() {
                 <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0,1fr))", gap: 12 }}>
                   <div>
                     <span className="card-label">Distance</span>
-                    <strong style={{ display: "block", color: "#1e3a8a" }}>{selectedRoute?.distance_km ? `${selectedRoute.distance_km} km` : "Route not selected"}</strong>
+                    <strong style={{ display: "block", color: "#1e3a8a" }}>{selectedRoute?.distance_km ? `${Math.round(selectedRoute.distance_km * 0.621371)} mi` : "Route not selected"}</strong>
                   </div>
                   <div>
                     <span className="card-label">ETA</span>

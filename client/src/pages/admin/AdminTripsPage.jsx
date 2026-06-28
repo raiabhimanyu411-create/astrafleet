@@ -60,7 +60,7 @@ function RouteMaster() {
       route_code: route.routeCode,
       origin_hub: route.originHub,
       destination_hub: route.destinationHub,
-      distance_km: route.distanceKm || "",
+      distance_km: route.distanceKm ? Math.round(route.distanceKm * 0.621371) : "",
       toll_estimate_gbp: route.tollEstimateGbp || "",
       standard_eta_hours: route.standardEtaHours || "",
       status: route.status || "planned"
@@ -80,7 +80,7 @@ function RouteMaster() {
     try {
       const payload = {
         ...form,
-        distance_km: Number(form.distance_km),
+        distance_km: form.distance_km ? Math.round(Number(form.distance_km) * 1.60934) : 0,
         toll_estimate_gbp: form.toll_estimate_gbp ? Number(form.toll_estimate_gbp) : 0,
         standard_eta_hours: form.standard_eta_hours ? Number(form.standard_eta_hours) : 0
       };
@@ -135,7 +135,7 @@ function RouteMaster() {
                 <p>{route.originHub} → {route.destinationHub}</p>
               </div>
               <div>
-                <span>{route.distanceKm} km · {route.standardEtaHours}h</span>
+                <span>{Math.round(route.distanceKm * 0.621371)} mi · {route.standardEtaHours}h</span>
                 <p>£{Number(route.tollEstimateGbp || 0).toLocaleString("en-GB", { minimumFractionDigits: 2 })} toll · {route.tripCount} trips</p>
               </div>
               <div style={{ display: "flex", alignItems: "center", gap: 8, justifyContent: "flex-end", flexWrap: "wrap" }}>
@@ -193,7 +193,7 @@ function RouteMaster() {
               <input className="af-input" value={form.destination_hub} onChange={e => set("destination_hub", e.target.value)} placeholder="e.g. Manchester" required />
             </div>
             <div className="af-field">
-              <label className="af-label">Distance (km)</label>
+              <label className="af-label">Distance (miles)</label>
               <input className="af-input" type="number" min="1" value={form.distance_km} onChange={e => set("distance_km", e.target.value)} required />
             </div>
             <div className="af-field">

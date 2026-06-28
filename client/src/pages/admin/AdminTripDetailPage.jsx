@@ -151,7 +151,7 @@ export function AdminTripDetailPage() {
                   <DetailBlock label="From" value={trip.route?.from} />
                   <DetailBlock label="To" value={trip.route?.to} />
                   <DetailBlock label="Route code" value={trip.route?.code} />
-                  <DetailBlock label="Distance" value={trip.route?.distanceKm ? `${trip.route.distanceKm} km` : null} />
+                  <DetailBlock label="Distance" value={trip.route?.distanceKm ? `${Math.round(trip.route.distanceKm * 0.621371)} mi` : null} />
                   <DetailBlock label="Est. travel time" value={trip.route?.etaHours ? `${trip.route.etaHours} hours` : null} />
                   <DetailBlock label="Toll estimate" value={trip.route?.tollEstimate} />
                 </div>

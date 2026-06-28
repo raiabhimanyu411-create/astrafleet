@@ -150,7 +150,7 @@ export function AdminTripAssignPage() {
             <div className="af-section">
               <p className="af-section-title">Select route</p>
               <div className="af-grid-2">
-                <Field label="Route" hint={selectedRoute ? `${selectedRoute.distance_km} km · Est. ${selectedRoute.standard_eta_hours}h · Toll ~£${Number(selectedRoute.toll_estimate_gbp).toLocaleString("en-GB", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : null}>
+                <Field label="Route" hint={selectedRoute ? `${Math.round(selectedRoute.distance_km * 0.621371)} mi · Est. ${selectedRoute.standard_eta_hours}h · Toll ~£${Number(selectedRoute.toll_estimate_gbp).toLocaleString("en-GB", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : null}>
                   <select
                     className="af-select"
                     value={fields.route_id}
