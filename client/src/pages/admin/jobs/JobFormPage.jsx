@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { createJob, getJobById, getJobFormData, updateJob } from "../../../api/jobApi";
+import { createJob, estimateJobRoute, getJobById, getJobFormData, updateJob } from "../../../api/jobApi";
 import { getSettings } from "../../../api/settingsApi";
 import { AdminWorkspaceLayout } from "../AdminWorkspaceLayout";
 
@@ -87,6 +87,14 @@ function addHours(value, hours, extraStops = 0) {
   return toInputDateTime(date);
 }
 
+function addMinutes(value, minutes, extraStops = 0) {
+  if (!value || !minutes) return "";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  date.setMinutes(date.getMinutes() + Number(minutes) + 30 + extraStops * 30);
+  return toInputDateTime(date);
+}
+
 const emptyStop = { address: "", stop_type: "delivery", contact_name: "", contact_phone: "", planned_arrival: "", notes: "" };
 
 function displayDateTime(value) {
@@ -134,6 +142,9 @@ export function JobFormPage() {
   const [submitErr, setSubmitErr] = useState("");
   const [fieldErrors, setFieldErrors] = useState({});
   const [sysSettings, setSysSettings] = useState(null);
+  const [routeEstimate, setRouteEstimate] = useState(null);
+  const [estimateBusy, setEstimateBusy] = useState(false);
+  const [estimateErr, setEstimateErr] = useState("");
 
   useEffect(() => {
     async function init() {
@@ -162,6 +173,15 @@ export function JobFormPage() {
             loading_done_time: j.timing?.loadingDoneTime || "",
             unloading_duration_mins: j.timing?.unloadingDurationMins ? String(j.timing.unloadingDurationMins) : "120"
           });
+          if (!j.form?.route_id && j.route?.distanceKm) {
+            setRouteEstimate({
+              distanceKm: Number(j.route.distanceKm),
+              distanceMiles: Number(j.route.distanceMiles || j.route.distanceKm * 0.621371),
+              durationMins: j.route.etaHours ? Math.round(Number(j.route.etaHours) * 60) : null,
+              standardEtaHours: j.route.etaHours || null,
+              source: "saved-estimate"
+            });
+          }
           if (j.stops?.length > 0) {
             setStops(j.stops.map(s => ({
               address: s.address || "",
@@ -184,6 +204,10 @@ export function JobFormPage() {
 
   function set(key, value) {
     setSubmitErr("");
+    if (["pickup_address", "drop_address", "route_id"].includes(key)) {
+      setEstimateErr("");
+      setRouteEstimate(null);
+    }
     setFieldErrors(prev => ({ ...prev, [key]: "" }));
     setFields(prev => ({ ...prev, [key]: value }));
   }
@@ -200,6 +224,8 @@ export function JobFormPage() {
       pickup_address: customer ? pickupOptions[0] || customer.address || prev.pickup_address : prev.pickup_address,
       drop_address: customer ? dropOptions[0] || prev.drop_address : prev.drop_address
     }));
+    setRouteEstimate(null);
+    setEstimateErr("");
     setFieldErrors(prev => ({ ...prev, client_name: "", pickup_address: "", drop_address: "" }));
   }
 
@@ -215,6 +241,8 @@ export function JobFormPage() {
         delivery_deadline: prev.delivery_deadline || suggestedDeadline
       };
     });
+    setRouteEstimate(null);
+    setEstimateErr("");
     if (route) setFieldErrors(prev => ({ ...prev, pickup_address: "", drop_address: "" }));
   }
 
@@ -248,9 +276,13 @@ export function JobFormPage() {
   }, [selectedCustomer]);
 
   const validStops = stops.filter(s => s.address.trim());
-  const etaPreview = selectedRoute ? addHours(fields.planned_departure, selectedRoute.standard_eta_hours, validStops.length) : "";
+  const etaPreview = selectedRoute
+    ? addHours(fields.planned_departure, selectedRoute.standard_eta_hours, validStops.length)
+    : routeEstimate?.durationMins
+      ? addMinutes(fields.planned_departure, routeEstimate.durationMins, validStops.length)
+      : "";
 
-  const distanceMiles = selectedRoute ? selectedRoute.distance_km * 0.621371 : null;
+  const distanceMiles = selectedRoute ? selectedRoute.distance_km * 0.621371 : routeEstimate?.distanceMiles || null;
   const avgSpeedMph = sysSettings?.avg_speed_mph || 50;
   const unloadingMins = parseInt(fields.unloading_duration_mins) || 120;
 
@@ -266,6 +298,31 @@ export function JobFormPage() {
 
   const freightValue = parseFloat(fields.freight_amount) || 0;
   const profitLoss = costCalc ? freightValue - costCalc.totalCost : null;
+
+  async function calculateRouteEstimate() {
+    setEstimateErr("");
+    setRouteEstimate(null);
+    if (!fields.pickup_address.trim() || !fields.drop_address.trim()) {
+      setEstimateErr("Enter pickup and delivery addresses with UK postcodes.");
+      return;
+    }
+    setEstimateBusy(true);
+    try {
+      const res = await estimateJobRoute({
+        pickup_address: fields.pickup_address,
+        drop_address: fields.drop_address
+      });
+      setRouteEstimate(res.data);
+      setFields(prev => ({
+        ...prev,
+        delivery_deadline: prev.delivery_deadline || (prev.planned_departure ? addMinutes(prev.planned_departure, res.data.durationMins, validStops.length) : "")
+      }));
+    } catch (err) {
+      setEstimateErr(err?.response?.data?.message || "Could not calculate distance from postcodes.");
+    } finally {
+      setEstimateBusy(false);
+    }
+  }
 
   async function handleSubmit(e) {
     e.preventDefault();
@@ -302,6 +359,8 @@ export function JobFormPage() {
       trailer_id: fields.trailer_id ? Number(fields.trailer_id) : null,
       loading_done_time: fields.loading_done_time || null,
       unloading_duration_mins: unloadingMins,
+      estimated_distance_km: selectedRoute ? null : routeEstimate?.distanceKm || null,
+      estimated_eta_mins: selectedRoute ? null : routeEstimate?.durationMins || null,
       calculated_arrival: calcArrivalStr,
       calculated_unload_end: calcUnloadEndStr,
       total_job_duration_mins: timingCalc?.totalMins || null,
@@ -423,17 +482,42 @@ export function JobFormPage() {
                 <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0,1fr))", gap: 12 }}>
                   <div>
                     <span className="card-label">Distance</span>
-                    <strong style={{ display: "block", color: "#1e3a8a" }}>{selectedRoute?.distance_km ? `${Math.round(selectedRoute.distance_km * 0.621371)} mi` : "Route not selected"}</strong>
+                    <strong style={{ display: "block", color: "#1e3a8a" }}>
+                      {selectedRoute?.distance_km
+                        ? `${Math.round(selectedRoute.distance_km * 0.621371)} mi`
+                        : routeEstimate?.distanceMiles
+                          ? `${routeEstimate.distanceMiles} mi`
+                          : "Not calculated"}
+                    </strong>
                   </div>
                   <div>
                     <span className="card-label">ETA</span>
-                    <strong style={{ display: "block", color: "#1e3a8a" }}>{selectedRoute?.standard_eta_hours ? `${selectedRoute.standard_eta_hours}h travel + 30m buffer` : "Manual"}</strong>
+                    <strong style={{ display: "block", color: "#1e3a8a" }}>
+                      {selectedRoute?.standard_eta_hours
+                        ? `${selectedRoute.standard_eta_hours}h travel + 30m buffer`
+                        : routeEstimate?.durationMins
+                          ? `${fmtMins(routeEstimate.durationMins)} travel + 30m buffer`
+                          : "Calculate from postcode"}
+                    </strong>
                   </div>
                   <div>
                     <span className="card-label">Suggested delivery</span>
                     <strong style={{ display: "block", color: "#1e3a8a" }}>{displayDateTime(etaPreview)}</strong>
                   </div>
                 </div>
+                {!selectedRoute && (
+                  <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 14, flexWrap: "wrap" }}>
+                    <button className="header-action-button" type="button" disabled={estimateBusy} onClick={calculateRouteEstimate}>
+                      {estimateBusy ? "Calculating..." : "Calculate distance"}
+                    </button>
+                    {routeEstimate && (
+                      <span style={{ color: "#1e40af", fontSize: "0.84rem", fontWeight: 700 }}>
+                        {routeEstimate.pickupPostcode} → {routeEstimate.dropPostcode}
+                      </span>
+                    )}
+                    {estimateErr && <span style={{ color: "#b91c1c", fontSize: "0.84rem", fontWeight: 700 }}>{estimateErr}</span>}
+                  </div>
+                )}
               </div>
 
               <div className="af-grid-2" style={{ marginTop: 16 }}>
@@ -541,7 +625,7 @@ export function JobFormPage() {
                 </div>
               ) : (
                 <p style={{ color: "#94a3b8", fontSize: "0.84rem", marginTop: 12 }}>
-                  Select a route and enter loading done time to auto-calculate travel time and arrival.
+                  Select a route or calculate distance from postcodes, then enter loading done time to auto-calculate travel time and arrival.
                 </p>
               )}
 
@@ -649,9 +733,9 @@ export function JobFormPage() {
                 </div>
               ))}
 
-              {validStops.length > 0 && selectedRoute && (
+              {validStops.length > 0 && (selectedRoute || routeEstimate) && (
                 <div style={{ marginTop: 8, padding: "10px 14px", background: "#eff6ff", border: "1px solid #bfdbfe", borderRadius: 8, fontSize: "0.84rem", color: "#1e40af" }}>
-                  <strong>ETA with stops:</strong> {displayDateTime(etaPreview)} — base route ({selectedRoute.standard_eta_hours}h) + 30 min × {validStops.length} stop{validStops.length > 1 ? "s" : ""}
+                  <strong>ETA with stops:</strong> {displayDateTime(etaPreview)} — base travel ({selectedRoute ? `${selectedRoute.standard_eta_hours}h` : fmtMins(routeEstimate.durationMins)}) + 30 min × {validStops.length} stop{validStops.length > 1 ? "s" : ""}
                 </div>
               )}
             </div>

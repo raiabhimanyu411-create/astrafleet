@@ -185,7 +185,74 @@ async function ensureJobCostSchema() {
   await addColumnIfMissing("trips", "calculated_arrival", "DATETIME DEFAULT NULL");
   await addColumnIfMissing("trips", "calculated_unload_end", "DATETIME DEFAULT NULL");
   await addColumnIfMissing("trips", "total_job_duration_mins", "INT DEFAULT NULL");
+  await addColumnIfMissing("trips", "estimated_distance_km", "DECIMAL(10,2) DEFAULT NULL");
+  await addColumnIfMissing("trips", "estimated_eta_mins", "INT DEFAULT NULL");
   jobCostSchemaReady = true;
+}
+
+function extractUkPostcode(value) {
+  const text = String(value || "").toUpperCase().replace(/\s+/g, " ");
+  const match = text.match(/\b([A-Z]{1,2}\d[A-Z\d]?\s*\d[A-Z]{2})\b/);
+  return match ? match[1].replace(/\s+/g, "") : "";
+}
+
+async function fetchJson(url, timeoutMs = 8000) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const response = await fetch(url, { signal: controller.signal });
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    return await response.json();
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+async function lookupPostcode(postcode) {
+  const clean = String(postcode || "").replace(/\s+/g, "");
+  if (!clean) return null;
+  const data = await fetchJson(`https://api.postcodes.io/postcodes/${encodeURIComponent(clean)}`);
+  if (data?.status !== 200 || !data?.result) return null;
+  return {
+    postcode: data.result.postcode,
+    latitude: Number(data.result.latitude),
+    longitude: Number(data.result.longitude)
+  };
+}
+
+function haversineKm(a, b) {
+  const radiusKm = 6371;
+  const toRad = deg => deg * Math.PI / 180;
+  const dLat = toRad(b.latitude - a.latitude);
+  const dLon = toRad(b.longitude - a.longitude);
+  const lat1 = toRad(a.latitude);
+  const lat2 = toRad(b.latitude);
+  const h = Math.sin(dLat / 2) ** 2 + Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLon / 2) ** 2;
+  return 2 * radiusKm * Math.asin(Math.sqrt(h));
+}
+
+async function estimateDrivingRoute(fromPoint, toPoint, settings) {
+  const coords = `${fromPoint.longitude},${fromPoint.latitude};${toPoint.longitude},${toPoint.latitude}`;
+  try {
+    const data = await fetchJson(`https://router.project-osrm.org/route/v1/driving/${coords}?overview=false&alternatives=false&steps=false`, 10000);
+    const route = data?.routes?.[0];
+    if (route?.distance && route?.duration) {
+      return {
+        distanceKm: Math.round((route.distance / 1000) * 10) / 10,
+        durationMins: Math.max(1, Math.round(route.duration / 60)),
+        source: "postcode-driving"
+      };
+    }
+  } catch {
+    // Fall back to a road-biased straight-line estimate if routing is unavailable.
+  }
+  const fallbackKm = haversineKm(fromPoint, toPoint) * 1.25;
+  const avgSpeed = Number(settings?.avg_speed_mph || 50) * 1.60934;
+  return {
+    distanceKm: Math.round(fallbackKm * 10) / 10,
+    durationMins: Math.max(1, Math.round((fallbackKm / avgSpeed) * 60)),
+    source: "postcode-estimate"
+  };
 }
 
 function calcJobEconomics(distanceKm, totalJobMins, settings) {
@@ -257,6 +324,45 @@ exports.getFormData = async (req, res) => {
   }
 };
 
+// POST /api/jobs/estimate-route
+exports.estimateRouteFromAddresses = async (req, res) => {
+  try {
+    const { pickup_address, drop_address } = req.body;
+    const pickupPostcode = extractUkPostcode(pickup_address);
+    const dropPostcode = extractUkPostcode(drop_address);
+
+    if (!pickupPostcode || !dropPostcode) {
+      return res.status(400).json({ message: "Pickup and delivery addresses need valid UK postcodes." });
+    }
+
+    const settingsMap = await getSettingsMap();
+    const settings = { avg_speed_mph: parseFloat(settingsMap.avg_speed_mph) };
+    const [pickup, drop] = await Promise.all([
+      lookupPostcode(pickupPostcode),
+      lookupPostcode(dropPostcode)
+    ]);
+
+    if (!pickup || !drop) {
+      return res.status(404).json({ message: "Could not find one of the postcodes." });
+    }
+
+    const estimate = await estimateDrivingRoute(pickup, drop, settings);
+    const distanceMiles = Math.round(estimate.distanceKm * 0.621371 * 10) / 10;
+
+    res.json({
+      pickupPostcode: pickup.postcode,
+      dropPostcode: drop.postcode,
+      distanceKm: estimate.distanceKm,
+      distanceMiles,
+      durationMins: estimate.durationMins,
+      standardEtaHours: Math.round((estimate.durationMins / 60) * 10) / 10,
+      source: estimate.source
+    });
+  } catch (err) {
+    res.status(500).json({ message: "Route estimate error", error: err.message });
+  }
+};
+
 // GET /api/jobs
 exports.listJobs = async (req, res) => {
   try {
@@ -310,7 +416,9 @@ exports.listJobs = async (req, res) => {
               t.loading_done_time, t.unloading_duration_mins, t.calculated_arrival,
               t.calculated_unload_end, t.total_job_duration_mins,
               c.company_name as customer_name, c.contact_name as customer_contact, c.phone as customer_phone,
-              r.route_code, r.origin_hub, r.destination_hub, r.distance_km, r.standard_eta_hours,
+              r.route_code, r.origin_hub, r.destination_hub,
+              COALESCE(r.distance_km, t.estimated_distance_km) AS distance_km,
+              COALESCE(r.standard_eta_hours, t.estimated_eta_mins / 60) AS standard_eta_hours,
               d.full_name as driver_name, d.phone as driver_phone, d.employee_code,
               v.registration_number, v.fleet_code, v.model_name, v.truck_type,
               tr.trailer_code, tr.registration_number AS trailer_registration, tr.trailer_type,
@@ -607,7 +715,10 @@ exports.getJobById = async (req, res) => {
       `SELECT t.*,
               c.company_name, c.contact_name as cust_contact, c.email as cust_email, c.phone as cust_phone,
               t.client_phone,
-              r.route_code, r.origin_hub, r.destination_hub, r.distance_km, r.standard_eta_hours, r.toll_estimate_gbp,
+              r.route_code, r.origin_hub, r.destination_hub,
+              COALESCE(r.distance_km, t.estimated_distance_km) AS distance_km,
+              COALESCE(r.standard_eta_hours, t.estimated_eta_mins / 60) AS standard_eta_hours,
+              r.toll_estimate_gbp,
               d.full_name as driver_name, d.phone as driver_phone, d.employee_code, d.license_number, d.compliance_status,
               v.registration_number, v.model_name, v.truck_type, v.fleet_code, v.capacity_tonnes,
               tr.trailer_code, tr.registration_number AS trailer_registration, tr.trailer_type,
@@ -826,6 +937,7 @@ exports.createJob = async (req, res) => {
       freight_amount, priority_level, special_instructions,
       driver_id, vehicle_id, trailer_id, dispatcher_notes,
       loading_done_time, unloading_duration_mins,
+      estimated_distance_km, estimated_eta_mins,
       calculated_arrival, calculated_unload_end, total_job_duration_mins,
       stops = []
     } = req.body;
@@ -847,6 +959,9 @@ exports.createJob = async (req, res) => {
       if (route) {
         eta = new Date(new Date(planned_departure).getTime() + route.standard_eta_hours * 3600 * 1000);
       }
+    } else if (estimated_eta_mins && planned_departure) {
+      const stopBufferMins = stops.filter(s => s.address).length * 30;
+      eta = new Date(new Date(planned_departure).getTime() + (Number(estimated_eta_mins) + stopBufferMins) * 60000);
     }
 
     const jobCode = `JOB-${Date.now().toString().slice(-7)}`;
@@ -859,8 +974,9 @@ exports.createJob = async (req, res) => {
           load_type, load_weight_kg, load_volume_cbm, vehicle_type_requirement, delivery_deadline,
           load_description, freight_amount_gbp, special_instructions, dispatcher_notes,
           driver_job_status,
-          loading_done_time, unloading_duration_mins, calculated_arrival, calculated_unload_end, total_job_duration_mins)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'planned', ?, ?, ?, ?, 'pending', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          loading_done_time, unloading_duration_mins, estimated_distance_km, estimated_eta_mins,
+          calculated_arrival, calculated_unload_end, total_job_duration_mins)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'planned', ?, ?, ?, ?, 'pending', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         jobCode,
         customer_id || null,
@@ -888,6 +1004,8 @@ exports.createJob = async (req, res) => {
         driver_id ? "offered" : null,
         loading_done_time || null,
         unloading_duration_mins ? Number(unloading_duration_mins) : 120,
+        route_id ? null : (estimated_distance_km ? Number(estimated_distance_km) : null),
+        route_id ? null : (estimated_eta_mins ? Number(estimated_eta_mins) : null),
         calculated_arrival || null,
         calculated_unload_end || null,
         total_job_duration_mins ? Number(total_job_duration_mins) : null
@@ -965,6 +1083,7 @@ exports.updateJob = async (req, res) => {
       freight_amount, priority_level, special_instructions,
       driver_id, vehicle_id, trailer_id, dispatcher_notes,
       loading_done_time, unloading_duration_mins,
+      estimated_distance_km, estimated_eta_mins,
       calculated_arrival, calculated_unload_end, total_job_duration_mins,
       stops = []
     } = req.body;
@@ -984,6 +1103,9 @@ exports.updateJob = async (req, res) => {
     if (route_id && planned_departure) {
       const [[route]] = await conn.query(`SELECT standard_eta_hours FROM routes WHERE id = ?`, [route_id]);
       if (route) eta = new Date(new Date(planned_departure).getTime() + route.standard_eta_hours * 3600 * 1000);
+    } else if (estimated_eta_mins && planned_departure) {
+      const stopBufferMins = stops.filter(s => s.address).length * 30;
+      eta = new Date(new Date(planned_departure).getTime() + (Number(estimated_eta_mins) + stopBufferMins) * 60000);
     }
 
     // Reset old vehicle if changed
@@ -1030,7 +1152,7 @@ exports.updateJob = async (req, res) => {
          load_type=?, load_weight_kg=?, load_volume_cbm=?, vehicle_type_requirement=?, delivery_deadline=?,
          load_description=?, freight_amount_gbp=?, special_instructions=?, dispatcher_notes=?,
          driver_job_status=IF(? = 1, 'offered', driver_job_status),
-         loading_done_time=?, unloading_duration_mins=?,
+         loading_done_time=?, unloading_duration_mins=?, estimated_distance_km=?, estimated_eta_mins=?,
          calculated_arrival=?, calculated_unload_end=?, total_job_duration_mins=?
        WHERE id=? AND deleted_at IS NULL`,
       [
@@ -1051,6 +1173,8 @@ exports.updateJob = async (req, res) => {
         String(existing.driver_id || "") !== String(driver_id || "") && driver_id ? 1 : 0,
         loading_done_time || null,
         unloading_duration_mins ? Number(unloading_duration_mins) : 120,
+        route_id ? null : (estimated_distance_km ? Number(estimated_distance_km) : null),
+        route_id ? null : (estimated_eta_mins ? Number(estimated_eta_mins) : null),
         calculated_arrival || null,
         calculated_unload_end || null,
         total_job_duration_mins ? Number(total_job_duration_mins) : null,
@@ -1071,7 +1195,7 @@ exports.updateJob = async (req, res) => {
       );
     }
 
-    // Recalc ETA with stop buffer when route is set
+    // Recalc ETA with stop buffer when route data is available
     if (route_id && planned_departure && validStops.length > 0) {
       const [[route]] = await conn.query(`SELECT standard_eta_hours FROM routes WHERE id = ?`, [route_id]);
       if (route) {
@@ -1082,6 +1206,12 @@ exports.updateJob = async (req, res) => {
         );
         await conn.query(`UPDATE trips SET eta = ? WHERE id = ? AND deleted_at IS NULL`, [eta, id]);
       }
+    } else if (!route_id && estimated_eta_mins && planned_departure && validStops.length > 0) {
+      eta = new Date(
+        new Date(planned_departure).getTime()
+        + (Number(estimated_eta_mins) + validStops.length * 30) * 60 * 1000
+      );
+      await conn.query(`UPDATE trips SET eta = ? WHERE id = ? AND deleted_at IS NULL`, [eta, id]);
     }
 
     // Notify driver if stops changed and driver is assigned

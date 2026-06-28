@@ -6,6 +6,7 @@ const { requireModuleAccess } = require("../middleware/accessControl");
 router.use(requireModuleAccess("jobs"));
 
 router.get("/form-data",  j.getFormData);
+router.post("/estimate-route", j.estimateRouteFromAddresses);
 router.get("/",           j.listJobs);
 router.get("/:id",        j.getJobById);
 router.post("/",          j.createJob);

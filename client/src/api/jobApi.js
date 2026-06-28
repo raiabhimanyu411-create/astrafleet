@@ -1,6 +1,7 @@
 import api from "./axios";
 
 export const getJobFormData  = ()         => api.get("/api/jobs/form-data");
+export const estimateJobRoute = (data)    => api.post("/api/jobs/estimate-route", data);
 export const getJobs         = (params)   => api.get("/api/jobs", { params });
 export const getJobById      = (id)       => api.get(`/api/jobs/${id}`);
 export const createJob       = (data)     => api.post("/api/jobs", data);
