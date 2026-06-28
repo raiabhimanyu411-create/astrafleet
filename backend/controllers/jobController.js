@@ -1,6 +1,7 @@
 const db = require("../db/connection");
 const { emitDriverChatMessage, emitDriverJobAssigned, emitJobUpdate } = require("../realtime");
 const { logActivity, requireDeleteReason } = require("../utils/auditLogger");
+const { getSettingsMap } = require("./settingsController");
 
 function fmtDate(d) {
   if (!d) return "—";
@@ -47,6 +48,7 @@ const driverStatusTone = {
 
 let driverOpsSchemaReady = false;
 let softDeleteSchemaReady = false;
+let jobCostSchemaReady = false;
 
 function trailerStatusForJob(status) {
   if (status === "active" || status === "loading") return "in_use";
@@ -176,6 +178,36 @@ async function ensureSoftDeleteSchema() {
   softDeleteSchemaReady = true;
 }
 
+async function ensureJobCostSchema() {
+  if (jobCostSchemaReady) return;
+  await addColumnIfMissing("trips", "loading_done_time", "DATETIME DEFAULT NULL");
+  await addColumnIfMissing("trips", "unloading_duration_mins", "INT DEFAULT 120");
+  await addColumnIfMissing("trips", "calculated_arrival", "DATETIME DEFAULT NULL");
+  await addColumnIfMissing("trips", "calculated_unload_end", "DATETIME DEFAULT NULL");
+  await addColumnIfMissing("trips", "total_job_duration_mins", "INT DEFAULT NULL");
+  jobCostSchemaReady = true;
+}
+
+function calcJobEconomics(distanceKm, totalJobMins, settings) {
+  if (!distanceKm || !settings) return null;
+  const distanceMiles = distanceKm * 0.621371;
+  const fuelCostPerMile = (4.546 / settings.mpg) * settings.fuel_price_per_litre;
+  const fuelCost = distanceMiles * fuelCostPerMile;
+  const totalHours = (totalJobMins || 0) / 60;
+  const driverCost = totalHours * settings.driver_rate_per_hour;
+  const totalCost = fuelCost + driverCost;
+  const suggestedPrice = totalCost * (1 + settings.margin_pct / 100);
+  return {
+    distanceMiles: Math.round(distanceMiles * 10) / 10,
+    fuelCostPerMile: Math.round(fuelCostPerMile * 100) / 100,
+    fuelCost: Math.round(fuelCost * 100) / 100,
+    driverCost: Math.round(driverCost * 100) / 100,
+    totalCost: Math.round(totalCost * 100) / 100,
+    suggestedPrice: Math.round(suggestedPrice * 100) / 100,
+    totalHours: Math.round(totalHours * 100) / 100
+  };
+}
+
 async function ensureJobNotesSchema() {
   await db.query(`
     CREATE TABLE IF NOT EXISTS job_notes (
@@ -229,6 +261,7 @@ exports.getFormData = async (req, res) => {
 exports.listJobs = async (req, res) => {
   try {
     await ensureDriverOpsSchema();
+    await ensureJobCostSchema();
 
     const { status, priority, customer_id, search } = req.query;
 
@@ -258,6 +291,15 @@ exports.listJobs = async (req, res) => {
       params.push(`%${search}%`, `%${search}%`, `%${search}%`);
     }
 
+    const settingsMap = await getSettingsMap();
+    const settings = {
+      fuel_price_per_litre: parseFloat(settingsMap.fuel_price_per_litre),
+      mpg: parseFloat(settingsMap.mpg),
+      driver_rate_per_hour: parseFloat(settingsMap.driver_rate_per_hour),
+      margin_pct: parseFloat(settingsMap.margin_pct),
+      avg_speed_mph: parseFloat(settingsMap.avg_speed_mph)
+    };
+
     const [rows] = await db.query(
       `SELECT t.id, t.trip_code, t.customer_id, t.client_name, t.route_id, t.vehicle_id, t.trailer_id, t.driver_id,
               t.dispatch_status, t.priority_level, t.driver_job_status,
@@ -265,6 +307,8 @@ exports.listJobs = async (req, res) => {
               t.dock_window, t.freight_amount_gbp, t.load_type, t.load_weight_kg, t.load_volume_cbm,
               t.vehicle_type_requirement, t.load_description, t.special_instructions, t.dispatcher_notes,
               t.pod_status, t.pickup_address, t.drop_address, t.client_phone, t.created_at, t.cancellation_reason,
+              t.loading_done_time, t.unloading_duration_mins, t.calculated_arrival,
+              t.calculated_unload_end, t.total_job_duration_mins,
               c.company_name as customer_name, c.contact_name as customer_contact, c.phone as customer_phone,
               r.route_code, r.origin_hub, r.destination_hub, r.distance_km, r.standard_eta_hours,
               d.full_name as driver_name, d.phone as driver_phone, d.employee_code,
@@ -319,65 +363,80 @@ exports.listJobs = async (req, res) => {
       drivers,
       vehicles,
       trailers,
-      jobs: rows.map(r => ({
-        id: r.id,
-        code: r.trip_code,
-        customerId: r.customer_id,
-        routeId: r.route_id,
-        driverId: r.driver_id,
-        vehicleId: r.vehicle_id,
-        trailerId: r.trailer_id,
-        customer: r.customer_name || r.client_name || "—",
-        customerContact: r.customer_contact || "—",
-        customerPhone: r.customer_phone || r.client_phone || "—",
-        lane: r.origin_hub && r.destination_hub ? `${r.origin_hub} → ${r.destination_hub}` : (r.pickup_address ? "Custom route" : "Route TBD"),
-        routeCode: r.route_code || "—",
-        pickupAddress: r.pickup_address || r.origin_hub || "—",
-        dropAddress: r.drop_address || r.destination_hub || "—",
-        dockWindow: r.dock_window || "—",
-        distanceKm: r.distance_km,
-        etaHours: r.standard_eta_hours,
-        driver: r.driver_name || "Unassigned",
-        driverPhone: r.driver_phone || "—",
-        driverEmployeeCode: r.employee_code || "—",
-        driverAssigned: Boolean(r.driver_name),
-        driverJobStatus: r.driver_job_status || "—",
-        vehicle: r.registration_number || "Unassigned",
-        vehicleFleetCode: r.fleet_code || "—",
-        vehicleModel: r.model_name || "—",
-        vehicleType: r.truck_type || "—",
-        vehicleAssigned: Boolean(r.registration_number),
-        trailer: r.trailer_registration || "Unassigned",
-        trailerCode: r.trailer_code || "—",
-        trailerType: r.trailer_type || "—",
-        trailerAssigned: Boolean(r.trailer_registration),
-        departure: fmtDate(r.planned_departure),
-        departureRaw: rawDateTime(r.planned_departure),
-        eta: fmtDate(r.eta),
-        etaRaw: rawDateTime(r.eta),
-        deadline: fmtDateTime(r.delivery_deadline),
-        deadlineRaw: rawDateTime(r.delivery_deadline),
-        actualDeparture: fmtDateTime(r.actual_departure),
-        actualArrival: fmtDateTime(r.actual_arrival),
-        actualArrivalRaw: rawDateTime(r.actual_arrival),
-        etaRisk: r.eta && new Date(r.eta).getTime() < Date.now() && ["planned", "loading", "active"].includes(r.dispatch_status),
-        freight: fmtAmount(r.freight_amount_gbp),
-        freightValue: Number(r.freight_amount_gbp || 0),
-        loadType: r.load_type || "general",
-        loadWeightKg: r.load_weight_kg,
-        loadVolumeCbm: r.load_volume_cbm,
-        vehicleRequirement: r.vehicle_type_requirement || "—",
-        loadDescription: r.load_description || "—",
-        specialInstructions: r.special_instructions || "—",
-        dispatcherNotes: r.dispatcher_notes || "—",
-        status: r.dispatch_status,
-        statusTone: dispatchTone[r.dispatch_status] || "neutral",
-        priority: r.priority_level,
-        priorityTone: priorityTone[r.priority_level] || "neutral",
-        podStatus: r.pod_status,
-        stopCount: r.stop_count,
-        cancellationReason: r.cancellation_reason || ""
-      }))
+      jobs: rows.map(r => {
+        const econ = calcJobEconomics(r.distance_km, r.total_job_duration_mins, settings);
+        const freightValue = Number(r.freight_amount_gbp || 0);
+        const profitLossValue = econ ? freightValue - econ.totalCost : null;
+        return {
+          id: r.id,
+          code: r.trip_code,
+          customerId: r.customer_id,
+          routeId: r.route_id,
+          driverId: r.driver_id,
+          vehicleId: r.vehicle_id,
+          trailerId: r.trailer_id,
+          customer: r.customer_name || r.client_name || "—",
+          customerContact: r.customer_contact || "—",
+          customerPhone: r.customer_phone || r.client_phone || "—",
+          lane: r.origin_hub && r.destination_hub ? `${r.origin_hub} → ${r.destination_hub}` : (r.pickup_address ? "Custom route" : "Route TBD"),
+          routeCode: r.route_code || "—",
+          pickupAddress: r.pickup_address || r.origin_hub || "—",
+          dropAddress: r.drop_address || r.destination_hub || "—",
+          dockWindow: r.dock_window || "—",
+          distanceKm: r.distance_km,
+          etaHours: r.standard_eta_hours,
+          driver: r.driver_name || "Unassigned",
+          driverPhone: r.driver_phone || "—",
+          driverEmployeeCode: r.employee_code || "—",
+          driverAssigned: Boolean(r.driver_name),
+          driverJobStatus: r.driver_job_status || "—",
+          vehicle: r.registration_number || "Unassigned",
+          vehicleFleetCode: r.fleet_code || "—",
+          vehicleModel: r.model_name || "—",
+          vehicleType: r.truck_type || "—",
+          vehicleAssigned: Boolean(r.registration_number),
+          trailer: r.trailer_registration || "Unassigned",
+          trailerCode: r.trailer_code || "—",
+          trailerType: r.trailer_type || "—",
+          trailerAssigned: Boolean(r.trailer_registration),
+          departure: fmtDate(r.planned_departure),
+          departureRaw: rawDateTime(r.planned_departure),
+          eta: fmtDate(r.eta),
+          etaRaw: rawDateTime(r.eta),
+          deadline: fmtDateTime(r.delivery_deadline),
+          deadlineRaw: rawDateTime(r.delivery_deadline),
+          actualDeparture: fmtDateTime(r.actual_departure),
+          actualArrival: fmtDateTime(r.actual_arrival),
+          actualArrivalRaw: rawDateTime(r.actual_arrival),
+          etaRisk: r.eta && new Date(r.eta).getTime() < Date.now() && ["planned", "loading", "active"].includes(r.dispatch_status),
+          freight: fmtAmount(r.freight_amount_gbp),
+          freightValue,
+          loadType: r.load_type || "general",
+          loadWeightKg: r.load_weight_kg,
+          loadVolumeCbm: r.load_volume_cbm,
+          vehicleRequirement: r.vehicle_type_requirement || "—",
+          loadDescription: r.load_description || "—",
+          specialInstructions: r.special_instructions || "—",
+          dispatcherNotes: r.dispatcher_notes || "—",
+          status: r.dispatch_status,
+          statusTone: dispatchTone[r.dispatch_status] || "neutral",
+          priority: r.priority_level,
+          priorityTone: priorityTone[r.priority_level] || "neutral",
+          podStatus: r.pod_status,
+          stopCount: r.stop_count,
+          cancellationReason: r.cancellation_reason || "",
+          loadingDoneTime: rawDateTime(r.loading_done_time),
+          unloadingDurationMins: r.unloading_duration_mins || 120,
+          calculatedArrival: rawDateTime(r.calculated_arrival),
+          calculatedUnloadEnd: rawDateTime(r.calculated_unload_end),
+          totalJobDurationMins: r.total_job_duration_mins,
+          economics: econ,
+          profitLossValue,
+          profitLoss: profitLossValue !== null ? fmtAmount(Math.abs(profitLossValue)) : null,
+          isProfitable: profitLossValue !== null ? profitLossValue >= 0 : null,
+          settings: { avgSpeedMph: settings.avg_speed_mph }
+        };
+      })
     });
   } catch (err) {
     res.status(500).json({ message: "Job list error", error: err.message });
@@ -530,8 +589,18 @@ exports.getJobById = async (req, res) => {
   try {
     await ensureDriverOpsSchema();
     await ensureSoftDeleteSchema();
+    await ensureJobCostSchema();
 
     const { id } = req.params;
+
+    const settingsMap = await getSettingsMap();
+    const settings = {
+      fuel_price_per_litre: parseFloat(settingsMap.fuel_price_per_litre),
+      mpg: parseFloat(settingsMap.mpg),
+      driver_rate_per_hour: parseFloat(settingsMap.driver_rate_per_hour),
+      margin_pct: parseFloat(settingsMap.margin_pct),
+      avg_speed_mph: parseFloat(settingsMap.avg_speed_mph)
+    };
 
     const [[t]] = await db.query(
       `SELECT t.*,
@@ -642,9 +711,39 @@ exports.getJobById = async (req, res) => {
         volumeCbm: t.load_volume_cbm ? `${t.load_volume_cbm} cbm` : "—",
         vehicleRequirement: t.vehicle_type_requirement || "—",
         description: t.load_description || "—",
-        freight: fmtAmount(t.freight_amount_gbp)
+        freight: fmtAmount(t.freight_amount_gbp),
+        freightValue: Number(t.freight_amount_gbp || 0)
       },
       dispatcherNotes: t.dispatcher_notes || "—",
+
+      timing: {
+        loadingDoneTime: t.loading_done_time ? new Date(t.loading_done_time).toISOString().slice(0, 16) : "",
+        unloadingDurationMins: t.unloading_duration_mins || 120,
+        calculatedArrival: rawDateTime(t.calculated_arrival),
+        calculatedUnloadEnd: rawDateTime(t.calculated_unload_end),
+        totalJobDurationMins: t.total_job_duration_mins
+      },
+
+      economics: (() => {
+        const econ = calcJobEconomics(t.distance_km, t.total_job_duration_mins, settings);
+        if (!econ) return null;
+        const freightValue = Number(t.freight_amount_gbp || 0);
+        const profitLossValue = freightValue - econ.totalCost;
+        return {
+          ...econ,
+          freightValue,
+          profitLossValue,
+          profitLoss: fmtAmount(Math.abs(profitLossValue)),
+          isProfitable: profitLossValue >= 0,
+          settings: {
+            fuelPricePerLitre: settings.fuel_price_per_litre,
+            mpg: settings.mpg,
+            driverRatePerHour: settings.driver_rate_per_hour,
+            marginPct: settings.margin_pct,
+            avgSpeedMph: settings.avg_speed_mph
+          }
+        };
+      })(),
 
       driver: t.driver_name ? {
         name: t.driver_name,
@@ -714,6 +813,7 @@ exports.createJob = async (req, res) => {
   try {
     await ensureDriverOpsSchema();
     await ensureSoftDeleteSchema();
+    await ensureJobCostSchema();
     await conn.beginTransaction();
 
     const {
@@ -723,6 +823,8 @@ exports.createJob = async (req, res) => {
       load_type, load_weight_kg, load_volume_cbm, vehicle_type_requirement, delivery_deadline, load_description,
       freight_amount, priority_level, special_instructions,
       driver_id, vehicle_id, trailer_id, dispatcher_notes,
+      loading_done_time, unloading_duration_mins,
+      calculated_arrival, calculated_unload_end, total_job_duration_mins,
       stops = []
     } = req.body;
 
@@ -754,8 +856,9 @@ exports.createJob = async (req, res) => {
           planned_departure, eta, dock_window, pod_status,
           load_type, load_weight_kg, load_volume_cbm, vehicle_type_requirement, delivery_deadline,
           load_description, freight_amount_gbp, special_instructions, dispatcher_notes,
-          driver_job_status)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'planned', ?, ?, ?, ?, 'pending', ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          driver_job_status,
+          loading_done_time, unloading_duration_mins, calculated_arrival, calculated_unload_end, total_job_duration_mins)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'planned', ?, ?, ?, ?, 'pending', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         jobCode,
         customer_id || null,
@@ -780,7 +883,12 @@ exports.createJob = async (req, res) => {
         freight_amount || null,
         special_instructions || null,
         dispatcher_notes || null,
-        driver_id ? "offered" : null
+        driver_id ? "offered" : null,
+        loading_done_time || null,
+        unloading_duration_mins ? Number(unloading_duration_mins) : 120,
+        calculated_arrival || null,
+        calculated_unload_end || null,
+        total_job_duration_mins ? Number(total_job_duration_mins) : null
       ]
     );
 
@@ -837,6 +945,7 @@ exports.updateJob = async (req, res) => {
   try {
     await ensureDriverOpsSchema();
     await ensureSoftDeleteSchema();
+    await ensureJobCostSchema();
     await conn.beginTransaction();
     const { id } = req.params;
 
@@ -853,6 +962,8 @@ exports.updateJob = async (req, res) => {
       load_type, load_weight_kg, load_volume_cbm, vehicle_type_requirement, delivery_deadline, load_description,
       freight_amount, priority_level, special_instructions,
       driver_id, vehicle_id, trailer_id, dispatcher_notes,
+      loading_done_time, unloading_duration_mins,
+      calculated_arrival, calculated_unload_end, total_job_duration_mins,
       stops = []
     } = req.body;
 
@@ -916,7 +1027,9 @@ exports.updateJob = async (req, res) => {
          planned_departure=?, eta=?, dock_window=?,
          load_type=?, load_weight_kg=?, load_volume_cbm=?, vehicle_type_requirement=?, delivery_deadline=?,
          load_description=?, freight_amount_gbp=?, special_instructions=?, dispatcher_notes=?,
-         driver_job_status=IF(? = 1, 'offered', driver_job_status)
+         driver_job_status=IF(? = 1, 'offered', driver_job_status),
+         loading_done_time=?, unloading_duration_mins=?,
+         calculated_arrival=?, calculated_unload_end=?, total_job_duration_mins=?
        WHERE id=? AND deleted_at IS NULL`,
       [
         customer_id || null, resolvedClientName, client_phone || null, route_id || null,
@@ -934,6 +1047,11 @@ exports.updateJob = async (req, res) => {
         valueOrExisting("special_instructions", null),
         valueOrExisting("dispatcher_notes", null),
         String(existing.driver_id || "") !== String(driver_id || "") && driver_id ? 1 : 0,
+        loading_done_time || null,
+        unloading_duration_mins ? Number(unloading_duration_mins) : 120,
+        calculated_arrival || null,
+        calculated_unload_end || null,
+        total_job_duration_mins ? Number(total_job_duration_mins) : null,
         id
       ]
     );

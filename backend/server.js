@@ -12,6 +12,7 @@ const jobRoutes      = require("./routes/jobRoutes");
 const driverRoutes   = require("./routes/driverRoutes");
 const vehicleRoutes  = require("./routes/vehicleRoutes");
 const maintenanceRoutes = require("./routes/maintenanceRoutes");
+const settingsRoutes    = require("./routes/settingsRoutes");
 const { chatRoom, setRealtimeServer } = require("./realtime");
 
 const app = express();
@@ -50,6 +51,7 @@ app.use("/api/jobs",      jobRoutes);
 app.use("/api/drivers",   driverRoutes);
 app.use("/api/vehicles",  vehicleRoutes);
 app.use("/api/maintenance", maintenanceRoutes);
+app.use("/api/settings",   settingsRoutes);
 
 const httpServer = http.createServer(app);
 const io = new Server(httpServer, {

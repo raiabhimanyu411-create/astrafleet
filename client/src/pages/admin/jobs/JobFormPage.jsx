@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { createJob, getJobById, getJobFormData, updateJob } from "../../../api/jobApi";
+import { getSettings } from "../../../api/settingsApi";
 import { AdminWorkspaceLayout } from "../AdminWorkspaceLayout";
 
 function Field({ label, hint, required, error, children }) {
@@ -27,8 +28,48 @@ const emptyFields = {
   freight_amount: "",
   driver_id: "",
   vehicle_id: "",
-  trailer_id: ""
+  trailer_id: "",
+  loading_done_time: "",
+  unloading_duration_mins: "120"
 };
+
+function calcTiming(loadingDoneTime, distanceMiles, unloadingMins, avgSpeedMph) {
+  if (!loadingDoneTime || !distanceMiles) return null;
+  const departure = new Date(loadingDoneTime);
+  if (isNaN(departure.getTime())) return null;
+  const travelMins = Math.round((distanceMiles / avgSpeedMph) * 60);
+  const arrival = new Date(departure.getTime() + travelMins * 60000);
+  const unloadEnd = new Date(arrival.getTime() + (unloadingMins || 120) * 60000);
+  const totalMins = Math.round((unloadEnd - departure) / 60000);
+  return { travelMins, arrival, unloadEnd, totalMins };
+}
+
+function calcCost(distanceMiles, totalMins, settings) {
+  if (!distanceMiles || !settings) return null;
+  const fuelCostPerMile = (4.546 / settings.mpg) * settings.fuel_price_per_litre;
+  const fuelCost = distanceMiles * fuelCostPerMile;
+  const totalHours = (totalMins || 0) / 60;
+  const driverCost = totalHours * settings.driver_rate_per_hour;
+  const totalCost = fuelCost + driverCost;
+  const suggestedPrice = totalCost * (1 + settings.margin_pct / 100);
+  return { fuelCost, driverCost, totalCost, suggestedPrice, fuelCostPerMile };
+}
+
+function fmtGBP(n) {
+  return `£${Number(n).toFixed(2)}`;
+}
+
+function fmtTime(date) {
+  if (!date) return "—";
+  return date.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" });
+}
+
+function fmtMins(mins) {
+  if (!mins) return "—";
+  const h = Math.floor(mins / 60);
+  const m = mins % 60;
+  return h > 0 ? `${h}h ${m}m` : `${m}m`;
+}
 
 function toInputDateTime(date) {
   if (!date) return "";
@@ -92,12 +133,14 @@ export function JobFormPage() {
   const [submitting, setSubmitting] = useState(false);
   const [submitErr, setSubmitErr] = useState("");
   const [fieldErrors, setFieldErrors] = useState({});
+  const [sysSettings, setSysSettings] = useState(null);
 
   useEffect(() => {
     async function init() {
       try {
-        const fdRes = await getJobFormData();
+        const [fdRes, stRes] = await Promise.all([getJobFormData(), getSettings()]);
         setFormData(fdRes.data);
+        setSysSettings(stRes.data);
 
         if (isEdit) {
           const jobRes = await getJobById(id);
@@ -115,7 +158,9 @@ export function JobFormPage() {
             freight_amount: j.load?.freight !== "—" ? (j.load?.freight || "").replace("£", "").replace(/,/g, "") : "",
             driver_id: j.form?.driver_id ? String(j.form.driver_id) : "",
             vehicle_id: j.form?.vehicle_id ? String(j.form.vehicle_id) : "",
-            trailer_id: j.form?.trailer_id ? String(j.form.trailer_id) : ""
+            trailer_id: j.form?.trailer_id ? String(j.form.trailer_id) : "",
+            loading_done_time: j.timing?.loadingDoneTime || "",
+            unloading_duration_mins: j.timing?.unloadingDurationMins ? String(j.timing.unloadingDurationMins) : "120"
           });
           if (j.stops?.length > 0) {
             setStops(j.stops.map(s => ({
@@ -205,6 +250,23 @@ export function JobFormPage() {
   const validStops = stops.filter(s => s.address.trim());
   const etaPreview = selectedRoute ? addHours(fields.planned_departure, selectedRoute.standard_eta_hours, validStops.length) : "";
 
+  const distanceMiles = selectedRoute ? selectedRoute.distance_km * 0.621371 : null;
+  const avgSpeedMph = sysSettings?.avg_speed_mph || 50;
+  const unloadingMins = parseInt(fields.unloading_duration_mins) || 120;
+
+  const timingCalc = useMemo(
+    () => calcTiming(fields.loading_done_time, distanceMiles, unloadingMins, avgSpeedMph),
+    [fields.loading_done_time, distanceMiles, unloadingMins, avgSpeedMph]
+  );
+
+  const costCalc = useMemo(
+    () => calcCost(distanceMiles, timingCalc?.totalMins, sysSettings),
+    [distanceMiles, timingCalc, sysSettings]
+  );
+
+  const freightValue = parseFloat(fields.freight_amount) || 0;
+  const profitLoss = costCalc ? freightValue - costCalc.totalCost : null;
+
   async function handleSubmit(e) {
     e.preventDefault();
     setSubmitErr("");
@@ -214,6 +276,13 @@ export function JobFormPage() {
       setSubmitErr("Please amend the highlighted fields.");
       return;
     }
+
+    const calcArrivalStr = timingCalc?.arrival
+      ? new Date(timingCalc.arrival.getTime() - timingCalc.arrival.getTimezoneOffset() * 60000).toISOString().slice(0, 16)
+      : null;
+    const calcUnloadEndStr = timingCalc?.unloadEnd
+      ? new Date(timingCalc.unloadEnd.getTime() - timingCalc.unloadEnd.getTimezoneOffset() * 60000).toISOString().slice(0, 16)
+      : null;
 
     const payload = {
       customer_id: fields.customer_id ? Number(fields.customer_id) : null,
@@ -231,6 +300,11 @@ export function JobFormPage() {
       driver_id: fields.driver_id ? Number(fields.driver_id) : null,
       vehicle_id: fields.vehicle_id ? Number(fields.vehicle_id) : null,
       trailer_id: fields.trailer_id ? Number(fields.trailer_id) : null,
+      loading_done_time: fields.loading_done_time || null,
+      unloading_duration_mins: unloadingMins,
+      calculated_arrival: calcArrivalStr,
+      calculated_unload_end: calcUnloadEndStr,
+      total_job_duration_mins: timingCalc?.totalMins || null,
       stops: stops.filter(s => s.address.trim()).map(s => ({
         address: s.address.trim(),
         stop_type: s.stop_type,
@@ -408,6 +482,102 @@ export function JobFormPage() {
                   </select>
                 </Field>
               </div>
+            </div>
+
+            {/* ── Time Calculation Section ── */}
+            <div className="af-section">
+              <p className="af-section-title">Time &amp; cost calculation</p>
+              <div className="af-grid-2">
+                <Field label="Loading done / truck departure time" hint="Enter when the truck leaves the loading dock.">
+                  <input
+                    className="af-input"
+                    type="datetime-local"
+                    value={fields.loading_done_time}
+                    onChange={e => set("loading_done_time", e.target.value)}
+                  />
+                </Field>
+                <Field label="Unloading duration (minutes)" hint="How long to unload at delivery. Default: 120 min (2 hrs).">
+                  <input
+                    className="af-input"
+                    type="number"
+                    min="15"
+                    step="15"
+                    placeholder="120"
+                    value={fields.unloading_duration_mins}
+                    onChange={e => set("unloading_duration_mins", e.target.value)}
+                  />
+                </Field>
+              </div>
+
+              {/* Auto-calculated time preview */}
+              {fields.loading_done_time && distanceMiles ? (
+                <div className="job-timing-calc-card">
+                  <div className="job-timing-row">
+                    <div className="job-timing-item">
+                      <span className="job-timing-label">Distance</span>
+                      <strong>{distanceMiles.toFixed(1)} mi</strong>
+                    </div>
+                    <div className="job-timing-sep">→</div>
+                    <div className="job-timing-item">
+                      <span className="job-timing-label">Travel time</span>
+                      <strong>{fmtMins(timingCalc?.travelMins)}</strong>
+                      <small>@ {avgSpeedMph} mph avg</small>
+                    </div>
+                    <div className="job-timing-sep">→</div>
+                    <div className="job-timing-item">
+                      <span className="job-timing-label">Arrive at drop</span>
+                      <strong>{timingCalc ? fmtTime(timingCalc.arrival) : "—"}</strong>
+                    </div>
+                    <div className="job-timing-sep">→</div>
+                    <div className="job-timing-item">
+                      <span className="job-timing-label">Unloading done</span>
+                      <strong>{timingCalc ? fmtTime(timingCalc.unloadEnd) : "—"}</strong>
+                    </div>
+                    <div className="job-timing-total">
+                      <span className="job-timing-label">Total job time</span>
+                      <strong>{fmtMins(timingCalc?.totalMins)}</strong>
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <p style={{ color: "#94a3b8", fontSize: "0.84rem", marginTop: 12 }}>
+                  Select a route and enter loading done time to auto-calculate travel time and arrival.
+                </p>
+              )}
+
+              {/* Cost preview */}
+              {costCalc && (
+                <div className="job-economics-card" style={{ marginTop: 16 }}>
+                  <div className="job-economics-title">Job cost estimate</div>
+                  <div className="job-economics-grid">
+                    <div className="job-economics-row">
+                      <span>Fuel ({distanceMiles?.toFixed(1)} mi × {fmtGBP(costCalc.fuelCostPerMile)}/mi)</span>
+                      <strong>{fmtGBP(costCalc.fuelCost)}</strong>
+                    </div>
+                    <div className="job-economics-row">
+                      <span>Driver ({fmtMins(timingCalc?.totalMins)} @ £{sysSettings?.driver_rate_per_hour}/hr)</span>
+                      <strong>{fmtGBP(costCalc.driverCost)}</strong>
+                    </div>
+                    <div className="job-economics-row total">
+                      <span>Total cost</span>
+                      <strong>{fmtGBP(costCalc.totalCost)}</strong>
+                    </div>
+                    <div className="job-economics-row suggested">
+                      <span>Suggested price (+{sysSettings?.margin_pct}% margin)</span>
+                      <strong>{fmtGBP(costCalc.suggestedPrice)}</strong>
+                    </div>
+                    {freightValue > 0 && (
+                      <div className={`job-economics-row profit ${profitLoss >= 0 ? "profit-pos" : "profit-neg"}`}>
+                        <span>{profitLoss >= 0 ? "Profit" : "Loss"}</span>
+                        <strong>{profitLoss >= 0 ? "+" : "-"}{fmtGBP(Math.abs(profitLoss))}</strong>
+                      </div>
+                    )}
+                  </div>
+                  <p className="job-economics-hint">
+                    Fuel: £{sysSettings?.fuel_price_per_litre}/L · {sysSettings?.mpg} MPG · Driver: £{sysSettings?.driver_rate_per_hour}/hr
+                  </p>
+                </div>
+              )}
             </div>
 
             <div className="af-section">

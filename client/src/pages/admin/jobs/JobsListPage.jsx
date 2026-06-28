@@ -117,6 +117,24 @@ function isPodPending(job) {
     !["uploaded", "verified"].includes(String(job.podStatus || "").toLowerCase());
 }
 
+function fmtMins(mins) {
+  if (!mins) return "—";
+  const h = Math.floor(mins / 60);
+  const m = mins % 60;
+  return h > 0 ? `${h}h ${m}m` : `${m}m`;
+}
+
+function fmtTimeFull(rawStr) {
+  if (!rawStr) return "—";
+  const d = new Date(rawStr);
+  if (isNaN(d.getTime())) return "—";
+  return d.toLocaleString("en-GB", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" });
+}
+
+function fmtGBP(n) {
+  return `£${Number(n).toFixed(2)}`;
+}
+
 function timeLateClass(actualRaw, scheduledRaw) {
   if (!actualRaw || !scheduledRaw) return "";
   const actual = new Date(actualRaw);
@@ -645,8 +663,18 @@ export function JobsListPage() {
                     {job.trailerType !== "—" && <small>{job.trailerType}</small>}
                   </div>
 
-                  {/* Freight */}
-                  <div className="relay-job-freight">{job.freight}</div>
+                  {/* Freight + Profit/Loss */}
+                  <div className="relay-job-freight">
+                    <span>{job.freight}</span>
+                    {job.profitLoss && (
+                      <span className={`relay-profit-badge ${job.isProfitable ? "profit" : "loss"}`}>
+                        {job.isProfitable ? "▲" : "▼"} {job.profitLoss}
+                      </span>
+                    )}
+                    {!job.profitLoss && job.economics && (
+                      <span className="relay-profit-badge pending">calc pending</span>
+                    )}
+                  </div>
 
                   {/* Driver + driver status */}
                   <div className="relay-job-driver-cell">
@@ -816,6 +844,79 @@ export function JobsListPage() {
                         </div>
                       </div>
                     </div>
+
+                    {/* ── Time Calculation ── */}
+                    {(job.loadingDoneTime || job.calculatedArrival) && (
+                      <div className="relay-time-calc-strip">
+                        <div className="relay-time-calc-item">
+                          <span className="relay-time-calc-label">Loading done</span>
+                          <strong>{fmtTimeFull(job.loadingDoneTime)}</strong>
+                        </div>
+                        <div className="relay-time-calc-arrow">→</div>
+                        <div className="relay-time-calc-item">
+                          <span className="relay-time-calc-label">Travel</span>
+                          <strong>
+                            {job.economics?.distanceMiles
+                              ? fmtMins(Math.round((job.economics.distanceMiles / (job.settings?.avgSpeedMph || 50)) * 60))
+                              : "—"}
+                          </strong>
+                          <small>{job.economics?.distanceMiles?.toFixed(1)} mi</small>
+                        </div>
+                        <div className="relay-time-calc-arrow">→</div>
+                        <div className="relay-time-calc-item">
+                          <span className="relay-time-calc-label">Arrive at drop</span>
+                          <strong>{fmtTimeFull(job.calculatedArrival)}</strong>
+                        </div>
+                        <div className="relay-time-calc-arrow">→</div>
+                        <div className="relay-time-calc-item">
+                          <span className="relay-time-calc-label">Unloading ({fmtMins(job.unloadingDurationMins)})</span>
+                          <strong>{fmtTimeFull(job.calculatedUnloadEnd)}</strong>
+                        </div>
+                        <div className="relay-time-calc-total">
+                          <span className="relay-time-calc-label">Total job</span>
+                          <strong>{fmtMins(job.totalJobDurationMins)}</strong>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* ── Job Economics ── */}
+                    {job.economics && (
+                      <div className="relay-economics-strip">
+                        <div className="relay-economics-col">
+                          <span className="relay-economics-label">Fuel cost</span>
+                          <strong>{fmtGBP(job.economics.fuelCost)}</strong>
+                          <small>{fmtGBP(job.economics.fuelCostPerMile)}/mi</small>
+                        </div>
+                        <div className="relay-economics-col">
+                          <span className="relay-economics-label">Driver cost</span>
+                          <strong>{fmtGBP(job.economics.driverCost)}</strong>
+                          <small>{fmtMins(job.totalJobDurationMins)} job time</small>
+                        </div>
+                        <div className="relay-economics-col">
+                          <span className="relay-economics-label">Total cost</span>
+                          <strong>{fmtGBP(job.economics.totalCost)}</strong>
+                        </div>
+                        <div className="relay-economics-col">
+                          <span className="relay-economics-label">Suggested price</span>
+                          <strong>{fmtGBP(job.economics.suggestedPrice)}</strong>
+                        </div>
+                        <div className="relay-economics-col">
+                          <span className="relay-economics-label">Freight charged</span>
+                          <strong>{job.freight}</strong>
+                        </div>
+                        <div className={`relay-economics-col profit-col ${job.isProfitable === true ? "profit" : job.isProfitable === false ? "loss" : ""}`}>
+                          <span className="relay-economics-label">{job.isProfitable ? "Profit" : job.isProfitable === false ? "Loss" : "P&L"}</span>
+                          <strong>
+                            {job.profitLossValue !== null
+                              ? `${job.profitLossValue >= 0 ? "+" : "-"}${fmtGBP(Math.abs(job.profitLossValue))}`
+                              : "—"}
+                          </strong>
+                          {job.profitLossValue !== null && (
+                            <small>{job.isProfitable ? "In profit" : "At a loss"}</small>
+                          )}
+                        </div>
+                      </div>
+                    )}
 
                     {/* ── Instructions toggle ── */}
                     {(job.specialInstructions !== "—" || job.dispatcherNotes !== "—") && (
