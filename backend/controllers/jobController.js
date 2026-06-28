@@ -927,15 +927,57 @@ exports.updateJob = async (req, res) => {
     );
 
     // Replace stops
+    const [oldStops] = await conn.query(`SELECT id FROM job_stops WHERE trip_id = ?`, [id]);
     await conn.query(`DELETE FROM job_stops WHERE trip_id = ?`, [id]);
-    for (let i = 0; i < stops.length; i++) {
-      const s = stops[i];
-      if (!s.address) continue;
+    const validStops = stops.filter(s => s.address);
+    for (let i = 0; i < validStops.length; i++) {
+      const s = validStops[i];
       await conn.query(
         `INSERT INTO job_stops (trip_id, stop_order, stop_type, address, contact_name, contact_phone, planned_arrival, notes)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
         [id, i + 1, s.stop_type || "delivery", s.address, s.contact_name || null, s.contact_phone || null, s.planned_arrival || null, s.notes || null]
       );
+    }
+
+    // Recalc ETA with stop buffer when route is set
+    if (route_id && planned_departure && validStops.length > 0) {
+      const [[route]] = await conn.query(`SELECT standard_eta_hours FROM routes WHERE id = ?`, [route_id]);
+      if (route) {
+        eta = new Date(
+          new Date(planned_departure).getTime()
+          + route.standard_eta_hours * 3600 * 1000
+          + validStops.length * 30 * 60 * 1000
+        );
+        await conn.query(`UPDATE trips SET eta = ? WHERE id = ? AND deleted_at IS NULL`, [eta, id]);
+      }
+    }
+
+    // Notify driver if stops changed and driver is assigned
+    const stopsChanged = oldStops.length !== validStops.length || validStops.length > 0;
+    if (driver_id && stopsChanged && validStops.length > 0) {
+      const [[jobRow]] = await conn.query(
+        `SELECT t.trip_code, d.full_name as driver_name
+         FROM trips t LEFT JOIN drivers d ON d.id = t.driver_id
+         WHERE t.id = ?`, [id]
+      );
+      const body = `Route update for ${jobRow?.trip_code || "your job"}: ${validStops.length} stop(s) have been set on your route. Please check your updated route details.`;
+      const [msgResult] = await conn.query(
+        `INSERT INTO driver_messages (driver_id, sender_role, sender_name, body, trip_id) VALUES (?, 'dispatch', 'Dispatch', ?, ?)`,
+        [driver_id, body, id]
+      );
+      const [[createdMsg]] = await db.query(`SELECT * FROM driver_messages WHERE id = ?`, [msgResult.insertId]);
+      emitDriverChatMessage({
+        id: createdMsg.id,
+        driverId: Number(driver_id),
+        driverName: jobRow?.driver_name || "Driver",
+        senderRole: "dispatch",
+        senderName: "Dispatch",
+        body: createdMsg.body,
+        tripId: Number(id),
+        isRead: false,
+        at: fmtDateTime(createdMsg.sent_at),
+        sentAt: createdMsg.sent_at ? new Date(createdMsg.sent_at).toISOString() : null
+      });
     }
 
     await conn.commit();
@@ -1049,6 +1091,152 @@ exports.cancelJob = async (req, res) => {
     res.json({ message: "Job cancelled." });
   } catch (err) {
     res.status(500).json({ message: "Cancel error", error: err.message });
+  }
+};
+
+// POST /api/jobs/:id/stops  — append a stop, recalc ETA, notify driver
+exports.addJobStop = async (req, res) => {
+  try {
+    await ensureDriverOpsSchema();
+    const { id } = req.params;
+    const { address, stop_type, contact_name, contact_phone, planned_arrival, notes } = req.body;
+
+    if (!address?.trim()) return res.status(400).json({ message: "Stop address is required." });
+
+    const [[job]] = await db.query(
+      `SELECT t.id, t.trip_code, t.driver_id, t.route_id, t.planned_departure,
+              d.full_name as driver_name, r.standard_eta_hours
+       FROM trips t
+       LEFT JOIN drivers d ON d.id = t.driver_id
+       LEFT JOIN routes r ON r.id = t.route_id
+       WHERE t.id = ? AND t.deleted_at IS NULL`,
+      [id]
+    );
+    if (!job) return res.status(404).json({ message: "Job not found." });
+
+    const [[{ maxOrder }]] = await db.query(
+      `SELECT COALESCE(MAX(stop_order), 0) as maxOrder FROM job_stops WHERE trip_id = ?`,
+      [id]
+    );
+
+    await db.query(
+      `INSERT INTO job_stops (trip_id, stop_order, stop_type, address, contact_name, contact_phone, planned_arrival, notes)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      [id, maxOrder + 1, stop_type || "delivery", address.trim(), contact_name || null, contact_phone || null, planned_arrival || null, notes || null]
+    );
+
+    // Recalc ETA: base route ETA + 30 min per stop
+    if (job.route_id && job.planned_departure && job.standard_eta_hours != null) {
+      const [[{ stopCount }]] = await db.query(
+        `SELECT COUNT(*) as stopCount FROM job_stops WHERE trip_id = ?`, [id]
+      );
+      const newEta = new Date(
+        new Date(job.planned_departure).getTime()
+        + job.standard_eta_hours * 3600 * 1000
+        + stopCount * 30 * 60 * 1000
+      );
+      await db.query(`UPDATE trips SET eta = ? WHERE id = ?`, [newEta, id]);
+    }
+
+    // Notify driver via chat + socket
+    if (job.driver_id) {
+      const typeLabel = { pickup: "a pickup", delivery: "a delivery", waypoint: "a waypoint" }[stop_type] || "a";
+      const body = `Route update for ${job.trip_code}: ${typeLabel} stop has been added at "${address.trim()}". Please check your updated route.`;
+      const [msgResult] = await db.query(
+        `INSERT INTO driver_messages (driver_id, sender_role, sender_name, body, trip_id) VALUES (?, 'dispatch', 'Dispatch', ?, ?)`,
+        [job.driver_id, body, id]
+      );
+      const [[createdMsg]] = await db.query(`SELECT * FROM driver_messages WHERE id = ?`, [msgResult.insertId]);
+      emitDriverChatMessage({
+        id: createdMsg.id,
+        driverId: Number(job.driver_id),
+        driverName: job.driver_name || "Driver",
+        senderRole: "dispatch",
+        senderName: "Dispatch",
+        body: createdMsg.body,
+        tripId: Number(id),
+        isRead: false,
+        at: fmtDateTime(createdMsg.sent_at),
+        sentAt: createdMsg.sent_at ? new Date(createdMsg.sent_at).toISOString() : null
+      });
+    }
+
+    emitJobUpdate({ jobId: Number(id), source: "admin-add-stop" });
+    res.status(201).json({ message: "Stop added." });
+  } catch (err) {
+    res.status(500).json({ message: "Add stop error", error: err.message });
+  }
+};
+
+// DELETE /api/jobs/:id/stops/:stopId  — remove stop, reorder, recalc ETA, notify driver
+exports.deleteJobStop = async (req, res) => {
+  try {
+    await ensureDriverOpsSchema();
+    const { id, stopId } = req.params;
+
+    const [[stop]] = await db.query(`SELECT id, address FROM job_stops WHERE id = ? AND trip_id = ?`, [stopId, id]);
+    if (!stop) return res.status(404).json({ message: "Stop not found." });
+
+    const [[job]] = await db.query(
+      `SELECT t.id, t.trip_code, t.driver_id, t.route_id, t.planned_departure,
+              d.full_name as driver_name, r.standard_eta_hours
+       FROM trips t
+       LEFT JOIN drivers d ON d.id = t.driver_id
+       LEFT JOIN routes r ON r.id = t.route_id
+       WHERE t.id = ? AND t.deleted_at IS NULL`,
+      [id]
+    );
+    if (!job) return res.status(404).json({ message: "Job not found." });
+
+    await db.query(`DELETE FROM job_stops WHERE id = ?`, [stopId]);
+
+    // Reorder remaining stops
+    const [remaining] = await db.query(
+      `SELECT id FROM job_stops WHERE trip_id = ? ORDER BY stop_order ASC`, [id]
+    );
+    for (let i = 0; i < remaining.length; i++) {
+      await db.query(`UPDATE job_stops SET stop_order = ? WHERE id = ?`, [i + 1, remaining[i].id]);
+    }
+
+    // Recalc ETA
+    if (job.route_id && job.planned_departure && job.standard_eta_hours != null) {
+      const [[{ stopCount }]] = await db.query(
+        `SELECT COUNT(*) as stopCount FROM job_stops WHERE trip_id = ?`, [id]
+      );
+      const newEta = new Date(
+        new Date(job.planned_departure).getTime()
+        + job.standard_eta_hours * 3600 * 1000
+        + stopCount * 30 * 60 * 1000
+      );
+      await db.query(`UPDATE trips SET eta = ? WHERE id = ?`, [newEta, id]);
+    }
+
+    // Notify driver
+    if (job.driver_id) {
+      const body = `Route update for ${job.trip_code}: a stop at "${stop.address}" has been removed. Please check your updated route.`;
+      const [msgResult] = await db.query(
+        `INSERT INTO driver_messages (driver_id, sender_role, sender_name, body, trip_id) VALUES (?, 'dispatch', 'Dispatch', ?, ?)`,
+        [job.driver_id, body, id]
+      );
+      const [[createdMsg]] = await db.query(`SELECT * FROM driver_messages WHERE id = ?`, [msgResult.insertId]);
+      emitDriverChatMessage({
+        id: createdMsg.id,
+        driverId: Number(job.driver_id),
+        driverName: job.driver_name || "Driver",
+        senderRole: "dispatch",
+        senderName: "Dispatch",
+        body: createdMsg.body,
+        tripId: Number(id),
+        isRead: false,
+        at: fmtDateTime(createdMsg.sent_at),
+        sentAt: createdMsg.sent_at ? new Date(createdMsg.sent_at).toISOString() : null
+      });
+    }
+
+    emitJobUpdate({ jobId: Number(id), source: "admin-remove-stop" });
+    res.json({ message: "Stop removed." });
+  } catch (err) {
+    res.status(500).json({ message: "Remove stop error", error: err.message });
   }
 };
 

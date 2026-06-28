@@ -12,8 +12,10 @@ router.post("/",          j.createJob);
 router.put("/:id",        j.updateJob);
 router.patch("/:id/assignment", j.updateJobAssignment);
 router.patch("/:id/status", j.updateJobStatus);
-router.get("/:id/notes",  j.getJobNotes);
-router.post("/:id/notes", j.addJobNote);
-router.delete("/:id",     j.cancelJob);
+router.get("/:id/notes",         j.getJobNotes);
+router.post("/:id/notes",        j.addJobNote);
+router.post("/:id/stops",        j.addJobStop);
+router.delete("/:id/stops/:stopId", j.deleteJobStop);
+router.delete("/:id",            j.cancelJob);
 
 module.exports = router;

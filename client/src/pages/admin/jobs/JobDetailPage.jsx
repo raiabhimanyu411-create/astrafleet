@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { cancelJob, getJobById, updateJobStatus } from "../../../api/jobApi";
+import { addJobStop, cancelJob, deleteJobStop, getJobById, updateJobStatus } from "../../../api/jobApi";
 import { DeleteReasonModal } from "../../../components/DeleteReasonModal";
 import { StateNotice } from "../../../components/StateNotice";
 import { StatusPill } from "../../../components/StatusPill";
@@ -49,6 +49,10 @@ export function JobDetailPage() {
   const [blockReason, setBlockReason] = useState("");
   const [showBlockInput, setShowBlockInput] = useState(false);
   const [showCancelModal, setShowCancelModal] = useState(false);
+  const [showAddStop, setShowAddStop] = useState(false);
+  const [newStop, setNewStop] = useState({ address: "", stop_type: "delivery", contact_name: "", contact_phone: "", planned_arrival: "", notes: "" });
+  const [stopSaving, setStopSaving] = useState(false);
+  const [stopRemoving, setStopRemoving] = useState(null);
 
   function load() {
     setLoading(true);
@@ -96,6 +100,34 @@ export function JobDetailPage() {
       alert("Could not cancel job.");
     } finally {
       setUpdating(false);
+    }
+  }
+
+  async function handleAddStop(e) {
+    e.preventDefault();
+    if (!newStop.address.trim()) return;
+    setStopSaving(true);
+    try {
+      await addJobStop(id, newStop);
+      setNewStop({ address: "", stop_type: "delivery", contact_name: "", contact_phone: "", planned_arrival: "", notes: "" });
+      setShowAddStop(false);
+      load();
+    } catch {
+      alert("Could not add stop. Please try again.");
+    } finally {
+      setStopSaving(false);
+    }
+  }
+
+  async function handleRemoveStop(stopId) {
+    setStopRemoving(stopId);
+    try {
+      await deleteJobStop(id, stopId);
+      load();
+    } catch {
+      alert("Could not remove stop. Please try again.");
+    } finally {
+      setStopRemoving(null);
     }
   }
 
@@ -412,16 +444,78 @@ export function JobDetailPage() {
             </div>
 
             {/* Stops timeline */}
-            {data.stops.length > 0 && (
-              <div className="content-card" style={{ marginTop: 14 }}>
-                <div className="section-head">
-                  <div>
-                    <span className="card-label">Multi-stop delivery</span>
-                    <h2 style={{ margin: "4px 0 0", fontSize: "1rem" }}>Stop timeline ({data.stops.length} stops)</h2>
-                  </div>
-                  <StatusPill tone="neutral">{data.stops.length} stops</StatusPill>
+            <div className="content-card" style={{ marginTop: 14 }}>
+              <div className="section-head">
+                <div>
+                  <span className="card-label">Multi-stop route</span>
+                  <h2 style={{ margin: "4px 0 0", fontSize: "1rem" }}>
+                    Stop timeline
+                    {data.stops.length > 0 && ` (${data.stops.length} stops)`}
+                  </h2>
                 </div>
+                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  {data.stops.length > 0 && <StatusPill tone="neutral">{data.stops.length} stops</StatusPill>}
+                  {!["completed", "blocked", "cancelled"].includes(data.status) && (
+                    <button className="header-action-button" type="button" onClick={() => setShowAddStop(v => !v)}>
+                      {showAddStop ? "Cancel" : "+ Add stop"}
+                    </button>
+                  )}
+                </div>
+              </div>
 
+              {/* Inline add-stop form */}
+              {showAddStop && (
+                <form onSubmit={handleAddStop} style={{ background: "#f0f9ff", border: "1px solid #bae6fd", borderRadius: 10, padding: "14px 16px", marginBottom: 14 }}>
+                  <p style={{ margin: "0 0 10px", fontSize: "0.84rem", fontWeight: 700, color: "#0369a1" }}>New stop details</p>
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0,1fr))", gap: 10 }}>
+                    <div>
+                      <label style={{ fontSize: "0.72rem", fontWeight: 700, color: "#64748b", textTransform: "uppercase", display: "block", marginBottom: 4 }}>Stop type</label>
+                      <select className="af-select" value={newStop.stop_type} onChange={e => setNewStop(p => ({ ...p, stop_type: e.target.value }))}>
+                        <option value="delivery">Delivery</option>
+                        <option value="pickup">Pickup</option>
+                        <option value="waypoint">Waypoint</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label style={{ fontSize: "0.72rem", fontWeight: 700, color: "#64748b", textTransform: "uppercase", display: "block", marginBottom: 4 }}>Planned arrival</label>
+                      <input className="af-input" style={{ margin: 0 }} type="datetime-local" value={newStop.planned_arrival} onChange={e => setNewStop(p => ({ ...p, planned_arrival: e.target.value }))} />
+                    </div>
+                    <div style={{ gridColumn: "1 / -1" }}>
+                      <label style={{ fontSize: "0.72rem", fontWeight: 700, color: "#64748b", textTransform: "uppercase", display: "block", marginBottom: 4 }}>Address <span style={{ color: "#dc2626" }}>*</span></label>
+                      <textarea className="af-input" style={{ margin: 0, minHeight: 60, resize: "vertical" }} placeholder="Full address for this stop" required value={newStop.address} onChange={e => setNewStop(p => ({ ...p, address: e.target.value }))} />
+                    </div>
+                    <div>
+                      <label style={{ fontSize: "0.72rem", fontWeight: 700, color: "#64748b", textTransform: "uppercase", display: "block", marginBottom: 4 }}>Contact name</label>
+                      <input className="af-input" style={{ margin: 0 }} type="text" placeholder="e.g. John Smith" value={newStop.contact_name} onChange={e => setNewStop(p => ({ ...p, contact_name: e.target.value }))} />
+                    </div>
+                    <div>
+                      <label style={{ fontSize: "0.72rem", fontWeight: 700, color: "#64748b", textTransform: "uppercase", display: "block", marginBottom: 4 }}>Contact phone</label>
+                      <input className="af-input" style={{ margin: 0 }} type="tel" placeholder="e.g. 07700 900123" value={newStop.contact_phone} onChange={e => setNewStop(p => ({ ...p, contact_phone: e.target.value }))} />
+                    </div>
+                    <div style={{ gridColumn: "1 / -1" }}>
+                      <label style={{ fontSize: "0.72rem", fontWeight: 700, color: "#64748b", textTransform: "uppercase", display: "block", marginBottom: 4 }}>Notes</label>
+                      <input className="af-input" style={{ margin: 0 }} type="text" placeholder="Any special instructions for this stop" value={newStop.notes} onChange={e => setNewStop(p => ({ ...p, notes: e.target.value }))} />
+                    </div>
+                  </div>
+                  <div style={{ display: "flex", gap: 8, justifyContent: "flex-end", marginTop: 12 }}>
+                    <button type="button" className="header-action-button" onClick={() => setShowAddStop(false)}>Cancel</button>
+                    <button type="submit" className="af-submit-btn" disabled={stopSaving} style={{ background: "#2563eb" }}>
+                      {stopSaving ? "Saving..." : "Add stop →"}
+                    </button>
+                  </div>
+                  {data.driver && (
+                    <p style={{ margin: "8px 0 0", fontSize: "0.78rem", color: "#0369a1" }}>
+                      Driver {data.driver.name} will be notified automatically when this stop is saved.
+                    </p>
+                  )}
+                </form>
+              )}
+
+              {data.stops.length === 0 && !showAddStop && (
+                <p style={{ color: "#94a3b8", fontSize: "0.86rem", margin: 0 }}>No intermediate stops on this job. Click "+ Add stop" to add waypoints, extra pickups, or delivery stops.</p>
+              )}
+
+              {data.stops.length > 0 && (
                 <div className="timeline-list">
                   {data.stops.map(stop => (
                     <div className="timeline-item" key={stop.id}>
@@ -434,6 +528,17 @@ export function JobDetailPage() {
                         <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 6, flexWrap: "wrap" }}>
                           <strong>Stop {stop.order} — {stop.type.charAt(0).toUpperCase() + stop.type.slice(1)}</strong>
                           <StatusPill tone={stop.tone}>{stop.status}</StatusPill>
+                          {stop.status === "pending" && !["completed", "blocked", "cancelled"].includes(data.status) && (
+                            <button
+                              className="header-action-button danger"
+                              type="button"
+                              style={{ padding: "3px 8px", fontSize: "0.72rem" }}
+                              disabled={stopRemoving === stop.id}
+                              onClick={() => handleRemoveStop(stop.id)}
+                            >
+                              {stopRemoving === stop.id ? "..." : "Remove"}
+                            </button>
+                          )}
                         </div>
                         <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0,1fr))", gap: 8 }}>
                           <div>
@@ -459,8 +564,8 @@ export function JobDetailPage() {
                     </div>
                   ))}
                 </div>
-              </div>
-            )}
+              )}
+            </div>
           </>
         )}
       </div>

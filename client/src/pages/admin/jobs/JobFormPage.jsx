@@ -38,13 +38,15 @@ function toInputDateTime(date) {
   return new Date(next.getTime() - offsetMs).toISOString().slice(0, 16);
 }
 
-function addHours(value, hours) {
+function addHours(value, hours, extraStops = 0) {
   if (!value || !hours) return "";
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return "";
-  date.setMinutes(date.getMinutes() + Number(hours) * 60 + 30);
+  date.setMinutes(date.getMinutes() + Number(hours) * 60 + 30 + extraStops * 30);
   return toInputDateTime(date);
 }
+
+const emptyStop = { address: "", stop_type: "delivery", contact_name: "", contact_phone: "", planned_arrival: "", notes: "" };
 
 function displayDateTime(value) {
   if (!value) return "Select route and pickup time";
@@ -84,6 +86,7 @@ export function JobFormPage() {
 
   const [formData, setFormData] = useState({ customers: [], drivers: [], vehicles: [], routes: [] });
   const [fields, setFields] = useState(emptyFields);
+  const [stops, setStops] = useState([]);
   const [loading, setLoading] = useState(true);
   const [loadErr, setLoadErr] = useState("");
   const [submitting, setSubmitting] = useState(false);
@@ -114,6 +117,16 @@ export function JobFormPage() {
             vehicle_id: j.form?.vehicle_id ? String(j.form.vehicle_id) : "",
             trailer_id: j.form?.trailer_id ? String(j.form.trailer_id) : ""
           });
+          if (j.stops?.length > 0) {
+            setStops(j.stops.map(s => ({
+              address: s.address || "",
+              stop_type: s.type || "delivery",
+              contact_name: s.contactName !== "—" ? s.contactName || "" : "",
+              contact_phone: s.contactPhone !== "—" ? s.contactPhone || "" : "",
+              planned_arrival: "",
+              notes: s.notes !== "—" ? s.notes || "" : ""
+            })));
+          }
         }
       } catch {
         setLoadErr("Could not load form data. Please go back and try again.");
@@ -163,10 +176,11 @@ export function JobFormPage() {
   function handleDepartureChange(value) {
     setFields(prev => {
       const route = formData.routes.find(r => String(r.id) === prev.route_id);
+      const currentValidStops = stops.filter(s => s.address.trim()).length;
       return {
         ...prev,
         planned_departure: value,
-        delivery_deadline: prev.delivery_deadline || (route ? addHours(value, route.standard_eta_hours) : "")
+        delivery_deadline: prev.delivery_deadline || (route ? addHours(value, route.standard_eta_hours, currentValidStops) : "")
       };
     });
   }
@@ -188,7 +202,8 @@ export function JobFormPage() {
     return addressLines(selectedCustomer.saved_drop_addresses);
   }, [selectedCustomer]);
 
-  const etaPreview = selectedRoute ? addHours(fields.planned_departure, selectedRoute.standard_eta_hours) : "";
+  const validStops = stops.filter(s => s.address.trim());
+  const etaPreview = selectedRoute ? addHours(fields.planned_departure, selectedRoute.standard_eta_hours, validStops.length) : "";
 
   async function handleSubmit(e) {
     e.preventDefault();
@@ -216,7 +231,14 @@ export function JobFormPage() {
       driver_id: fields.driver_id ? Number(fields.driver_id) : null,
       vehicle_id: fields.vehicle_id ? Number(fields.vehicle_id) : null,
       trailer_id: fields.trailer_id ? Number(fields.trailer_id) : null,
-      stops: []
+      stops: stops.filter(s => s.address.trim()).map(s => ({
+        address: s.address.trim(),
+        stop_type: s.stop_type,
+        contact_name: s.contact_name || null,
+        contact_phone: s.contact_phone || null,
+        planned_arrival: s.planned_arrival || null,
+        notes: s.notes || null
+      }))
     };
 
     setSubmitting(true);
@@ -386,6 +408,82 @@ export function JobFormPage() {
                   </select>
                 </Field>
               </div>
+            </div>
+
+            <div className="af-section">
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
+                <p className="af-section-title" style={{ margin: 0 }}>
+                  Intermediate stops
+                  {validStops.length > 0 && (
+                    <span style={{ marginLeft: 8, fontSize: "0.75rem", fontWeight: 600, color: "#2563eb", background: "#eff6ff", borderRadius: 20, padding: "2px 8px" }}>
+                      {validStops.length} stop{validStops.length > 1 ? "s" : ""} · +{validStops.length * 30} min ETA
+                    </span>
+                  )}
+                </p>
+                <button
+                  type="button"
+                  className="header-action-button"
+                  onClick={() => setStops(prev => [...prev, { ...emptyStop }])}
+                >
+                  + Add stop
+                </button>
+              </div>
+
+              {stops.length === 0 && (
+                <p style={{ color: "#94a3b8", fontSize: "0.84rem", margin: 0 }}>
+                  No intermediate stops. Click "Add stop" to include waypoints, additional pickups, or delivery stops.
+                </p>
+              )}
+
+              {stops.map((stop, i) => (
+                <div key={i} style={{ border: "1px solid #e2e8f0", borderRadius: 10, padding: "14px 16px", marginBottom: 10, background: "#f8fafc", position: "relative" }}>
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
+                    <strong style={{ fontSize: "0.84rem", color: "#0f172a" }}>Stop {i + 1}</strong>
+                    <button
+                      type="button"
+                      className="header-action-button danger"
+                      style={{ padding: "4px 10px", fontSize: "0.75rem" }}
+                      onClick={() => setStops(prev => prev.filter((_, idx) => idx !== i))}
+                    >
+                      Remove
+                    </button>
+                  </div>
+                  <div className="af-grid-2">
+                    <Field label="Stop type">
+                      <select className="af-select" value={stop.stop_type} onChange={e => setStops(prev => prev.map((s, idx) => idx === i ? { ...s, stop_type: e.target.value } : s))}>
+                        <option value="delivery">Delivery</option>
+                        <option value="pickup">Pickup</option>
+                        <option value="waypoint">Waypoint</option>
+                      </select>
+                    </Field>
+                    <Field label="Planned arrival at stop">
+                      <input className="af-input" type="datetime-local" value={stop.planned_arrival} onChange={e => setStops(prev => prev.map((s, idx) => idx === i ? { ...s, planned_arrival: e.target.value } : s))} />
+                    </Field>
+                    <div style={{ gridColumn: "1 / -1" }}>
+                      <Field label="Stop address" required>
+                        <textarea className="af-input" style={{ minHeight: 60, resize: "vertical" }} placeholder="Full address for this stop" value={stop.address} onChange={e => setStops(prev => prev.map((s, idx) => idx === i ? { ...s, address: e.target.value } : s))} />
+                      </Field>
+                    </div>
+                    <Field label="Contact name">
+                      <input className="af-input" type="text" placeholder="e.g. John Smith" value={stop.contact_name} onChange={e => setStops(prev => prev.map((s, idx) => idx === i ? { ...s, contact_name: e.target.value } : s))} />
+                    </Field>
+                    <Field label="Contact phone">
+                      <input className="af-input" type="tel" placeholder="e.g. 07700 900123" value={stop.contact_phone} onChange={e => setStops(prev => prev.map((s, idx) => idx === i ? { ...s, contact_phone: e.target.value } : s))} />
+                    </Field>
+                    <div style={{ gridColumn: "1 / -1" }}>
+                      <Field label="Notes">
+                        <input className="af-input" type="text" placeholder="Any special notes for this stop" value={stop.notes} onChange={e => setStops(prev => prev.map((s, idx) => idx === i ? { ...s, notes: e.target.value } : s))} />
+                      </Field>
+                    </div>
+                  </div>
+                </div>
+              ))}
+
+              {validStops.length > 0 && selectedRoute && (
+                <div style={{ marginTop: 8, padding: "10px 14px", background: "#eff6ff", border: "1px solid #bfdbfe", borderRadius: 8, fontSize: "0.84rem", color: "#1e40af" }}>
+                  <strong>ETA with stops:</strong> {displayDateTime(etaPreview)} — base route ({selectedRoute.standard_eta_hours}h) + 30 min × {validStops.length} stop{validStops.length > 1 ? "s" : ""}
+                </div>
+              )}
             </div>
 
             {submitErr && (
