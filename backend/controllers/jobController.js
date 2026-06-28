@@ -255,6 +255,68 @@ async function estimateDrivingRoute(fromPoint, toPoint, settings) {
   };
 }
 
+async function backfillRouteEstimate(row, settings) {
+  if (row.distance_km) return row;
+  const pickupPostcode = extractUkPostcode(row.pickup_address || row.origin_hub);
+  const dropPostcode = extractUkPostcode(row.drop_address || row.destination_hub);
+  if (!pickupPostcode || !dropPostcode) return row;
+
+  try {
+    const [pickup, drop] = await Promise.all([
+      lookupPostcode(pickupPostcode),
+      lookupPostcode(dropPostcode)
+    ]);
+    if (!pickup || !drop) return row;
+
+    const estimate = await estimateDrivingRoute(pickup, drop, settings);
+    await db.query(
+      `UPDATE trips
+       SET estimated_distance_km=?, estimated_eta_mins=?
+       WHERE id=? AND deleted_at IS NULL`,
+      [estimate.distanceKm, estimate.durationMins, row.id]
+    );
+    return {
+      ...row,
+      distance_km: estimate.distanceKm,
+      standard_eta_hours: Math.round((estimate.durationMins / 60) * 10) / 10
+    };
+  } catch {
+    return row;
+  }
+}
+
+async function backfillTiming(row, settings) {
+  if (!row.loading_done_time || !row.distance_km || row.calculated_arrival || row.total_job_duration_mins) {
+    return row;
+  }
+
+  const departure = new Date(row.loading_done_time);
+  if (Number.isNaN(departure.getTime())) return row;
+
+  const distanceMiles = Number(row.distance_km) * 0.621371;
+  const travelMins = row.standard_eta_hours
+    ? Math.round(Number(row.standard_eta_hours) * 60)
+    : Math.round((distanceMiles / Number(settings?.avg_speed_mph || 50)) * 60);
+  const unloadingMins = Number(row.unloading_duration_mins || 120);
+  const calculatedArrival = new Date(departure.getTime() + travelMins * 60000);
+  const calculatedUnloadEnd = new Date(calculatedArrival.getTime() + unloadingMins * 60000);
+  const totalJobDurationMins = travelMins + unloadingMins;
+
+  await db.query(
+    `UPDATE trips
+     SET calculated_arrival=?, calculated_unload_end=?, total_job_duration_mins=?
+     WHERE id=? AND deleted_at IS NULL`,
+    [calculatedArrival, calculatedUnloadEnd, totalJobDurationMins, row.id]
+  );
+
+  return {
+    ...row,
+    calculated_arrival: calculatedArrival,
+    calculated_unload_end: calculatedUnloadEnd,
+    total_job_duration_mins: totalJobDurationMins
+  };
+}
+
 function calcJobEconomics(distanceKm, totalJobMins, settings) {
   if (!distanceKm || !settings) return null;
   const distanceMiles = distanceKm * 0.621371;
@@ -455,6 +517,12 @@ exports.listJobs = async (req, res) => {
        ORDER BY trailer_code ASC`
     );
 
+    const hydratedRows = [];
+    for (const row of rows) {
+      const estimatedRow = await backfillRouteEstimate(row, settings);
+      hydratedRows.push(await backfillTiming(estimatedRow, settings));
+    }
+
     res.json({
       stats: [
         { label: "Total jobs",  value: counts.total,     description: "All freight bookings.", change: "Live from database", tone: "neutral" },
@@ -471,7 +539,7 @@ exports.listJobs = async (req, res) => {
       drivers,
       vehicles,
       trailers,
-      jobs: rows.map(r => {
+      jobs: hydratedRows.map(r => {
         const econ = calcJobEconomics(r.distance_km, r.total_job_duration_mins, settings);
         const freightValue = Number(r.freight_amount_gbp || 0);
         const profitLossValue = econ ? freightValue - econ.totalCost : null;
@@ -733,6 +801,8 @@ exports.getJobById = async (req, res) => {
       [id]
     );
     if (!t) return res.status(404).json({ message: "Job not found." });
+    const hydratedJob = await backfillTiming(await backfillRouteEstimate(t, settings), settings);
+    const j = hydratedJob;
 
     const [stops] = await db.query(
       `SELECT * FROM job_stops WHERE trip_id = ? ORDER BY stop_order ASC`, [id]
@@ -745,102 +815,102 @@ exports.getJobById = async (req, res) => {
        ORDER BY e.expense_at DESC`,
       [id]
     );
-    const [defects] = t.vehicle_id ? await db.query(
+    const [defects] = j.vehicle_id ? await db.query(
       `SELECT * FROM defect_reports
        WHERE vehicle_id = ?
        ORDER BY reported_at DESC LIMIT 8`,
-      [t.vehicle_id]
+      [j.vehicle_id]
     ) : [[]];
 
     const stopStatusTone = { pending: "neutral", arrived: "warning", completed: "success", skipped: "danger" };
-    const driverStatus = t.driver_job_status || "accepted";
+    const driverStatus = hydratedJob.driver_job_status || "accepted";
 
     res.json({
-      id: t.id,
-      code: t.trip_code,
-      status: t.dispatch_status,
-      statusTone: dispatchTone[t.dispatch_status] || "neutral",
-      priority: t.priority_level,
-      priorityTone: priorityTone[t.priority_level] || "neutral",
-      podStatus: t.pod_status,
-      delayReason: t.delay_reason,
-      cancellationReason: t.cancellation_reason,
-      failedDeliveryReason: t.failed_delivery_reason,
-      specialInstructions: t.special_instructions,
+      id: hydratedJob.id,
+      code: hydratedJob.trip_code,
+      status: hydratedJob.dispatch_status,
+      statusTone: dispatchTone[hydratedJob.dispatch_status] || "neutral",
+      priority: hydratedJob.priority_level,
+      priorityTone: priorityTone[hydratedJob.priority_level] || "neutral",
+      podStatus: hydratedJob.pod_status,
+      delayReason: hydratedJob.delay_reason,
+      cancellationReason: hydratedJob.cancellation_reason,
+      failedDeliveryReason: hydratedJob.failed_delivery_reason,
+      specialInstructions: hydratedJob.special_instructions,
       form: {
-        customer_id: t.customer_id,
-        route_id: t.route_id,
-        driver_id: t.driver_id,
-        vehicle_id: t.vehicle_id,
-        trailer_id: t.trailer_id,
-        planned_departure: t.planned_departure ? new Date(t.planned_departure).toISOString().slice(0, 16) : "",
-        delivery_deadline: t.delivery_deadline ? new Date(t.delivery_deadline).toISOString().slice(0, 16) : ""
+        customer_id: j.customer_id,
+        route_id: j.route_id,
+        driver_id: j.driver_id,
+        vehicle_id: j.vehicle_id,
+        trailer_id: j.trailer_id,
+        planned_departure: j.planned_departure ? new Date(j.planned_departure).toISOString().slice(0, 16) : "",
+        delivery_deadline: j.delivery_deadline ? new Date(j.delivery_deadline).toISOString().slice(0, 16) : ""
       },
       driverExecution: {
         status: driverStatus,
         statusLabel: driverStatusLabel[driverStatus] || driverStatus,
         statusTone: driverStatusTone[driverStatus] || "neutral",
-        deliveryNotes: t.delivery_notes || "—",
-        failedDeliveryReason: t.failed_delivery_reason || "—"
+        deliveryNotes: j.delivery_notes || "—",
+        failedDeliveryReason: j.failed_delivery_reason || "—"
       },
       proofOfDelivery: {
-        status: t.pod_status,
-        signatureData: t.pod_signature_data || "",
-        photoData: t.pod_photo_data || "",
-        deliveryNotes: t.delivery_notes || ""
+        status: j.pod_status,
+        signatureData: j.pod_signature_data || "",
+        photoData: j.pod_photo_data || "",
+        deliveryNotes: j.delivery_notes || ""
       },
 
-      customer: t.company_name ? {
-        name: t.company_name,
-        contact: t.cust_contact,
-        email: t.cust_email,
-        phone: t.cust_phone
-      } : { name: t.client_name || "—", phone: t.client_phone || "—" },
+      customer: j.company_name ? {
+        name: j.company_name,
+        contact: j.cust_contact,
+        email: j.cust_email,
+        phone: j.cust_phone
+      } : { name: j.client_name || "—", phone: j.client_phone || "—" },
 
       route: {
-        code: t.route_code,
-        from: t.origin_hub || t.pickup_address,
-        to: t.destination_hub || t.drop_address,
-        pickupAddress: t.pickup_address,
-        dropAddress: t.drop_address,
-        distanceKm: t.distance_km,
-        distanceMiles: t.distance_km ? Math.round(t.distance_km * 0.621371 * 10) / 10 : null,
-        etaHours: t.standard_eta_hours,
-        tollEstimate: fmtAmount(t.toll_estimate_gbp)
+        code: j.route_code,
+        from: j.origin_hub || j.pickup_address,
+        to: j.destination_hub || j.drop_address,
+        pickupAddress: j.pickup_address,
+        dropAddress: j.drop_address,
+        distanceKm: j.distance_km,
+        distanceMiles: j.distance_km ? Math.round(j.distance_km * 0.621371 * 10) / 10 : null,
+        etaHours: j.standard_eta_hours,
+        tollEstimate: fmtAmount(j.toll_estimate_gbp)
       },
 
       schedule: {
-        plannedDeparture: fmtDateTime(t.planned_departure),
-        eta: fmtDateTime(t.eta),
-        actualDeparture: fmtDateTime(t.actual_departure),
-        actualArrival: fmtDateTime(t.actual_arrival),
-        deliveryDeadline: fmtDateTime(t.delivery_deadline),
-        dockWindow: t.dock_window || "—"
+        plannedDeparture: fmtDateTime(j.planned_departure),
+        eta: fmtDateTime(j.eta),
+        actualDeparture: fmtDateTime(j.actual_departure),
+        actualArrival: fmtDateTime(j.actual_arrival),
+        deliveryDeadline: fmtDateTime(j.delivery_deadline),
+        dockWindow: j.dock_window || "—"
       },
 
       load: {
-        type: t.load_type || "general",
-        weightKg: t.load_weight_kg ? `${t.load_weight_kg} kg` : "—",
-        volumeCbm: t.load_volume_cbm ? `${t.load_volume_cbm} cbm` : "—",
-        vehicleRequirement: t.vehicle_type_requirement || "—",
-        description: t.load_description || "—",
-        freight: fmtAmount(t.freight_amount_gbp),
-        freightValue: Number(t.freight_amount_gbp || 0)
+        type: j.load_type || "general",
+        weightKg: j.load_weight_kg ? `${j.load_weight_kg} kg` : "—",
+        volumeCbm: j.load_volume_cbm ? `${j.load_volume_cbm} cbm` : "—",
+        vehicleRequirement: j.vehicle_type_requirement || "—",
+        description: j.load_description || "—",
+        freight: fmtAmount(j.freight_amount_gbp),
+        freightValue: Number(j.freight_amount_gbp || 0)
       },
-      dispatcherNotes: t.dispatcher_notes || "—",
+      dispatcherNotes: j.dispatcher_notes || "—",
 
       timing: {
-        loadingDoneTime: t.loading_done_time ? new Date(t.loading_done_time).toISOString().slice(0, 16) : "",
-        unloadingDurationMins: t.unloading_duration_mins || 120,
-        calculatedArrival: rawDateTime(t.calculated_arrival),
-        calculatedUnloadEnd: rawDateTime(t.calculated_unload_end),
-        totalJobDurationMins: t.total_job_duration_mins
+        loadingDoneTime: j.loading_done_time ? new Date(j.loading_done_time).toISOString().slice(0, 16) : "",
+        unloadingDurationMins: j.unloading_duration_mins || 120,
+        calculatedArrival: rawDateTime(j.calculated_arrival),
+        calculatedUnloadEnd: rawDateTime(j.calculated_unload_end),
+        totalJobDurationMins: j.total_job_duration_mins
       },
 
       economics: (() => {
-        const econ = calcJobEconomics(t.distance_km, t.total_job_duration_mins, settings);
+        const econ = calcJobEconomics(j.distance_km, j.total_job_duration_mins, settings);
         if (!econ) return null;
-        const freightValue = Number(t.freight_amount_gbp || 0);
+        const freightValue = Number(j.freight_amount_gbp || 0);
         const profitLossValue = freightValue - econ.totalCost;
         return {
           ...econ,
