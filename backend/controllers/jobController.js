@@ -49,6 +49,23 @@ const driverStatusTone = {
 let driverOpsSchemaReady = false;
 let softDeleteSchemaReady = false;
 let jobCostSchemaReady = false;
+const DEFAULT_LOADING_MINS = 90;
+const DEFAULT_UNLOADING_MINS = 90;
+
+function effectiveLoadingMins(rowOrValue) {
+  const value = typeof rowOrValue === "object" ? rowOrValue?.loading_duration_mins : rowOrValue;
+  return Number(value || DEFAULT_LOADING_MINS);
+}
+
+function effectiveUnloadingMins(rowOrValue) {
+  if (typeof rowOrValue === "object") {
+    if (!rowOrValue?.loading_duration_mins && Number(rowOrValue?.unloading_duration_mins) === 120) {
+      return DEFAULT_UNLOADING_MINS;
+    }
+    return Number(rowOrValue?.unloading_duration_mins || DEFAULT_UNLOADING_MINS);
+  }
+  return Number(rowOrValue || DEFAULT_UNLOADING_MINS);
+}
 
 function trailerStatusForJob(status) {
   if (status === "active" || status === "loading") return "in_use";
@@ -181,7 +198,8 @@ async function ensureSoftDeleteSchema() {
 async function ensureJobCostSchema() {
   if (jobCostSchemaReady) return;
   await addColumnIfMissing("trips", "loading_done_time", "DATETIME DEFAULT NULL");
-  await addColumnIfMissing("trips", "unloading_duration_mins", "INT DEFAULT 120");
+  await addColumnIfMissing("trips", "loading_duration_mins", "INT DEFAULT 90");
+  await addColumnIfMissing("trips", "unloading_duration_mins", "INT DEFAULT 90");
   await addColumnIfMissing("trips", "calculated_arrival", "DATETIME DEFAULT NULL");
   await addColumnIfMissing("trips", "calculated_unload_end", "DATETIME DEFAULT NULL");
   await addColumnIfMissing("trips", "total_job_duration_mins", "INT DEFAULT NULL");
@@ -286,7 +304,7 @@ async function backfillRouteEstimate(row, settings) {
 }
 
 async function backfillTiming(row, settings) {
-  if (!row.loading_done_time || !row.distance_km || row.calculated_arrival || row.total_job_duration_mins) {
+  if (!row.loading_done_time || !row.distance_km) {
     return row;
   }
 
@@ -297,32 +315,49 @@ async function backfillTiming(row, settings) {
   const travelMins = row.standard_eta_hours
     ? Math.round(Number(row.standard_eta_hours) * 60)
     : Math.round((distanceMiles / Number(settings?.avg_speed_mph || 50)) * 60);
-  const unloadingMins = Number(row.unloading_duration_mins || 120);
+  const loadingMins = effectiveLoadingMins(row);
+  const unloadingMins = effectiveUnloadingMins(row);
   const calculatedArrival = new Date(departure.getTime() + travelMins * 60000);
   const calculatedUnloadEnd = new Date(calculatedArrival.getTime() + unloadingMins * 60000);
-  const totalJobDurationMins = travelMins + unloadingMins;
+  const totalJobDurationMins = loadingMins + travelMins + unloadingMins;
+
+  if (
+    row.calculated_arrival &&
+    row.calculated_unload_end &&
+    row.loading_duration_mins &&
+    row.unloading_duration_mins &&
+    Number(row.total_job_duration_mins || 0) === totalJobDurationMins
+  ) {
+    return row;
+  }
 
   await db.query(
     `UPDATE trips
-     SET calculated_arrival=?, calculated_unload_end=?, total_job_duration_mins=?
+     SET loading_duration_mins=?, unloading_duration_mins=?,
+         calculated_arrival=?, calculated_unload_end=?, total_job_duration_mins=?
      WHERE id=? AND deleted_at IS NULL`,
-    [calculatedArrival, calculatedUnloadEnd, totalJobDurationMins, row.id]
+    [loadingMins, unloadingMins, calculatedArrival, calculatedUnloadEnd, totalJobDurationMins, row.id]
   );
 
   return {
     ...row,
+    loading_duration_mins: loadingMins,
+    unloading_duration_mins: unloadingMins,
     calculated_arrival: calculatedArrival,
     calculated_unload_end: calculatedUnloadEnd,
     total_job_duration_mins: totalJobDurationMins
   };
 }
 
-function calcJobEconomics(distanceKm, totalJobMins, settings) {
+function calcJobEconomics(distanceKm, totalJobMins, settings, fallbackTravelMins = 0, loadingMins = DEFAULT_LOADING_MINS, unloadingMins = DEFAULT_UNLOADING_MINS) {
   if (!distanceKm || !settings) return null;
   const distanceMiles = distanceKm * 0.621371;
   const fuelCostPerMile = (4.546 / settings.mpg) * settings.fuel_price_per_litre;
   const fuelCost = distanceMiles * fuelCostPerMile;
-  const totalHours = (totalJobMins || 0) / 60;
+  const totalMinutes = Number(totalJobMins || 0) || (fallbackTravelMins
+    ? Number(loadingMins || DEFAULT_LOADING_MINS) + Number(fallbackTravelMins) + Number(unloadingMins || DEFAULT_UNLOADING_MINS)
+    : 0);
+  const totalHours = totalMinutes / 60;
   const driverCost = totalHours * settings.driver_rate_per_hour;
   const totalCost = fuelCost + driverCost;
   const suggestedPrice = totalCost * (1 + settings.margin_pct / 100);
@@ -333,7 +368,8 @@ function calcJobEconomics(distanceKm, totalJobMins, settings) {
     driverCost: Math.round(driverCost * 100) / 100,
     totalCost: Math.round(totalCost * 100) / 100,
     suggestedPrice: Math.round(suggestedPrice * 100) / 100,
-    totalHours: Math.round(totalHours * 100) / 100
+    totalHours: Math.round(totalHours * 100) / 100,
+    totalMins: totalMinutes
   };
 }
 
@@ -475,7 +511,7 @@ exports.listJobs = async (req, res) => {
               t.dock_window, t.freight_amount_gbp, t.load_type, t.load_weight_kg, t.load_volume_cbm,
               t.vehicle_type_requirement, t.load_description, t.special_instructions, t.dispatcher_notes,
               t.pod_status, t.pickup_address, t.drop_address, t.client_phone, t.created_at, t.cancellation_reason,
-              t.loading_done_time, t.unloading_duration_mins, t.calculated_arrival,
+              t.loading_done_time, t.loading_duration_mins, t.unloading_duration_mins, t.calculated_arrival,
               t.calculated_unload_end, t.total_job_duration_mins,
               c.company_name as customer_name, c.contact_name as customer_contact, c.phone as customer_phone,
               r.route_code, r.origin_hub, r.destination_hub,
@@ -540,7 +576,11 @@ exports.listJobs = async (req, res) => {
       vehicles,
       trailers,
       jobs: hydratedRows.map(r => {
-        const econ = calcJobEconomics(r.distance_km, r.total_job_duration_mins, settings);
+        const fallbackTravelMins = r.standard_eta_hours ? Math.round(Number(r.standard_eta_hours) * 60) : 0;
+        const loadingMins = effectiveLoadingMins(r);
+        const unloadingMins = effectiveUnloadingMins(r);
+        const econ = calcJobEconomics(r.distance_km, r.total_job_duration_mins, settings, fallbackTravelMins, loadingMins, unloadingMins);
+        const totalJobDurationMins = r.total_job_duration_mins || econ?.totalMins || null;
         const freightValue = Number(r.freight_amount_gbp || 0);
         const profitLossValue = econ ? freightValue - econ.totalCost : null;
         return {
@@ -603,10 +643,11 @@ exports.listJobs = async (req, res) => {
           stopCount: r.stop_count,
           cancellationReason: r.cancellation_reason || "",
           loadingDoneTime: rawDateTime(r.loading_done_time),
-          unloadingDurationMins: r.unloading_duration_mins || 120,
+          loadingDurationMins: loadingMins,
+          unloadingDurationMins: unloadingMins,
           calculatedArrival: rawDateTime(r.calculated_arrival),
           calculatedUnloadEnd: rawDateTime(r.calculated_unload_end),
-          totalJobDurationMins: r.total_job_duration_mins,
+          totalJobDurationMins,
           economics: econ,
           profitLossValue,
           profitLoss: profitLossValue !== null ? fmtAmount(Math.abs(profitLossValue)) : null,
@@ -901,14 +942,16 @@ exports.getJobById = async (req, res) => {
 
       timing: {
         loadingDoneTime: j.loading_done_time ? new Date(j.loading_done_time).toISOString().slice(0, 16) : "",
-        unloadingDurationMins: j.unloading_duration_mins || 120,
+        loadingDurationMins: effectiveLoadingMins(j),
+        unloadingDurationMins: effectiveUnloadingMins(j),
         calculatedArrival: rawDateTime(j.calculated_arrival),
         calculatedUnloadEnd: rawDateTime(j.calculated_unload_end),
         totalJobDurationMins: j.total_job_duration_mins
       },
 
       economics: (() => {
-        const econ = calcJobEconomics(j.distance_km, j.total_job_duration_mins, settings);
+        const fallbackTravelMins = j.standard_eta_hours ? Math.round(Number(j.standard_eta_hours) * 60) : 0;
+        const econ = calcJobEconomics(j.distance_km, j.total_job_duration_mins, settings, fallbackTravelMins, effectiveLoadingMins(j), effectiveUnloadingMins(j));
         if (!econ) return null;
         const freightValue = Number(j.freight_amount_gbp || 0);
         const profitLossValue = freightValue - econ.totalCost;
@@ -1006,7 +1049,7 @@ exports.createJob = async (req, res) => {
       load_type, load_weight_kg, load_volume_cbm, vehicle_type_requirement, delivery_deadline, load_description,
       freight_amount, priority_level, special_instructions,
       driver_id, vehicle_id, trailer_id, dispatcher_notes,
-      loading_done_time, unloading_duration_mins,
+      loading_done_time, loading_duration_mins, unloading_duration_mins,
       estimated_distance_km, estimated_eta_mins,
       calculated_arrival, calculated_unload_end, total_job_duration_mins,
       stops = []
@@ -1044,9 +1087,9 @@ exports.createJob = async (req, res) => {
           load_type, load_weight_kg, load_volume_cbm, vehicle_type_requirement, delivery_deadline,
           load_description, freight_amount_gbp, special_instructions, dispatcher_notes,
           driver_job_status,
-          loading_done_time, unloading_duration_mins, estimated_distance_km, estimated_eta_mins,
+          loading_done_time, loading_duration_mins, unloading_duration_mins, estimated_distance_km, estimated_eta_mins,
           calculated_arrival, calculated_unload_end, total_job_duration_mins)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'planned', ?, ?, ?, ?, 'pending', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'planned', ?, ?, ?, ?, 'pending', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         jobCode,
         customer_id || null,
@@ -1073,7 +1116,8 @@ exports.createJob = async (req, res) => {
         dispatcher_notes || null,
         driver_id ? "offered" : null,
         loading_done_time || null,
-        unloading_duration_mins ? Number(unloading_duration_mins) : 120,
+        loading_duration_mins ? Number(loading_duration_mins) : DEFAULT_LOADING_MINS,
+        unloading_duration_mins ? Number(unloading_duration_mins) : DEFAULT_UNLOADING_MINS,
         route_id ? null : (estimated_distance_km ? Number(estimated_distance_km) : null),
         route_id ? null : (estimated_eta_mins ? Number(estimated_eta_mins) : null),
         calculated_arrival || null,
@@ -1152,7 +1196,7 @@ exports.updateJob = async (req, res) => {
       load_type, load_weight_kg, load_volume_cbm, vehicle_type_requirement, delivery_deadline, load_description,
       freight_amount, priority_level, special_instructions,
       driver_id, vehicle_id, trailer_id, dispatcher_notes,
-      loading_done_time, unloading_duration_mins,
+      loading_done_time, loading_duration_mins, unloading_duration_mins,
       estimated_distance_km, estimated_eta_mins,
       calculated_arrival, calculated_unload_end, total_job_duration_mins,
       stops = []
@@ -1222,7 +1266,7 @@ exports.updateJob = async (req, res) => {
          load_type=?, load_weight_kg=?, load_volume_cbm=?, vehicle_type_requirement=?, delivery_deadline=?,
          load_description=?, freight_amount_gbp=?, special_instructions=?, dispatcher_notes=?,
          driver_job_status=IF(? = 1, 'offered', driver_job_status),
-         loading_done_time=?, unloading_duration_mins=?, estimated_distance_km=?, estimated_eta_mins=?,
+         loading_done_time=?, loading_duration_mins=?, unloading_duration_mins=?, estimated_distance_km=?, estimated_eta_mins=?,
          calculated_arrival=?, calculated_unload_end=?, total_job_duration_mins=?
        WHERE id=? AND deleted_at IS NULL`,
       [
@@ -1242,7 +1286,8 @@ exports.updateJob = async (req, res) => {
         valueOrExisting("dispatcher_notes", null),
         String(existing.driver_id || "") !== String(driver_id || "") && driver_id ? 1 : 0,
         loading_done_time || null,
-        unloading_duration_mins ? Number(unloading_duration_mins) : 120,
+        loading_duration_mins ? Number(loading_duration_mins) : DEFAULT_LOADING_MINS,
+        unloading_duration_mins ? Number(unloading_duration_mins) : DEFAULT_UNLOADING_MINS,
         route_id ? null : (estimated_distance_km ? Number(estimated_distance_km) : null),
         route_id ? null : (estimated_eta_mins ? Number(estimated_eta_mins) : null),
         calculated_arrival || null,

@@ -30,17 +30,18 @@ const emptyFields = {
   vehicle_id: "",
   trailer_id: "",
   loading_done_time: "",
-  unloading_duration_mins: "120"
+  loading_duration_mins: "90",
+  unloading_duration_mins: "90"
 };
 
-function calcTiming(loadingDoneTime, distanceMiles, unloadingMins, avgSpeedMph) {
+function calcTiming(loadingDoneTime, distanceMiles, loadingMins, unloadingMins, avgSpeedMph) {
   if (!loadingDoneTime || !distanceMiles) return null;
   const departure = new Date(loadingDoneTime);
   if (isNaN(departure.getTime())) return null;
   const travelMins = Math.round((distanceMiles / avgSpeedMph) * 60);
   const arrival = new Date(departure.getTime() + travelMins * 60000);
-  const unloadEnd = new Date(arrival.getTime() + (unloadingMins || 120) * 60000);
-  const totalMins = Math.round((unloadEnd - departure) / 60000);
+  const unloadEnd = new Date(arrival.getTime() + (unloadingMins || 90) * 60000);
+  const totalMins = (loadingMins || 90) + travelMins + (unloadingMins || 90);
   return { travelMins, arrival, unloadEnd, totalMins };
 }
 
@@ -171,7 +172,8 @@ export function JobFormPage() {
             vehicle_id: j.form?.vehicle_id ? String(j.form.vehicle_id) : "",
             trailer_id: j.form?.trailer_id ? String(j.form.trailer_id) : "",
             loading_done_time: j.timing?.loadingDoneTime || "",
-            unloading_duration_mins: j.timing?.unloadingDurationMins ? String(j.timing.unloadingDurationMins) : "120"
+            loading_duration_mins: j.timing?.loadingDurationMins ? String(j.timing.loadingDurationMins) : "90",
+            unloading_duration_mins: j.timing?.unloadingDurationMins ? String(j.timing.unloadingDurationMins) : "90"
           });
           if (!j.form?.route_id && j.route?.distanceKm) {
             setRouteEstimate({
@@ -284,16 +286,21 @@ export function JobFormPage() {
 
   const distanceMiles = selectedRoute ? selectedRoute.distance_km * 0.621371 : routeEstimate?.distanceMiles || null;
   const avgSpeedMph = sysSettings?.avg_speed_mph || 50;
-  const unloadingMins = parseInt(fields.unloading_duration_mins) || 120;
+  const loadingMins = parseInt(fields.loading_duration_mins) || 90;
+  const unloadingMins = parseInt(fields.unloading_duration_mins) || 90;
 
   const timingCalc = useMemo(
-    () => calcTiming(fields.loading_done_time, distanceMiles, unloadingMins, avgSpeedMph),
-    [fields.loading_done_time, distanceMiles, unloadingMins, avgSpeedMph]
+    () => calcTiming(fields.loading_done_time, distanceMiles, loadingMins, unloadingMins, avgSpeedMph),
+    [fields.loading_done_time, distanceMiles, loadingMins, unloadingMins, avgSpeedMph]
   );
+  const estimatedTravelMins = selectedRoute?.standard_eta_hours
+    ? Math.round(Number(selectedRoute.standard_eta_hours) * 60)
+    : routeEstimate?.durationMins || null;
+  const estimatedTotalMins = timingCalc?.totalMins || (estimatedTravelMins ? loadingMins + estimatedTravelMins + unloadingMins : null);
 
   const costCalc = useMemo(
-    () => calcCost(distanceMiles, timingCalc?.totalMins, sysSettings),
-    [distanceMiles, timingCalc, sysSettings]
+    () => calcCost(distanceMiles, estimatedTotalMins, sysSettings),
+    [distanceMiles, estimatedTotalMins, sysSettings]
   );
 
   const freightValue = parseFloat(fields.freight_amount) || 0;
@@ -358,6 +365,7 @@ export function JobFormPage() {
       vehicle_id: fields.vehicle_id ? Number(fields.vehicle_id) : null,
       trailer_id: fields.trailer_id ? Number(fields.trailer_id) : null,
       loading_done_time: fields.loading_done_time || null,
+      loading_duration_mins: loadingMins,
       unloading_duration_mins: unloadingMins,
       estimated_distance_km: selectedRoute ? null : routeEstimate?.distanceKm || null,
       estimated_eta_mins: selectedRoute ? null : routeEstimate?.durationMins || null,
@@ -580,13 +588,24 @@ export function JobFormPage() {
                     onChange={e => set("loading_done_time", e.target.value)}
                   />
                 </Field>
-                <Field label="Unloading duration (minutes)" hint="How long to unload at delivery. Default: 120 min (2 hrs).">
+                <Field label="Loading duration (minutes)" hint="Default: 90 min. Included in driver cost.">
                   <input
                     className="af-input"
                     type="number"
                     min="15"
                     step="15"
-                    placeholder="120"
+                    placeholder="90"
+                    value={fields.loading_duration_mins}
+                    onChange={e => set("loading_duration_mins", e.target.value)}
+                  />
+                </Field>
+                <Field label="Unloading duration (minutes)" hint="Default: 90 min. Included in driver cost.">
+                  <input
+                    className="af-input"
+                    type="number"
+                    min="15"
+                    step="15"
+                    placeholder="90"
                     value={fields.unloading_duration_mins}
                     onChange={e => set("unloading_duration_mins", e.target.value)}
                   />
@@ -620,6 +639,7 @@ export function JobFormPage() {
                     <div className="job-timing-total">
                       <span className="job-timing-label">Total job time</span>
                       <strong>{fmtMins(timingCalc?.totalMins)}</strong>
+                      <small>{fmtMins(loadingMins)} load + travel + {fmtMins(unloadingMins)} unload</small>
                     </div>
                   </div>
                 </div>
@@ -639,7 +659,7 @@ export function JobFormPage() {
                       <strong>{fmtGBP(costCalc.fuelCost)}</strong>
                     </div>
                     <div className="job-economics-row">
-                      <span>Driver ({fmtMins(timingCalc?.totalMins)} @ £{sysSettings?.driver_rate_per_hour}/hr)</span>
+                      <span>Driver ({fmtMins(estimatedTotalMins)} @ £{sysSettings?.driver_rate_per_hour}/hr)</span>
                       <strong>{fmtGBP(costCalc.driverCost)}</strong>
                     </div>
                     <div className="job-economics-row total">
