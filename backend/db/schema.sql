@@ -178,7 +178,7 @@ CREATE TABLE IF NOT EXISTS trips (
   customer_id       INT DEFAULT NULL,
   client_name       VARCHAR(120) NOT NULL,
   client_phone      VARCHAR(30) DEFAULT NULL,
-  dispatch_status   ENUM('planned', 'loading', 'active', 'blocked', 'completed') NOT NULL DEFAULT 'planned',
+  dispatch_status   ENUM('planned', 'loading', 'active', 'blocked', 'completed', 'failed', 'cancelled') NOT NULL DEFAULT 'planned',
   priority_level    ENUM('standard', 'priority', 'critical') NOT NULL DEFAULT 'standard',
   planned_departure DATETIME DEFAULT NULL,
   eta               DATETIME DEFAULT NULL,

@@ -56,7 +56,7 @@ const DRIVER_STATUS_TONE = {
 const TAB_STATUSES = {
   upcoming: ["planned", "loading"],
   intransit: ["active"],
-  history: ["completed", "blocked", "failed", "cancelled"]
+  history: ["planned", "loading", "active", "completed", "blocked", "failed", "cancelled"]
 };
 
 const STATUS_TONE = {
@@ -300,10 +300,7 @@ export function JobsListPage() {
       if (priorityFilter && job.priority !== priorityFilter) return false;
       if (showUnassignedOnly && job.driverAssigned && job.vehicleAssigned) return false;
 
-      if (tab === "history" && job.departureRaw) {
-        const dep = new Date(job.departureRaw);
-        if (dep < weekRange.start || dep > weekRange.end) return false;
-      }
+      // History tab shows all jobs — no date restriction applied
 
       if (attentionFilter === "eta_risk" && !job.etaRisk) return false;
       if (attentionFilter === "unassigned" && (job.driverAssigned && job.vehicleAssigned)) return false;
@@ -432,7 +429,8 @@ export function JobsListPage() {
             {tabCounts.intransit > 0 && <span className="relay-tab-count relay-tab-count--live">{tabCounts.intransit}</span>}
           </button>
           <button className={tab === "history" ? "active" : ""} type="button" onClick={() => { setTab("history"); setAttentionFilter(""); }}>
-            History
+            All Jobs
+            {tabCounts.history > 0 && <span className="relay-tab-count">{tabCounts.history}</span>}
           </button>
           <div className="relay-tabs-spacer" />
           <button className="relay-new-btn" type="button" onClick={() => navigate("/admin/jobs/new")}>
@@ -456,11 +454,13 @@ export function JobsListPage() {
             />
           </div>
 
-          <div className="relay-date-nav">
-            <button className="relay-date-arrow" type="button" onClick={() => setWeekOffset(o => o - 1)}>‹</button>
-            <span className="relay-date-label">{weekLabel}</span>
-            <button className="relay-date-arrow" type="button" onClick={() => setWeekOffset(o => o + 1)}>›</button>
-          </div>
+          {tab !== "history" && (
+            <div className="relay-date-nav">
+              <button className="relay-date-arrow" type="button" onClick={() => setWeekOffset(o => o - 1)}>‹</button>
+              <span className="relay-date-label">{weekLabel}</span>
+              <button className="relay-date-arrow" type="button" onClick={() => setWeekOffset(o => o + 1)}>›</button>
+            </div>
+          )}
 
           <select className="relay-filter-select" value={statusFilter} onChange={e => setStatusFilter(e.target.value)}>
             {STATUS_OPTIONS.map(opt => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
@@ -534,7 +534,9 @@ export function JobsListPage() {
               <p>
                 {hasActiveFilters
                   ? "No jobs match your current filters."
-                  : `No ${tab === "upcoming" ? "upcoming" : tab === "intransit" ? "in-transit" : "history"} jobs${tab === "history" ? " for this week" : ""}.`}
+                  : tab === "upcoming" ? "No upcoming jobs."
+                  : tab === "intransit" ? "No jobs currently in transit."
+                  : "No jobs found."}
               </p>
               {hasActiveFilters && (
                 <button className="header-action-button" type="button" onClick={clearAllFilters}>Clear filters</button>
@@ -542,11 +544,6 @@ export function JobsListPage() {
               {tab === "upcoming" && !hasActiveFilters && (
                 <button className="af-submit-btn" type="button" onClick={() => navigate("/admin/jobs/new")}>
                   Create first job
-                </button>
-              )}
-              {tab === "history" && weekOffset !== 0 && (
-                <button className="header-action-button" type="button" onClick={() => setWeekOffset(0)}>
-                  Back to current week
                 </button>
               )}
             </div>
@@ -654,7 +651,7 @@ export function JobsListPage() {
                   {/* Driver + driver status */}
                   <div className="relay-job-driver-cell">
                     <span>{job.driverAssigned ? job.driver : <em className="relay-unassigned">Unassigned</em>}</span>
-                    {driverStatusLabel && isActive && (
+                    {driverStatusLabel && (
                       <small className={`relay-driver-status-badge ${driverStatusToneVal}`}>{driverStatusLabel}</small>
                     )}
                   </div>

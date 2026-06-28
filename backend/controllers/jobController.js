@@ -84,6 +84,17 @@ async function ensureDriverOpsSchema() {
   await addColumnIfMissing("trips", "vehicle_type_requirement", "VARCHAR(80) DEFAULT NULL");
   await addColumnIfMissing("trips", "delivery_deadline", "DATETIME DEFAULT NULL");
   await addColumnIfMissing("trips", "dispatcher_notes", "TEXT DEFAULT NULL");
+
+  // Ensure dispatch_status ENUM includes all possible statuses
+  try {
+    await db.query(
+      `ALTER TABLE trips MODIFY COLUMN dispatch_status
+       ENUM('planned','loading','active','blocked','completed','failed','cancelled')
+       NOT NULL DEFAULT 'planned'`
+    );
+  } catch (e) {
+    if (e.code !== "ER_DUP_FIELDNAME") { /* ignore no-op or already-correct */ }
+  }
   await addColumnIfMissing("trips", "load_description", "TEXT DEFAULT NULL");
   await addColumnIfMissing("trips", "special_instructions", "TEXT DEFAULT NULL");
   await addColumnIfMissing("trips", "actual_departure", "DATETIME DEFAULT NULL");
@@ -348,6 +359,7 @@ exports.listJobs = async (req, res) => {
         deadlineRaw: rawDateTime(r.delivery_deadline),
         actualDeparture: fmtDateTime(r.actual_departure),
         actualArrival: fmtDateTime(r.actual_arrival),
+        actualArrivalRaw: rawDateTime(r.actual_arrival),
         etaRisk: r.eta && new Date(r.eta).getTime() < Date.now() && ["planned", "loading", "active"].includes(r.dispatch_status),
         freight: fmtAmount(r.freight_amount_gbp),
         freightValue: Number(r.freight_amount_gbp || 0),

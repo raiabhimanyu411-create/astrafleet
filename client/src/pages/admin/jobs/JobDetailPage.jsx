@@ -1,6 +1,7 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { addJobStop, cancelJob, deleteJobStop, getJobById, updateJobStatus } from "../../../api/jobApi";
+import { getRealtimeSocket } from "../../../api/realtime";
 import { DeleteReasonModal } from "../../../components/DeleteReasonModal";
 import { StateNotice } from "../../../components/StateNotice";
 import { StatusPill } from "../../../components/StatusPill";
@@ -54,15 +55,35 @@ export function JobDetailPage() {
   const [stopSaving, setStopSaving] = useState(false);
   const [stopRemoving, setStopRemoving] = useState(null);
 
+  const loadingRef = useRef(false);
+
   function load() {
+    if (loadingRef.current) return;
+    loadingRef.current = true;
     setLoading(true);
     getJobById(id)
       .then(r => setData(r.data))
       .catch(() => setError("Could not load job details."))
-      .finally(() => setLoading(false));
+      .finally(() => { setLoading(false); loadingRef.current = false; });
   }
 
   useEffect(() => { load(); }, [id]);
+
+  // Realtime: re-fetch when driver updates this job's status or POD is submitted
+  useEffect(() => {
+    const socket = getRealtimeSocket();
+    function handleJobUpdate(payload) {
+      if (payload?.jobId && Number(payload.jobId) !== Number(id)) return;
+      load();
+    }
+    socket.connect();
+    socket.emit("admin-jobs:join");
+    socket.on("job:updated", handleJobUpdate);
+    return () => {
+      socket.off("job:updated", handleJobUpdate);
+      socket.emit("admin-jobs:leave");
+    };
+  }, [id]);
 
   async function handleStatusChange(nextStatus) {
     setUpdating(true);
@@ -175,10 +196,15 @@ export function JobDetailPage() {
               <div style={{ display: "flex", alignItems: "center", gap: 16, flexWrap: "wrap" }}>
                 <div>
                   <span style={{ fontSize: "0.72rem", fontWeight: 700, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.06em", display: "block", marginBottom: 4 }}>Job status</span>
-                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
                     <StatusPill tone={data.statusTone}>{data.status}</StatusPill>
                     <StatusPill tone={data.priorityTone}>{data.priority} priority</StatusPill>
                     <StatusPill tone="neutral">POD: {data.podStatus}</StatusPill>
+                    {data.driverExecution?.statusLabel && data.driverExecution.statusLabel !== "—" && (
+                      <StatusPill tone={data.driverExecution?.statusTone || "neutral"}>
+                        Driver: {data.driverExecution.statusLabel}
+                      </StatusPill>
+                    )}
                   </div>
                 </div>
 
