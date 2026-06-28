@@ -1232,6 +1232,53 @@
   line-height: 1.5;
 }
 
+.maintenance-job-notes-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+.maintenance-job-note {
+  background: var(--surface, #f8fafc);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 10px 12px;
+}
+
+.maintenance-job-note-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.maintenance-job-note-header strong {
+  font-size: 0.84rem;
+  color: var(--text);
+}
+
+.maintenance-job-note-header span {
+  font-size: 0.75rem;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.maintenance-job-note p {
+  margin: 0;
+  font-size: 0.84rem;
+  color: var(--text);
+  line-height: 1.5;
+}
+
+.maintenance-job-note-form {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 4px;
+}
+
 .maintenance-timeline-item {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr);

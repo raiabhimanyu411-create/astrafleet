@@ -2591,6 +2591,101 @@ p.lp-success {
   flex-wrap: wrap;
 }
 
+/* ── Job Notes ── */
+.relay-notes-section {
+  padding: 14px 16px;
+  border-top: 1px solid var(--border);
+  background: var(--surface-2, #f8fafc);
+}
+
+.relay-notes-label {
+  font-size: 0.68rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--muted);
+  margin-bottom: 10px;
+}
+
+.relay-notes-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.relay-notes-empty {
+  font-size: 0.8rem;
+  color: var(--muted);
+  margin: 0;
+}
+
+.relay-note-item {
+  background: var(--surface, #fff);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 8px 12px;
+}
+
+.relay-note-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+
+.relay-note-header strong {
+  font-size: 0.82rem;
+  color: var(--text);
+}
+
+.relay-note-header span {
+  font-size: 0.72rem;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.relay-note-item p {
+  margin: 0;
+  font-size: 0.82rem;
+  color: var(--text);
+  line-height: 1.5;
+}
+
+.relay-note-form {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.relay-note-author {
+  width: 200px;
+  font-size: 0.82rem;
+  padding: 6px 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--text);
+}
+
+.relay-note-input {
+  font-size: 0.82rem;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--text);
+  resize: vertical;
+  font-family: inherit;
+}
+
+.relay-note-error {
+  font-size: 0.8rem;
+  color: var(--danger, #dc2626);
+  margin: 0;
+}
+
 /* ── Attention / Disruption chips ── */
 .relay-attention-strip {
   display: flex;

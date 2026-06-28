@@ -1,11 +1,12 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { getRealtimeSocket } from "../../../api/realtime";
-import { cancelJob, getJobs, updateJobAssignment, updateJobStatus } from "../../../api/jobApi";
+import { addJobNote, cancelJob, getJobNotes, getJobs, updateJobAssignment, updateJobStatus } from "../../../api/jobApi";
 import { DeleteReasonModal } from "../../../components/DeleteReasonModal";
 import { StateNotice } from "../../../components/StateNotice";
 import { StatusPill } from "../../../components/StatusPill";
 import { AdminWorkspaceLayout } from "../AdminWorkspaceLayout";
+import { getAuthSession } from "../../../utils/authSession";
 
 const STATUS_OPTIONS = [
   { value: "", label: "All statuses" },
@@ -13,7 +14,9 @@ const STATUS_OPTIONS = [
   { value: "loading", label: "Loading" },
   { value: "active", label: "Active" },
   { value: "completed", label: "Completed" },
-  { value: "blocked", label: "Blocked" }
+  { value: "blocked", label: "Blocked" },
+  { value: "failed", label: "Failed" },
+  { value: "cancelled", label: "Cancelled" }
 ];
 
 const PRIORITY_OPTIONS = [
@@ -53,12 +56,12 @@ const DRIVER_STATUS_TONE = {
 const TAB_STATUSES = {
   upcoming: ["planned", "loading"],
   intransit: ["active"],
-  history: ["completed", "blocked"]
+  history: ["completed", "blocked", "failed", "cancelled"]
 };
 
 const STATUS_TONE = {
   planned: "neutral", loading: "warning", active: "success",
-  completed: "neutral", blocked: "danger"
+  completed: "neutral", blocked: "danger", failed: "danger", cancelled: "neutral"
 };
 
 const PRIORITY_TONE = { standard: "neutral", priority: "warning", critical: "danger" };
@@ -147,6 +150,74 @@ function exportCsv(name, rows) {
   link.download = name;
   link.click();
   URL.revokeObjectURL(url);
+}
+
+function JobNotesSection({ jobId }) {
+  const [notes, setNotes] = useState([]);
+  const [noteText, setNoteText] = useState("");
+  const [authorName, setAuthorName] = useState(() => getAuthSession()?.name || "");
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    getJobNotes(jobId).then(res => setNotes(res.data.notes || [])).catch(() => {});
+  }, [jobId]);
+
+  async function submit(e) {
+    e.preventDefault();
+    if (!noteText.trim()) return;
+    setSaving(true);
+    setError("");
+    try {
+      await addJobNote(jobId, { note_text: noteText.trim(), author_name: authorName.trim() || "Admin" });
+      const res = await getJobNotes(jobId);
+      setNotes(res.data.notes || []);
+      setNoteText("");
+    } catch (err) {
+      setError(err?.response?.data?.message || "Could not add note.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="relay-notes-section">
+      <div className="relay-notes-label">Job notes</div>
+      <div className="relay-notes-list">
+        {notes.length === 0 && <p className="relay-notes-empty">No notes yet — add one below.</p>}
+        {notes.map(note => (
+          <div className="relay-note-item" key={note.id}>
+            <div className="relay-note-header">
+              <strong>{note.author_name}</strong>
+              <span>{new Date(note.created_at).toLocaleString("en-GB", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" })}</span>
+            </div>
+            <p>{note.note_text}</p>
+          </div>
+        ))}
+      </div>
+      <form className="relay-note-form" onSubmit={submit}>
+        <input
+          className="relay-note-author"
+          placeholder="Your name"
+          value={authorName}
+          onChange={e => setAuthorName(e.target.value)}
+          required
+        />
+        <textarea
+          className="relay-note-input"
+          placeholder="Add a note — e.g. issue found, delay reason, update from driver..."
+          value={noteText}
+          onChange={e => setNoteText(e.target.value)}
+          rows={2}
+          required
+        />
+        {error && <p className="relay-note-error">{error}</p>}
+        <button className="header-action-button" disabled={saving || !noteText.trim()} type="submit">
+          {saving ? "Saving..." : "Add note"}
+        </button>
+      </form>
+    </div>
+  );
 }
 
 export function JobsListPage() {
@@ -881,6 +952,8 @@ export function JobsListPage() {
                         )}
                       </div>
                     </div>
+
+                    <JobNotesSection jobId={job.id} />
                   </div>
                 )}
               </div>

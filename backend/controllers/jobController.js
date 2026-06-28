@@ -165,6 +165,19 @@ async function ensureSoftDeleteSchema() {
   softDeleteSchemaReady = true;
 }
 
+async function ensureJobNotesSchema() {
+  await db.query(`
+    CREATE TABLE IF NOT EXISTS job_notes (
+      id          INT AUTO_INCREMENT PRIMARY KEY,
+      job_id      INT NOT NULL,
+      note_text   TEXT NOT NULL,
+      author_name VARCHAR(120) NOT NULL DEFAULT 'Admin',
+      created_at  TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      CONSTRAINT fk_job_notes_trip FOREIGN KEY (job_id) REFERENCES trips (id) ON DELETE CASCADE
+    ) ENGINE=InnoDB
+  `);
+}
+
 // GET /api/jobs/form-data
 exports.getFormData = async (req, res) => {
   try {
@@ -951,7 +964,7 @@ exports.updateJobStatus = async (req, res) => {
     const { id } = req.params;
     const { status, reason } = req.body;
 
-    const validStatuses = ["planned", "loading", "active", "blocked", "completed"];
+    const validStatuses = ["planned", "loading", "active", "blocked", "completed", "failed", "cancelled"];
     if (!validStatuses.includes(status)) {
       return res.status(400).json({ message: "Invalid status value." });
     }
@@ -963,13 +976,16 @@ exports.updateJobStatus = async (req, res) => {
     if (status === "active")    updates.actual_departure = new Date();
     if (status === "completed") { updates.actual_arrival = new Date(); updates.pod_status = "pending"; }
     if (status === "blocked")   updates.cancellation_reason = reason || null;
+    if (status === "failed")    updates.cancellation_reason = reason || null;
+    if (status === "cancelled") updates.cancellation_reason = reason || null;
 
     const fields = Object.keys(updates).map(k => `${k}=?`).join(", ");
     await db.query(`UPDATE trips SET ${fields} WHERE id=? AND deleted_at IS NULL`, [...Object.values(updates), id]);
 
     // Update vehicle status accordingly
+    const terminalStatuses = ["completed", "blocked", "failed", "cancelled"];
     if (job.vehicle_id) {
-      const vStatus = status === "active" ? "in_transit" : status === "completed" ? "available" : status === "blocked" ? "available" : "planned";
+      const vStatus = status === "active" ? "in_transit" : terminalStatuses.includes(status) ? "available" : "planned";
       await db.query(`UPDATE vehicles SET status=? WHERE id=?`, [vStatus, job.vehicle_id]);
     }
     if (job.trailer_id) {
@@ -1033,5 +1049,39 @@ exports.cancelJob = async (req, res) => {
     res.json({ message: "Job cancelled." });
   } catch (err) {
     res.status(500).json({ message: "Cancel error", error: err.message });
+  }
+};
+
+exports.getJobNotes = async (req, res) => {
+  try {
+    await ensureJobNotesSchema();
+    const id = Number(req.params.id);
+    if (!id) return res.status(400).json({ message: "Valid job id required." });
+    const [notes] = await db.query(
+      `SELECT id, note_text, author_name, created_at FROM job_notes WHERE job_id=? ORDER BY created_at ASC`,
+      [id]
+    );
+    res.json({ notes });
+  } catch (err) {
+    res.status(500).json({ message: "Could not load job notes.", error: err.message });
+  }
+};
+
+exports.addJobNote = async (req, res) => {
+  try {
+    await ensureJobNotesSchema();
+    const id = Number(req.params.id);
+    const noteText = String(req.body.note_text || "").trim();
+    const authorName = String(req.body.author_name || "Admin").trim();
+    if (!id || !noteText) return res.status(400).json({ message: "Job id and note text are required." });
+    const [[job]] = await db.query(`SELECT id FROM trips WHERE id=? AND deleted_at IS NULL`, [id]);
+    if (!job) return res.status(404).json({ message: "Job not found." });
+    const [result] = await db.query(
+      `INSERT INTO job_notes (job_id, note_text, author_name) VALUES (?, ?, ?)`,
+      [id, noteText, authorName]
+    );
+    res.status(201).json({ message: "Note added.", id: result.insertId });
+  } catch (err) {
+    res.status(500).json({ message: "Could not add job note.", error: err.message });
   }
 };

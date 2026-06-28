@@ -241,6 +241,23 @@ async function syncMaintenanceSchema() {
       logged_at  DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
     ) ENGINE=InnoDB
   `);
+
+  await modifyColumnBestEffort(
+    "maintenance_jobs",
+    "status",
+    "ENUM('planned','booked','in_progress','completed','cancelled','failed') NOT NULL DEFAULT 'planned'"
+  );
+
+  await db.query(`
+    CREATE TABLE IF NOT EXISTS maintenance_job_notes (
+      id          INT AUTO_INCREMENT PRIMARY KEY,
+      job_id      INT NOT NULL,
+      note_text   TEXT NOT NULL,
+      author_name VARCHAR(120) NOT NULL DEFAULT 'Admin',
+      created_at  TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      CONSTRAINT fk_job_notes_job FOREIGN KEY (job_id) REFERENCES maintenance_jobs (id) ON DELETE CASCADE
+    ) ENGINE=InnoDB
+  `);
 }
 
 exports.ensureMaintenanceSchema = async (_req, res, next) => {
@@ -383,6 +400,7 @@ function fmtAmount(value) {
 function jobTone(status, daysLeft, priority) {
   if (status === "completed") return "success";
   if (status === "cancelled") return "neutral";
+  if (status === "failed") return "danger";
   if (priority === "critical" || daysLeft < 0) return "danger";
   if (priority === "high" || daysLeft <= 14) return "warning";
   return "neutral";
@@ -1693,5 +1711,35 @@ exports.createJobFromDefect = async (req, res) => {
     });
   } catch (err) {
     res.status(500).json({ message: "Defect repair job error", error: err.message });
+  }
+};
+
+exports.getJobNotes = async (req, res) => {
+  try {
+    const id = Number(req.params.id);
+    if (!id) return res.status(400).json({ message: "Valid job id required." });
+    const [notes] = await db.query(
+      `SELECT id, note_text, author_name, created_at FROM maintenance_job_notes WHERE job_id=? ORDER BY created_at ASC`,
+      [id]
+    );
+    res.json({ notes });
+  } catch (err) {
+    res.status(500).json({ message: "Could not load job notes.", error: err.message });
+  }
+};
+
+exports.addJobNote = async (req, res) => {
+  try {
+    const id = Number(req.params.id);
+    const noteText = String(req.body.note_text || "").trim();
+    const authorName = String(req.body.author_name || "Admin").trim();
+    if (!id || !noteText) return res.status(400).json({ message: "Job id and note text are required." });
+    const [result] = await db.query(
+      `INSERT INTO maintenance_job_notes (job_id, note_text, author_name) VALUES (?, ?, ?)`,
+      [id, noteText, authorName]
+    );
+    res.status(201).json({ message: "Note added.", id: result.insertId });
+  } catch (err) {
+    res.status(500).json({ message: "Could not add job note.", error: err.message });
   }
 };

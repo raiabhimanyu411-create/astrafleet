@@ -1,16 +1,19 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import {
+  addJobNote,
   autoPlanMaintenanceWork,
   completeMaintenanceJob,
   createBulkMaintenanceJobs,
   createJobFromDefect,
+  getJobNotes,
   getMaintenancePortal,
   markVehicleInspectionDone,
   updateDefectWorkflow,
   updateMaintenanceBill,
   updateMaintenanceJob
 } from "../../api/maintenanceApi";
+import { getAuthSession } from "../../utils/authSession";
 import { StateNotice } from "../../components/StateNotice";
 import { StatusPill } from "../../components/StatusPill";
 import { AdminWorkspaceLayout } from "./AdminWorkspaceLayout";
@@ -43,7 +46,7 @@ const emptyJob = {
   completion_notes: ""
 };
 
-const statusOptions = ["planned", "booked", "in_progress", "completed", "cancelled"];
+const statusOptions = ["planned", "booked", "in_progress", "completed", "cancelled", "failed"];
 const priorityOptions = ["low", "normal", "high", "critical"];
 const maintenanceItems = [
   { value: "Roller brake test", label: "Roller brake test", interval: "Every 6 weeks", days: 42 },
@@ -449,6 +452,37 @@ function JobModal({ vehicles, defects, editingJob, initialForm, onClose, onSaved
 }
 
 function JobDrawer({ job, history, onClose, onEdit, onComplete, onBillStatus, savingAction }) {
+  const [notes, setNotes] = useState([]);
+  const [noteText, setNoteText] = useState("");
+  const [authorName, setAuthorName] = useState(() => getAuthSession()?.name || "");
+  const [addingNote, setAddingNote] = useState(false);
+  const [noteError, setNoteError] = useState("");
+
+  useEffect(() => {
+    if (!job) return;
+    setNotes([]);
+    setNoteText("");
+    setNoteError("");
+    getJobNotes(job.id).then((res) => setNotes(res.data.notes || [])).catch(() => {});
+  }, [job?.id]);
+
+  async function submitNote(e) {
+    e.preventDefault();
+    if (!noteText.trim()) return;
+    setAddingNote(true);
+    setNoteError("");
+    try {
+      await addJobNote(job.id, { note_text: noteText.trim(), author_name: authorName.trim() || "Admin" });
+      const res = await getJobNotes(job.id);
+      setNotes(res.data.notes || []);
+      setNoteText("");
+    } catch (err) {
+      setNoteError(err.response?.data?.message || "Could not add note.");
+    } finally {
+      setAddingNote(false);
+    }
+  }
+
   if (!job) return null;
   const vehicleHistory = history.filter((item) => item.vehicleId === job.vehicleId).slice(0, 10);
   return (
@@ -500,7 +534,7 @@ function JobDrawer({ job, history, onClose, onEdit, onComplete, onBillStatus, sa
         {job.billStatus === "approved" && job.billPaymentStatus !== "paid" && (
           <button className="header-action-button" disabled={savingAction === `bill-${job.id}`} type="button" onClick={() => onBillStatus(job, "paid", "paid")}>Mark bill paid</button>
         )}
-        {!["completed", "cancelled"].includes(job.status) && (
+        {!["completed", "cancelled", "failed"].includes(job.status) && (
           <button className="af-submit-btn" type="button" onClick={() => onComplete(job)}>Mark complete</button>
         )}
       </div>
@@ -511,6 +545,44 @@ function JobDrawer({ job, history, onClose, onEdit, onComplete, onBillStatus, sa
         <p><strong>Breakdown/problem note:</strong> {job.notes}</p>
         <p><strong>Completion:</strong> {job.completionNotes}</p>
       </section>
+
+      <section className="maintenance-drawer-section">
+        <span className="card-label">Job notes</span>
+        <div className="maintenance-job-notes-list">
+          {notes.length === 0 && <p className="finance-empty">No notes yet. Add the first note below.</p>}
+          {notes.map((note) => (
+            <div className="maintenance-job-note" key={note.id}>
+              <div className="maintenance-job-note-header">
+                <strong>{note.author_name}</strong>
+                <span>{new Date(note.created_at).toLocaleString("en-GB", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" })}</span>
+              </div>
+              <p>{note.note_text}</p>
+            </div>
+          ))}
+        </div>
+        <form className="maintenance-job-note-form" onSubmit={submitNote}>
+          <input
+            className="af-input"
+            placeholder="Your name"
+            value={authorName}
+            onChange={(e) => setAuthorName(e.target.value)}
+            required
+          />
+          <textarea
+            className="af-textarea"
+            placeholder="Add a note — e.g. issue found, part ordered, update from garage..."
+            value={noteText}
+            onChange={(e) => setNoteText(e.target.value)}
+            rows={3}
+            required
+          />
+          {noteError && <p className="lp-error">{noteError}</p>}
+          <button className="header-action-button" disabled={addingNote || !noteText.trim()} type="submit">
+            {addingNote ? "Saving..." : "Add note"}
+          </button>
+        </form>
+      </section>
+
       <section className="maintenance-drawer-section">
         <span className="card-label">Service history timeline</span>
         <div className="maintenance-timeline">

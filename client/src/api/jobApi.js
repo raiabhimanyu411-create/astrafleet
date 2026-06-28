@@ -8,3 +8,5 @@ export const updateJob       = (id, data) => api.put(`/api/jobs/${id}`, data);
 export const updateJobAssignment = (id, data) => api.patch(`/api/jobs/${id}/assignment`, data);
 export const updateJobStatus = (id, data) => api.patch(`/api/jobs/${id}/status`, data);
 export const cancelJob       = (id, data) => api.delete(`/api/jobs/${id}`, { data });
+export const getJobNotes     = (id)       => api.get(`/api/jobs/${id}/notes`);
+export const addJobNote      = (id, data) => api.post(`/api/jobs/${id}/notes`, data);
