@@ -3,7 +3,7 @@ const db = require("../db/connection");
 const DEFAULTS = {
   fuel_price_per_litre: "1.40",
   mpg: "11.5",
-  driver_rate_per_hour: "30.00",
+  driver_rate_per_hour: "20.00",
   margin_pct: "29",
   avg_speed_mph: "40"
 };
@@ -30,6 +30,11 @@ async function ensureSettingsTable() {
     `UPDATE system_settings
      SET setting_value = '40'
      WHERE setting_key = 'avg_speed_mph' AND setting_value = '50'`
+  );
+  await db.query(
+    `UPDATE system_settings
+     SET setting_value = '20.00'
+     WHERE setting_key = 'driver_rate_per_hour' AND setting_value = '30.00'`
   );
   tableReady = true;
 }

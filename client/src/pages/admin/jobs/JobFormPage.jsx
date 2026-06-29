@@ -373,9 +373,9 @@ export function JobFormPage() {
   const manualUnloadingMins = hasManualDeliveryTimes
     ? Math.max(0, Math.round((manualDeliveryDeparture - manualDeliveryArrival) / 60000))
     : null;
-  const estimatedTotalMins = hasManualDeliveryTimes
-    ? loadingMins + manualTravelMins + manualUnloadingMins
-    : timingCalc?.totalMins || (estimatedTravelMins ? loadingMins + estimatedTravelMins + unloadingMins : null);
+  const estimatedTotalMins = timingCalc?.totalMins
+    || (hasManualDeliveryTimes ? loadingMins + manualTravelMins + unloadingMins : null)
+    || (estimatedTravelMins ? loadingMins + estimatedTravelMins + unloadingMins : null);
 
   const costCalc = useMemo(
     () => calcCost(distanceMiles, estimatedTotalMins, sysSettings),
