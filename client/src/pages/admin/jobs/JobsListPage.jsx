@@ -1072,13 +1072,13 @@ export function JobsListPage() {
                             <strong className={arrTimeTone}>
                               {job.actualArrival && job.actualArrival !== "—"
                                 ? job.actualArrival
-                                : job.eta !== "—" ? job.eta : "TBD"}
+                                : job.calculatedArrival ? fmtTimeFull(job.calculatedArrival) : "TBD"}
                             </strong>
-                            {job.eta !== "—" && job.actualArrival && job.actualArrival !== "—" && (
-                              <small className="relay-sch-time">Sch. {job.eta}</small>
+                            {job.calculatedArrival && job.actualArrival && job.actualArrival !== "—" && (
+                              <small className="relay-sch-time">Sch. {fmtTimeFull(job.calculatedArrival)}</small>
                             )}
-                            {!job.actualArrival && job.eta !== "—" && (
-                              <small className="relay-sch-time">Sch. {job.eta}</small>
+                            {!job.actualArrival && job.calculatedArrival && (
+                              <small className="relay-sch-time">Sch. {fmtTimeFull(job.calculatedArrival)}</small>
                             )}
                             {isActive && (
                               <button className="relay-report-delay-btn" type="button"
@@ -1088,7 +1088,12 @@ export function JobsListPage() {
                             )}
                           </div>
                           <div className="relay-stop-time">
-                            <span className="relay-time-dash">—</span>
+                            {job.calculatedUnloadEnd
+                              ? <strong>{fmtTimeFull(job.calculatedUnloadEnd)}</strong>
+                              : <span className="relay-time-dash">—</span>}
+                            {job.calculatedUnloadEnd && (
+                              <small className="relay-sch-time">Sch. {fmtTimeFull(job.calculatedUnloadEnd)}</small>
+                            )}
                           </div>
                         </div>
                         {/* Drop instructions */}
