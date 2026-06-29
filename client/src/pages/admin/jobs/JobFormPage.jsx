@@ -557,7 +557,7 @@ export function JobFormPage() {
             </div>
 
             <div className="af-section">
-              <p className="af-section-title">Trip Details</p>
+              <p className="af-section-title">Route</p>
               <div className="af-grid-2">
                 <Field label="Saved Route" hint="Select a route to auto-fill pickup, delivery, distance, and ETA.">
                   <select className="af-select" value={fields.route_id} onChange={e => handleRouteChange(e.target.value)}>
