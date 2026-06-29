@@ -170,6 +170,148 @@ function exportCsv(name, rows) {
   URL.revokeObjectURL(url);
 }
 
+function JobDetailsModal({ job, onClose }) {
+  const [tab, setTab] = useState("notes");
+  const [notes, setNotes] = useState([]);
+  const [showForm, setShowForm] = useState(false);
+  const [noteText, setNoteText] = useState("");
+  const [authorName, setAuthorName] = useState(() => getAuthSession()?.name || "");
+  const [saving, setSaving] = useState(false);
+  const [noteError, setNoteError] = useState("");
+
+  useEffect(() => {
+    getJobNotes(job.id).then(res => setNotes(res.data.notes || [])).catch(() => {});
+  }, [job.id]);
+
+  async function submitNote(e) {
+    e.preventDefault();
+    if (!noteText.trim()) return;
+    setSaving(true);
+    setNoteError("");
+    try {
+      await addJobNote(job.id, { note_text: noteText.trim(), author_name: authorName.trim() || "Admin" });
+      const res = await getJobNotes(job.id);
+      setNotes(res.data.notes || []);
+      setNoteText("");
+      setShowForm(false);
+    } catch (err) {
+      setNoteError(err?.response?.data?.message || "Could not add note.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="relay-modal-overlay" onClick={onClose}>
+      <div className="rjd-modal" onClick={e => e.stopPropagation()}>
+        <div className="rjd-modal-head">
+          <span className="rjd-modal-title">Job {job.code} details</span>
+          <button className="rjd-modal-close" type="button" onClick={onClose}>✕</button>
+        </div>
+
+        <div className="rjd-tabs">
+          <button className={tab === "payout" ? "active" : ""} type="button" onClick={() => setTab("payout")}>Estimated Payout</button>
+          <button className={tab === "notes" ? "active" : ""} type="button" onClick={() => setTab("notes")}>Notes</button>
+          <button className={tab === "shipment" ? "active" : ""} type="button" onClick={() => setTab("shipment")}>Shipment Details</button>
+        </div>
+
+        <div className="rjd-modal-body">
+          {tab === "payout" && (
+            <table className="rjd-payout-table">
+              <thead>
+                <tr><th>ID</th><th>Base Rate</th><th>Total</th></tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>{job.code}</td>
+                  <td>{job.freight || "—"}</td>
+                  <td>{job.freight || "—"}</td>
+                </tr>
+                <tr className="rjd-payout-total">
+                  <td></td>
+                  <td><strong>Estimated payout</strong></td>
+                  <td><strong>{job.freight || "—"}</strong></td>
+                </tr>
+              </tbody>
+            </table>
+          )}
+
+          {tab === "notes" && (
+            <div className="rjd-notes-tab">
+              {!showForm && (
+                <button className="rjd-add-note-btn" type="button" onClick={() => setShowForm(true)}>
+                  + Add a note
+                </button>
+              )}
+              {showForm && (
+                <form className="rjd-note-form" onSubmit={submitNote}>
+                  <div className="rjd-note-form-field">
+                    <label className="rjd-note-form-label">Load</label>
+                    <div className="rjd-note-load-display">{job.code}</div>
+                  </div>
+                  <input
+                    className="rjd-note-author-input"
+                    placeholder="Your name"
+                    value={authorName}
+                    onChange={e => setAuthorName(e.target.value)}
+                    required
+                  />
+                  <textarea
+                    className="rjd-note-textarea"
+                    placeholder="Type your note here"
+                    value={noteText}
+                    onChange={e => setNoteText(e.target.value)}
+                    rows={3}
+                    required
+                  />
+                  {noteError && <p className="relay-note-error">{noteError}</p>}
+                  <div className="rjd-note-form-actions">
+                    <button type="button" className="rjd-cancel-btn" onClick={() => { setShowForm(false); setNoteText(""); setNoteError(""); }}>Cancel</button>
+                    <button type="submit" className="rjd-submit-btn" disabled={saving || !noteText.trim()}>
+                      {saving ? "Saving..." : "Submit"}
+                    </button>
+                  </div>
+                </form>
+              )}
+              <div className="rjd-notes-list">
+                {notes.length === 0 && <p className="rjd-notes-empty">There are no notes for this job</p>}
+                {notes.map(note => (
+                  <div className="relay-note-item" key={note.id}>
+                    <div className="relay-note-header">
+                      <strong>{note.author_name}</strong>
+                      <span>{new Date(note.created_at).toLocaleString("en-GB", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" })}</span>
+                    </div>
+                    <p>{note.note_text}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {tab === "shipment" && (
+            <table className="rjd-shipment-table">
+              <thead>
+                <tr><th>ID</th><th>Reference #&apos;s</th><th>Special services</th></tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>{job.code}</td>
+                  <td>
+                    {job.routeCode && job.routeCode !== "—" && <div><strong>Route Code</strong> {job.routeCode}</div>}
+                    <div><strong>Job ID</strong> {job.code}</div>
+                    {job.lane && job.lane !== "—" && <div><strong>Lane</strong> {job.lane}</div>}
+                  </td>
+                  <td>{job.loadType || "—"}</td>
+                </tr>
+              </tbody>
+            </table>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function JobNotesSection({ jobId }) {
   const [notes, setNotes] = useState([]);
   const [noteText, setNoteText] = useState("");
@@ -257,6 +399,7 @@ export function JobsListPage() {
   const [blockTarget, setBlockTarget] = useState(null);
   const [delayTarget, setDelayTarget] = useState(null);
   const [delayReason, setDelayReason] = useState("");
+  const [notesModalJob, setNotesModalJob] = useState(null);
 
   function load() {
     setLoading(true);
@@ -695,6 +838,19 @@ export function JobsListPage() {
                     {job.etaRisk && <StatusPill tone="danger">ETA risk</StatusPill>}
                     {podPending && <StatusPill tone="warning">POD</StatusPill>}
                   </div>
+
+                  {/* Notes icon button */}
+                  <button
+                    className="relay-notes-icon-btn"
+                    type="button"
+                    title="View job notes & details"
+                    onClick={e => { e.stopPropagation(); setNotesModalJob(job); }}
+                  >
+                    <svg viewBox="0 0 20 20" fill="none" width="16" height="16">
+                      <path d="M17 2H3a1 1 0 00-1 1v11a1 1 0 001 1h2v3l4-3h8a1 1 0 001-1V3a1 1 0 00-1-1z" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round"/>
+                      <path d="M6 7h8M6 10h5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+                    </svg>
+                  </button>
                 </div>
 
                 {/* ── Expanded body ── */}
@@ -1088,7 +1244,6 @@ export function JobsListPage() {
                       </div>
                     </div>
 
-                    <JobNotesSection jobId={job.id} />
                   </div>
                 )}
               </div>
@@ -1108,6 +1263,11 @@ export function JobsListPage() {
         onCancel={() => setBlockTarget(null)}
         onConfirm={handleCancel}
       />
+
+      {/* Job details modal (Notes / Payout / Shipment) */}
+      {notesModalJob && (
+        <JobDetailsModal job={notesModalJob} onClose={() => setNotesModalJob(null)} />
+      )}
 
       {/* Report delay modal */}
       {delayTarget && (

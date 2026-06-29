@@ -2978,6 +2978,279 @@ p.lp-success {
   border-left: 3px solid var(--danger);
 }
 
+/* ── Notes icon button on job card header ── */
+.relay-notes-icon-btn {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--muted);
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+.relay-notes-icon-btn:hover {
+  background: var(--primary, #2563eb);
+  color: #fff;
+  border-color: var(--primary, #2563eb);
+}
+
+/* ── Job Details Modal (Notes / Payout / Shipment) ── */
+.rjd-modal {
+  background: var(--surface);
+  border-radius: 14px;
+  box-shadow: 0 20px 60px rgba(15,23,42,0.22);
+  width: 100%;
+  max-width: 560px;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  max-height: 85vh;
+}
+
+.rjd-modal-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 20px;
+  background: #0f172a;
+  color: #fff;
+}
+
+.rjd-modal-title {
+  font-size: 0.98rem;
+  font-weight: 700;
+  color: #fff;
+}
+
+.rjd-modal-close {
+  background: none;
+  border: none;
+  color: #94a3b8;
+  font-size: 1.1rem;
+  cursor: pointer;
+  padding: 2px 6px;
+  border-radius: 4px;
+  line-height: 1;
+  transition: color 0.15s;
+}
+.rjd-modal-close:hover { color: #fff; }
+
+.rjd-tabs {
+  display: flex;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface);
+}
+
+.rjd-tabs button {
+  flex: 1;
+  padding: 13px 10px;
+  font-size: 0.84rem;
+  font-weight: 500;
+  color: var(--muted);
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  cursor: pointer;
+  transition: color 0.15s, border-color 0.15s;
+}
+.rjd-tabs button:hover { color: var(--text); }
+.rjd-tabs button.active {
+  color: var(--primary, #2563eb);
+  border-bottom-color: var(--primary, #2563eb);
+  font-weight: 700;
+}
+
+.rjd-modal-body {
+  padding: 18px 20px;
+  overflow-y: auto;
+  flex: 1;
+}
+
+/* Payout table */
+.rjd-payout-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.86rem;
+}
+.rjd-payout-table th {
+  text-align: left;
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--muted);
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--border);
+}
+.rjd-payout-table td {
+  padding: 10px 10px;
+  color: var(--text);
+  border-bottom: 1px solid var(--border);
+  vertical-align: top;
+}
+.rjd-payout-total td {
+  background: var(--surface-2, #f8fafc);
+  font-size: 0.86rem;
+}
+
+/* Shipment table */
+.rjd-shipment-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.86rem;
+}
+.rjd-shipment-table th {
+  text-align: left;
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--muted);
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--border);
+}
+.rjd-shipment-table td {
+  padding: 10px 10px;
+  color: var(--text);
+  border-bottom: 1px solid var(--border);
+  vertical-align: top;
+  font-size: 0.84rem;
+  line-height: 1.7;
+}
+.rjd-shipment-table td strong {
+  font-weight: 700;
+  margin-right: 4px;
+}
+
+/* Notes tab */
+.rjd-notes-tab {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.rjd-add-note-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 9px 16px;
+  background: var(--primary, #2563eb);
+  color: #fff;
+  border: none;
+  border-radius: 7px;
+  font-size: 0.84rem;
+  font-weight: 600;
+  cursor: pointer;
+  align-self: flex-start;
+  transition: background 0.15s;
+}
+.rjd-add-note-btn:hover { background: #1d4ed8; }
+
+.rjd-note-form {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  background: var(--surface-2, #f8fafc);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 14px;
+}
+
+.rjd-note-form-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.rjd-note-form-label {
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--muted);
+}
+.rjd-note-load-display {
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  padding: 9px 12px;
+  font-size: 0.86rem;
+  font-weight: 600;
+  color: var(--text);
+  background: var(--surface);
+}
+
+.rjd-note-author-input {
+  padding: 8px 12px;
+  font-size: 0.84rem;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: var(--surface);
+  color: var(--text);
+  font-family: inherit;
+}
+
+.rjd-note-textarea {
+  padding: 9px 12px;
+  font-size: 0.84rem;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: var(--surface);
+  color: var(--text);
+  resize: vertical;
+  font-family: inherit;
+  min-height: 72px;
+}
+
+.rjd-note-form-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.rjd-cancel-btn {
+  padding: 8px 18px;
+  border: 1.5px solid var(--border);
+  border-radius: 7px;
+  background: var(--surface);
+  color: var(--text);
+  font-size: 0.84rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: border-color 0.15s;
+}
+.rjd-cancel-btn:hover { border-color: var(--muted); }
+
+.rjd-submit-btn {
+  padding: 8px 20px;
+  border: none;
+  border-radius: 7px;
+  background: var(--primary, #2563eb);
+  color: #fff;
+  font-size: 0.84rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.rjd-submit-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.rjd-submit-btn:not(:disabled):hover { background: #1d4ed8; }
+
+.rjd-notes-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.rjd-notes-empty {
+  font-size: 0.86rem;
+  color: var(--muted);
+  margin: 0;
+  text-align: center;
+  padding: 20px 0;
+}
+
 /* ──────────────────────────────────────────────────────── */
 
 .customer-filter-card {
