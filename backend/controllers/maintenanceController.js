@@ -1278,19 +1278,44 @@ exports.getMaintenancePortal = async (_req, res) => {
     ].filter((event) => event.date);
 
     const [historyRows] = await db.query(`
-      SELECT vehicle_id, NULL AS trailer_id, service_date AS event_date, service_type AS title, description, cost_gbp, garage_name, 'service' AS source
+      SELECT vehicle_id, NULL AS trailer_id, service_date AS event_date,
+             CONVERT(service_type USING utf8mb4) AS title,
+             CONVERT(description USING utf8mb4) AS description,
+             cost_gbp,
+             CONVERT(garage_name USING utf8mb4) AS garage_name,
+             CONVERT('service' USING utf8mb4) AS source
       FROM maintenance_records
       UNION ALL
-      SELECT NULL AS vehicle_id, trailer_id, service_date AS event_date, service_type AS title, description, cost_gbp, garage_name, 'trailer_service' AS source
+      SELECT NULL AS vehicle_id, trailer_id, service_date AS event_date,
+             CONVERT(service_type USING utf8mb4) AS title,
+             CONVERT(description USING utf8mb4) AS description,
+             cost_gbp,
+             CONVERT(garage_name USING utf8mb4) AS garage_name,
+             CONVERT('trailer_service' USING utf8mb4) AS source
       FROM trailer_maintenance_records
       UNION ALL
-      SELECT vehicle_id, NULL AS trailer_id, inspection_date AS event_date, inspection_type AS title, notes AS description, 0 AS cost_gbp, inspector_name AS garage_name, 'inspection' AS source
+      SELECT vehicle_id, NULL AS trailer_id, inspection_date AS event_date,
+             CONVERT(inspection_type USING utf8mb4) AS title,
+             CONVERT(notes USING utf8mb4) AS description,
+             0 AS cost_gbp,
+             CONVERT(inspector_name USING utf8mb4) AS garage_name,
+             CONVERT('inspection' USING utf8mb4) AS source
       FROM vehicle_inspections
       UNION ALL
-      SELECT NULL AS vehicle_id, trailer_id, inspection_date AS event_date, inspection_type AS title, notes AS description, 0 AS cost_gbp, inspector_name AS garage_name, 'trailer_inspection' AS source
+      SELECT NULL AS vehicle_id, trailer_id, inspection_date AS event_date,
+             CONVERT(inspection_type USING utf8mb4) AS title,
+             CONVERT(notes USING utf8mb4) AS description,
+             0 AS cost_gbp,
+             CONVERT(inspector_name USING utf8mb4) AS garage_name,
+             CONVERT('trailer_inspection' USING utf8mb4) AS source
       FROM trailer_inspections
       UNION ALL
-      SELECT vehicle_id, trailer_id, reported_at AS event_date, defect_type AS title, description, 0 AS cost_gbp, reported_by AS garage_name, 'defect' AS source
+      SELECT vehicle_id, trailer_id, reported_at AS event_date,
+             CONVERT(defect_type USING utf8mb4) AS title,
+             CONVERT(description USING utf8mb4) AS description,
+             0 AS cost_gbp,
+             CONVERT(reported_by USING utf8mb4) AS garage_name,
+             CONVERT('defect' USING utf8mb4) AS source
       FROM defect_reports
       ORDER BY event_date DESC
       LIMIT 100
