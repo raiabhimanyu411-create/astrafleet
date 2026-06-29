@@ -306,8 +306,8 @@ export function JobDetailPage() {
               {/* Load */}
               <SectionCard label="Load Details" title={`${LOAD_ICONS[data.load.type] || "📦"} ${data.load.type} load`}>
                 <div className="detail-grid">
-                  {data.load.reference && data.load.reference !== "—" && <DetailField label="Reference" value={data.load.reference} />}
-                  {data.load.loadId && data.load.loadId !== "—" && <DetailField label="Load ID" value={data.load.loadId} />}
+                  <DetailField label="Reference" value={data.load.reference} />
+                  <DetailField label="Load ID" value={data.load.loadId} />
                   <DetailField label="Weight"      value={data.load.weightKg} />
                   <DetailField label="Volume"      value={data.load.volumeCbm} />
                   <DetailField label="Vehicle Requirement" value={data.load.vehicleRequirement} />
