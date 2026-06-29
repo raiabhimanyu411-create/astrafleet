@@ -602,6 +602,82 @@ export function JobFormPage() {
                 </Field>
               </div>
 
+              <div style={{ marginTop: 16, borderTop: "1px solid #e2e8f0", paddingTop: 16 }}>
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
+                  <p className="af-section-title" style={{ margin: 0 }}>
+                    Intermediate Stops
+                    {validStops.length > 0 && (
+                      <span style={{ marginLeft: 8, fontSize: "0.75rem", fontWeight: 600, color: "#2563eb", background: "#eff6ff", borderRadius: 20, padding: "2px 8px" }}>
+                        {validStops.length} stop{validStops.length > 1 ? "s" : ""} · calculate route for exact miles
+                      </span>
+                    )}
+                  </p>
+                  <button
+                    type="button"
+                    className="header-action-button"
+                    onClick={() => { clearRouteEstimate(); setStops(prev => [...prev, { ...emptyStop }]); }}
+                  >
+                    + Add Stop
+                  </button>
+                </div>
+                {stops.length === 0 && (
+                  <p style={{ color: "#94a3b8", fontSize: "0.84rem", margin: 0 }}>
+                    No intermediate stops. Click "Add stop" to include waypoints, additional pickups, or delivery stops.
+                  </p>
+                )}
+                {stops.map((stop, i) => (
+                  <div key={i} style={{ border: "1px solid #e2e8f0", borderRadius: 10, padding: "14px 16px", marginBottom: 10, background: "#f8fafc", position: "relative" }}>
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
+                      <strong style={{ fontSize: "0.84rem", color: "#0f172a" }}>Stop {i + 1}</strong>
+                      <button
+                        type="button"
+                        className="header-action-button danger"
+                        style={{ padding: "4px 10px", fontSize: "0.75rem" }}
+                        onClick={() => { clearRouteEstimate(); setStops(prev => prev.filter((_, idx) => idx !== i)); }}
+                      >
+                        Remove
+                      </button>
+                    </div>
+                    <div className="af-grid-2">
+                      <Field label="Stop Type">
+                        <select className="af-select" value={stop.stop_type} onChange={e => updateStop(i, { stop_type: e.target.value })}>
+                          <option value="delivery">Delivery</option>
+                          <option value="pickup">Pickup</option>
+                          <option value="waypoint">Waypoint</option>
+                        </select>
+                      </Field>
+                      <Field label="Planned Arrival At Stop">
+                        <input className="af-input" type="datetime-local" value={stop.planned_arrival} onChange={e => updateStop(i, { planned_arrival: e.target.value })} />
+                      </Field>
+                      <Field label="Departure Time At Stop">
+                        <input className="af-input" type="time" value={toInputTime(stop.planned_departure)} onChange={e => handleStopDepartureChange(i, e.target.value)} />
+                      </Field>
+                      <div style={{ gridColumn: "1 / -1" }}>
+                        <Field label="Stop Address" required>
+                          <textarea className="af-input" style={{ minHeight: 60, resize: "vertical" }} placeholder="Full address for this stop" value={stop.address} onChange={e => updateStop(i, { address: e.target.value }, true)} />
+                        </Field>
+                      </div>
+                      <Field label="Contact Name">
+                        <input className="af-input" type="text" placeholder="e.g. John Smith" value={stop.contact_name} onChange={e => updateStop(i, { contact_name: e.target.value })} />
+                      </Field>
+                      <Field label="Contact Phone">
+                        <input className="af-input" type="tel" placeholder="e.g. 07700 900123" value={stop.contact_phone} onChange={e => updateStop(i, { contact_phone: e.target.value })} />
+                      </Field>
+                      <div style={{ gridColumn: "1 / -1" }}>
+                        <Field label="Notes">
+                          <input className="af-input" type="text" placeholder="Any special notes for this stop" value={stop.notes} onChange={e => updateStop(i, { notes: e.target.value })} />
+                        </Field>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+                {validStops.length > 0 && (selectedRoute || routeEstimate) && (
+                  <div style={{ marginTop: 8, padding: "10px 14px", background: "#eff6ff", border: "1px solid #bfdbfe", borderRadius: 8, fontSize: "0.84rem", color: "#1e40af" }}>
+                    <strong>ETA with stops:</strong> {displayDateTime(etaPreview)} — {routeEstimate ? `${routeEstimate.distanceMiles} mi, ${fmtMins(routeEstimate.durationMins)} travel` : `base route (${selectedRoute.standard_eta_hours}h) + 30 min × ${validStops.length} stop${validStops.length > 1 ? "s" : ""}`}
+                  </div>
+                )}
+              </div>
+
               <div style={{ marginTop: 16, padding: 16, border: "1px solid #dbeafe", background: "#eff6ff", borderRadius: 8 }}>
                 <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0,1fr))", gap: 12 }}>
                   <div>
@@ -778,91 +854,6 @@ export function JobFormPage() {
                   <p className="job-economics-hint">
                     Fuel: £{sysSettings?.fuel_price_per_litre}/L · {sysSettings?.mpg} MPG · Driver: £{sysSettings?.driver_rate_per_hour}/hr · Fleet: {fmtGBP(FLEET_COST_PER_HOUR_GBP)}/hr
                   </p>
-                </div>
-              )}
-            </div>
-
-            <div className="af-section">
-              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
-                <p className="af-section-title" style={{ margin: 0 }}>
-                  Intermediate Stops
-                  {validStops.length > 0 && (
-                    <span style={{ marginLeft: 8, fontSize: "0.75rem", fontWeight: 600, color: "#2563eb", background: "#eff6ff", borderRadius: 20, padding: "2px 8px" }}>
-                      {validStops.length} stop{validStops.length > 1 ? "s" : ""} · calculate route for exact miles
-                    </span>
-                  )}
-                </p>
-                <button
-                  type="button"
-                  className="header-action-button"
-                  onClick={() => {
-                    clearRouteEstimate();
-                    setStops(prev => [...prev, { ...emptyStop }]);
-                  }}
-                >
-                  + Add Stop
-                </button>
-              </div>
-
-              {stops.length === 0 && (
-                <p style={{ color: "#94a3b8", fontSize: "0.84rem", margin: 0 }}>
-                  No intermediate stops. Click "Add stop" to include waypoints, additional pickups, or delivery stops.
-                </p>
-              )}
-
-              {stops.map((stop, i) => (
-                <div key={i} style={{ border: "1px solid #e2e8f0", borderRadius: 10, padding: "14px 16px", marginBottom: 10, background: "#f8fafc", position: "relative" }}>
-                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
-                    <strong style={{ fontSize: "0.84rem", color: "#0f172a" }}>Stop {i + 1}</strong>
-                    <button
-                      type="button"
-                      className="header-action-button danger"
-                      style={{ padding: "4px 10px", fontSize: "0.75rem" }}
-                      onClick={() => {
-                        clearRouteEstimate();
-                        setStops(prev => prev.filter((_, idx) => idx !== i));
-                      }}
-                    >
-                      Remove
-                    </button>
-                  </div>
-                  <div className="af-grid-2">
-                    <Field label="Stop Type">
-                      <select className="af-select" value={stop.stop_type} onChange={e => updateStop(i, { stop_type: e.target.value })}>
-                        <option value="delivery">Delivery</option>
-                        <option value="pickup">Pickup</option>
-                        <option value="waypoint">Waypoint</option>
-                      </select>
-                    </Field>
-                    <Field label="Planned Arrival At Stop">
-                      <input className="af-input" type="datetime-local" value={stop.planned_arrival} onChange={e => updateStop(i, { planned_arrival: e.target.value })} />
-                    </Field>
-                    <Field label="Departure Time At Stop">
-                      <input className="af-input" type="time" value={toInputTime(stop.planned_departure)} onChange={e => handleStopDepartureChange(i, e.target.value)} />
-                    </Field>
-                    <div style={{ gridColumn: "1 / -1" }}>
-                      <Field label="Stop Address" required>
-                        <textarea className="af-input" style={{ minHeight: 60, resize: "vertical" }} placeholder="Full address for this stop" value={stop.address} onChange={e => updateStop(i, { address: e.target.value }, true)} />
-                      </Field>
-                    </div>
-                    <Field label="Contact Name">
-                      <input className="af-input" type="text" placeholder="e.g. John Smith" value={stop.contact_name} onChange={e => updateStop(i, { contact_name: e.target.value })} />
-                    </Field>
-                    <Field label="Contact Phone">
-                      <input className="af-input" type="tel" placeholder="e.g. 07700 900123" value={stop.contact_phone} onChange={e => updateStop(i, { contact_phone: e.target.value })} />
-                    </Field>
-                    <div style={{ gridColumn: "1 / -1" }}>
-                      <Field label="Notes">
-                        <input className="af-input" type="text" placeholder="Any special notes for this stop" value={stop.notes} onChange={e => updateStop(i, { notes: e.target.value })} />
-                      </Field>
-                    </div>
-                  </div>
-                </div>
-              ))}
-
-              {validStops.length > 0 && (selectedRoute || routeEstimate) && (
-                <div style={{ marginTop: 8, padding: "10px 14px", background: "#eff6ff", border: "1px solid #bfdbfe", borderRadius: 8, fontSize: "0.84rem", color: "#1e40af" }}>
-                  <strong>ETA with stops:</strong> {displayDateTime(etaPreview)} — {routeEstimate ? `${routeEstimate.distanceMiles} mi, ${fmtMins(routeEstimate.durationMins)} travel` : `base route (${selectedRoute.standard_eta_hours}h) + 30 min × ${validStops.length} stop${validStops.length > 1 ? "s" : ""}`}
                 </div>
               )}
             </div>
