@@ -362,6 +362,34 @@ async function backfillTiming(row, settings) {
   const departure = new Date(row.loading_done_time);
   if (Number.isNaN(departure.getTime())) return row;
 
+  const savedArrival = row.calculated_arrival ? new Date(row.calculated_arrival) : null;
+  const savedUnloadEnd = row.calculated_unload_end ? new Date(row.calculated_unload_end) : null;
+  if (
+    savedArrival &&
+    savedUnloadEnd &&
+    !Number.isNaN(savedArrival.getTime()) &&
+    !Number.isNaN(savedUnloadEnd.getTime()) &&
+    savedUnloadEnd >= savedArrival
+  ) {
+    const loadingMins = effectiveLoadingMins(row);
+    const totalJobDurationMins = row.total_job_duration_mins
+      || Math.max(0, Math.round((savedUnloadEnd.getTime() - departure.getTime()) / 60000) + loadingMins);
+
+    if (!row.total_job_duration_mins) {
+      await db.query(
+        `UPDATE trips
+         SET total_job_duration_mins=?
+         WHERE id=? AND deleted_at IS NULL`,
+        [totalJobDurationMins, row.id]
+      );
+    }
+
+    return {
+      ...row,
+      total_job_duration_mins: totalJobDurationMins
+    };
+  }
+
   const distanceMiles = Number(row.distance_km) * 0.621371;
   const travelMins = Math.round((distanceMiles / Number(settings?.avg_speed_mph || 40)) * 60);
   const loadingMins = effectiveLoadingMins(row);
