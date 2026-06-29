@@ -558,7 +558,7 @@ export function JobFormPage() {
 
             <div className="af-section">
               <p className="af-section-title">Route</p>
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 16, paddingBottom: 16, borderBottom: "1px solid #e2e8f0" }}>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: 16, marginBottom: 16, paddingBottom: 16, borderBottom: "1px solid #e2e8f0" }}>
                 <Field label="Reference">
                   <input className="af-input" type="text" placeholder="e.g. DE_1056839_1" value={fields.reference} onChange={e => set("reference", e.target.value)} />
                 </Field>
