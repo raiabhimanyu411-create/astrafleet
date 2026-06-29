@@ -742,7 +742,7 @@ exports.getMaintenancePortal = async (_req, res) => {
         make: v.model_name,
         truckType: v.truck_type,
         status: v.status,
-        statusLabel: v.status.replace("_", " "),
+        statusLabel: (v.status || "").replace("_", " "),
         currentLocation: v.current_location || "-",
         inspectionFrequency: "6-week safety inspection",
         lastService: fmtDate(v.last_service_date),
@@ -792,7 +792,7 @@ exports.getMaintenancePortal = async (_req, res) => {
         make: t.trailer_type,
         truckType: t.trailer_type,
         status: t.status,
-        statusLabel: t.status.replace("_", " "),
+        statusLabel: (t.status || "").replace("_", " "),
         currentLocation: t.current_location || "-",
         inspectionFrequency: "6-week safety inspection",
         lastService: "-",
@@ -931,7 +931,7 @@ exports.getMaintenancePortal = async (_req, res) => {
         priority: j.priority,
         priorityTone: priorityTone(j.priority),
         status: j.status,
-        statusLabel: j.status.replace("_", " "),
+        statusLabel: (j.status || "").replace("_", " "),
         statusTone: jobTone(j.status, daysLeft, j.priority),
         notes: j.notes || "-",
         partsRequired: j.parts_required || "-",
@@ -1566,7 +1566,8 @@ exports.getMaintenancePortal = async (_req, res) => {
       }
     });
   } catch (err) {
-    res.status(500).json({ message: "Maintenance portal error", error: err.message });
+    console.error("[MaintenancePortal] Error:", err.message, err.stack);
+    res.status(500).json({ message: "Maintenance portal error", error: err.message, detail: err.stack?.split("\n").slice(0, 4).join(" | ") });
   }
 };
 

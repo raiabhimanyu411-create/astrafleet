@@ -1012,7 +1012,11 @@ export function AdminMaintenancePage() {
         setData(res.data);
         setError("");
       })
-      .catch((err) => setError(err.response?.data?.message || "Could not load maintenance planner."))
+      .catch((err) => {
+        const msg = err.response?.data?.message || "Could not load maintenance planner.";
+        const detail = err.response?.data?.error || "";
+        setError(detail ? `${msg}: ${detail}` : msg);
+      })
       .finally(() => setLoading(false));
   }
 
