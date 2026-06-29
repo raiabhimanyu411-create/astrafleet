@@ -128,7 +128,7 @@ function fmtTimeFull(rawStr) {
   if (!rawStr) return "—";
   const d = new Date(rawStr);
   if (isNaN(d.getTime())) return "—";
-  return d.toLocaleString("en-GB", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" });
+  return d.toLocaleString("en-GB", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" });
 }
 
 function fmtGBP(n) {
@@ -171,7 +171,7 @@ function exportCsv(name, rows) {
 }
 
 function JobDetailsModal({ job, onClose }) {
-  const [tab, setTab] = useState("notes");
+  const [tab, setTab] = useState(job._openTab || "notes");
   const [notes, setNotes] = useState([]);
   const [showForm, setShowForm] = useState(false);
   const [noteText, setNoteText] = useState("");
@@ -217,23 +217,51 @@ function JobDetailsModal({ job, onClose }) {
 
         <div className="rjd-modal-body">
           {tab === "payout" && (
-            <table className="rjd-payout-table">
-              <thead>
-                <tr><th>ID</th><th>Base Rate</th><th>Total</th></tr>
-              </thead>
-              <tbody>
-                <tr>
-                  <td>{job.code}</td>
-                  <td>{job.freight || "—"}</td>
-                  <td>{job.freight || "—"}</td>
-                </tr>
-                <tr className="rjd-payout-total">
-                  <td></td>
-                  <td><strong>Estimated payout</strong></td>
-                  <td><strong>{job.freight || "—"}</strong></td>
-                </tr>
-              </tbody>
-            </table>
+            <div className="rjd-payout-section">
+              {job.economics ? (
+                <>
+                  <table className="rjd-payout-table">
+                    <thead>
+                      <tr><th>Cost Item</th><th>Amount</th></tr>
+                    </thead>
+                    <tbody>
+                      <tr><td>Fuel Cost</td><td>£{Number(job.economics.fuelCost || 0).toFixed(2)}</td></tr>
+                      <tr><td>Driver Cost</td><td>£{Number(job.economics.driverCost || 0).toFixed(2)}</td></tr>
+                      <tr><td>Fleet Cost</td><td>£{Number(job.economics.fleetCost || 0).toFixed(2)}</td></tr>
+                      <tr className="rjd-payout-subtotal"><td><strong>Total Cost</strong></td><td><strong>£{Number(job.economics.totalCost || 0).toFixed(2)}</strong></td></tr>
+                      <tr><td>Suggested Price</td><td>£{Number(job.economics.suggestedPrice || 0).toFixed(2)}</td></tr>
+                      <tr><td>Freight Charged</td><td>{job.freight || "—"}</td></tr>
+                    </tbody>
+                  </table>
+                  <div className={`rjd-payout-pl ${job.isProfitable === true ? "profit" : job.isProfitable === false ? "loss" : ""}`}>
+                    <span>{job.isProfitable === true ? "Profit" : job.isProfitable === false ? "Loss" : "P&L"}</span>
+                    <strong>
+                      {job.profitLossValue !== null && job.profitLossValue !== undefined
+                        ? `${job.profitLossValue >= 0 ? "+" : "-"}£${Math.abs(job.profitLossValue).toFixed(2)}`
+                        : "—"}
+                    </strong>
+                  </div>
+                </>
+              ) : (
+                <table className="rjd-payout-table">
+                  <thead>
+                    <tr><th>ID</th><th>Freight Charged</th><th>Total</th></tr>
+                  </thead>
+                  <tbody>
+                    <tr>
+                      <td>{job.code}</td>
+                      <td>{job.freight || "—"}</td>
+                      <td>{job.freight || "—"}</td>
+                    </tr>
+                    <tr className="rjd-payout-total">
+                      <td></td>
+                      <td><strong>Estimated payout</strong></td>
+                      <td><strong>{job.freight || "—"}</strong></td>
+                    </tr>
+                  </tbody>
+                </table>
+              )}
+            </div>
           )}
 
           {tab === "notes" && (
@@ -395,6 +423,7 @@ export function JobsListPage() {
   const [attentionFilter, setAttentionFilter] = useState("");
   const [expandedIds, setExpandedIds] = useState(new Set());
   const [expandedInstructions, setExpandedInstructions] = useState(new Set());
+  const [expandedStopInstr, setExpandedStopInstr] = useState(new Set());
   const [busyId, setBusyId] = useState(null);
   const [blockTarget, setBlockTarget] = useState(null);
   const [delayTarget, setDelayTarget] = useState(null);
@@ -437,6 +466,14 @@ export function JobsListPage() {
     setExpandedInstructions(prev => {
       const next = new Set(prev);
       if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  }
+
+  function toggleStopInstr(key) {
+    setExpandedStopInstr(prev => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key); else next.add(key);
       return next;
     });
   }
@@ -561,7 +598,7 @@ export function JobsListPage() {
        "Departure", "ETA", "Distance (mi)", "Status", "Freight GBP", "POD Status"],
       ...jobs.map(job => [job.code, job.customer, job.lane, job.loadType, job.priority,
         job.driver, job.vehicle, job.trailer, job.departureRaw, job.etaRaw,
-        job.distanceKm ? Math.round(job.distanceKm * 0.621371) : "", job.status, job.freightValue, job.podStatus])
+        job.distanceMiles || "", job.status, job.freightValue, job.podStatus])
     ]);
   }
 
@@ -739,11 +776,11 @@ export function JobsListPage() {
               : null;
             const driverStatusToneVal = DRIVER_STATUS_TONE[job.driverJobStatus] || "neutral";
 
-            const depTimeTone = job.actualDeparture && job.actualDeparture !== "—"
-              ? timeLateClass(job.actualDeparture?.replace(" ", "T"), job.departureRaw)
+            const depTimeTone = job.actualDepartureRaw
+              ? timeLateClass(job.actualDepartureRaw, job.departureRaw)
               : "";
-            const arrTimeTone = job.actualArrival && job.actualArrival !== "—"
-              ? timeLateClass(job.actualArrival?.replace(" ", "T"), job.etaRaw)
+            const arrTimeTone = job.actualArrivalRaw
+              ? timeLateClass(job.actualArrivalRaw, job.etaRaw)
               : "";
 
             return (
@@ -886,6 +923,13 @@ export function JobsListPage() {
                       </div>
                     )}
 
+                    {/* Delay reason banner */}
+                    {job.delayReason && !isBlocked && (
+                      <div className="relay-status-banner warning">
+                        <span>⏱ Delay reported · {job.delayReason}</span>
+                      </div>
+                    )}
+
                     {/* POD pending banner */}
                     {podPending && (
                       <div className="relay-status-banner warning">
@@ -906,129 +950,219 @@ export function JobsListPage() {
                       </div>
 
                       {/* Stop 1 — Pickup */}
-                      <div className="relay-stop-row">
-                        <div className="relay-stop-location">
-                          <span className="relay-stop-bubble">1</span>
-                          <div>
-                            <strong>{abbrevAddr(job.pickupAddress)}</strong>
-                            <small>{job.pickupAddress !== "—" ? job.pickupAddress : "Address not set"}</small>
-                            {job.dockWindow !== "—" && <small className="relay-dock-label">Dock: {job.dockWindow}</small>}
+                      <div className="relay-stop-block">
+                        <div className="relay-stop-row">
+                          <div className="relay-stop-location">
+                            <span className="relay-stop-bubble">1</span>
+                            <div>
+                              <strong>{abbrevAddr(job.pickupAddress)}</strong>
+                              <small>{job.pickupAddress !== "—" ? job.pickupAddress : "Address not set"}</small>
+                              {job.dockWindow !== "—" && <small className="relay-dock-label">Dock: {job.dockWindow}</small>}
+                            </div>
+                          </div>
+                          <div className="relay-stop-equipment">
+                            <span>Tractor ID <strong>{job.vehicleAssigned ? job.vehicle : "—"}</strong></span>
+                            <span className="relay-drop-trailer">
+                              <span className={`relay-dot${job.trailerAssigned ? " filled" : ""}`} />
+                              {job.trailerAssigned ? job.trailer : "No trailer"}
+                            </span>
+                            {job.loadWeightKg && <span>| {job.loadWeightKg} kg</span>}
+                            <span>Trailer Id <strong>{job.trailerAssigned ? job.trailer : "—"}</strong></span>
+                            {(isActive || isLoading || isCompleted) && (
+                              <span className={`relay-live-badge${isCompleted ? " success" : ""}`}>
+                                {isActive ? "Live" : isLoading ? "Live · loading" : "departed"}
+                              </span>
+                            )}
+                          </div>
+                          <div className="relay-stop-time">
+                            <span className="relay-time-dash">—</span>
+                          </div>
+                          <div className="relay-stop-time">
+                            <strong className={depTimeTone}>
+                              {job.actualDeparture && job.actualDeparture !== "—"
+                                ? job.actualDeparture
+                                : job.departure !== "—" ? job.departure : "TBD"}
+                            </strong>
+                            {job.departure !== "—" && job.actualDeparture && job.actualDeparture !== "—" && (
+                              <small className="relay-sch-time">Sch. {job.departure}</small>
+                            )}
+                            {!job.actualDeparture && job.departure !== "—" && (
+                              <small className="relay-sch-time">Sch. {job.departure}</small>
+                            )}
+                            {(isActive || isLoading) && (
+                              <button className="relay-report-delay-btn" type="button"
+                                onClick={e => { e.stopPropagation(); setDelayTarget(job); }}>
+                                Report delay
+                              </button>
+                            )}
                           </div>
                         </div>
-                        <div className="relay-stop-equipment">
-                          <span>Tractor ID <strong>{job.vehicleAssigned ? job.vehicle : "—"}</strong></span>
-                          <span className="relay-drop-trailer">
-                            <span className={`relay-dot${job.trailerAssigned ? " filled" : ""}`} />
-                            Drop Trailer
-                          </span>
-                          <span>Trailer Id <strong>{job.trailerAssigned ? job.trailer : "—"}</strong></span>
-                          {(isActive || isLoading || isCompleted) && (
-                            <span className={`relay-live-badge${isCompleted ? " success" : ""}`}>
-                              {isActive ? "Live · in transit" : isLoading ? "Live · loading" : "Departed"}
-                            </span>
-                          )}
-                        </div>
-                        <div className="relay-stop-time">
-                          <span className="relay-time-dash">—</span>
-                        </div>
-                        <div className="relay-stop-time">
-                          <strong className={depTimeTone}>
-                            {job.actualDeparture && job.actualDeparture !== "—"
-                              ? job.actualDeparture
-                              : job.departure !== "—" ? job.departure : "TBD"}
-                          </strong>
-                          {job.departure !== "—" && job.actualDeparture && job.actualDeparture !== "—" && (
-                            <small>Sch. {job.departure}</small>
-                          )}
-                          {(isActive || isLoading) && (
-                            <button
-                              className="relay-report-delay-btn"
-                              type="button"
-                              onClick={e => { e.stopPropagation(); setDelayTarget(job); }}
-                            >
-                              Report Delay
-                            </button>
+                        {/* Pickup instructions */}
+                        <div className="relay-stop-instr-wrap">
+                          <button className="relay-stop-instr-toggle" type="button"
+                            onClick={() => toggleStopInstr(`${job.id}-pickup`)}>
+                            {expandedStopInstr.has(`${job.id}-pickup`) ? "▲" : "▼"} Pick-up instructions
+                          </button>
+                          {expandedStopInstr.has(`${job.id}-pickup`) && (
+                            <div className="relay-stop-instr-body">
+                              <div className="relay-stop-instr-head-row">
+                                <span>CONTACT</span>
+                                <span>REFERENCE #&apos;s</span>
+                                <span>INSTRUCTIONS</span>
+                              </div>
+                              <div className="relay-stop-instr-row">
+                                <div>
+                                  {job.customerContact !== "—" ? job.customerContact : "—"}
+                                  {job.customerPhone && <div className="relay-footer-sub">{job.customerPhone}</div>}
+                                </div>
+                                <div>
+                                  <div><strong>Job #</strong> {job.code}</div>
+                                  {job.routeCode && job.routeCode !== "—" && <div><strong>Route</strong> {job.routeCode}</div>}
+                                  {job.lane && job.lane !== "—" && <div><strong>Lane</strong> {job.lane}</div>}
+                                </div>
+                                <div>{job.specialInstructions !== "—" ? job.specialInstructions : "—"}</div>
+                              </div>
+                            </div>
                           )}
                         </div>
                       </div>
 
                       {/* Intermediate stops */}
                       {routeStops.map((stop, index) => (
-                        <div className="relay-stop-row" key={stop.id || `${job.id}-stop-${index}`}>
-                          <div className="relay-stop-location">
-                            <span className="relay-stop-bubble">{index + 2}</span>
-                            <div>
-                              <strong>{abbrevAddr(stop.address)}</strong>
-                              <small>{stop.address !== "—" ? stop.address : "Address not set"}</small>
-                              <small className="relay-dock-label">
-                                {(stop.type || "stop").replace(/^./, c => c.toUpperCase())} stop{stop.status ? ` · ${stop.status}` : ""}
-                              </small>
-                              {stop.notes !== "—" && <small className="relay-dock-label">Notes: {stop.notes}</small>}
+                        <div className="relay-stop-block" key={stop.id || `${job.id}-stop-${index}`}>
+                          <div className="relay-stop-row">
+                            <div className="relay-stop-location">
+                              <span className="relay-stop-bubble">{index + 2}</span>
+                              <div>
+                                <strong>{abbrevAddr(stop.address)}</strong>
+                                <small>{stop.address !== "—" ? stop.address : "Address not set"}</small>
+                                <small className="relay-dock-label">
+                                  {(stop.type || "stop").replace(/^./, c => c.toUpperCase())} stop{stop.status ? ` · ${stop.status}` : ""}
+                                </small>
+                              </div>
+                            </div>
+                            <div className="relay-stop-equipment">
+                              <span>Stop type <strong>{stop.type || "—"}</strong></span>
+                              <span>Contact <strong>{stop.contactName !== "—" ? stop.contactName : "—"}</strong></span>
+                              {stop.contactPhone !== "—" && <span>Phone <strong>{stop.contactPhone}</strong></span>}
+                            </div>
+                            <div className="relay-stop-time">
+                              <strong>{stop.actualArrival !== "—" ? stop.actualArrival : stop.plannedArrival !== "—" ? stop.plannedArrival : "TBD"}</strong>
+                              {stop.actualArrival !== "—" && stop.plannedArrival !== "—" && (
+                                <small className="relay-sch-time">Sch. {stop.plannedArrival}</small>
+                              )}
+                              {stop.actualArrival === "—" && stop.plannedArrival !== "—" && (
+                                <small className="relay-sch-time">Sch. {stop.plannedArrival}</small>
+                              )}
+                            </div>
+                            <div className="relay-stop-time">
+                              <strong>{stop.plannedDeparture !== "—" ? stop.plannedDeparture : "—"}</strong>
+                              {stop.plannedDeparture !== "—" && (
+                                <small className="relay-sch-time">Sch. {stop.plannedDeparture}</small>
+                              )}
                             </div>
                           </div>
-                          <div className="relay-stop-equipment">
-                            <span>Stop type <strong>{stop.type || "—"}</strong></span>
-                            <span>Contact <strong>{stop.contactName !== "—" ? stop.contactName : "—"}</strong></span>
-                            <span>Phone <strong>{stop.contactPhone !== "—" ? stop.contactPhone : "—"}</strong></span>
-                          </div>
-                          <div className="relay-stop-time">
-                            <strong>{stop.actualArrival !== "—" ? stop.actualArrival : stop.plannedArrival !== "—" ? stop.plannedArrival : "TBD"}</strong>
-                            {stop.actualArrival !== "—" && stop.plannedArrival !== "—" && (
-                              <small>Sch. {stop.plannedArrival}</small>
+                          <div className="relay-stop-instr-wrap">
+                            <button className="relay-stop-instr-toggle" type="button"
+                              onClick={() => toggleStopInstr(`${job.id}-stop-${stop.id}`)}>
+                              {expandedStopInstr.has(`${job.id}-stop-${stop.id}`) ? "▲" : "▼"} Stop instructions
+                            </button>
+                            {expandedStopInstr.has(`${job.id}-stop-${stop.id}`) && (
+                              <div className="relay-stop-instr-body">
+                                <div className="relay-stop-instr-head-row">
+                                  <span>CONTACT</span>
+                                  <span>REFERENCE #&apos;s</span>
+                                  <span>INSTRUCTIONS</span>
+                                </div>
+                                <div className="relay-stop-instr-row">
+                                  <div>
+                                    {stop.contactName !== "—" ? stop.contactName : "—"}
+                                    {stop.contactPhone !== "—" && <div className="relay-footer-sub">{stop.contactPhone}</div>}
+                                  </div>
+                                  <div><div><strong>Job #</strong> {job.code}</div></div>
+                                  <div>{stop.notes !== "—" ? stop.notes : "—"}</div>
+                                </div>
+                              </div>
                             )}
-                          </div>
-                          <div className="relay-stop-time">
-                            <strong>{stop.plannedDeparture !== "—" ? stop.plannedDeparture : "—"}</strong>
                           </div>
                         </div>
                       ))}
 
                       {/* Final Drop */}
-                      <div className="relay-stop-row">
-                        <div className="relay-stop-location">
-                          <span className="relay-stop-bubble">{totalStops}</span>
-                          <div>
-                            <strong>{abbrevAddr(job.dropAddress)}</strong>
-                            <small>{job.dropAddress !== "—" ? job.dropAddress : "Address not set"}</small>
-                            {job.deadline !== "—" && <small className="relay-dock-label">Deadline: {job.deadline}</small>}
+                      <div className="relay-stop-block">
+                        <div className="relay-stop-row">
+                          <div className="relay-stop-location">
+                            <span className="relay-stop-bubble">{totalStops}</span>
+                            <div>
+                              <strong>{abbrevAddr(job.dropAddress)}</strong>
+                              <small>{job.dropAddress !== "—" ? job.dropAddress : "Address not set"}</small>
+                              {job.deadline !== "—" && <small className="relay-dock-label">Deadline: {job.deadline}</small>}
+                            </div>
+                          </div>
+                          <div className="relay-stop-equipment">
+                            <span>Tractor ID <strong>{job.vehicleAssigned ? job.vehicle : "—"}</strong></span>
+                            <span className="relay-drop-trailer">
+                              <span className={`relay-dot${job.trailerAssigned ? " filled" : ""}`} />
+                              {job.trailerAssigned ? job.trailer : "No trailer"}
+                            </span>
+                            {job.loadWeightKg && <span>| {job.loadWeightKg} kg</span>}
+                            <span>Trailer Id <strong>{job.trailerAssigned ? job.trailer : "—"}</strong></span>
+                            {isCompleted && <span className="relay-live-badge success">Delivered</span>}
+                            <span className="relay-pod-status">POD: <strong>{job.podStatus}</strong></span>
+                            {driverStatusLabel && (
+                              <span className={`relay-driver-stop-status ${driverStatusToneVal}`}>{driverStatusLabel}</span>
+                            )}
+                          </div>
+                          <div className="relay-stop-time">
+                            <strong className={arrTimeTone}>
+                              {job.actualArrival && job.actualArrival !== "—"
+                                ? job.actualArrival
+                                : job.eta !== "—" ? job.eta : "TBD"}
+                            </strong>
+                            {job.eta !== "—" && job.actualArrival && job.actualArrival !== "—" && (
+                              <small className="relay-sch-time">Sch. {job.eta}</small>
+                            )}
+                            {!job.actualArrival && job.eta !== "—" && (
+                              <small className="relay-sch-time">Sch. {job.eta}</small>
+                            )}
+                            {isActive && (
+                              <button className="relay-report-delay-btn" type="button"
+                                onClick={e => { e.stopPropagation(); setDelayTarget(job); }}>
+                                Report delay
+                              </button>
+                            )}
+                          </div>
+                          <div className="relay-stop-time">
+                            <span className="relay-time-dash">—</span>
                           </div>
                         </div>
-                        <div className="relay-stop-equipment">
-                          <span>Tractor ID <strong>{job.vehicleAssigned ? job.vehicle : "—"}</strong></span>
-                          <span className="relay-drop-trailer">
-                            <span className={`relay-dot${job.trailerAssigned ? " filled" : ""}`} />
-                            Drop Trailer
-                          </span>
-                          <span>Trailer Id <strong>{job.trailerAssigned ? job.trailer : "—"}</strong></span>
-                          {isCompleted && <span className="relay-live-badge success">Delivered</span>}
-                          <span className="relay-pod-status">
-                            POD: <strong>{job.podStatus}</strong>
-                          </span>
-                          {driverStatusLabel && (
-                            <span className={`relay-driver-stop-status ${driverStatusToneVal}`}>{driverStatusLabel}</span>
+                        {/* Drop instructions */}
+                        <div className="relay-stop-instr-wrap">
+                          <button className="relay-stop-instr-toggle" type="button"
+                            onClick={() => toggleStopInstr(`${job.id}-drop`)}>
+                            {expandedStopInstr.has(`${job.id}-drop`) ? "▲" : "▼"} Pick-up/drop-off instructions
+                          </button>
+                          {expandedStopInstr.has(`${job.id}-drop`) && (
+                            <div className="relay-stop-instr-body">
+                              <div className="relay-stop-instr-head-row">
+                                <span>CONTACT</span>
+                                <span>REFERENCE #&apos;s</span>
+                                <span>INSTRUCTIONS</span>
+                              </div>
+                              <div className="relay-stop-instr-row">
+                                <div>
+                                  {job.customerContact !== "—" ? job.customerContact : "—"}
+                                  {job.customerPhone && <div className="relay-footer-sub">{job.customerPhone}</div>}
+                                </div>
+                                <div>
+                                  <div><strong>Job #</strong> {job.code}</div>
+                                  {job.routeCode && job.routeCode !== "—" && <div><strong>Route</strong> {job.routeCode}</div>}
+                                  {job.lane && job.lane !== "—" && <div><strong>Lane</strong> {job.lane}</div>}
+                                </div>
+                                <div>{job.dispatcherNotes !== "—" ? job.dispatcherNotes : job.specialInstructions !== "—" ? job.specialInstructions : "—"}</div>
+                              </div>
+                            </div>
                           )}
-                        </div>
-                        <div className="relay-stop-time">
-                          <strong className={arrTimeTone}>
-                            {job.actualArrival && job.actualArrival !== "—"
-                              ? job.actualArrival
-                              : job.eta !== "—" ? job.eta : "TBD"}
-                          </strong>
-                          {job.eta !== "—" && job.actualArrival && job.actualArrival !== "—" && (
-                            <small>Sch. {job.eta}</small>
-                          )}
-                          {isActive && (
-                            <button
-                              className="relay-report-delay-btn"
-                              type="button"
-                              onClick={e => { e.stopPropagation(); setDelayTarget(job); }}
-                            >
-                              Report Delay
-                            </button>
-                          )}
-                        </div>
-                        <div className="relay-stop-time">
-                          <span className="relay-time-dash">—</span>
                         </div>
                       </div>
                     </div>
@@ -1111,29 +1245,6 @@ export function JobsListPage() {
                       </div>
                     )}
 
-                    {/* ── Instructions toggle ── */}
-                    {(job.specialInstructions !== "—" || job.dispatcherNotes !== "—") && (
-                      <div className="relay-instructions-bar">
-                        <button
-                          className="relay-instructions-toggle"
-                          type="button"
-                          onClick={() => toggleInstructions(job.id)}
-                        >
-                          {isShowingInstructions ? "▲" : "▼"} Pick-up / drop-off instructions
-                        </button>
-                        {isShowingInstructions && (
-                          <div className="relay-instructions-body">
-                            {job.specialInstructions !== "—" && (
-                              <p><strong>Special instructions:</strong> {job.specialInstructions}</p>
-                            )}
-                            {job.dispatcherNotes !== "—" && (
-                              <p><strong>Dispatcher notes:</strong> {job.dispatcherNotes}</p>
-                            )}
-                          </div>
-                        )}
-                      </div>
-                    )}
-
                     {/* ── Quick dispatch controls ── */}
                     <div className="relay-dispatch-controls">
                       <div className="relay-dispatch-label">Quick Dispatch</div>
@@ -1202,42 +1313,53 @@ export function JobsListPage() {
                       </div>
                     </div>
 
-                    {/* ── Footer: Contact / Reference / Instructions ── */}
-                    <div className="relay-job-footer">
-                      <div className="relay-footer-section">
-                        <span className="relay-footer-label">Contact</span>
-                        <span>{job.customerContact !== "—" ? job.customerContact : job.customer}</span>
-                        <span className="relay-footer-sub">{job.customerPhone}</span>
-                      </div>
-                      <div className="relay-footer-section">
-                        <span className="relay-footer-label">Reference #</span>
-                        <span>{job.code}</span>
-                        {job.routeCode !== "—" && <span className="relay-footer-sub">{job.routeCode}</span>}
-                      </div>
-                      <div className="relay-footer-section">
-                        <span className="relay-footer-label">Load</span>
-                        <span>{loadIcon} {job.loadType}</span>
-                        {job.loadWeightKg && <span className="relay-footer-sub">{job.loadWeightKg} kg{job.loadVolumeCbm ? ` · ${job.loadVolumeCbm} cbm` : ""}</span>}
-                      </div>
-                      <div className="relay-footer-actions">
-                        <button className="header-action-button" type="button" onClick={() => navigate(`/admin/jobs/${job.id}`)}>
-                          Open Details
+                    {/* ── Relay-style bottom bar ── */}
+                    <div className="relay-bottom-bar">
+                      <div className="relay-bottom-left">
+                        {/* £ payout icon */}
+                        <button className="relay-bottom-icon-btn" type="button" title="Estimated payout"
+                          onClick={() => setNotesModalJob({ ...job, _openTab: "payout" })}>
+                          <svg viewBox="0 0 20 20" fill="none" width="18" height="18">
+                            <circle cx="10" cy="10" r="8.5" stroke="currentColor" strokeWidth="1.5"/>
+                            <text x="10" y="14.5" textAnchor="middle" fontSize="10" fontWeight="700" fill="currentColor">£</text>
+                          </svg>
                         </button>
-                        <button className="header-action-button" type="button" onClick={() => navigate(`/admin/jobs/${job.id}/edit`)}>
-                          Edit
+                        {/* 📍 details icon */}
+                        <button className="relay-bottom-icon-btn" type="button" title="View job details"
+                          onClick={() => navigate(`/admin/jobs/${job.id}`)}>
+                          <svg viewBox="0 0 20 20" fill="none" width="18" height="18">
+                            <path d="M10 2a5.5 5.5 0 0 1 5.5 5.5c0 3.5-5.5 10-5.5 10S4.5 11 4.5 7.5A5.5 5.5 0 0 1 10 2z" stroke="currentColor" strokeWidth="1.5"/>
+                            <circle cx="10" cy="7.5" r="1.8" stroke="currentColor" strokeWidth="1.5"/>
+                          </svg>
+                        </button>
+                        {/* 💬 notes icon */}
+                        <button className="relay-bottom-icon-btn" type="button" title="Job notes"
+                          onClick={() => setNotesModalJob(job)}>
+                          <svg viewBox="0 0 20 20" fill="none" width="18" height="18">
+                            <path d="M17 2H3a1 1 0 00-1 1v11a1 1 0 001 1h2v3l4-3h8a1 1 0 001-1V3a1 1 0 00-1-1z" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round"/>
+                            <path d="M6 7h8M6 10h5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+                          </svg>
+                        </button>
+                        <button className="relay-bottom-link" type="button"
+                          onClick={() => navigate(`/admin/jobs/${job.id}`)}>
+                          View all shipment details
+                        </button>
+                      </div>
+                      <div className="relay-bottom-right">
+                        <button className="relay-bottom-edit-btn" type="button"
+                          onClick={() => navigate(`/admin/jobs/${job.id}/edit`)}>
+                          Edit Job
                         </button>
                         {(isActive || isLoading) && (
-                          <button className="header-action-button" type="button" onClick={() => setDelayTarget(job)}>
-                            Report Delay
+                          <button className="relay-bottom-delay-btn" type="button"
+                            onClick={() => setDelayTarget(job)}>
+                            Report delay
                           </button>
                         )}
                         {!isBlocked && !isCompleted && (
-                          <button
-                            className="header-action-button danger"
-                            type="button"
+                          <button className="relay-bottom-block-btn" type="button"
                             disabled={busyId === job.id}
-                            onClick={() => setBlockTarget(job)}
-                          >
+                            onClick={() => setBlockTarget(job)}>
                             {busyId === job.id ? "Saving…" : "Block"}
                           </button>
                         )}

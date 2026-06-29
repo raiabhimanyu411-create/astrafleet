@@ -207,6 +207,7 @@ async function ensureJobCostSchema() {
   await addColumnIfMissing("trips", "total_job_duration_mins", "INT DEFAULT NULL");
   await addColumnIfMissing("trips", "estimated_distance_km", "DECIMAL(10,2) DEFAULT NULL");
   await addColumnIfMissing("trips", "estimated_eta_mins", "INT DEFAULT NULL");
+  await addColumnIfMissing("trips", "delay_reason", "TEXT DEFAULT NULL");
   jobCostSchemaReady = true;
 }
 
@@ -546,7 +547,7 @@ exports.listJobs = async (req, res) => {
               t.planned_departure, t.eta, t.delivery_deadline, t.actual_departure, t.actual_arrival,
               t.dock_window, t.freight_amount_gbp, t.load_type, t.load_weight_kg, t.load_volume_cbm,
               t.vehicle_type_requirement, t.load_description, t.special_instructions, t.dispatcher_notes,
-              t.pod_status, t.pickup_address, t.drop_address, t.client_phone, t.created_at, t.cancellation_reason,
+              t.pod_status, t.pickup_address, t.drop_address, t.client_phone, t.created_at, t.cancellation_reason, t.delay_reason,
               t.loading_done_time, t.loading_duration_mins, t.unloading_duration_mins, t.calculated_arrival,
               t.calculated_unload_end, t.total_job_duration_mins,
               c.company_name as customer_name, c.contact_name as customer_contact, c.phone as customer_phone,
@@ -676,6 +677,7 @@ exports.listJobs = async (req, res) => {
           deadline: fmtDateTime(r.delivery_deadline),
           deadlineRaw: rawDateTime(r.delivery_deadline),
           actualDeparture: fmtDateTime(r.actual_departure),
+          actualDepartureRaw: rawDateTime(r.actual_departure),
           actualArrival: fmtDateTime(r.actual_arrival),
           actualArrivalRaw: rawDateTime(r.actual_arrival),
           etaRisk: r.eta && new Date(r.eta).getTime() < Date.now() && ["planned", "loading", "active"].includes(r.dispatch_status),
@@ -711,6 +713,7 @@ exports.listJobs = async (req, res) => {
             notes: s.notes || "—"
           })),
           cancellationReason: r.cancellation_reason || "",
+          delayReason: r.delay_reason || "",
           loadingDoneTime: rawDateTime(r.loading_done_time),
           loadingDurationMins: loadingMins,
           unloadingDurationMins: unloadingMins,
@@ -1466,6 +1469,7 @@ exports.updateJobStatus = async (req, res) => {
     if (status === "blocked")   updates.cancellation_reason = reason || null;
     if (status === "failed")    updates.cancellation_reason = reason || null;
     if (status === "cancelled") updates.cancellation_reason = reason || null;
+    if (req.body.delay_reason)  updates.delay_reason = req.body.delay_reason;
 
     const fields = Object.keys(updates).map(k => `${k}=?`).join(", ");
     await db.query(`UPDATE trips SET ${fields} WHERE id=? AND deleted_at IS NULL`, [...Object.values(updates), id]);
