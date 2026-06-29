@@ -812,6 +812,21 @@ export function JobsListPage() {
                     {job.code}
                   </button>
 
+                  {(job.reference || job.loadId) && (
+                    <div style={{ display: "flex", alignItems: "center", gap: 8, marginLeft: 4 }}>
+                      {job.reference && (
+                        <span style={{ fontSize: "0.72rem", fontWeight: 600, color: "#2563eb", background: "#eff6ff", border: "1px solid #bfdbfe", borderRadius: 20, padding: "2px 8px", whiteSpace: "nowrap" }}>
+                          Ref: {job.reference}
+                        </span>
+                      )}
+                      {job.loadId && (
+                        <span style={{ fontSize: "0.72rem", fontWeight: 600, color: "#059669", background: "#ecfdf5", border: "1px solid #a7f3d0", borderRadius: 20, padding: "2px 8px", whiteSpace: "nowrap" }}>
+                          Load: {job.loadId}
+                        </span>
+                      )}
+                    </div>
+                  )}
+
                   {/* Route visualization */}
                   <div className="relay-route-vis">
                     <div className="relay-stop-node">
@@ -1170,24 +1185,6 @@ export function JobsListPage() {
                         </div>
                       </div>
                     </div>
-
-                    {/* ── Reference / Load ID bar ── */}
-                    {(job.reference || job.loadId) && (
-                      <div style={{ display: "flex", alignItems: "center", gap: 20, padding: "8px 16px", background: "#f8fafc", borderTop: "1px solid #e2e8f0", fontSize: "0.82rem", color: "#374151" }}>
-                        {job.reference && (
-                          <span>
-                            <span style={{ fontWeight: 700, color: "#6b7280", textTransform: "uppercase", fontSize: "0.7rem", marginRight: 6 }}>Reference</span>
-                            <strong style={{ color: "#0f172a" }}>{job.reference}</strong>
-                          </span>
-                        )}
-                        {job.loadId && (
-                          <span>
-                            <span style={{ fontWeight: 700, color: "#6b7280", textTransform: "uppercase", fontSize: "0.7rem", marginRight: 6 }}>Load ID</span>
-                            <strong style={{ color: "#0f172a" }}>{job.loadId}</strong>
-                          </span>
-                        )}
-                      </div>
-                    )}
 
                     {/* ── Time Calculation ── */}
                     {(job.loadingDoneTime || job.calculatedArrival) && (
