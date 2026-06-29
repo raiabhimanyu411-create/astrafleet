@@ -559,28 +559,14 @@ export function JobFormPage() {
             <div className="af-section">
               <p className="af-section-title">Route</p>
               <div className="af-grid-2">
-                <Field label="Saved Route" hint="Select a route to auto-fill pickup, delivery, distance, and ETA.">
-                  <select className="af-select" value={fields.route_id} onChange={e => handleRouteChange(e.target.value)}>
-                    <option value="">Custom Pickup And Delivery</option>
-                    {formData.routes.map(r => (
-                      <option key={r.id} value={r.id}>{r.origin_hub} → {r.destination_hub}</option>
-                    ))}
-                  </select>
-                </Field>
                 <Field label="Arrival Date & Time" hint="When the truck reaches pickup/loading.">
                   <input className="af-input" type="datetime-local" value={fields.planned_departure} onChange={e => handleArrivalChange(e.target.value)} />
                 </Field>
                 <Field label="Departure Time" hint="Same date as pickup arrival. Used for ETA and cost.">
                   <input className="af-input" type="time" value={toInputTime(fields.loading_done_time)} onChange={e => handleRouteDepartureChange(e.target.value)} />
                 </Field>
-                <Field label="Pickup Address" required error={fieldErrors.pickup_address}>
-                  {pickupOptions.length > 0 && (
-                    <select className="af-select" style={{ marginBottom: 8 }} value="" onChange={e => e.target.value && set("pickup_address", e.target.value)}>
-                      <option value="">Choose Saved Pickup Address</option>
-                      {pickupOptions.map((address, index) => <option key={`${address}-${index}`} value={address}>{address}</option>)}
-                    </select>
-                  )}
-                  <textarea className="af-input" style={{ minHeight: 72, resize: "vertical" }} placeholder="Full pickup address" value={fields.pickup_address} onChange={e => set("pickup_address", e.target.value)} aria-invalid={Boolean(fieldErrors.pickup_address)} />
+                <Field label="Collection Address" required error={fieldErrors.pickup_address}>
+                  <textarea className="af-input" style={{ minHeight: 72, resize: "vertical" }} placeholder="Full collection address" value={fields.pickup_address} onChange={e => set("pickup_address", e.target.value)} aria-invalid={Boolean(fieldErrors.pickup_address)} />
                 </Field>
                 <Field label="Delivery Address" required error={fieldErrors.drop_address}>
                   {dropOptions.length > 0 && (
