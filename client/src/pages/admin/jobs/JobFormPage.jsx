@@ -558,7 +558,7 @@ export function JobFormPage() {
 
             <div className="af-section">
               <p className="af-section-title">Route</p>
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 16, marginBottom: 16, paddingBottom: 16, borderBottom: "1px solid #e2e8f0" }}>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 16, paddingBottom: 16, borderBottom: "1px solid #e2e8f0" }}>
                 <Field label="Reference">
                   <input className="af-input" type="text" placeholder="e.g. DE_1056839_1" value={fields.reference} onChange={e => set("reference", e.target.value)} />
                 </Field>
@@ -570,6 +570,9 @@ export function JobFormPage() {
                     <span className="af-prefix">£</span>
                     <input className="af-input af-input-prefixed" type="number" min="0" step="0.01" placeholder="e.g. 1800.00" value={fields.freight_amount} onChange={e => set("freight_amount", e.target.value)} />
                   </div>
+                </Field>
+                <Field label="Goods / Load Details" required error={fieldErrors.load_description}>
+                  <textarea className="af-input" style={{ minHeight: 72, resize: "vertical" }} placeholder="e.g. 20 pallets of retail goods" value={fields.load_description} onChange={e => set("load_description", e.target.value)} aria-invalid={Boolean(fieldErrors.load_description)} />
                 </Field>
               </div>
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 16 }}>
@@ -646,9 +649,6 @@ export function JobFormPage() {
             <div className="af-section">
               <p className="af-section-title">Load & Assignment</p>
               <div className="af-grid-2">
-                <Field label="Goods / Load Details" required error={fieldErrors.load_description}>
-                  <textarea className="af-input" style={{ minHeight: 78, resize: "vertical" }} placeholder="e.g. 20 pallets of retail goods" value={fields.load_description} onChange={e => set("load_description", e.target.value)} aria-invalid={Boolean(fieldErrors.load_description)} />
-                </Field>
                 <Field label="Assign Driver">
                   <select className="af-select" value={fields.driver_id} onChange={e => set("driver_id", e.target.value)}>
                     <option value="">Assign Later</option>
