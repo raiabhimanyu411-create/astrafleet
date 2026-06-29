@@ -508,7 +508,8 @@ export function JobsListPage() {
 
       if (!query) return true;
       return [job.code, job.customer, job.driver, job.vehicle, job.trailer,
-              job.pickupAddress, job.dropAddress, job.lane, job.routeCode, job.loadType]
+              job.pickupAddress, job.dropAddress, job.lane, job.routeCode, job.loadType,
+              job.reference, job.loadId]
         .some(v => String(v || "").toLowerCase().includes(query));
     });
   }, [data, tab, weekRange, search, showUnassignedOnly, statusFilter, priorityFilter, attentionFilter]);
@@ -645,7 +646,7 @@ export function JobsListPage() {
             </svg>
             <input
               className="relay-search-input"
-              placeholder="Search by IDs, location, drivers"
+              placeholder="Search by IDs, reference, load ID, location, drivers"
               type="search"
               value={search}
               onChange={e => setSearch(e.target.value)}
@@ -990,19 +991,17 @@ export function JobsListPage() {
                             )}
                           </div>
                           <div className="relay-stop-time">
-                            <span className="relay-time-dash">—</span>
+                            <strong>{job.departure !== "—" ? job.departure : "—"}</strong>
+                            {job.departure !== "—" && <small className="relay-sch-time">Sch. {job.departure}</small>}
                           </div>
                           <div className="relay-stop-time">
                             <strong className={depTimeTone}>
                               {job.actualDeparture && job.actualDeparture !== "—"
                                 ? job.actualDeparture
-                                : job.departure !== "—" ? job.departure : "TBD"}
+                                : job.loadingDoneTime ? fmtTimeFull(job.loadingDoneTime) : "TBD"}
                             </strong>
-                            {job.departure !== "—" && job.actualDeparture && job.actualDeparture !== "—" && (
-                              <small className="relay-sch-time">Sch. {job.departure}</small>
-                            )}
-                            {!job.actualDeparture && job.departure !== "—" && (
-                              <small className="relay-sch-time">Sch. {job.departure}</small>
+                            {job.loadingDoneTime && job.actualDeparture && job.actualDeparture !== "—" && (
+                              <small className="relay-sch-time">Sch. {fmtTimeFull(job.loadingDoneTime)}</small>
                             )}
                             {(isActive || isLoading) && (
                               <button className="relay-report-delay-btn" type="button"
@@ -1217,6 +1216,13 @@ export function JobsListPage() {
                           <span className="relay-time-calc-label">Total Job</span>
                           <strong>{fmtMins(job.totalJobDurationMins)}</strong>
                         </div>
+                        {job.economics?.distanceMiles && (routeStops.length + 1) > 0 && (
+                          <div className="relay-time-calc-item" style={{ marginLeft: 16, borderLeft: "1px solid #e2e8f0", paddingLeft: 16 }}>
+                            <span className="relay-time-calc-label">Per Drop</span>
+                            <strong>{(job.economics.distanceMiles / (routeStops.length + 1)).toFixed(1)} mi</strong>
+                            <small>{routeStops.length + 1} drop{routeStops.length + 1 > 1 ? "s" : ""}</small>
+                          </div>
+                        )}
                       </div>
                     )}
 
