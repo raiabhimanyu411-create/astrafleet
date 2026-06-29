@@ -49,6 +49,7 @@ const driverStatusTone = {
 let driverOpsSchemaReady = false;
 let softDeleteSchemaReady = false;
 let jobCostSchemaReady = false;
+let referenceSchemaReady = false;
 const DEFAULT_LOADING_MINS = 90;
 const DEFAULT_UNLOADING_MINS = 90;
 const FLEET_COST_PER_HOUR_GBP = 12.05;
@@ -209,6 +210,25 @@ async function ensureJobCostSchema() {
   await addColumnIfMissing("trips", "estimated_eta_mins", "INT DEFAULT NULL");
   await addColumnIfMissing("trips", "delay_reason", "TEXT DEFAULT NULL");
   jobCostSchemaReady = true;
+}
+
+async function ensureReferenceSchema() {
+  if (referenceSchemaReady) return;
+  await addColumnIfMissing("trips", "reference", "VARCHAR(120) DEFAULT NULL");
+  await addColumnIfMissing("trips", "load_id", "VARCHAR(80) DEFAULT NULL");
+  referenceSchemaReady = true;
+}
+
+async function generateJobCode(conn) {
+  const now = new Date();
+  const year = now.getFullYear();
+  const dateToken = `${now.getMonth() + 1}${now.getDate()}`;
+  const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate()).toISOString().slice(0, 19).replace("T", " ");
+  const [[{ count }]] = await conn.query(
+    `SELECT COUNT(*) AS count FROM trips WHERE created_at >= ?`,
+    [startOfDay]
+  );
+  return `${year}-${dateToken}-${Number(count) + 1}`;
 }
 
 function extractUkPostcode(value) {
@@ -503,6 +523,7 @@ exports.listJobs = async (req, res) => {
   try {
     await ensureDriverOpsSchema();
     await ensureJobCostSchema();
+    await ensureReferenceSchema();
 
     const { status, priority, customer_id, search } = req.query;
 
@@ -549,7 +570,7 @@ exports.listJobs = async (req, res) => {
               t.vehicle_type_requirement, t.load_description, t.special_instructions, t.dispatcher_notes,
               t.pod_status, t.pickup_address, t.drop_address, t.client_phone, t.created_at, t.cancellation_reason, t.delay_reason,
               t.loading_done_time, t.loading_duration_mins, t.unloading_duration_mins, t.calculated_arrival,
-              t.calculated_unload_end, t.total_job_duration_mins,
+              t.calculated_unload_end, t.total_job_duration_mins, t.reference, t.load_id,
               c.company_name as customer_name, c.contact_name as customer_contact, c.phone as customer_phone,
               r.route_code, r.origin_hub, r.destination_hub,
               COALESCE(t.estimated_distance_km, r.distance_km) AS distance_km,
@@ -712,6 +733,8 @@ exports.listJobs = async (req, res) => {
             status: s.status || "pending",
             notes: s.notes || "—"
           })),
+          reference: r.reference || "",
+          loadId: r.load_id || "",
           cancellationReason: r.cancellation_reason || "",
           delayReason: r.delay_reason || "",
           loadingDoneTime: rawDateTime(r.loading_done_time),
@@ -880,6 +903,7 @@ exports.getJobById = async (req, res) => {
     await ensureDriverOpsSchema();
     await ensureSoftDeleteSchema();
     await ensureJobCostSchema();
+    await ensureReferenceSchema();
 
     const { id } = req.params;
 
@@ -1008,7 +1032,9 @@ exports.getJobById = async (req, res) => {
         vehicleRequirement: j.vehicle_type_requirement || "—",
         description: j.load_description || "—",
         freight: fmtAmount(j.freight_amount_gbp),
-        freightValue: Number(j.freight_amount_gbp || 0)
+        freightValue: Number(j.freight_amount_gbp || 0),
+        reference: j.reference || "—",
+        loadId: j.load_id || "—"
       },
       dispatcherNotes: j.dispatcher_notes || "—",
 
@@ -1115,6 +1141,7 @@ exports.createJob = async (req, res) => {
     await ensureDriverOpsSchema();
     await ensureSoftDeleteSchema();
     await ensureJobCostSchema();
+    await ensureReferenceSchema();
     await conn.beginTransaction();
 
     const {
@@ -1127,6 +1154,7 @@ exports.createJob = async (req, res) => {
       loading_done_time, loading_duration_mins, unloading_duration_mins,
       estimated_distance_km, estimated_eta_mins,
       calculated_arrival, calculated_unload_end, total_job_duration_mins,
+      reference, load_id,
       stops = []
     } = req.body;
 
@@ -1152,7 +1180,7 @@ exports.createJob = async (req, res) => {
       }
     }
 
-    const jobCode = `JOB-${Date.now().toString().slice(-7)}`;
+    const jobCode = await generateJobCode(conn);
 
     const [result] = await conn.query(
       `INSERT INTO trips
@@ -1163,8 +1191,9 @@ exports.createJob = async (req, res) => {
           load_description, freight_amount_gbp, special_instructions, dispatcher_notes,
           driver_job_status,
           loading_done_time, loading_duration_mins, unloading_duration_mins, estimated_distance_km, estimated_eta_mins,
-          calculated_arrival, calculated_unload_end, total_job_duration_mins)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'planned', ?, ?, ?, ?, 'pending', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          calculated_arrival, calculated_unload_end, total_job_duration_mins,
+          reference, load_id)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'planned', ?, ?, ?, ?, 'pending', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         jobCode,
         customer_id || null,
@@ -1197,7 +1226,9 @@ exports.createJob = async (req, res) => {
         estimated_eta_mins ? Number(estimated_eta_mins) : null,
         calculated_arrival || null,
         calculated_unload_end || null,
-        total_job_duration_mins ? Number(total_job_duration_mins) : null
+        total_job_duration_mins ? Number(total_job_duration_mins) : null,
+        reference || null,
+        load_id || null
       ]
     );
 
@@ -1255,6 +1286,7 @@ exports.updateJob = async (req, res) => {
     await ensureDriverOpsSchema();
     await ensureSoftDeleteSchema();
     await ensureJobCostSchema();
+    await ensureReferenceSchema();
     await conn.beginTransaction();
     const { id } = req.params;
 
@@ -1274,6 +1306,7 @@ exports.updateJob = async (req, res) => {
       loading_done_time, loading_duration_mins, unloading_duration_mins,
       estimated_distance_km, estimated_eta_mins,
       calculated_arrival, calculated_unload_end, total_job_duration_mins,
+      reference, load_id,
       stops = []
     } = req.body;
 
@@ -1342,7 +1375,8 @@ exports.updateJob = async (req, res) => {
          load_description=?, freight_amount_gbp=?, special_instructions=?, dispatcher_notes=?,
          driver_job_status=IF(? = 1, 'offered', driver_job_status),
          loading_done_time=?, loading_duration_mins=?, unloading_duration_mins=?, estimated_distance_km=?, estimated_eta_mins=?,
-         calculated_arrival=?, calculated_unload_end=?, total_job_duration_mins=?
+         calculated_arrival=?, calculated_unload_end=?, total_job_duration_mins=?,
+         reference=?, load_id=?
        WHERE id=? AND deleted_at IS NULL`,
       [
         customer_id || null, resolvedClientName, client_phone || null, route_id || null,
@@ -1368,6 +1402,8 @@ exports.updateJob = async (req, res) => {
         calculated_arrival || null,
         calculated_unload_end || null,
         total_job_duration_mins ? Number(total_job_duration_mins) : null,
+        reference || null,
+        load_id || null,
         id
       ]
     );

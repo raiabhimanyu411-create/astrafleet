@@ -1017,6 +1017,8 @@ export function JobsListPage() {
                                 </div>
                                 <div>
                                   <div><strong>Job #</strong> {job.code}</div>
+                                  {job.reference && <div><strong>Ref</strong> {job.reference}</div>}
+                                  {job.loadId && <div><strong>Load ID</strong> {job.loadId}</div>}
                                   {job.routeCode && job.routeCode !== "—" && <div><strong>Route</strong> {job.routeCode}</div>}
                                   {job.lane && job.lane !== "—" && <div><strong>Lane</strong> {job.lane}</div>}
                                 </div>
@@ -1156,6 +1158,8 @@ export function JobsListPage() {
                                 </div>
                                 <div>
                                   <div><strong>Job #</strong> {job.code}</div>
+                                  {job.reference && <div><strong>Ref</strong> {job.reference}</div>}
+                                  {job.loadId && <div><strong>Load ID</strong> {job.loadId}</div>}
                                   {job.routeCode && job.routeCode !== "—" && <div><strong>Route</strong> {job.routeCode}</div>}
                                   {job.lane && job.lane !== "—" && <div><strong>Lane</strong> {job.lane}</div>}
                                 </div>

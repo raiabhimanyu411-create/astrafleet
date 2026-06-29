@@ -23,7 +23,8 @@ const emptyFields = {
   pickup_address: "",
   drop_address: "",
   planned_departure: "",
-  delivery_deadline: "",
+  reference: "",
+  load_id: "",
   load_description: "",
   freight_amount: "",
   driver_id: "",
@@ -185,7 +186,8 @@ export function JobFormPage() {
             pickup_address: j.route?.pickupAddress || "",
             drop_address: j.route?.dropAddress || "",
             planned_departure: j.form?.planned_departure || "",
-            delivery_deadline: j.form?.delivery_deadline || "",
+            reference: j.load?.reference !== "—" ? j.load?.reference || "" : "",
+            load_id: j.load?.loadId !== "—" ? j.load?.loadId || "" : "",
             load_description: j.load?.description !== "—" ? j.load?.description || "" : "",
             freight_amount: j.load?.freight !== "—" ? (j.load?.freight || "").replace("£", "").replace(/,/g, "") : "",
             driver_id: j.form?.driver_id ? String(j.form.driver_id) : "",
@@ -265,13 +267,11 @@ export function JobFormPage() {
     const route = formData.routes.find(r => String(r.id) === routeId);
     setFields(prev => {
       const routeStartTime = prev.loading_done_time || prev.planned_departure;
-      const suggestedDeadline = route ? addHours(routeStartTime, route.standard_eta_hours) : "";
       return {
         ...prev,
         route_id: routeId,
         pickup_address: route ? route.origin_hub : prev.pickup_address,
-        drop_address: route ? route.destination_hub : prev.drop_address,
-        delivery_deadline: prev.delivery_deadline || suggestedDeadline
+        drop_address: route ? route.destination_hub : prev.drop_address
       };
     });
     setRouteEstimate(null);
@@ -286,8 +286,7 @@ export function JobFormPage() {
       const currentValidStops = stops.filter(s => s.address.trim()).length;
       return {
         ...prev,
-        planned_departure: value,
-        delivery_deadline: prev.delivery_deadline || (route ? addHours(routeStartTime, route.standard_eta_hours, currentValidStops) : "")
+        planned_departure: value
       };
     });
   }
@@ -297,15 +296,9 @@ export function JobFormPage() {
       const value = combineDateAndTime(prev.planned_departure, timeValue);
       const route = formData.routes.find(r => String(r.id) === prev.route_id);
       const currentValidStops = stops.filter(s => s.address.trim()).length;
-      const suggestedDeadline = route
-        ? addHours(value, route.standard_eta_hours, currentValidStops)
-        : routeEstimate?.durationMins
-          ? addMinutes(value, routeEstimate.durationMins, 0)
-          : "";
       return {
         ...prev,
-        loading_done_time: value,
-        delivery_deadline: prev.delivery_deadline || suggestedDeadline
+        loading_done_time: value
       };
     });
   }
@@ -411,10 +404,6 @@ export function JobFormPage() {
     try {
       const estimate = await fetchRouteEstimate();
       setRouteEstimate(estimate);
-      setFields(prev => ({
-        ...prev,
-        delivery_deadline: prev.delivery_deadline || ((prev.loading_done_time || prev.planned_departure) ? addMinutes(prev.loading_done_time || prev.planned_departure, estimate.durationMins, 0) : "")
-      }));
     } catch (err) {
       setEstimateErr(err?.response?.data?.message || err?.message || "Could not calculate distance from postcodes.");
     } finally {
@@ -473,7 +462,8 @@ export function JobFormPage() {
       pickup_address: fields.pickup_address || null,
       drop_address: fields.drop_address || null,
       planned_departure: fields.planned_departure || null,
-      delivery_deadline: fields.delivery_deadline || submitEtaPreview || null,
+      reference: fields.reference || null,
+      load_id: fields.load_id || null,
       load_type: "general",
       load_description: fields.load_description || null,
       freight_amount: fields.freight_amount ? Number(fields.freight_amount) : null,
@@ -654,16 +644,17 @@ export function JobFormPage() {
                 )}
               </div>
 
-              <div className="af-grid-2" style={{ marginTop: 16 }}>
-                <Field label="Delivery Deadline" hint="Auto-filled from route ETA. You can change it.">
-                  <input className="af-input" type="datetime-local" value={fields.delivery_deadline} onChange={e => set("delivery_deadline", e.target.value)} />
-                </Field>
-              </div>
             </div>
 
             <div className="af-section">
               <p className="af-section-title">Load & Assignment</p>
               <div className="af-grid-2">
+                <Field label="Reference">
+                  <input className="af-input" type="text" placeholder="e.g. DE_1056839_1" value={fields.reference} onChange={e => set("reference", e.target.value)} />
+                </Field>
+                <Field label="Load ID">
+                  <input className="af-input" type="text" placeholder="e.g. 656-953" value={fields.load_id} onChange={e => set("load_id", e.target.value)} />
+                </Field>
                 <Field label="Goods / Load Details" required error={fieldErrors.load_description}>
                   <textarea className="af-input" style={{ minHeight: 78, resize: "vertical" }} placeholder="e.g. 20 pallets of retail goods" value={fields.load_description} onChange={e => set("load_description", e.target.value)} aria-invalid={Boolean(fieldErrors.load_description)} />
                 </Field>
