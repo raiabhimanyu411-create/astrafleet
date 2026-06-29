@@ -572,7 +572,7 @@ export function JobFormPage() {
                   </div>
                 </Field>
                 <Field label="Goods / Load Details" required error={fieldErrors.load_description}>
-                  <textarea className="af-input" style={{ minHeight: 72, resize: "vertical" }} placeholder="e.g. 20 pallets of retail goods" value={fields.load_description} onChange={e => set("load_description", e.target.value)} aria-invalid={Boolean(fieldErrors.load_description)} />
+                  <textarea className="af-input" style={{ minHeight: 38, maxHeight: 38, resize: "none", overflow: "hidden" }} placeholder="e.g. 20 pallets of retail goods" value={fields.load_description} onChange={e => set("load_description", e.target.value)} aria-invalid={Boolean(fieldErrors.load_description)} />
                 </Field>
               </div>
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 16 }}>
