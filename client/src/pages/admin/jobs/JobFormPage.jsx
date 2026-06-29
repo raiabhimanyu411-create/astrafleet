@@ -558,6 +558,14 @@ export function JobFormPage() {
 
             <div className="af-section">
               <p className="af-section-title">Route</p>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 16, paddingBottom: 16, borderBottom: "1px solid #e2e8f0" }}>
+                <Field label="Reference">
+                  <input className="af-input" type="text" placeholder="e.g. DE_1056839_1" value={fields.reference} onChange={e => set("reference", e.target.value)} />
+                </Field>
+                <Field label="Load ID">
+                  <input className="af-input" type="text" placeholder="e.g. 656-953" value={fields.load_id} onChange={e => set("load_id", e.target.value)} />
+                </Field>
+              </div>
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 16 }}>
                 <Field label="Collection Address" required error={fieldErrors.pickup_address}>
                   <textarea className="af-input" style={{ minHeight: 72, resize: "vertical" }} placeholder="Full collection address" value={fields.pickup_address} onChange={e => set("pickup_address", e.target.value)} aria-invalid={Boolean(fieldErrors.pickup_address)} />
@@ -632,12 +640,6 @@ export function JobFormPage() {
             <div className="af-section">
               <p className="af-section-title">Load & Assignment</p>
               <div className="af-grid-2">
-                <Field label="Reference">
-                  <input className="af-input" type="text" placeholder="e.g. DE_1056839_1" value={fields.reference} onChange={e => set("reference", e.target.value)} />
-                </Field>
-                <Field label="Load ID">
-                  <input className="af-input" type="text" placeholder="e.g. 656-953" value={fields.load_id} onChange={e => set("load_id", e.target.value)} />
-                </Field>
                 <Field label="Goods / Load Details" required error={fieldErrors.load_description}>
                   <textarea className="af-input" style={{ minHeight: 78, resize: "vertical" }} placeholder="e.g. 20 pallets of retail goods" value={fields.load_description} onChange={e => set("load_description", e.target.value)} aria-invalid={Boolean(fieldErrors.load_description)} />
                 </Field>
