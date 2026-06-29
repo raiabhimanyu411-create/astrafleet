@@ -964,11 +964,11 @@ export function JobsListPage() {
                         <span>Departure</span>
                       </div>
 
-                      {/* Stop 1 — Pickup */}
+                      {/* Pickup — Collection */}
                       <div className="relay-stop-block">
                         <div className="relay-stop-row">
                           <div className="relay-stop-location">
-                            <span className="relay-stop-bubble">1</span>
+                            <span className="relay-stop-bubble" style={{ background: "#64748b", fontSize: "0.6rem" }}>C</span>
                             <div>
                               <strong>{abbrevAddr(job.pickupAddress)}</strong>
                               <small>{job.pickupAddress !== "—" ? job.pickupAddress : "Address not set"}</small>
@@ -1105,11 +1105,11 @@ export function JobsListPage() {
                         </div>
                       ))}
 
-                      {/* Final Drop */}
+                      {/* Final Drop — Stop 1 */}
                       <div className="relay-stop-block">
                         <div className="relay-stop-row">
                           <div className="relay-stop-location">
-                            <span className="relay-stop-bubble">{totalStops}</span>
+                            <span className="relay-stop-bubble">1</span>
                             <div>
                               <strong>{abbrevAddr(job.dropAddress)}</strong>
                               <small>{job.dropAddress !== "—" ? job.dropAddress : "Address not set"}</small>
