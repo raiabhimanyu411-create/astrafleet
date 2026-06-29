@@ -492,7 +492,7 @@ exports.estimateRouteFromAddresses = async (req, res) => {
 
     const settingsMap = await getSettingsMap();
     const settings = { avg_speed_mph: parseFloat(settingsMap.avg_speed_mph) };
-    const postcodes = [pickupPostcode, ...stopPostcodes, dropPostcode];
+    const postcodes = [pickupPostcode, dropPostcode, ...stopPostcodes];
     const points = await Promise.all(postcodes.map(postcode => lookupPostcode(postcode)));
 
     if (points.some(point => !point)) {
