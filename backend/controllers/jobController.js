@@ -363,9 +363,7 @@ async function backfillTiming(row, settings) {
   if (Number.isNaN(departure.getTime())) return row;
 
   const distanceMiles = Number(row.distance_km) * 0.621371;
-  const travelMins = row.standard_eta_hours
-    ? Math.round(Number(row.standard_eta_hours) * 60)
-    : Math.round((distanceMiles / Number(settings?.avg_speed_mph || 40)) * 60);
+  const travelMins = Math.round((distanceMiles / Number(settings?.avg_speed_mph || 40)) * 60);
   const loadingMins = effectiveLoadingMins(row);
   const unloadingMins = effectiveUnloadingMins(row);
   const calculatedArrival = new Date(departure.getTime() + travelMins * 60000);
