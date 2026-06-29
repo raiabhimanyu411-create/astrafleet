@@ -1044,67 +1044,6 @@ export function JobsListPage() {
                         </div>
                       </div>
 
-                      {/* Intermediate stops */}
-                      {routeStops.map((stop, index) => (
-                        <div className="relay-stop-block" key={stop.id || `${job.id}-stop-${index}`}>
-                          <div className="relay-stop-row">
-                            <div className="relay-stop-location">
-                              <span className="relay-stop-bubble">{index + 2}</span>
-                              <div>
-                                <strong>{abbrevAddr(stop.address)}</strong>
-                                <small>{stop.address !== "—" ? stop.address : "Address not set"}</small>
-                                <small className="relay-dock-label">
-                                  {(stop.type || "stop").replace(/^./, c => c.toUpperCase())} stop{stop.status ? ` · ${stop.status}` : ""}
-                                </small>
-                              </div>
-                            </div>
-                            <div className="relay-stop-equipment">
-                              <span>Stop type <strong>{stop.type || "—"}</strong></span>
-                              <span>Contact <strong>{stop.contactName !== "—" ? stop.contactName : "—"}</strong></span>
-                              {stop.contactPhone !== "—" && <span>Phone <strong>{stop.contactPhone}</strong></span>}
-                            </div>
-                            <div className="relay-stop-time">
-                              <strong>{stop.actualArrival !== "—" ? stop.actualArrival : stop.plannedArrival !== "—" ? stop.plannedArrival : "TBD"}</strong>
-                              {stop.actualArrival !== "—" && stop.plannedArrival !== "—" && (
-                                <small className="relay-sch-time">Sch. {stop.plannedArrival}</small>
-                              )}
-                              {stop.actualArrival === "—" && stop.plannedArrival !== "—" && (
-                                <small className="relay-sch-time">Sch. {stop.plannedArrival}</small>
-                              )}
-                            </div>
-                            <div className="relay-stop-time">
-                              <strong>{stop.plannedDeparture !== "—" ? stop.plannedDeparture : "—"}</strong>
-                              {stop.plannedDeparture !== "—" && (
-                                <small className="relay-sch-time">Sch. {stop.plannedDeparture}</small>
-                              )}
-                            </div>
-                          </div>
-                          <div className="relay-stop-instr-wrap">
-                            <button className="relay-stop-instr-toggle" type="button"
-                              onClick={() => toggleStopInstr(`${job.id}-stop-${stop.id}`)}>
-                              {expandedStopInstr.has(`${job.id}-stop-${stop.id}`) ? "▲" : "▼"} Stop instructions
-                            </button>
-                            {expandedStopInstr.has(`${job.id}-stop-${stop.id}`) && (
-                              <div className="relay-stop-instr-body">
-                                <div className="relay-stop-instr-head-row">
-                                  <span>CONTACT</span>
-                                  <span>REFERENCE #&apos;s</span>
-                                  <span>INSTRUCTIONS</span>
-                                </div>
-                                <div className="relay-stop-instr-row">
-                                  <div>
-                                    {stop.contactName !== "—" ? stop.contactName : "—"}
-                                    {stop.contactPhone !== "—" && <div className="relay-footer-sub">{stop.contactPhone}</div>}
-                                  </div>
-                                  <div><div><strong>Job #</strong> {job.code}</div></div>
-                                  <div>{stop.notes !== "—" ? stop.notes : "—"}</div>
-                                </div>
-                              </div>
-                            )}
-                          </div>
-                        </div>
-                      ))}
-
                       {/* Final Drop — Stop 1 */}
                       <div className="relay-stop-block">
                         <div className="relay-stop-row">
@@ -1184,6 +1123,67 @@ export function JobsListPage() {
                           )}
                         </div>
                       </div>
+
+                      {/* Intermediate stops */}
+                      {routeStops.map((stop, index) => (
+                        <div className="relay-stop-block" key={stop.id || `${job.id}-stop-${index}`}>
+                          <div className="relay-stop-row">
+                            <div className="relay-stop-location">
+                              <span className="relay-stop-bubble">{index + 2}</span>
+                              <div>
+                                <strong>{abbrevAddr(stop.address)}</strong>
+                                <small>{stop.address !== "—" ? stop.address : "Address not set"}</small>
+                                <small className="relay-dock-label">
+                                  {(stop.type || "stop").replace(/^./, c => c.toUpperCase())} stop{stop.status ? ` · ${stop.status}` : ""}
+                                </small>
+                              </div>
+                            </div>
+                            <div className="relay-stop-equipment">
+                              <span>Stop type <strong>{stop.type || "—"}</strong></span>
+                              <span>Contact <strong>{stop.contactName !== "—" ? stop.contactName : "—"}</strong></span>
+                              {stop.contactPhone !== "—" && <span>Phone <strong>{stop.contactPhone}</strong></span>}
+                            </div>
+                            <div className="relay-stop-time">
+                              <strong>{stop.actualArrival !== "—" ? stop.actualArrival : stop.plannedArrival !== "—" ? stop.plannedArrival : "TBD"}</strong>
+                              {stop.actualArrival !== "—" && stop.plannedArrival !== "—" && (
+                                <small className="relay-sch-time">Sch. {stop.plannedArrival}</small>
+                              )}
+                              {stop.actualArrival === "—" && stop.plannedArrival !== "—" && (
+                                <small className="relay-sch-time">Sch. {stop.plannedArrival}</small>
+                              )}
+                            </div>
+                            <div className="relay-stop-time">
+                              <strong>{stop.plannedDeparture !== "—" ? stop.plannedDeparture : "—"}</strong>
+                              {stop.plannedDeparture !== "—" && (
+                                <small className="relay-sch-time">Sch. {stop.plannedDeparture}</small>
+                              )}
+                            </div>
+                          </div>
+                          <div className="relay-stop-instr-wrap">
+                            <button className="relay-stop-instr-toggle" type="button"
+                              onClick={() => toggleStopInstr(`${job.id}-stop-${stop.id}`)}>
+                              {expandedStopInstr.has(`${job.id}-stop-${stop.id}`) ? "▲" : "▼"} Stop instructions
+                            </button>
+                            {expandedStopInstr.has(`${job.id}-stop-${stop.id}`) && (
+                              <div className="relay-stop-instr-body">
+                                <div className="relay-stop-instr-head-row">
+                                  <span>CONTACT</span>
+                                  <span>REFERENCE #&apos;s</span>
+                                  <span>INSTRUCTIONS</span>
+                                </div>
+                                <div className="relay-stop-instr-row">
+                                  <div>
+                                    {stop.contactName !== "—" ? stop.contactName : "—"}
+                                    {stop.contactPhone !== "—" && <div className="relay-footer-sub">{stop.contactPhone}</div>}
+                                  </div>
+                                  <div><div><strong>Job #</strong> {job.code}</div></div>
+                                  <div>{stop.notes !== "—" ? stop.notes : "—"}</div>
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      ))}
                     </div>
 
                     {/* ── Time Calculation ── */}
