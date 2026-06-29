@@ -545,9 +545,6 @@ export function JobFormPage() {
                 <Field label="Client Name" required error={fieldErrors.client_name}>
                   <input className="af-input" type="text" placeholder="e.g. Northline Retail" value={fields.client_name} onChange={e => set("client_name", e.target.value)} aria-invalid={Boolean(fieldErrors.client_name)} />
                 </Field>
-                <Field label="Contact Number">
-                  <input className="af-input" type="tel" placeholder="e.g. 07700 900000" value={fields.client_phone} onChange={e => set("client_phone", e.target.value)} />
-                </Field>
                 {selectedCustomer && (
                   <div style={{ gridColumn: "1 / -1", padding: 12, border: "1px solid #e2e8f0", borderRadius: 8, background: "#f8fafc" }}>
                     <span className="card-label">Auto-Filled From Customer</span>
