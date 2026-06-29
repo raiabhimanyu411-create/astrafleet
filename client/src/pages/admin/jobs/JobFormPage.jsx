@@ -702,38 +702,6 @@ export function JobFormPage() {
 
             </div>
 
-            <div className="af-section">
-              <p className="af-section-title">Load & Assignment</p>
-              <div className="af-grid-2">
-                <Field label="Assign Driver">
-                  <select className="af-select" value={fields.driver_id} onChange={e => set("driver_id", e.target.value)}>
-                    <option value="">Assign Later</option>
-                    {formData.drivers.map(d => <option key={d.id} value={d.id}>{d.full_name} · {d.shift_status}</option>)}
-                  </select>
-                </Field>
-                <Field label="Assign Vehicle">
-                  <select className="af-select" value={fields.vehicle_id} onChange={e => set("vehicle_id", e.target.value)}>
-                    <option value="">Assign Later</option>
-                    {formData.vehicles.map(v => (
-                      <option key={v.id} value={v.id}>
-                        {v.registration_number} · {v.truck_type || v.model_name || "Truck"} · {v.status}
-                      </option>
-                    ))}
-                  </select>
-                </Field>
-                <Field label="Assign Trailer">
-                  <select className="af-select" value={fields.trailer_id} onChange={e => set("trailer_id", e.target.value)}>
-                    <option value="">Assign Later</option>
-                    {(formData.trailers || []).map(t => (
-                      <option key={t.id} value={t.id}>
-                        {t.registration_number} · {t.trailer_type || "Trailer"} · {t.status}
-                      </option>
-                    ))}
-                  </select>
-                </Field>
-              </div>
-            </div>
-
             {/* ── Time Calculation Section ── */}
             <div className="af-section">
               <p className="af-section-title">Time & Cost Calculation</p>
