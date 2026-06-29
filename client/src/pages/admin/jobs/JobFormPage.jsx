@@ -638,36 +638,16 @@ export function JobFormPage() {
                         Remove
                       </button>
                     </div>
-                    <div className="af-grid-2">
-                      <Field label="Stop Type">
-                        <select className="af-select" value={stop.stop_type} onChange={e => updateStop(i, { stop_type: e.target.value })}>
-                          <option value="delivery">Delivery</option>
-                          <option value="pickup">Pickup</option>
-                          <option value="waypoint">Waypoint</option>
-                        </select>
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 16 }}>
+                      <Field label="Delivery Address" required>
+                        <textarea className="af-input" style={{ minHeight: 60, resize: "vertical" }} placeholder="Full address for this stop" value={stop.address} onChange={e => updateStop(i, { address: e.target.value }, true)} />
                       </Field>
-                      <Field label="Planned Arrival At Stop">
+                      <Field label="Arrival Date & Time">
                         <input className="af-input" type="datetime-local" value={stop.planned_arrival} onChange={e => updateStop(i, { planned_arrival: e.target.value })} />
                       </Field>
-                      <Field label="Departure Time At Stop">
+                      <Field label="Departure Time">
                         <input className="af-input" type="time" value={toInputTime(stop.planned_departure)} onChange={e => handleStopDepartureChange(i, e.target.value)} />
                       </Field>
-                      <div style={{ gridColumn: "1 / -1" }}>
-                        <Field label="Stop Address" required>
-                          <textarea className="af-input" style={{ minHeight: 60, resize: "vertical" }} placeholder="Full address for this stop" value={stop.address} onChange={e => updateStop(i, { address: e.target.value }, true)} />
-                        </Field>
-                      </div>
-                      <Field label="Contact Name">
-                        <input className="af-input" type="text" placeholder="e.g. John Smith" value={stop.contact_name} onChange={e => updateStop(i, { contact_name: e.target.value })} />
-                      </Field>
-                      <Field label="Contact Phone">
-                        <input className="af-input" type="tel" placeholder="e.g. 07700 900123" value={stop.contact_phone} onChange={e => updateStop(i, { contact_phone: e.target.value })} />
-                      </Field>
-                      <div style={{ gridColumn: "1 / -1" }}>
-                        <Field label="Notes">
-                          <input className="af-input" type="text" placeholder="Any special notes for this stop" value={stop.notes} onChange={e => updateStop(i, { notes: e.target.value })} />
-                        </Field>
-                      </div>
                     </div>
                   </div>
                 ))}
