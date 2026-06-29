@@ -1000,7 +1000,7 @@ export function JobsListPage() {
                                 ? job.actualDeparture
                                 : job.loadingDoneTime ? fmtTimeFull(job.loadingDoneTime) : "TBD"}
                             </strong>
-                            {job.loadingDoneTime && job.actualDeparture && job.actualDeparture !== "—" && (
+                            {job.loadingDoneTime && (
                               <small className="relay-sch-time">Sch. {fmtTimeFull(job.loadingDoneTime)}</small>
                             )}
                             {(isActive || isLoading) && (
