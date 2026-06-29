@@ -585,7 +585,7 @@ export function JobFormPage() {
                 <Field label="Departure Time" hint="Same date as pickup arrival. Used for ETA and cost.">
                   <input className="af-input" type="time" value={toInputTime(fields.loading_done_time)} onChange={e => handleRouteDepartureChange(e.target.value)} />
                 </Field>
-                <Field label="Delivery Address" required error={fieldErrors.drop_address}>
+                <Field label={<>Delivery Address <span style={{ fontWeight: 700, fontSize: "0.72rem", color: "#2563eb", background: "#eff6ff", border: "1px solid #bfdbfe", borderRadius: 20, padding: "1px 8px", marginLeft: 6, verticalAlign: "middle" }}>Stop 1</span></>} required error={fieldErrors.drop_address}>
                   {dropOptions.length > 0 && (
                     <select className="af-select" style={{ marginBottom: 8 }} value="" onChange={e => e.target.value && set("drop_address", e.target.value)}>
                       <option value="">Choose Saved Delivery Address</option>
@@ -628,7 +628,7 @@ export function JobFormPage() {
                 {stops.map((stop, i) => (
                   <div key={i} style={{ border: "1px solid #e2e8f0", borderRadius: 10, padding: "14px 16px", marginBottom: 10, background: "#f8fafc", position: "relative" }}>
                     <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
-                      <strong style={{ fontSize: "0.84rem", color: "#0f172a" }}>Stop {i + 1}</strong>
+                      <strong style={{ fontSize: "0.84rem", color: "#0f172a" }}>Stop {i + 2}</strong>
                       <button
                         type="button"
                         className="header-action-button danger"
