@@ -558,15 +558,15 @@ export function JobFormPage() {
 
             <div className="af-section">
               <p className="af-section-title">Route</p>
-              <div className="af-grid-2">
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 16 }}>
+                <Field label="Collection Address" required error={fieldErrors.pickup_address}>
+                  <textarea className="af-input" style={{ minHeight: 72, resize: "vertical" }} placeholder="Full collection address" value={fields.pickup_address} onChange={e => set("pickup_address", e.target.value)} aria-invalid={Boolean(fieldErrors.pickup_address)} />
+                </Field>
                 <Field label="Arrival Date & Time" hint="When the truck reaches pickup/loading.">
                   <input className="af-input" type="datetime-local" value={fields.planned_departure} onChange={e => handleArrivalChange(e.target.value)} />
                 </Field>
                 <Field label="Departure Time" hint="Same date as pickup arrival. Used for ETA and cost.">
                   <input className="af-input" type="time" value={toInputTime(fields.loading_done_time)} onChange={e => handleRouteDepartureChange(e.target.value)} />
-                </Field>
-                <Field label="Collection Address" required error={fieldErrors.pickup_address}>
-                  <textarea className="af-input" style={{ minHeight: 72, resize: "vertical" }} placeholder="Full collection address" value={fields.pickup_address} onChange={e => set("pickup_address", e.target.value)} aria-invalid={Boolean(fieldErrors.pickup_address)} />
                 </Field>
                 <Field label="Delivery Address" required error={fieldErrors.drop_address}>
                   {dropOptions.length > 0 && (
