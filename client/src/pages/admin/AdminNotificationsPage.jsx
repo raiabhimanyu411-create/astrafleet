@@ -4,8 +4,8 @@ import { AdminWorkspaceLayout } from "./AdminWorkspaceLayout";
 export function AdminNotificationsPage() {
   return (
     <AdminWorkspaceLayout
-      badge="Admin notifications"
-      title="Operations notification centre"
+      badge="Admin Notifications"
+      title="Operations Notification Centre"
       description="Review active employee approvals, failed deliveries, defects, overdue invoices, and stale GPS pings."
       highlights={[
         "Admin-only notification inbox",
@@ -15,8 +15,8 @@ export function AdminNotificationsPage() {
     >
       <NotificationCenter
         fetchUrl="/api/admin/notifications"
-        title="Admin notification inbox"
-        eyebrow="Admin alerts"
+        title="Admin Notification Inbox"
+        eyebrow="Admin Alerts"
         emptyBody="No active admin alerts are pending right now."
       />
     </AdminWorkspaceLayout>

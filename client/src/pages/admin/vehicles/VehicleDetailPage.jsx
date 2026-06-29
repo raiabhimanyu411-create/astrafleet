@@ -196,11 +196,11 @@ export function VehicleDetailPage() {
       <div style={{ maxWidth: 980 }}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 20, flexWrap: "wrap", gap: 12 }}>
           <button className="af-back-btn" type="button" onClick={() => navigate("/admin/vehicles")}>
-            ← Back to vehicles
+            ← Back To Vehicles
           </button>
           {data && (
             <button className="af-submit-btn" type="button" onClick={() => navigate(`/admin/vehicles/${id}/edit`)}>
-              Edit vehicle
+              Edit Vehicle
             </button>
           )}
         </div>
@@ -213,7 +213,7 @@ export function VehicleDetailPage() {
             <div className="content-card" style={{ marginBottom: 14 }}>
               <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 16, marginBottom: 18, flexWrap: "wrap" }}>
                 <div>
-                  <span className="card-label">Vehicle profile</span>
+                  <span className="card-label">Vehicle Profile</span>
                   <h2 style={{ margin: "6px 0 4px", fontSize: "1.3rem" }}>{data.registrationNumber}</h2>
                   <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 6 }}>
                     <span style={{ fontFamily: "monospace", fontSize: "0.82rem", background: "#eff6ff", color: "#2563eb", padding: "3px 10px", borderRadius: 999, fontWeight: 700 }}>
@@ -240,12 +240,12 @@ export function VehicleDetailPage() {
                 <DetailField label="Make"              value={data.make} />
                 <DetailField label="Model"             value={data.model} />
                 <DetailField label="Type"              value={data.truckType} />
-                <DetailField label="Fuel type"         value={data.fuelType} />
+                <DetailField label="Fuel Type"         value={data.fuelType} />
                 <DetailField label="Capacity"          value={data.capacityTonnes ? `${data.capacityTonnes} tonnes` : "—"} />
                 <DetailField label="Odometer"          value={data.odometerReading ? `${Number(data.odometerReading).toLocaleString("en-GB")} km` : "—"} />
                 <DetailField label="Year"              value={data.yearOfManufacture} />
                 <DetailField label="Colour"            value={data.colour} />
-                <div className="detail-wide"><DetailField label="Current location" value={data.currentLocation} /></div>
+                <div className="detail-wide"><DetailField label="Current Location" value={data.currentLocation} /></div>
               </div>
             </div>
 
@@ -253,21 +253,21 @@ export function VehicleDetailPage() {
             <div className="content-card" style={{ marginBottom: 14 }}>
               <div className="section-head">
                 <div>
-                  <span className="card-label">Vehicle compliance</span>
-                  <h2 style={{ margin: "4px 0 0", fontSize: "1rem" }}>MOT / fitness, insurance, permit, pollution and tax</h2>
+                  <span className="card-label">Vehicle Compliance</span>
+                  <h2 style={{ margin: "4px 0 0", fontSize: "1rem" }}>MOT / Fitness, Insurance, Permit, Pollution And Tax</h2>
                 </div>
                 <StatusPill tone={data.complianceTone}>
                   {data.complianceTone === "danger" ? "Action required" : data.complianceTone === "warning" ? "Expiring soon" : "All current"}
                 </StatusPill>
               </div>
               <div className="detail-grid">
-                <ExpiryField label="MOT expiry"       expiry={data.mot.expiry}       tone={data.mot.tone}       daysLeft={data.mot.daysLeft} />
-                <ExpiryField label="Fitness expiry"   expiry={data.fitness?.expiry}  tone={data.fitness?.tone}  daysLeft={data.fitness?.daysLeft} />
-                <ExpiryField label="Insurance expiry" expiry={data.insurance.expiry} tone={data.insurance.tone} daysLeft={data.insurance.daysLeft} />
-                <ExpiryField label="Permit expiry"    expiry={data.permit?.expiry}   tone={data.permit?.tone}   daysLeft={data.permit?.daysLeft} />
-                <ExpiryField label="Pollution expiry" expiry={data.pollution?.expiry} tone={data.pollution?.tone} daysLeft={data.pollution?.daysLeft} />
-                <ExpiryField label="Road tax expiry"  expiry={data.roadTax.expiry}   tone={data.roadTax.tone}   daysLeft={data.roadTax.daysLeft} />
-                <ExpiryField label="Next service due" expiry={data.nextServiceDue}   tone={data.nextServiceTone} daysLeft={null} />
+                <ExpiryField label="MOT Expiry"       expiry={data.mot.expiry}       tone={data.mot.tone}       daysLeft={data.mot.daysLeft} />
+                <ExpiryField label="Fitness Expiry"   expiry={data.fitness?.expiry}  tone={data.fitness?.tone}  daysLeft={data.fitness?.daysLeft} />
+                <ExpiryField label="Insurance Expiry" expiry={data.insurance.expiry} tone={data.insurance.tone} daysLeft={data.insurance.daysLeft} />
+                <ExpiryField label="Permit Expiry"    expiry={data.permit?.expiry}   tone={data.permit?.tone}   daysLeft={data.permit?.daysLeft} />
+                <ExpiryField label="Pollution Expiry" expiry={data.pollution?.expiry} tone={data.pollution?.tone} daysLeft={data.pollution?.daysLeft} />
+                <ExpiryField label="Road Tax Expiry"  expiry={data.roadTax.expiry}   tone={data.roadTax.tone}   daysLeft={data.roadTax.daysLeft} />
+                <ExpiryField label="Next Service Due" expiry={data.nextServiceDue}   tone={data.nextServiceTone} daysLeft={null} />
               </div>
             </div>
 
@@ -276,35 +276,35 @@ export function VehicleDetailPage() {
               <div className="section-head">
                 <div>
                   <span className="card-label">Documents</span>
-                  <h2 style={{ margin: "4px 0 0", fontSize: "1rem" }}>Compliance documents & certificates</h2>
+                  <h2 style={{ margin: "4px 0 0", fontSize: "1rem" }}>Compliance Documents & Certificates</h2>
                 </div>
                 <button className="header-action-button" type="button" onClick={() => { setDocForm(emptyDoc); setEditDocId(null); setShowDocForm(true); }}>
-                  + Add document
+                  + Add Document
                 </button>
               </div>
 
               {showDocForm && (
                 <form onSubmit={handleSaveDoc} style={formStyle}>
-                  <p style={formTitle}>{editDocId ? "Edit document" : "Add new document"}</p>
+                  <p style={formTitle}>{editDocId ? "Edit Document" : "Add New Document"}</p>
                   <div className="af-grid-3" style={{ gap: 12 }}>
                     <div className="af-field">
-                      <label className="af-label">Document type</label>
+                      <label className="af-label">Document Type</label>
                       <select className="af-select" value={docForm.document_type} onChange={e => setDocForm(p => ({ ...p, document_type: e.target.value }))}>
                         {DOC_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
                       </select>
                     </div>
                     <div className="af-field">
-                      <label className="af-label">Document number</label>
+                      <label className="af-label">Document Number</label>
                       <input className="af-input" type="text" placeholder="Reference or certificate number" value={docForm.document_number} onChange={e => setDocForm(p => ({ ...p, document_number: e.target.value }))} />
                     </div>
                     <div className="af-field">
-                      <label className="af-label">Expiry date <span style={{ color: "#dc2626" }}>*</span></label>
+                      <label className="af-label">Expiry Date <span style={{ color: "#dc2626" }}>*</span></label>
                       <input className="af-input" type="date" value={docForm.expiry_date} onChange={e => setDocForm(p => ({ ...p, expiry_date: e.target.value }))} required />
                     </div>
                   </div>
                   <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
                     <button type="submit" className="af-submit-btn" style={{ height: 34, padding: "0 18px", fontSize: "0.84rem" }} disabled={savingDoc}>
-                      {savingDoc ? "Saving..." : "Save document"}
+                      {savingDoc ? "Saving..." : "Save Document"}
                     </button>
                     <button type="button" className="header-action-button" onClick={() => setShowDocForm(false)}>Cancel</button>
                   </div>
@@ -342,27 +342,27 @@ export function VehicleDetailPage() {
               <div className="section-head">
                 <div>
                   <span className="card-label">Maintenance</span>
-                  <h2 style={{ margin: "4px 0 0", fontSize: "1rem" }}>Service & repair history</h2>
+                  <h2 style={{ margin: "4px 0 0", fontSize: "1rem" }}>Service & Repair History</h2>
                 </div>
                 <button className="header-action-button" type="button" onClick={() => setShowMaintForm(v => !v)}>
-                  {showMaintForm ? "Cancel" : "+ Log service"}
+                  {showMaintForm ? "Cancel" : "+ Log Service"}
                 </button>
               </div>
 
               {showMaintForm && (
                 <form onSubmit={handleSaveMaint} style={formStyle}>
-                  <p style={formTitle}>Log maintenance record</p>
+                  <p style={formTitle}>Log Maintenance Record</p>
                   <div className="af-grid-3" style={{ gap: 12 }}>
                     <div className="af-field">
-                      <label className="af-label">Service date <span style={{ color: "#dc2626" }}>*</span></label>
+                      <label className="af-label">Service Date <span style={{ color: "#dc2626" }}>*</span></label>
                       <input className="af-input" type="date" value={maintForm.service_date} onChange={e => setMaintForm(p => ({ ...p, service_date: e.target.value }))} required />
                     </div>
                     <div className="af-field">
-                      <label className="af-label">Service type <span style={{ color: "#dc2626" }}>*</span></label>
+                      <label className="af-label">Service Type <span style={{ color: "#dc2626" }}>*</span></label>
                       <input className="af-input" type="text" placeholder="e.g. Full service, Oil change" value={maintForm.service_type} onChange={e => setMaintForm(p => ({ ...p, service_type: e.target.value }))} required />
                     </div>
                     <div className="af-field">
-                      <label className="af-label">Garage / workshop</label>
+                      <label className="af-label">Garage / Workshop</label>
                       <input className="af-input" type="text" placeholder="e.g. City Truck Centre" value={maintForm.garage_name} onChange={e => setMaintForm(p => ({ ...p, garage_name: e.target.value }))} />
                     </div>
                     <div className="af-field">
@@ -370,21 +370,21 @@ export function VehicleDetailPage() {
                       <input className="af-input" type="number" placeholder="0.00" step="0.01" min="0" value={maintForm.cost_gbp} onChange={e => setMaintForm(p => ({ ...p, cost_gbp: e.target.value }))} />
                     </div>
                     <div className="af-field">
-                      <label className="af-label">Mileage at service</label>
+                      <label className="af-label">Mileage At Service</label>
                       <input className="af-input" type="number" placeholder="e.g. 85000" value={maintForm.mileage} onChange={e => setMaintForm(p => ({ ...p, mileage: e.target.value }))} />
                     </div>
                     <div className="af-field">
-                      <label className="af-label">Next service due</label>
+                      <label className="af-label">Next Service Due</label>
                       <input className="af-input" type="date" value={maintForm.next_due_date} onChange={e => setMaintForm(p => ({ ...p, next_due_date: e.target.value }))} />
                     </div>
                   </div>
                   <div className="af-field" style={{ marginTop: 12 }}>
-                    <label className="af-label">Description / notes</label>
+                    <label className="af-label">Description / Notes</label>
                     <textarea className="af-input" style={{ minHeight: 60, resize: "vertical" }} placeholder="Work carried out..." value={maintForm.description} onChange={e => setMaintForm(p => ({ ...p, description: e.target.value }))} />
                   </div>
                   <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
                     <button type="submit" className="af-submit-btn" style={{ height: 34, padding: "0 18px", fontSize: "0.84rem" }} disabled={savingMaint}>
-                      {savingMaint ? "Saving..." : "Save record"}
+                      {savingMaint ? "Saving..." : "Save Record"}
                     </button>
                   </div>
                 </form>
@@ -419,19 +419,19 @@ export function VehicleDetailPage() {
               <div className="section-head">
                 <div>
                   <span className="card-label">Inspections</span>
-                  <h2 style={{ margin: "4px 0 0", fontSize: "1rem" }}>Vehicle inspection log</h2>
+                  <h2 style={{ margin: "4px 0 0", fontSize: "1rem" }}>Vehicle Inspection Log</h2>
                 </div>
                 <button className="header-action-button" type="button" onClick={() => setShowInspForm(v => !v)}>
-                  {showInspForm ? "Cancel" : "+ Log inspection"}
+                  {showInspForm ? "Cancel" : "+ Log Inspection"}
                 </button>
               </div>
 
               {showInspForm && (
                 <form onSubmit={handleSaveInsp} style={formStyle}>
-                  <p style={formTitle}>Log inspection</p>
+                  <p style={formTitle}>Log Inspection</p>
                   <div className="af-grid-3" style={{ gap: 12 }}>
                     <div className="af-field">
-                      <label className="af-label">Inspection date <span style={{ color: "#dc2626" }}>*</span></label>
+                      <label className="af-label">Inspection Date <span style={{ color: "#dc2626" }}>*</span></label>
                       <input className="af-input" type="date" value={inspForm.inspection_date} onChange={e => setInspForm(p => ({ ...p, inspection_date: e.target.value }))} required />
                     </div>
                     <div className="af-field">
@@ -449,11 +449,11 @@ export function VehicleDetailPage() {
                       </select>
                     </div>
                     <div className="af-field">
-                      <label className="af-label">Inspector name</label>
+                      <label className="af-label">Inspector Name</label>
                       <input className="af-input" type="text" placeholder="e.g. John Smith" value={inspForm.inspector_name} onChange={e => setInspForm(p => ({ ...p, inspector_name: e.target.value }))} />
                     </div>
                     <div className="af-field">
-                      <label className="af-label">Next inspection due</label>
+                      <label className="af-label">Next Inspection Due</label>
                       <input className="af-input" type="date" value={inspForm.next_due} onChange={e => setInspForm(p => ({ ...p, next_due: e.target.value }))} />
                     </div>
                   </div>
@@ -463,7 +463,7 @@ export function VehicleDetailPage() {
                   </div>
                   <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
                     <button type="submit" className="af-submit-btn" style={{ height: 34, padding: "0 18px", fontSize: "0.84rem" }} disabled={savingInsp}>
-                      {savingInsp ? "Saving..." : "Save inspection"}
+                      {savingInsp ? "Saving..." : "Save Inspection"}
                     </button>
                   </div>
                 </form>
@@ -496,20 +496,20 @@ export function VehicleDetailPage() {
             <div className="content-card" style={{ marginBottom: 14 }}>
               <div className="section-head">
                 <div>
-                  <span className="card-label">Defect reports</span>
-                  <h2 style={{ margin: "4px 0 0", fontSize: "1rem" }}>Reported faults & resolutions</h2>
+                  <span className="card-label">Defect Reports</span>
+                  <h2 style={{ margin: "4px 0 0", fontSize: "1rem" }}>Reported Faults & Resolutions</h2>
                 </div>
                 <button className="header-action-button" type="button" onClick={() => setShowDefectForm(v => !v)}>
-                  {showDefectForm ? "Cancel" : "+ Report defect"}
+                  {showDefectForm ? "Cancel" : "+ Report Defect"}
                 </button>
               </div>
 
               {showDefectForm && (
                 <form onSubmit={handleSaveDefect} style={formStyle}>
-                  <p style={formTitle}>Report a defect</p>
+                  <p style={formTitle}>Report A Defect</p>
                   <div className="af-grid-3" style={{ gap: 12 }}>
                     <div className="af-field">
-                      <label className="af-label">Defect type <span style={{ color: "#dc2626" }}>*</span></label>
+                      <label className="af-label">Defect Type <span style={{ color: "#dc2626" }}>*</span></label>
                       <select className="af-select" value={defectForm.defect_type} onChange={e => setDefectForm(p => ({ ...p, defect_type: e.target.value }))}>
                         {DEFECT_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
                       </select>
@@ -521,7 +521,7 @@ export function VehicleDetailPage() {
                       </select>
                     </div>
                     <div className="af-field">
-                      <label className="af-label">Reported by</label>
+                      <label className="af-label">Reported By</label>
                       <input className="af-input" type="text" placeholder="e.g. Driver name" value={defectForm.reported_by} onChange={e => setDefectForm(p => ({ ...p, reported_by: e.target.value }))} />
                     </div>
                   </div>
@@ -531,7 +531,7 @@ export function VehicleDetailPage() {
                   </div>
                   <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
                     <button type="submit" className="af-submit-btn" style={{ height: 34, padding: "0 18px", fontSize: "0.84rem" }} disabled={savingDefect}>
-                      {savingDefect ? "Reporting..." : "Submit defect"}
+                      {savingDefect ? "Reporting..." : "Submit Defect"}
                     </button>
                   </div>
                 </form>
@@ -557,7 +557,7 @@ export function VehicleDetailPage() {
                           <div style={{ display: "flex", gap: 5 }}>
                             {d.status === "open" && (
                               <button className="header-action-button" style={{ height: 24, padding: "0 7px", fontSize: "0.72rem" }} type="button" onClick={() => handleDefectStatus(d.id, "in_progress")}>
-                                In progress
+                                In Progress
                               </button>
                             )}
                             <button className="header-action-button" style={{ height: 24, padding: "0 7px", fontSize: "0.72rem", background: "#dcfce7", color: "#15803d", border: "1px solid #bbf7d0" }} type="button" onClick={() => handleDefectStatus(d.id, "resolved")}>
@@ -576,8 +576,8 @@ export function VehicleDetailPage() {
             <div className="content-card" style={{ marginBottom: 14 }}>
               <div className="section-head">
                 <div>
-                  <span className="card-label">Fuel history</span>
-                  <h2 style={{ margin: "4px 0 0", fontSize: "1rem" }}>Fuel expenses logged by drivers</h2>
+                  <span className="card-label">Fuel History</span>
+                  <h2 style={{ margin: "4px 0 0", fontSize: "1rem" }}>Fuel Expenses Logged By Drivers</h2>
                 </div>
                 <StatusPill tone="neutral">{data.fuelHistory?.length || 0} entries</StatusPill>
               </div>
@@ -606,8 +606,8 @@ export function VehicleDetailPage() {
             <div className="content-card" style={{ marginBottom: 14 }}>
               <div className="section-head">
                 <div>
-                  <span className="card-label">Trip history</span>
-                  <h2 style={{ margin: "4px 0 0", fontSize: "1rem" }}>Jobs assigned to this vehicle</h2>
+                  <span className="card-label">Trip History</span>
+                  <h2 style={{ margin: "4px 0 0", fontSize: "1rem" }}>Jobs Assigned To This Vehicle</h2>
                 </div>
                 <StatusPill tone="neutral">{data.trips.length} trips</StatusPill>
               </div>

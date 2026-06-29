@@ -58,11 +58,11 @@ const maintenanceItems = [
   { value: "Full Service", label: "Full Service", interval: "Every 85,000 km", mileageKm: 85000 }
 ];
 const dueWindows = [
-  { value: "", label: "All due windows" },
-  { value: "overdue", label: "Overdue only" },
-  { value: "7", label: "Due next 7 days" },
-  { value: "14", label: "Due next 14 days" },
-  { value: "30", label: "Due next 30 days" }
+  { value: "", label: "All Due Windows" },
+  { value: "overdue", label: "Overdue Only" },
+  { value: "7", label: "Due Next 7 Days" },
+  { value: "14", label: "Due Next 14 Days" },
+  { value: "30", label: "Due Next 30 Days" }
 ];
 
 function dateKey(date) {
@@ -278,8 +278,8 @@ function JobModal({ vehicles, defects, editingJob, initialForm, onClose, onSaved
       <form className="maintenance-modal" onSubmit={submit}>
         <div className="section-head">
           <div>
-            <span className="card-label">{editingJob ? editingJob.jobNumber : "New job"}</span>
-            <h2>{editingJob ? "Edit maintenance job" : "Add maintenance job"}</h2>
+            <span className="card-label">{editingJob ? editingJob.jobNumber : "New Job"}</span>
+            <h2>{editingJob ? "Edit Maintenance Job" : "Add Maintenance Job"}</h2>
           </div>
           <button className="header-action-button" type="button" onClick={onClose}>Close</button>
         </div>
@@ -287,23 +287,23 @@ function JobModal({ vehicles, defects, editingJob, initialForm, onClose, onSaved
         <div className="maintenance-form-grid">
           <Field label="Vehicle">
             <select className="af-select" value={form.vehicle_id} onChange={(e) => set("vehicle_id", e.target.value)} required>
-              <option value="">Select vehicle</option>
+              <option value="">Select Vehicle</option>
               {vehicles.map((vehicle) => <option key={vehicle.assetId || vehicle.id} value={vehicle.assetId || `vehicle:${vehicle.id}`}>{vehicle.label}</option>)}
             </select>
           </Field>
           {editingJob && (
             <Field label="Service type">
               <select className="af-select" value={form.service_type} onChange={(e) => set("service_type", e.target.value)} required>
-                <option value="">Select maintenance item</option>
+                <option value="">Select Maintenance Item</option>
                 {maintenanceItems.map((item) => <option key={item.value} value={item.value}>{item.label} · {item.interval}</option>)}
               </select>
             </Field>
           )}
-          <Field label="Date completed / done">
+          <Field label="Date Completed / Done">
             <input className="af-input" type="date" value={form.service_date} onChange={(e) => set("service_date", e.target.value)} required={!editingJob} />
           </Field>
           {(!editingJob || form.service_type === "Road Tax") && (
-            <Field label="Road tax period">
+            <Field label="Road Tax Period">
               <select className="af-select" value={form.road_tax_interval_months} onChange={(e) => set("road_tax_interval_months", e.target.value)}>
                 <option value="6">6 months</option>
                 <option value="12">12 months</option>
@@ -312,7 +312,7 @@ function JobModal({ vehicles, defects, editingJob, initialForm, onClose, onSaved
           )}
           {editingJob && (
             <>
-              <Field label="Next due date">
+              <Field label="Next Due Date">
                 <input className="af-input" type="date" value={form.due_date} onChange={(e) => set("due_date", e.target.value)} required />
               </Field>
               {selectedItem?.interval && (
@@ -333,40 +333,40 @@ function JobModal({ vehicles, defects, editingJob, initialForm, onClose, onSaved
               {priorityOptions.map((priority) => <option key={priority} value={priority}>{priority}</option>)}
             </select>
           </Field>
-          <Field label="Garage / vendor">
+          <Field label="Garage / Vendor">
             <input className="af-input" value={form.garage_name} onChange={(e) => set("garage_name", e.target.value)} placeholder="Workshop or vendor" />
           </Field>
-          <Field label="Mechanic / owner">
+          <Field label="Mechanic / Owner">
             <input className="af-input" value={form.assigned_mechanic} onChange={(e) => set("assigned_mechanic", e.target.value)} placeholder="Assigned mechanic" />
           </Field>
-          <Field label="Estimated cost">
+          <Field label="Estimated Cost">
             <input className="af-input" type="number" min="0" step="0.01" value={form.estimated_cost_gbp} onChange={(e) => set("estimated_cost_gbp", e.target.value)} />
           </Field>
-          <Field label="Labour cost">
+          <Field label="Labour Cost">
             <input className="af-input" type="number" min="0" step="0.01" value={form.labour_cost_gbp} onChange={(e) => set("labour_cost_gbp", e.target.value)} />
           </Field>
-          <Field label="Parts cost">
+          <Field label="Parts Cost">
             <input className="af-input" type="number" min="0" step="0.01" value={form.parts_cost_gbp} onChange={(e) => set("parts_cost_gbp", e.target.value)} />
           </Field>
           {editingJob && (
-            <Field label="Linked defect">
+            <Field label="Linked Defect">
               <select className="af-select" value={form.defect_id} onChange={(e) => set("defect_id", e.target.value)}>
-                <option value="">No linked defect</option>
+                <option value="">No Linked Defect</option>
                 {defects.filter((defect) => !defect.jobId || String(defect.jobId) === String(editingJob?.id)).map((defect) => (
                   <option key={defect.id} value={defect.id}>{defect.vehicle} · {defect.defectType}</option>
                 ))}
               </select>
             </Field>
           )}
-          <Field label="Final cost">
+          <Field label="Final Cost">
             <input className="af-input" type="number" min="0" step="0.01" value={form.final_cost_gbp} onChange={(e) => set("final_cost_gbp", e.target.value)} />
           </Field>
           {(!editingJob || form.service_type === "Full Service") && (
             <>
-              <Field label="Completed mileage (km)">
+              <Field label="Completed Mileage (km)">
                 <input className="af-input" type="number" min="0" value={form.completed_mileage_km} onChange={(e) => set("completed_mileage_km", e.target.value)} placeholder="e.g. 185000" />
               </Field>
-              <Field label="Next due mileage (km)">
+              <Field label="Next Due Mileage (km)">
                 <input className="af-input" type="number" min="0" value={form.next_due_mileage_km} onChange={(e) => set("next_due_mileage_km", e.target.value)} placeholder="Auto +85,000 km" />
               </Field>
             </>
@@ -377,8 +377,8 @@ function JobModal({ vehicles, defects, editingJob, initialForm, onClose, onSaved
           <section className="maintenance-bulk-card">
             <div className="section-head">
               <div>
-                <span className="card-label">Maintenance items</span>
-                <h2>Select once, save all due dates</h2>
+                <span className="card-label">Maintenance Items</span>
+                <h2>Select Once, Save All Due Dates</h2>
               </div>
               <StatusPill tone="neutral">{selectedServices.length} selected</StatusPill>
             </div>
@@ -401,16 +401,16 @@ function JobModal({ vehicles, defects, editingJob, initialForm, onClose, onSaved
         )}
 
         <div className="maintenance-form-grid bill">
-          <Field label="Bill / invoice number">
+          <Field label="Bill / Invoice Number">
             <input className="af-input" value={form.bill_number} onChange={(e) => set("bill_number", e.target.value)} placeholder="e.g. INV-9821" />
           </Field>
-          <Field label="Bill date">
+          <Field label="Bill Date">
             <input className="af-input" type="date" value={form.bill_date} onChange={(e) => set("bill_date", e.target.value)} />
           </Field>
-          <Field label="Bill amount">
+          <Field label="Bill Amount">
             <input className="af-input" type="number" min="0" step="0.01" value={form.bill_amount_gbp} onChange={(e) => set("bill_amount_gbp", e.target.value)} />
           </Field>
-          <Field label="Attach document / bill">
+          <Field label="Attach Document / Bill">
             <input
               className="af-input"
               type="file"
@@ -418,7 +418,7 @@ function JobModal({ vehicles, defects, editingJob, initialForm, onClose, onSaved
               onChange={(e) => readFileAsDataUrl(e.target.files?.[0], (value) => set("bill_attachment_data", value))}
             />
           </Field>
-          <Field label="Document notes">
+          <Field label="Document Notes">
             <textarea className="af-textarea" value={form.bill_notes} onChange={(e) => set("bill_notes", e.target.value)} rows={2} placeholder="Invoice, repair report, inspection sheet, VAT note..." />
           </Field>
           <div className="maintenance-rule-note">
@@ -428,13 +428,13 @@ function JobModal({ vehicles, defects, editingJob, initialForm, onClose, onSaved
         </div>
 
         <div className="maintenance-form-grid single">
-          <Field label="Parts required">
+          <Field label="Parts Required">
             <textarea className="af-textarea" value={form.parts_required} onChange={(e) => set("parts_required", e.target.value)} rows={3} />
           </Field>
-          <Field label="Breakdown / problem note">
+          <Field label="Breakdown / Problem Note">
             <textarea className="af-textarea" value={form.notes} onChange={(e) => set("notes", e.target.value)} rows={3} placeholder="Breakdown reason, problem found, driver note..." />
           </Field>
-          <Field label="Completion notes">
+          <Field label="Completion Notes">
             <textarea className="af-textarea" value={form.completion_notes} onChange={(e) => set("completion_notes", e.target.value)} rows={3} />
           </Field>
         </div>
@@ -443,7 +443,7 @@ function JobModal({ vehicles, defects, editingJob, initialForm, onClose, onSaved
         <div className="finance-command-bar">
           <button className="header-action-button" type="button" onClick={onClose}>Cancel</button>
           <button className="af-submit-btn" disabled={saving} type="submit">
-            {saving ? "Saving..." : editingJob ? "Save job" : "Save selected maintenance"}
+            {saving ? "Saving..." : editingJob ? "Save Job" : "Save Selected Maintenance"}
           </button>
         </div>
       </form>
@@ -513,7 +513,7 @@ function JobDrawer({ job, history, onClose, onEdit, onComplete, onBillStatus, sa
       </div>
       {(job.billNotes !== "-" || job.billAttachmentData) && (
         <section className="maintenance-drawer-section">
-          <span className="card-label">Documents and paperwork</span>
+          <span className="card-label">Documents And Paperwork</span>
           <p><strong>Bill date:</strong> {job.billDateRaw ? job.billDate : "-"}</p>
           <p><strong>Document notes:</strong> {job.billNotes}</p>
           {job.billAttachmentData && (
@@ -524,22 +524,22 @@ function JobDrawer({ job, history, onClose, onEdit, onComplete, onBillStatus, sa
         </section>
       )}
       <div className="maintenance-drawer-actions">
-        <button className="header-action-button" type="button" onClick={() => onEdit(job)}>Edit job</button>
+        <button className="header-action-button" type="button" onClick={() => onEdit(job)}>Edit Job</button>
         {job.billStatus === "pending" && (job.billAmountGbp || job.billAttachmentData) && (
           <>
-            <button className="header-action-button" disabled={savingAction === `bill-${job.id}`} type="button" onClick={() => onBillStatus(job, "approved")}>Approve bill</button>
-            <button className="header-action-button danger" disabled={savingAction === `bill-${job.id}`} type="button" onClick={() => onBillStatus(job, "rejected")}>Reject bill</button>
+            <button className="header-action-button" disabled={savingAction === `bill-${job.id}`} type="button" onClick={() => onBillStatus(job, "approved")}>Approve Bill</button>
+            <button className="header-action-button danger" disabled={savingAction === `bill-${job.id}`} type="button" onClick={() => onBillStatus(job, "rejected")}>Reject Bill</button>
           </>
         )}
         {job.billStatus === "approved" && job.billPaymentStatus !== "paid" && (
-          <button className="header-action-button" disabled={savingAction === `bill-${job.id}`} type="button" onClick={() => onBillStatus(job, "paid", "paid")}>Mark bill paid</button>
+          <button className="header-action-button" disabled={savingAction === `bill-${job.id}`} type="button" onClick={() => onBillStatus(job, "paid", "paid")}>Mark Bill Paid</button>
         )}
         {!["completed", "cancelled", "failed"].includes(job.status) && (
           <button className="af-submit-btn" type="button" onClick={() => onComplete(job)}>Mark complete</button>
         )}
       </div>
       <section className="maintenance-drawer-section">
-        <span className="card-label">Job card</span>
+        <span className="card-label">Job Card</span>
         <p><strong>Problem/service:</strong> {job.serviceType}</p>
         <p><strong>Parts required:</strong> {job.partsRequired}</p>
         <p><strong>Breakdown/problem note:</strong> {job.notes}</p>
@@ -547,7 +547,7 @@ function JobDrawer({ job, history, onClose, onEdit, onComplete, onBillStatus, sa
       </section>
 
       <section className="maintenance-drawer-section">
-        <span className="card-label">Job notes</span>
+        <span className="card-label">Job Notes</span>
         <div className="maintenance-job-notes-list">
           {notes.length === 0 && <p className="finance-empty">No notes yet. Add the first note below.</p>}
           {notes.map((note) => (
@@ -578,13 +578,13 @@ function JobDrawer({ job, history, onClose, onEdit, onComplete, onBillStatus, sa
           />
           {noteError && <p className="lp-error">{noteError}</p>}
           <button className="header-action-button" disabled={addingNote || !noteText.trim()} type="submit">
-            {addingNote ? "Saving..." : "Add note"}
+            {addingNote ? "Saving..." : "Add Note"}
           </button>
         </form>
       </section>
 
       <section className="maintenance-drawer-section">
-        <span className="card-label">Service history timeline</span>
+        <span className="card-label">Service History Timeline</span>
         <div className="maintenance-timeline">
           {vehicleHistory.map((item, index) => (
             <div className="maintenance-timeline-item" key={`${item.source}-${index}`}>
@@ -1067,9 +1067,9 @@ export function AdminMaintenancePage() {
   const maintenanceViews = [
     { id: "planner", label: "Jobs" },
     { id: "annual", label: "Annual Schedule" },
-    { id: "fleet", label: "Fleet checks" },
-    { id: "assets", label: "Parts & tyres" },
-    { id: "records", label: "History & docs" }
+    { id: "fleet", label: "Fleet Checks" },
+    { id: "assets", label: "Parts & Tyres" },
+    { id: "records", label: "History & Docs" }
   ];
 
   return (
@@ -1081,19 +1081,19 @@ export function AdminMaintenancePage() {
     >
       <div className="maintenance-command-bar">
         <div>
-          <span className="card-label">Maintenance desk</span>
+          <span className="card-label">Maintenance Desk</span>
           <strong>{openJobs.length} open jobs</strong>
           {selectedPlanVehicleId && <p className="finance-empty">Calendar filtered to {selectedPlanRow?.vehicle}. Clear from yearly planner search if needed.</p>}
         </div>
         <div className="maintenance-command-actions">
-          <button className="af-submit-btn" type="button" onClick={() => openAddJob()}>Add job</button>
+          <button className="af-submit-btn" type="button" onClick={() => openAddJob()}>Add Job</button>
           <button className="header-action-button" disabled={savingAction === "automation-plan"} type="button" onClick={handleAutoPlan}>
-            {savingAction === "automation-plan" ? "Planning..." : "Auto-plan due work"}
+            {savingAction === "automation-plan" ? "Planning..." : "Auto-Plan Due Work"}
           </button>
           <button className="header-action-button" type="button" onClick={exportJobs}>Export Excel</button>
           <button className="header-action-button" type="button" onClick={load}>Refresh</button>
           {selectedPlanVehicleId && <button className="header-action-button" type="button" onClick={() => setSelectedPlanVehicleId(null)}>Show all vehicles</button>}
-          <button className="header-action-button" type="button" onClick={() => navigate("/admin/vehicles")}>Vehicle register</button>
+          <button className="header-action-button" type="button" onClick={() => navigate("/admin/vehicles")}>Vehicle Register</button>
         </div>
       </div>
 
@@ -1125,21 +1125,21 @@ export function AdminMaintenancePage() {
 
       {activeView === "planner" && (
       <section className="content-card maintenance-filter-card">
-        <input className="af-input" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search job, vehicle, vendor, owner..." />
+        <input className="af-input" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search Job, Vehicle, Vendor, Owner..." />
         <select className="af-select" value={filters.status} onChange={(e) => setFilter("status", e.target.value)}>
-          <option value="">All statuses</option>
+          <option value="">All Statuses</option>
           {statusOptions.map((status) => <option key={status} value={status}>{status.replace("_", " ")}</option>)}
         </select>
         <select className="af-select" value={filters.priority} onChange={(e) => setFilter("priority", e.target.value)}>
-          <option value="">All priorities</option>
+          <option value="">All Priorities</option>
           {priorityOptions.map((priority) => <option key={priority} value={priority}>{priority}</option>)}
         </select>
         <select className="af-select" value={filters.vendor} onChange={(e) => setFilter("vendor", e.target.value)}>
-          <option value="">All vendors</option>
+          <option value="">All Vendors</option>
           {(data?.filterOptions?.vendors || []).map((vendor) => <option key={vendor} value={vendor}>{vendor}</option>)}
         </select>
         <select className="af-select" value={filters.type} onChange={(e) => setFilter("type", e.target.value)}>
-          <option value="">All vehicle types</option>
+          <option value="">All Vehicle Types</option>
           {(data?.filterOptions?.vehicleTypes || []).map((type) => <option key={type} value={type}>{type}</option>)}
         </select>
         <select className="af-select" value={filters.window} onChange={(e) => setFilter("window", e.target.value)}>
@@ -1147,7 +1147,7 @@ export function AdminMaintenancePage() {
         </select>
         <input className="af-input" type="date" value={filters.from} onChange={(e) => setFilter("from", e.target.value)} />
         <input className="af-input" type="date" value={filters.to} onChange={(e) => setFilter("to", e.target.value)} />
-        <button className="header-action-button" disabled={!hasFilters} type="button" onClick={clearFilters}>Clear filters</button>
+        <button className="header-action-button" disabled={!hasFilters} type="button" onClick={clearFilters}>Clear Filters</button>
       </section>
       )}
 
@@ -1155,8 +1155,8 @@ export function AdminMaintenancePage() {
       <section className="content-card maintenance-year-card">
         <div className="section-head">
           <div>
-            <span className="card-label">52-week maintenance planner</span>
-            <h2>Vehicle yearly compliance plan</h2>
+            <span className="card-label">52-Week Maintenance Planner</span>
+            <h2>Vehicle Yearly Compliance Plan</h2>
             <p className="finance-empty">
               Excel-style view for IB, MOT, Road Tax, Insurance, Tacho and service dates from {data?.yearPlan?.startDate || "-"} to {data?.yearPlan?.endDate || "-"}.
             </p>
@@ -1235,10 +1235,10 @@ export function AdminMaintenancePage() {
       <section className="content-card excel-schedule-card">
         <div className="section-head">
           <div>
-            <span className="card-label">Vehicle Maintenance Program</span>
-            <h2>Annual schedule — Excel view</h2>
+            <span className="card-label">Vehicle Maintenance Programme</span>
+            <h2>Annual Schedule — Excel View</h2>
             <p className="finance-empty">
-              Color-coded week-by-week schedule for all vehicles. TAX&nbsp;= Road Tax, IB&nbsp;= Safety Inspection, MOT&nbsp;= MOT, RBT&nbsp;= Roller Brake Test, INS&nbsp;= Insurance, T&nbsp;= Tacho, SRV&nbsp;= Full Service.
+              Colour-Coded week-by-week schedule for all vehicles. TAX&nbsp;= Road Tax, IB&nbsp;= Safety Inspection, MOT&nbsp;= MOT, RBT&nbsp;= Roller Brake Test, INS&nbsp;= Insurance, T&nbsp;= Tacho, SRV&nbsp;= Full Service.
               Set company names on each vehicle from the vehicle register.
             </p>
           </div>
@@ -1256,8 +1256,8 @@ export function AdminMaintenancePage() {
       <section className="content-card">
         <div className="section-head">
           <div>
-            <span className="card-label">Vehicle maintenance profiles</span>
-            <h2>Vehicle-by-vehicle compliance</h2>
+            <span className="card-label">Vehicle Maintenance Profiles</span>
+            <h2>Vehicle-By-Vehicle Compliance</h2>
           </div>
           <StatusPill tone="neutral">{(data?.vehicleProfiles || []).length} vehicles</StatusPill>
         </div>
@@ -1297,8 +1297,8 @@ export function AdminMaintenancePage() {
       <section className="content-card maintenance-automation-panel">
         <div className="section-head">
           <div>
-            <span className="card-label">Automation queue</span>
-            <h2>Suggested work</h2>
+            <span className="card-label">Automation Queue</span>
+            <h2>Suggested Work</h2>
           </div>
           <StatusPill tone={(data?.automationQueue || []).some((item) => item.canAutoPlan) ? "warning" : "success"}>
             {(data?.automationQueue || []).length} checks
@@ -1339,8 +1339,8 @@ export function AdminMaintenancePage() {
           <article className="content-card">
             <div className="section-head">
               <div>
-                <span className="card-label">Compliance risk dashboard</span>
-                <h2>Alerts and upcoming risk</h2>
+                <span className="card-label">Compliance Risk Dashboard</span>
+                <h2>Alerts And Upcoming Risk</h2>
               </div>
               <StatusPill tone={(data?.maintenanceAlerts || []).length ? "warning" : "success"}>{(data?.maintenanceAlerts || []).length} alerts</StatusPill>
             </div>
@@ -1361,8 +1361,8 @@ export function AdminMaintenancePage() {
           <article className="content-card">
             <div className="section-head">
               <div>
-                <span className="card-label">Odometer full service</span>
-                <h2>85,000 km tracking</h2>
+                <span className="card-label">Odometer Full Service</span>
+                <h2>85,000 km Tracking</h2>
               </div>
               <StatusPill tone="neutral">Driver readings</StatusPill>
             </div>
@@ -1387,8 +1387,8 @@ export function AdminMaintenancePage() {
           <article className="content-card">
             <div className="section-head">
               <div>
-                <span className="card-label">Maintenance calendar</span>
-                <h2>MOT, service, inspection, tax, insurance and booked jobs</h2>
+                <span className="card-label">Maintenance Calendar</span>
+                <h2>MOT, Service, Inspection, Tax, Insurance And Booked Jobs</h2>
               </div>
               <div className="maintenance-segment">
                 <button className={calendarMode === "week" ? "active" : ""} type="button" onClick={() => setCalendarMode("week")}>Week</button>
@@ -1432,8 +1432,8 @@ export function AdminMaintenancePage() {
           <article className="content-card">
             <div className="section-head">
               <div>
-                <span className="card-label">Workshop job cards</span>
-                <h2>Open work in progress</h2>
+                <span className="card-label">Workshop Job Cards</span>
+                <h2>Open Work In Progress</h2>
               </div>
               <StatusPill tone={openJobs.length ? "warning" : "success"}>{openJobs.length} open</StatusPill>
             </div>
@@ -1460,8 +1460,8 @@ export function AdminMaintenancePage() {
       <section className="content-card">
         <div className="section-head">
           <div>
-            <span className="card-label">6-week safety inspections</span>
-            <h2>PMI / roadworthiness inspection tracker</h2>
+            <span className="card-label">6-Week Safety Inspections</span>
+            <h2>PMI / Roadworthiness Inspection Tracker</h2>
           </div>
           <StatusPill tone="neutral">{(data?.plannerRows || []).length} vehicles</StatusPill>
         </div>
@@ -1491,7 +1491,7 @@ export function AdminMaintenancePage() {
                 type="button"
                 onClick={() => handleInspectionDone(row)}
               >
-                Mark inspection done
+                Mark Inspection Done
               </button>
             </div>
           ))}
@@ -1506,8 +1506,8 @@ export function AdminMaintenancePage() {
       <section className="content-card">
         <div className="section-head">
           <div>
-            <span className="card-label">Maintenance jobs</span>
-            <h2>Maintenance register</h2>
+            <span className="card-label">Maintenance Jobs</span>
+            <h2>Maintenance Register</h2>
           </div>
           <StatusPill tone={jobs.length ? "success" : "neutral"}>{jobs.length} visible</StatusPill>
         </div>
@@ -1537,7 +1537,7 @@ export function AdminMaintenancePage() {
               <div className="finance-row-actions" onClick={(e) => e.stopPropagation()}>
                 <button className="header-action-button" type="button" onClick={() => openEditJob(job)}>Edit</button>
                 {job.billStatus === "pending" && (job.billAmountGbp || job.billAttachmentData) && (
-                  <button className="header-action-button" disabled={savingAction === `bill-${job.id}`} type="button" onClick={() => handleBillStatus(job, "approved")}>Approve bill</button>
+                  <button className="header-action-button" disabled={savingAction === `bill-${job.id}`} type="button" onClick={() => handleBillStatus(job, "approved")}>Approve Bill</button>
                 )}
                 {!["completed", "cancelled"].includes(job.status) && (
                   <button className="header-action-button" disabled={savingAction === job.id} type="button" onClick={() => handleComplete(job)}>Complete</button>
@@ -1555,8 +1555,8 @@ export function AdminMaintenancePage() {
         <article className="content-card">
           <div className="section-head">
             <div>
-              <span className="card-label">Cost dashboard</span>
-              <h2>Maintenance cost per vehicle</h2>
+              <span className="card-label">Cost Dashboard</span>
+              <h2>Maintenance Cost Per Vehicle</h2>
             </div>
             <StatusPill tone="neutral">Actual + estimate</StatusPill>
           </div>
@@ -1577,8 +1577,8 @@ export function AdminMaintenancePage() {
         <article className="content-card">
           <div className="section-head">
             <div>
-              <span className="card-label">Service history timeline</span>
-              <h2>Recent services, inspections and defects</h2>
+              <span className="card-label">Service History Timeline</span>
+              <h2>Recent Services, Inspections And Defects</h2>
             </div>
             <StatusPill tone="neutral">{(data?.history || []).length} events</StatusPill>
           </div>
@@ -1601,8 +1601,8 @@ export function AdminMaintenancePage() {
         <article className="content-card">
           <div className="section-head">
             <div>
-              <span className="card-label">Parts inventory</span>
-              <h2>Stock and reorder watch</h2>
+              <span className="card-label">Parts Inventory</span>
+              <h2>Stock And Reorder Watch</h2>
             </div>
             <StatusPill tone={(data?.inventory || []).some((item) => item.tone === "warning") ? "warning" : "success"}>
               {(data?.inventory || []).length} parts
@@ -1626,8 +1626,8 @@ export function AdminMaintenancePage() {
         <article className="content-card">
           <div className="section-head">
             <div>
-              <span className="card-label">Tyre management</span>
-              <h2>Tread, pressure and replacement watch</h2>
+              <span className="card-label">Tyre Management</span>
+              <h2>Tread, Pressure And Replacement Watch</h2>
             </div>
             <StatusPill tone={(data?.tyres || []).some((tyre) => tyre.status === "replace") ? "danger" : "neutral"}>{(data?.tyres || []).length} tyres</StatusPill>
           </div>
@@ -1653,8 +1653,8 @@ export function AdminMaintenancePage() {
         <article className="content-card">
           <div className="section-head">
             <div>
-              <span className="card-label">Documents vault</span>
-              <h2>Bills, invoices and workshop papers</h2>
+              <span className="card-label">Documents Vault</span>
+              <h2>Bills, Invoices And Workshop Papers</h2>
             </div>
             <StatusPill tone="neutral">{(data?.documentsVault || []).length} docs</StatusPill>
           </div>
@@ -1674,19 +1674,19 @@ export function AdminMaintenancePage() {
         <article className="content-card">
           <div className="section-head">
             <div>
-              <span className="card-label">Maintenance analytics</span>
-              <h2>Cost, defects and vendors</h2>
+              <span className="card-label">Maintenance Analytics</span>
+              <h2>Cost, Defects And Vendors</h2>
             </div>
             <StatusPill tone="neutral">Live</StatusPill>
           </div>
           <div className="maintenance-analytics-grid">
             <div>
-              <span className="card-label">Repeated defects</span>
+              <span className="card-label">Repeated Defects</span>
               {(data?.analytics?.repeatedDefects || []).map((item) => <p key={item.type}><strong>{item.type}</strong> · {item.count}</p>)}
               {(data?.analytics?.repeatedDefects || []).length === 0 && <p>No repeated defects.</p>}
             </div>
             <div>
-              <span className="card-label">Vendor spend</span>
+              <span className="card-label">Vendor Spend</span>
               {(data?.analytics?.vendorSpend || []).map((item) => <p key={item.vendor}><strong>{item.vendor}</strong> · {item.amountLabel}</p>)}
               {(data?.analytics?.vendorSpend || []).length === 0 && <p>No vendor spend yet.</p>}
             </div>
@@ -1704,8 +1704,8 @@ export function AdminMaintenancePage() {
         <article className="content-card">
           <div className="section-head">
             <div>
-              <span className="card-label">Defect-to-repair workflow</span>
-              <h2>Driver defects awaiting maintenance</h2>
+              <span className="card-label">Defect-To-Repair Workflow</span>
+              <h2>Driver Defects Awaiting Maintenance</h2>
             </div>
             <StatusPill tone={(data?.defects || []).length ? "warning" : "success"}>{(data?.defects || []).length} defects</StatusPill>
           </div>
@@ -1732,7 +1732,7 @@ export function AdminMaintenancePage() {
                   {defect.jobId ? (
                     <StatusPill tone="success">{defect.jobNumber}</StatusPill>
                   ) : (
-                    <button className="header-action-button" disabled={savingAction === `defect-${defect.id}`} type="button" onClick={() => repairFromDefect(defect)}>Create repair job</button>
+                    <button className="header-action-button" disabled={savingAction === `defect-${defect.id}`} type="button" onClick={() => repairFromDefect(defect)}>Create Repair Job</button>
                   )}
                 </div>
               </div>
@@ -1744,8 +1744,8 @@ export function AdminMaintenancePage() {
         <article className="content-card">
           <div className="section-head">
             <div>
-              <span className="card-label">Document & compliance planner</span>
-              <h2>MOT, insurance, road tax, service reminders</h2>
+              <span className="card-label">Document & Compliance Planner</span>
+              <h2>MOT, Insurance, Road Tax, Service Reminders</h2>
             </div>
             <StatusPill tone="neutral">Reminder view</StatusPill>
           </div>

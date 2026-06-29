@@ -96,7 +96,7 @@ export function CustomerFormPage() {
     }
   }
 
-  const pageTitle = isEdit ? "Edit customer" : "Add new customer";
+  const pageTitle = isEdit ? "Edit Customer" : "Add New Customer";
 
   return (
     <AdminWorkspaceLayout
@@ -133,9 +133,9 @@ export function CustomerFormPage() {
 
             {/* Company details */}
             <div className="af-section">
-              <p className="af-section-title">Company details</p>
+              <p className="af-section-title">Company Details</p>
               <div className="af-grid-2">
-                <Field label="Company name *">
+                <Field label="Company Name *">
                   <input
                     className="af-input"
                     type="text"
@@ -145,7 +145,7 @@ export function CustomerFormPage() {
                     required
                   />
                 </Field>
-                <Field label="VAT number" hint="UK format: GB 123 4567 89">
+                <Field label="VAT Number" hint="UK format: GB 123 4567 89">
                   <input
                     className="af-input"
                     type="text"
@@ -154,7 +154,7 @@ export function CustomerFormPage() {
                     onChange={e => set("vat_number", e.target.value)}
                   />
                 </Field>
-                <Field label="GST / VAT / company tax details">
+                <Field label="GST / VAT / Company Tax Details">
                   <input
                     className="af-input"
                     type="text"
@@ -168,9 +168,9 @@ export function CustomerFormPage() {
 
             {/* Contact details */}
             <div className="af-section">
-              <p className="af-section-title">Contact details</p>
+              <p className="af-section-title">Contact Details</p>
               <div className="af-grid-2">
-                <Field label="Contact name">
+                <Field label="Contact Name">
                   <input
                     className="af-input"
                     type="text"
@@ -179,7 +179,7 @@ export function CustomerFormPage() {
                     onChange={e => set("contact_name", e.target.value)}
                   />
                 </Field>
-                <Field label="Phone number">
+                <Field label="Phone Number">
                   <input
                     className="af-input"
                     type="tel"
@@ -188,7 +188,7 @@ export function CustomerFormPage() {
                     onChange={e => set("phone", e.target.value)}
                   />
                 </Field>
-                <Field label="Email address">
+                <Field label="Email Address">
                   <input
                     className="af-input"
                     type="email"
@@ -202,9 +202,9 @@ export function CustomerFormPage() {
 
             {/* Address */}
             <div className="af-section">
-              <p className="af-section-title">Address</p>
+              <p className="af-section-title">Address Details</p>
               <div className="af-grid-2">
-                <Field label="Full address">
+                <Field label="Full Address">
                   <textarea
                     className="af-input"
                     style={{ minHeight: 80, resize: "vertical" }}
@@ -213,7 +213,7 @@ export function CustomerFormPage() {
                     onChange={e => set("address", e.target.value)}
                   />
                 </Field>
-                <Field label="Billing address">
+                <Field label="Billing Address">
                   <textarea
                     className="af-input"
                     style={{ minHeight: 80, resize: "vertical" }}
@@ -231,10 +231,10 @@ export function CustomerFormPage() {
                     onChange={e => set("postcode", e.target.value)}
                   />
                 </Field>
-                <Field label="Saved pickup addresses" hint="One address per line">
+                <Field label="Saved Pickup Addresses" hint="One address per line">
                   <textarea className="af-input" style={{ minHeight: 90, resize: "vertical" }} value={fields.saved_pickup_addresses} onChange={e => set("saved_pickup_addresses", e.target.value)} />
                 </Field>
-                <Field label="Saved drop addresses" hint="One address per line">
+                <Field label="Saved Drop Addresses" hint="One address per line">
                   <textarea className="af-input" style={{ minHeight: 90, resize: "vertical" }} value={fields.saved_drop_addresses} onChange={e => set("saved_drop_addresses", e.target.value)} />
                 </Field>
               </div>
@@ -242,9 +242,9 @@ export function CustomerFormPage() {
 
             {/* Billing settings */}
             <div className="af-section">
-              <p className="af-section-title">Billing settings</p>
+              <p className="af-section-title">Billing Settings</p>
               <div className="af-grid-2">
-                <Field label="Payment terms" hint="Number of days allowed for invoice payment">
+                <Field label="Payment Terms" hint="Number of days allowed for invoice payment">
                   <select
                     className="af-select"
                     value={fields.payment_terms_days}
@@ -255,16 +255,16 @@ export function CustomerFormPage() {
                     ))}
                   </select>
                 </Field>
-                <Field label="Credit limit (£)">
+                <Field label="Credit Limit (£)">
                   <input className="af-input" type="number" min="0" step="0.01" placeholder="e.g. 25000" value={fields.credit_limit_gbp} onChange={e => set("credit_limit_gbp", e.target.value)} />
                 </Field>
                 <div style={{ gridColumn: "1 / -1" }}>
-                  <Field label="Rate contract per customer">
+                  <Field label="Rate Contract Per Customer">
                     <textarea className="af-input" style={{ minHeight: 90, resize: "vertical" }} placeholder="Lane rates, per-tonne rates, minimum charges, fuel surcharge rules..." value={fields.rate_contract} onChange={e => set("rate_contract", e.target.value)} />
                   </Field>
                 </div>
                 {isEdit && (
-                  <Field label="Account status">
+                  <Field label="Account Status">
                     <select
                       className="af-select"
                       value={fields.account_status}
@@ -295,7 +295,7 @@ export function CustomerFormPage() {
                 Cancel
               </button>
               <button type="submit" className="af-submit-btn" disabled={submitting}>
-                {submitting ? "Saving..." : isEdit ? "Save changes →" : "Create customer →"}
+                {submitting ? "Saving..." : isEdit ? "Save Changes →" : "Create Customer →"}
               </button>
             </div>
           </form>

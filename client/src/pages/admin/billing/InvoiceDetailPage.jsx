@@ -71,7 +71,7 @@ export function InvoiceDetailPage() {
 
   return (
     <AdminWorkspaceLayout
-      badge="Invoicing & billing"
+      badge="Invoicing & Billing"
       title={invoice ? invoice.invoiceNo : "Invoice detail"}
       description={invoice ? `${invoice.clientName} · ${invoice.amountFormatted}` : "Invoice detail with trip, POD, and payment tracking."}
       highlights={[]}
@@ -79,7 +79,7 @@ export function InvoiceDetailPage() {
       <div style={{ maxWidth: 900 }}>
         <div className="af-back-row">
           <button className="af-back-btn" type="button" onClick={() => navigate("/admin/billing")}>
-            ← Back to billing
+            ← Back To Billing
           </button>
         </div>
 
@@ -108,7 +108,7 @@ export function InvoiceDetailPage() {
                 <div style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "flex-end" }}>
                   <StatusPill tone={invoice.tone}>{invoice.paymentStatus}</StatusPill>
                   <StatusPill tone={invoice.podVerified ? "success" : "warning"}>
-                    {invoice.podVerified ? "POD verified" : "POD pending"}
+                    {invoice.podVerified ? "POD Verified" : "POD Pending"}
                   </StatusPill>
                 </div>
               </div>
@@ -122,7 +122,7 @@ export function InvoiceDetailPage() {
                   )
                 ))}
                 <button className="header-action-button" style={{ height: 30, padding: "0 10px", fontSize: "0.78rem" }} type="button" onClick={handlePodToggle}>
-                  {invoice.podVerified ? "Mark POD pending" : "Verify POD"}
+                  {invoice.podVerified ? "Mark POD Pending" : "Verify POD"}
                 </button>
               </div>
 
@@ -139,7 +139,7 @@ export function InvoiceDetailPage() {
                 <div className="section-head">
                   <div>
                     <span className="card-label">Billing</span>
-                    <h2>Customer and payment</h2>
+                    <h2>Customer And Payment</h2>
                   </div>
                 </div>
                 <div className="detail-grid">
@@ -154,13 +154,13 @@ export function InvoiceDetailPage() {
               <article className="content-card">
                 <div className="section-head">
                   <div>
-                    <span className="card-label">Trip link</span>
-                    <h2>Dispatch and POD</h2>
+                    <span className="card-label">Trip Link</span>
+                    <h2>Dispatch And POD</h2>
                   </div>
                 </div>
                 <div className="detail-grid">
-                  <DetailBlock label="Trip code" value={invoice.tripCode} />
-                  <DetailBlock label="POD status" value={invoice.tripPodStatus} />
+                  <DetailBlock label="Trip Code" value={invoice.tripCode} />
+                  <DetailBlock label="POD Status" value={invoice.tripPodStatus} />
                   <div className="detail-wide"><DetailBlock label="Lane" value={invoice.lane} /></div>
                 </div>
               </article>
@@ -170,7 +170,7 @@ export function InvoiceDetailPage() {
               <div className="section-head">
                 <div>
                   <span className="card-label">Notes</span>
-                  <h2>Billing notes</h2>
+                  <h2>Billing Notes</h2>
                 </div>
               </div>
               <p style={{ margin: 0, color: "#475569", fontSize: "0.9rem" }}>{invoice.notes || "No notes recorded."}</p>
@@ -178,13 +178,13 @@ export function InvoiceDetailPage() {
 
             <div className="af-actions">
               <button className="header-action-button" type="button" onClick={() => navigate(`/admin/billing/${id}/edit`)}>
-                Edit invoice
+                Edit Invoice
               </button>
               <button className="af-submit-btn" type="button" onClick={() => navigate("/admin/billing/new")}>
-                + Create invoice
+                + Create Invoice
               </button>
               <button className="header-action-button danger" type="button" onClick={() => setShowDeleteModal(true)}>
-                Delete invoice
+                Delete Invoice
               </button>
             </div>
           </>
@@ -192,7 +192,7 @@ export function InvoiceDetailPage() {
       </div>
       <DeleteReasonModal
         open={showDeleteModal}
-        title="Delete invoice"
+        title="Delete Invoice"
         recordLabel={invoice ? `${invoice.invoiceNo} · ${invoice.clientName}` : ""}
         loading={deleting}
         onCancel={() => setShowDeleteModal(false)}

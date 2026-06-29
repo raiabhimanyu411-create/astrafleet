@@ -99,8 +99,8 @@ export function InvoiceFormPage() {
 
   return (
     <AdminWorkspaceLayout
-      badge="Invoicing & billing"
-      title={isEdit ? "Edit invoice" : "Create invoice"}
+      badge="Invoicing & Billing"
+      title={isEdit ? "Edit Invoice" : "Create Invoice"}
       description={isEdit ? "Update invoice amount, due date, POD verification, and payment status." : "Raise a freight invoice and optionally link it to a dispatch trip."}
       highlights={[]}
     >
@@ -126,14 +126,14 @@ export function InvoiceFormPage() {
         ) : (
           <form className="af-form" onSubmit={handleSubmit}>
             <div className="af-section">
-              <p className="af-section-title">Invoice details</p>
+              <p className="af-section-title">Invoice Details</p>
               <div className="af-grid-3">
-                <Field label="Invoice number">
+                <Field label="Invoice Number">
                   <input className="af-input" value={fields.invoice_no} onChange={e => set("invoice_no", e.target.value.toUpperCase())} placeholder="e.g. INV-5001" required />
                 </Field>
-                <Field label="Linked trip" hint={selectedTrip ? `${selectedTrip.lane} · POD ${selectedTrip.podStatus}` : "Optional, but useful for POD tracking"}>
+                <Field label="Linked Trip" hint={selectedTrip ? `${selectedTrip.lane} · POD ${selectedTrip.podStatus}` : "Optional, but useful for POD tracking"}>
                   <select className="af-select" value={fields.trip_id || ""} onChange={e => handleTripChange(e.target.value)}>
-                    <option value="">No linked trip</option>
+                    <option value="">No Linked Trip</option>
                     {formData.trips.map(trip => (
                       <option key={trip.id} value={trip.id}>
                         {trip.tripCode} · {trip.clientName || "Internal dispatch"}
@@ -141,19 +141,19 @@ export function InvoiceFormPage() {
                     ))}
                   </select>
                 </Field>
-                <Field label="Client name">
+                <Field label="Client Name">
                   <input className="af-input" value={fields.client_name} onChange={e => set("client_name", e.target.value)} placeholder="Customer or billing entity" required />
                 </Field>
                 <Field label="Amount (£)">
                   <input className="af-input" type="number" min="0" step="0.01" value={fields.amount_gbp} onChange={e => set("amount_gbp", e.target.value)} required />
                 </Field>
-                <Field label="Issued date">
+                <Field label="Issued Date">
                   <input className="af-input" type="date" value={fields.issued_at} onChange={e => set("issued_at", e.target.value)} required />
                 </Field>
-                <Field label="Due date">
+                <Field label="Due Date">
                   <input className="af-input" type="date" value={fields.due_date} onChange={e => set("due_date", e.target.value)} required />
                 </Field>
-                <Field label="Payment status">
+                <Field label="Payment Status">
                   <select className="af-select" value={fields.payment_status} onChange={e => set("payment_status", e.target.value)}>
                     <option value="draft">Draft</option>
                     <option value="sent">Sent</option>
@@ -163,7 +163,7 @@ export function InvoiceFormPage() {
                     <option value="hold">Hold</option>
                   </select>
                 </Field>
-                <Field label="POD verified">
+                <Field label="POD Verified">
                   <label style={{ display: "flex", alignItems: "center", gap: 8, minHeight: 42, color: "#334155", fontWeight: 700 }}>
                     <input type="checkbox" checked={fields.pod_verified} onChange={e => set("pod_verified", e.target.checked)} />
                     Verified
@@ -187,7 +187,7 @@ export function InvoiceFormPage() {
                 Cancel
               </button>
               <button className="af-submit-btn" type="submit" disabled={submitting}>
-                {submitting ? "Saving..." : isEdit ? "Save invoice →" : "Create invoice →"}
+                {submitting ? "Saving..." : isEdit ? "Save Invoice →" : "Create Invoice →"}
               </button>
             </div>
           </form>

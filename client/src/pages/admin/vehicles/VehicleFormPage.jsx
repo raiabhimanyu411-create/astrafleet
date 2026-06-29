@@ -108,7 +108,7 @@ export function VehicleFormPage() {
   return (
     <AdminWorkspaceLayout
       badge="Fleet management"
-      title={isEdit ? "Edit vehicle" : "Add new vehicle"}
+      title={isEdit ? "Edit Vehicle" : "Add New Vehicle"}
       description={isEdit ? "Update vehicle details." : "Add a vehicle quickly. Compliance details can be completed later."}
       highlights={[]}
     >
@@ -135,20 +135,20 @@ export function VehicleFormPage() {
           <form className="af-form" onSubmit={handleSubmit}>
 
             <div className="af-section">
-              <p className="af-section-title">Vehicle details</p>
+              <p className="af-section-title">Vehicle Details</p>
               <div className="af-grid-3">
-                <Field label="Registration number" required hint="e.g. AB12 CDE">
+                <Field label="Registration Number" required hint="e.g. AB12 CDE">
                   <input className="af-input" type="text" placeholder="e.g. AB12 CDE" value={fields.registration_number} onChange={e => set("registration_number", e.target.value.toUpperCase())} required />
                 </Field>
-                <Field label="Vehicle type" required>
+                <Field label="Vehicle Type" required>
                   <select className="af-select" value={fields.truck_type} onChange={e => set("truck_type", e.target.value)} required>
                     {TRUCK_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
                   </select>
                 </Field>
-                <Field label="Capacity (tonnes)">
+                <Field label="Capacity (Tonnes)">
                   <input className="af-input" type="number" min="0" step="0.01" value={fields.capacity_tonnes} onChange={e => set("capacity_tonnes", e.target.value)} />
                 </Field>
-                <Field label="Current status">
+                <Field label="Current Status">
                   <select className="af-select" value={fields.status} onChange={e => set("status", e.target.value)}>
                     <option value="available">Available</option>
                     <option value="planned">On trip / planned</option>
@@ -159,40 +159,40 @@ export function VehicleFormPage() {
                 </Field>
               </div>
               <button className="header-action-button" style={{ marginTop: 16 }} type="button" onClick={() => setShowMore(current => !current)}>
-                {showMore ? "Hide extra details" : "More vehicle details"}
+                {showMore ? "Hide Extra Details" : "More Vehicle Details"}
               </button>
             </div>
 
             {showMore && (
             <div className="af-section">
-              <p className="af-section-title">Extra details</p>
+              <p className="af-section-title">Extra Details</p>
               <div className="af-grid-3">
-                <Field label="Company / operator name" hint="Used to group vehicles in Annual Schedule">
+                <Field label="Company / Operator Name" hint="Used to group vehicles in Annual Schedule">
                   <input className="af-input" type="text" placeholder="e.g. AAT Haulage Limited" value={fields.company_name} onChange={e => set("company_name", e.target.value)} />
                 </Field>
-                <Field label="Inspection frequency (weeks)">
+                <Field label="Inspection Frequency (Weeks)">
                   <select className="af-select" value={fields.inspection_frequency_weeks} onChange={e => set("inspection_frequency_weeks", e.target.value)}>
                     <option value="6">6 weeks</option>
                     <option value="10">10 weeks</option>
                     <option value="12">12 weeks</option>
                   </select>
                 </Field>
-                <Field label="Fleet code" hint="Leave blank to auto-generate">
+                <Field label="Fleet Code" hint="Leave blank to auto-generate">
                   <input className="af-input" type="text" placeholder="e.g. FLT-001" value={fields.fleet_code} onChange={e => set("fleet_code", e.target.value)} />
                 </Field>
-                <Field label="Vehicle make">
+                <Field label="Vehicle Make">
                   <input className="af-input" type="text" placeholder="e.g. Volvo" value={fields.make} onChange={e => set("make", e.target.value)} />
                 </Field>
-                <Field label="Vehicle model">
+                <Field label="Vehicle Model">
                   <input className="af-input" type="text" placeholder="e.g. FH16" value={fields.model} onChange={e => set("model", e.target.value)} />
                 </Field>
                 <Field label="Colour">
                   <input className="af-input" type="text" placeholder="e.g. White" value={fields.colour} onChange={e => set("colour", e.target.value)} />
                 </Field>
-                <Field label="Year of manufacture">
+                <Field label="Year Of Manufacture">
                   <input className="af-input" type="number" placeholder="e.g. 2019" min="1990" max={new Date().getFullYear()} value={fields.year_of_manufacture} onChange={e => set("year_of_manufacture", e.target.value)} />
                 </Field>
-                <Field label="Fuel type">
+                <Field label="Fuel Type">
                   <select className="af-select" value={fields.fuel_type} onChange={e => set("fuel_type", e.target.value)}>
                     <option value="Diesel">Diesel</option>
                     <option value="Petrol">Petrol</option>
@@ -207,30 +207,30 @@ export function VehicleFormPage() {
 
             {showMore && (
             <div className="af-section">
-              <p className="af-section-title">Compliance and service dates</p>
+              <p className="af-section-title">Compliance And Service Dates</p>
               <div className="af-grid-3">
-                <Field label="Insurance expiry">
+                <Field label="Insurance Expiry">
                   <input className="af-input" type="date" value={fields.insurance_expiry} onChange={e => set("insurance_expiry", e.target.value)} />
                 </Field>
-                <Field label="Fitness / MOT expiry">
+                <Field label="Fitness / MOT Expiry">
                   <input className="af-input" type="date" value={fields.fitness_expiry || fields.mot_expiry} onChange={e => { set("fitness_expiry", e.target.value); set("mot_expiry", e.target.value); }} />
                 </Field>
-                <Field label="Permit expiry">
+                <Field label="Permit Expiry">
                   <input className="af-input" type="date" value={fields.permit_expiry} onChange={e => set("permit_expiry", e.target.value)} />
                 </Field>
-                <Field label="Pollution certificate expiry">
+                <Field label="Pollution Certificate Expiry">
                   <input className="af-input" type="date" value={fields.pollution_expiry} onChange={e => set("pollution_expiry", e.target.value)} />
                 </Field>
-                <Field label="Road tax expiry">
+                <Field label="Road Tax Expiry">
                   <input className="af-input" type="date" value={fields.road_tax_expiry} onChange={e => set("road_tax_expiry", e.target.value)} />
                 </Field>
-                <Field label="Service due date">
+                <Field label="Service Due Date">
                   <input className="af-input" type="date" value={fields.next_service_due} onChange={e => set("next_service_due", e.target.value)} />
                 </Field>
-                <Field label="Odometer reading (km)">
+                <Field label="Odometer Reading (Km)">
                   <input className="af-input" type="number" min="0" step="0.1" value={fields.odometer_reading} onChange={e => set("odometer_reading", e.target.value)} />
                 </Field>
-                <Field label="Current location">
+                <Field label="Current Location">
                   <input className="af-input" type="text" value={fields.current_location} onChange={e => set("current_location", e.target.value)} />
                 </Field>
               </div>
@@ -249,7 +249,7 @@ export function VehicleFormPage() {
                 Cancel
               </button>
               <button type="submit" className="af-submit-btn" disabled={submitting}>
-                {submitting ? "Saving..." : isEdit ? "Save changes →" : "Add vehicle →"}
+                {submitting ? "Saving..." : isEdit ? "Save Changes →" : "Add Vehicle →"}
               </button>
             </div>
           </form>

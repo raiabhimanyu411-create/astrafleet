@@ -140,7 +140,7 @@ export function AdminBillingPage() {
         <button className="header-action-button" type="button" onClick={() => refetch(false)}>Refresh</button>
         <button className="header-action-button" type="button" onClick={exportInvoices}>Export CSV</button>
         <button className="af-submit-btn" type="button" onClick={() => navigate("/admin/billing/new")}>
-          + Create invoice
+          + Create Invoice
         </button>
       </div>
 
@@ -169,8 +169,8 @@ export function AdminBillingPage() {
         <article className="content-card">
           <div className="section-head">
             <div>
-              <span className="card-label">Billing workflow</span>
-              <h2>Invoice control board</h2>
+              <span className="card-label">Billing Workflow</span>
+              <h2>Invoice Control Board</h2>
             </div>
             <StatusPill tone="neutral">Live queue</StatusPill>
           </div>
@@ -193,8 +193,8 @@ export function AdminBillingPage() {
         <article className="content-card">
           <div className="section-head">
             <div>
-              <span className="card-label">Billing blockers</span>
-              <h2>POD and payment exceptions</h2>
+              <span className="card-label">Billing Blockers</span>
+              <h2>POD And Payment Exceptions</h2>
             </div>
             <StatusPill tone="danger">Clear before send</StatusPill>
           </div>
@@ -219,12 +219,12 @@ export function AdminBillingPage() {
       <section className="content-card finance-filter-card billing-filter-card">
         <input
           className="af-input"
-          placeholder="Search invoice, client, trip, or lane..."
+          placeholder="Search Invoice, Client, Trip, Or Lane..."
           value={search}
           onChange={e => setSearch(e.target.value)}
         />
         <select className="af-select" value={status} onChange={e => setStatus(e.target.value)}>
-          <option value="">All statuses</option>
+          <option value="">All Statuses</option>
           <option value="draft">Draft</option>
           <option value="sent">Sent</option>
           <option value="pending">Pending</option>
@@ -233,20 +233,20 @@ export function AdminBillingPage() {
           <option value="hold">Hold</option>
         </select>
         <select className="af-select" value={pod} onChange={e => setPod(e.target.value)}>
-          <option value="">All POD states</option>
-          <option value="verified">POD verified</option>
-          <option value="pending">POD pending</option>
+          <option value="">All POD States</option>
+          <option value="verified">POD Verified</option>
+          <option value="pending">POD Pending</option>
         </select>
         <input className="af-input" type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} />
         <input className="af-input" type="date" value={dateTo} onChange={e => setDateTo(e.target.value)} />
-        <button className="header-action-button" type="button" onClick={clearFilters} disabled={!hasFilters}>Clear filters</button>
+        <button className="header-action-button" type="button" onClick={clearFilters} disabled={!hasFilters}>Clear Filters</button>
       </section>
 
       <section className="content-card">
         <div className="section-head">
           <div>
-            <span className="card-label">Invoice register</span>
-            <h2>Customer billing records</h2>
+            <span className="card-label">Invoice Register</span>
+            <h2>Customer Billing Records</h2>
           </div>
           <StatusPill tone="warning">{invoices.length} visible</StatusPill>
         </div>
@@ -257,21 +257,21 @@ export function AdminBillingPage() {
               <button className="finance-row-main billing-row-main" type="button" onClick={() => navigate(`/admin/billing/${item.id}`)}>
                 <div>
                   <strong>{item.invoice}</strong>
-                  <p>{item.client} · {item.tripCode || "No trip link"}</p>
+                  <p>{item.client} · {item.tripCode || "No Trip Link"}</p>
                 </div>
                 <div>
                   <span>{item.amount}</span>
                   <p>Issued {item.issued} · Due {item.dueLabel}</p>
                 </div>
                 <div>
-                  <span>{item.podVerified ? "POD verified" : "POD pending"}</span>
+                  <span>{item.podVerified ? "POD Verified" : "POD Pending"}</span>
                   <p>{item.lane}</p>
                 </div>
               </button>
               <div className="finance-row-actions">
                 <StatusPill tone={item.tone}>{item.status}</StatusPill>
                 <button className="header-action-button" type="button" onClick={() => togglePod(item)}>
-                  {item.podVerified ? "POD pending" : "Verify POD"}
+                  {item.podVerified ? "POD Pending" : "Verify POD"}
                 </button>
                 {item.status !== "sent" && item.status !== "paid" && (
                   <button className="header-action-button" type="button" onClick={() => updateStatus(item.id, "sent")}>Send</button>
@@ -280,7 +280,7 @@ export function AdminBillingPage() {
                   <button className="header-action-button" type="button" onClick={() => updateStatus(item.id, "hold")}>Hold</button>
                 )}
                 {item.status !== "paid" && (
-                  <button className="header-action-button" type="button" onClick={() => updateStatus(item.id, "paid")}>Mark paid</button>
+                  <button className="header-action-button" type="button" onClick={() => updateStatus(item.id, "paid")}>Mark Paid</button>
                 )}
                 <button className="header-action-button" type="button" onClick={() => navigate(`/admin/billing/${item.id}/edit`)}>Edit</button>
                 <button className="header-action-button danger" type="button" onClick={() => setDeleteTarget(item)}>Delete</button>

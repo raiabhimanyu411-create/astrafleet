@@ -20,7 +20,7 @@ export function NotificationCenter({
   fetchUrl,
   paramKey,
   paramValue,
-  title = "Notification centre",
+  title = "Notification Centre",
   eyebrow = "Live feed",
   emptyTitle = "No active notifications",
   emptyBody = "Everything is clear right now."

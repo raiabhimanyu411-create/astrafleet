@@ -124,7 +124,7 @@ export function NotificationBell({ fetchUrl, paramKey, paramValue, viewAllTo }) 
           <div className="notif-footer-actions">
             {viewAllTo && (
               <button className="notif-refresh-btn" onClick={handleViewAll} type="button">
-                View all
+                View All
               </button>
             )}
             <button className="notif-refresh-btn" onClick={load} type="button">

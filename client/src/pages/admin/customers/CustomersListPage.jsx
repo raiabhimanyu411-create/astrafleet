@@ -139,7 +139,7 @@ export function CustomersListPage() {
         <button className="header-action-button" type="button" onClick={load}>Refresh</button>
         <button className="header-action-button" type="button" onClick={exportCustomers}>Export CSV</button>
         <button className="af-submit-btn" type="button" onClick={() => navigate("/admin/customers/new")}>
-          + Add customer
+          + Add Customer
         </button>
       </div>
 
@@ -149,30 +149,30 @@ export function CustomersListPage() {
         <input
           className="af-input"
           type="text"
-          placeholder="Search by company, contact, email, phone, or postcode..."
+          placeholder="Search By Company, Contact, Email, Phone, Or Postcode..."
           value={search}
           onChange={e => setSearch(e.target.value)}
         />
         <select className="af-select" value={status} onChange={e => setStatus(e.target.value)}>
-          <option value="">All statuses</option>
+          <option value="">All Statuses</option>
           <option value="active">Active</option>
           <option value="suspended">Suspended</option>
           <option value="closed">Closed</option>
         </select>
         <select className="af-select" value={risk} onChange={e => setRisk(e.target.value)}>
-          <option value="">All account states</option>
-          <option value="outstanding">Outstanding balance</option>
-          <option value="overdue">Overdue balance</option>
-          <option value="inactive">No trips booked</option>
+          <option value="">All Account States</option>
+          <option value="outstanding">Outstanding Balance</option>
+          <option value="overdue">Overdue Balance</option>
+          <option value="inactive">No Trips Booked</option>
         </select>
-        <button className="header-action-button" disabled={!hasFilters} type="button" onClick={clearFilters}>Clear filters</button>
+        <button className="header-action-button" disabled={!hasFilters} type="button" onClick={clearFilters}>Clear Filters</button>
       </section>
 
       <section className="content-card customer-register-card">
         <div className="section-head">
           <div>
-            <span className="card-label">Customer register</span>
-            <h2>Editable customer table</h2>
+            <span className="card-label">Customer Register</span>
+            <h2>Editable Customer Table</h2>
           </div>
           <StatusPill tone={customers.length ? "success" : "neutral"}>{customers.length} visible</StatusPill>
         </div>

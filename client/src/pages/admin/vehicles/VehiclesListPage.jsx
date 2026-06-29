@@ -6,16 +6,16 @@ import { StatusPill } from "../../../components/StatusPill";
 import { AdminWorkspaceLayout } from "../AdminWorkspaceLayout";
 
 const STATUS_OPTIONS = [
-  { value: "", label: "All statuses" },
+  { value: "", label: "All Statuses" },
   { value: "available", label: "Available" },
   { value: "planned", label: "Planned" },
-  { value: "in_transit", label: "In transit" },
+  { value: "in_transit", label: "In Transit" },
   { value: "maintenance", label: "Maintenance" },
   { value: "stopped", label: "Stopped" }
 ];
 
 const TYPE_OPTIONS = [
-  { value: "", label: "All types" },
+  { value: "", label: "All Types" },
   { value: "Rigid HGV", label: "Rigid HGV" },
   { value: "Articulated HGV", label: "Articulated HGV" },
   { value: "Curtainsider", label: "Curtainsider" },
@@ -65,28 +65,28 @@ function TrolleyModal({ onClose, onSaved }) {
       <form className="maintenance-modal" onSubmit={submit}>
         <div className="section-head">
           <div>
-            <span className="card-label">Fleet asset</span>
-            <h2>Add trailer</h2>
+            <span className="card-label">Fleet Asset</span>
+            <h2>Add Trailer</h2>
           </div>
           <button className="header-action-button" type="button" onClick={onClose}>Close</button>
         </div>
         <div className="af-grid-2">
           <div className="af-field">
-            <label className="af-label">Registration number <span style={{ color: "#dc2626" }}>*</span></label>
+            <label className="af-label">Registration Number <span style={{ color: "#dc2626" }}>*</span></label>
             <input className="af-input" type="text" placeholder="e.g. TR12 ABC" value={fields.registration_number} onChange={e => set("registration_number", e.target.value.toUpperCase())} required />
           </div>
           <div className="af-field">
-            <label className="af-label">Trailer code</label>
+            <label className="af-label">Trailer Code</label>
             <input className="af-input" type="text" placeholder="Auto if blank" value={fields.trailer_code} onChange={e => set("trailer_code", e.target.value)} />
           </div>
           <div className="af-field">
-            <label className="af-label">Trailer type</label>
+            <label className="af-label">Trailer Type</label>
             <select className="af-select" value={fields.trailer_type} onChange={e => set("trailer_type", e.target.value)}>
               {TROLLEY_TYPES.map(type => <option key={type} value={type}>{type}</option>)}
             </select>
           </div>
           <div className="af-field">
-            <label className="af-label">Capacity (tonnes)</label>
+            <label className="af-label">Capacity (Tonnes)</label>
             <input className="af-input" type="number" min="0" step="0.01" value={fields.capacity_tonnes} onChange={e => set("capacity_tonnes", e.target.value)} />
           </div>
           <div className="af-field">
@@ -102,7 +102,7 @@ function TrolleyModal({ onClose, onSaved }) {
         {error && <p className="state-card error" style={{ marginTop: 14 }}>{error}</p>}
         <div className="af-actions">
           <button className="header-action-button" type="button" onClick={onClose}>Cancel</button>
-          <button className="af-submit-btn" type="submit" disabled={saving}>{saving ? "Saving..." : "Add trailer →"}</button>
+          <button className="af-submit-btn" type="submit" disabled={saving}>{saving ? "Saving..." : "Add Trailer →"}</button>
         </div>
       </form>
     </div>
@@ -181,9 +181,9 @@ export function VehiclesListPage() {
     const rows = data?.vehicles || [];
     return [
       { key: "available", label: "Available", value: rows.filter(v => v.status === "available").length },
-      { key: "on_job", label: "On job", value: rows.filter(v => Number(v.openTrips || 0) > 0 || ["planned", "in_transit"].includes(v.status)).length },
+      { key: "on_job", label: "On Job", value: rows.filter(v => Number(v.openTrips || 0) > 0 || ["planned", "in_transit"].includes(v.status)).length },
       { key: "maintenance", label: "Maintenance", value: rows.filter(v => ["maintenance", "stopped"].includes(v.status)).length },
-      { key: "compliance", label: "Compliance risk", value: rows.filter(v => v.complianceRisk).length }
+      { key: "compliance", label: "Compliance Risk", value: rows.filter(v => v.complianceRisk).length }
     ];
   }, [data]);
 
@@ -230,28 +230,28 @@ export function VehiclesListPage() {
   }
 
   async function handleDeleteVehicle(vehicle) {
-    if (!window.confirm(`"${vehicle.registrationNumber}" ko delete karna chahte ho? Yeh action undo nahi hoga.`)) return;
+    if (!window.confirm(`Delete "${vehicle.registrationNumber}"? This action cannot be undone.`)) return;
     setDeletingId(vehicle.id);
     setError("");
     try {
       await deleteVehicle(vehicle.id);
       await load();
     } catch (err) {
-      setError(err?.response?.data?.message || "Vehicle delete nahi hua.");
+      setError(err?.response?.data?.message || "Vehicle could not be deleted. Please try again.");
     } finally {
       setDeletingId(null);
     }
   }
 
   async function handleDeleteTrolley(trailer) {
-    if (!window.confirm(`Trailer "${trailer.registrationNumber}" ko delete karna chahte ho? Yeh action undo nahi hoga.`)) return;
+    if (!window.confirm(`Delete trailer "${trailer.registrationNumber}"? This action cannot be undone.`)) return;
     setDeletingId(trailer.id);
     setError("");
     try {
       await deleteTrolley(trailer.id);
       await load();
     } catch (err) {
-      setError(err?.response?.data?.message || "Trailer delete nahi hua.");
+      setError(err?.response?.data?.message || "Trailer could not be deleted. Please try again.");
     } finally {
       setDeletingId(null);
     }
@@ -299,8 +299,8 @@ export function VehiclesListPage() {
         {assetTab === "vehicles" && (
           <button className="header-action-button" type="button" onClick={exportVehicles}>Export CSV</button>
         )}
-        <button className="header-action-button" type="button" onClick={() => setShowTrolleyModal(true)}>+ Add trailer</button>
-        <button className="af-submit-btn" type="button" onClick={() => navigate("/admin/vehicles/new")}>+ Add vehicle</button>
+        <button className="header-action-button" type="button" onClick={() => setShowTrolleyModal(true)}>+ Add Trailer</button>
+        <button className="af-submit-btn" type="button" onClick={() => navigate("/admin/vehicles/new")}>+ Add Vehicle</button>
       </div>
 
       <section className="vehicle-tabs" aria-label="Asset type">
@@ -342,7 +342,7 @@ export function VehiclesListPage() {
         <input
           className="af-input"
           type="text"
-          placeholder="Search reg, fleet code, make, model, type, or location..."
+          placeholder="Search Reg, Fleet Code, Make, Model, Type, Or Location..."
           value={search}
           onChange={e => setSearch(e.target.value)}
         />
@@ -353,13 +353,13 @@ export function VehiclesListPage() {
           {TYPE_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
         </select>
         <select className="af-select" value={riskFilter} onChange={e => setRiskFilter(e.target.value)}>
-          <option value="">All risk states</option>
-          <option value="compliance">Compliance risk</option>
-          <option value="defects">Open defects</option>
-          <option value="service">Service due soon</option>
-          <option value="open_trips">Open trips</option>
+          <option value="">All Risk States</option>
+          <option value="compliance">Compliance Risk</option>
+          <option value="defects">Open Defects</option>
+          <option value="service">Service Due Soon</option>
+          <option value="open_trips">Open Trips</option>
         </select>
-        <button className="header-action-button" disabled={!hasFilters} type="button" onClick={clearFilters}>Clear filters</button>
+        <button className="header-action-button" disabled={!hasFilters} type="button" onClick={clearFilters}>Clear Filters</button>
         </div>
       </section>
       )}
@@ -382,8 +382,8 @@ export function VehiclesListPage() {
       <section className="vehicle-register-card">
         <div className="section-head">
           <div>
-            <span className="card-label">Fleet register</span>
-            <h2>{view === "fleet" ? "Fleet list" : view === "compliance" ? "Compliance dates" : "Workshop view"}</h2>
+            <span className="card-label">Fleet Register</span>
+            <h2>{view === "fleet" ? "Fleet List" : view === "compliance" ? "Compliance Dates" : "Workshop View"}</h2>
           </div>
           <StatusPill tone={vehicles.length ? "success" : "neutral"}>{vehicles.length} visible</StatusPill>
         </div>
@@ -394,7 +394,7 @@ export function VehiclesListPage() {
               {view === "fleet" && (
               <tr>
                 <th>Registration</th>
-                <th>Fleet code</th>
+                <th>Fleet Code</th>
                 <th>Vehicle</th>
                 <th>Type</th>
                 <th>Status</th>
@@ -408,11 +408,11 @@ export function VehiclesListPage() {
               {view === "compliance" && (
               <tr>
                 <th>Registration</th>
-                <th>Fleet code</th>
+                <th>Fleet Code</th>
                 <th>Vehicle</th>
                 <th>MOT</th>
                 <th>Insurance</th>
-                <th>Road tax</th>
+                <th>Road Tax</th>
                 <th>Permit</th>
                 <th>Pollution</th>
                 <th>Fitness</th>
@@ -423,15 +423,15 @@ export function VehiclesListPage() {
               {view === "workshop" && (
               <tr>
                 <th>Registration</th>
-                <th>Fleet code</th>
+                <th>Fleet Code</th>
                 <th>Vehicle</th>
                 <th>Status</th>
                 <th>Location</th>
                 <th>Odometer</th>
-                <th>Next service</th>
-                <th>Open defects</th>
+                <th>Next Service</th>
+                <th>Open Defects</th>
                 <th>Trips</th>
-                <th>Last activity</th>
+                <th>Last Activity</th>
                 <th>Actions</th>
               </tr>
               )}
@@ -612,8 +612,8 @@ export function VehiclesListPage() {
       <section className="vehicle-register-card">
         <div className="section-head">
           <div>
-            <span className="card-label">Trailer register</span>
-            <h2>Trailers list</h2>
+            <span className="card-label">Trailer Register</span>
+            <h2>Trailers List</h2>
           </div>
           <StatusPill tone={(data?.trailers || []).length ? "success" : "neutral"}>{(data?.trailers || []).length} trailers</StatusPill>
         </div>
@@ -622,7 +622,7 @@ export function VehiclesListPage() {
             <thead>
               <tr>
                 <th>Registration</th>
-                <th>Trailer code</th>
+                <th>Trailer Code</th>
                 <th>Type</th>
                 <th>Capacity</th>
                 <th>Status</th>
@@ -657,7 +657,7 @@ export function VehiclesListPage() {
               {!loading && (data?.trailers || []).length === 0 && (
                 <tr>
                   <td colSpan={8}>
-                    <p className="finance-empty">Koi trailer nahi hai. Upar se "Add trailer" karke add karo.</p>
+                    <p className="finance-empty">No trailers yet. Use "Add Trailer" above to add one.</p>
                   </td>
                 </tr>
               )}

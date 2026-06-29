@@ -105,9 +105,9 @@ function EmployeeAccessRow({ employee, modules, onSaved }) {
               setError("");
             }}
           >
-            <option value="pending">Pending review</option>
-            <option value="active">Approve login</option>
-            <option value="rejected">Reject access</option>
+            <option value="pending">Pending Review</option>
+            <option value="active">Approve Login</option>
+            <option value="rejected">Reject Access</option>
           </select>
           <StatusPill tone={tone}>{approvalStatus}</StatusPill>
         </div>
@@ -226,30 +226,30 @@ export function AdminEmployeesPage() {
       <section className="content-card employee-filter-card">
         <input
           className="af-input"
-          placeholder="Search employee, email, role, or department..."
+          placeholder="Search Employee, Email, Role, Or Department..."
           value={search}
           onChange={e => setSearch(e.target.value)}
         />
         <select className="af-select" value={status} onChange={e => setStatus(e.target.value)}>
-          <option value="">All statuses</option>
-          <option value="pending">Pending review</option>
+          <option value="">All Statuses</option>
+          <option value="pending">Pending Review</option>
           <option value="active">Active</option>
           <option value="rejected">Rejected</option>
         </select>
         <select className="af-select" value={moduleFilter} onChange={e => setModuleFilter(e.target.value)}>
-          <option value="">All pages</option>
+          <option value="">All Pages</option>
           {(data?.modules || []).map(module => (
             <option key={module} value={module}>{moduleLabels[module] || module}</option>
           ))}
         </select>
-        <button className="header-action-button" disabled={!hasFilters} type="button" onClick={clearFilters}>Clear filters</button>
+        <button className="header-action-button" disabled={!hasFilters} type="button" onClick={clearFilters}>Clear Filters</button>
       </section>
 
       <section className="content-card employee-table-card">
         <div className="section-head">
           <div>
-            <span className="card-label">Employee access</span>
-            <h2>Permission control table</h2>
+            <span className="card-label">Employee Access</span>
+            <h2>Permission Control Table</h2>
           </div>
           <StatusPill tone={employees.length ? "success" : "neutral"}>{employees.length} visible</StatusPill>
         </div>

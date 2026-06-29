@@ -2,11 +2,11 @@ import { useEffect, useState } from "react";
 
 const reasonCategories = [
   { value: "duplicate", label: "Duplicate" },
-  { value: "client_request", label: "Client request" },
-  { value: "incorrect_amount", label: "Incorrect amount" },
-  { value: "wrong_assignment", label: "Wrong assignment" },
-  { value: "compliance_issue", label: "Compliance issue" },
-  { value: "data_correction", label: "Data correction" },
+  { value: "client_request", label: "Client Request" },
+  { value: "incorrect_amount", label: "Incorrect Amount" },
+  { value: "wrong_assignment", label: "Wrong Assignment" },
+  { value: "compliance_issue", label: "Compliance Issue" },
+  { value: "data_correction", label: "Data Correction" },
   { value: "other", label: "Other" }
 ];
 
@@ -40,7 +40,7 @@ export function DeleteReasonModal({
       <div className="reason-modal" role="dialog" aria-modal="true" aria-labelledby="delete-reason-title">
         <div className="section-head">
           <div>
-            <span className="card-label">Reason required</span>
+            <span className="card-label">Reason Required</span>
             <h2 id="delete-reason-title">{title}</h2>
           </div>
         </div>
@@ -49,16 +49,16 @@ export function DeleteReasonModal({
           {body || "This action will be visible in the admin activity report with your name, time, and reason."}
         </p>
         <label className="af-field">
-          <span className="af-label">Reason category</span>
+          <span className="af-label">Reason Category</span>
           <select className="af-select" value={reasonCategory} onChange={e => setReasonCategory(e.target.value)}>
-            <option value="">Select a category</option>
+            <option value="">Select A Category</option>
             {reasonCategories.map(category => (
               <option key={category.value} value={category.value}>{category.label}</option>
             ))}
           </select>
         </label>
         <label className="af-field">
-          <span className="af-label">Deletion reason</span>
+          <span className="af-label">Deletion Reason</span>
           <textarea
             autoFocus
             className="af-input reason-modal-input"

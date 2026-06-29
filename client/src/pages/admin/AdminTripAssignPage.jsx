@@ -6,7 +6,7 @@ import { AdminWorkspaceLayout } from "./AdminWorkspaceLayout";
 const PRIORITY_OPTIONS = [
   { value: "standard", label: "Standard" },
   { value: "priority", label: "Priority" },
-  { value: "critical", label: "Critical — Urgent dispatch" }
+  { value: "critical", label: "Critical — Urgent Dispatch" }
 ];
 
 function Field({ label, children, hint }) {
@@ -127,14 +127,14 @@ export function AdminTripAssignPage() {
       <div className="af-page">
         <div className="af-back-row">
           <button className="af-back-btn" type="button" onClick={() => navigate("/admin/trips")}>
-            ← Back to trips dashboard
+            ← Back To Trips Dashboard
           </button>
         </div>
 
         {formError && (
           <div className="state-card error" style={{ marginBottom: 20 }}>
             <span className="state-dot error" />
-            <div><strong>Load error</strong><p>{formError}</p></div>
+            <div><strong>Load Error</strong><p>{formError}</p></div>
           </div>
         )}
 
@@ -148,7 +148,7 @@ export function AdminTripAssignPage() {
 
             {/* ── Section: Route ── */}
             <div className="af-section">
-              <p className="af-section-title">Select route</p>
+              <p className="af-section-title">Select Route</p>
               <div className="af-grid-2">
                 <Field label="Route" hint={selectedRoute ? `${Math.round(selectedRoute.distance_km * 0.621371)} mi · Est. ${selectedRoute.standard_eta_hours}h · Toll ~£${Number(selectedRoute.toll_estimate_gbp).toLocaleString("en-GB", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : null}>
                   <select
@@ -157,7 +157,7 @@ export function AdminTripAssignPage() {
                     onChange={e => set("route_id", e.target.value)}
                     required
                   >
-                    <option value="">— Select route —</option>
+                    <option value="">— Select Route —</option>
                     {formData.routes.map(r => (
                       <option key={r.id} value={r.id}>
                         {r.origin_hub} → {r.destination_hub} ({r.route_code})
@@ -166,7 +166,7 @@ export function AdminTripAssignPage() {
                   </select>
                 </Field>
 
-                <Field label="Client name (optional)">
+                <Field label="Client Name (Optional)">
                   <input
                     className="af-input"
                     type="text"
@@ -180,21 +180,21 @@ export function AdminTripAssignPage() {
 
             {/* ── Section: Driver + Vehicle ── */}
             <div className="af-section">
-              <p className="af-section-title">Assign driver, truck and trailer</p>
+              <p className="af-section-title">Assign Driver, Truck And Trailer</p>
               <div className="state-card" style={{ marginBottom: 14 }}>
                 <span className="state-dot loading" />
                 <div>
-                  <strong>Auto suggestions</strong>
+                  <strong>Auto Suggestions</strong>
                   <p>
-                    Driver: {suggestedDriver ? `${suggestedDriver.full_name} (${suggestedDriver.shift_status})` : "No driver available"} ·
-                    Vehicle: {suggestedVehicle ? `${suggestedVehicle.registration_number} (${suggestedVehicle.truck_type || suggestedVehicle.status})` : "No vehicle available"}
+                    Driver: {suggestedDriver ? `${suggestedDriver.full_name} (${suggestedDriver.shift_status})` : "No Driver Available"} ·
+                    Vehicle: {suggestedVehicle ? `${suggestedVehicle.registration_number} (${suggestedVehicle.truck_type || suggestedVehicle.status})` : "No Vehicle Available"}
                   </p>
                 </div>
                 <button className="header-action-button" type="button" onClick={() => {
                   if (suggestedDriver) set("driver_id", String(suggestedDriver.id));
                   if (suggestedVehicle) set("vehicle_id", String(suggestedVehicle.id));
                 }}>
-                  Use suggestions
+                  Use Suggestions
                 </button>
               </div>
               <div className="af-grid-3">
@@ -205,7 +205,7 @@ export function AdminTripAssignPage() {
                     onChange={e => set("driver_id", e.target.value)}
                     required
                   >
-                    <option value="">— Select driver —</option>
+                    <option value="">— Select Driver —</option>
                     {formData.drivers.map(d => (
                       <option key={d.id} value={d.id}>
                         {d.full_name} ({d.employee_code}) · {d.shift_status}
@@ -221,7 +221,7 @@ export function AdminTripAssignPage() {
                     onChange={e => set("vehicle_id", e.target.value)}
                     required
                   >
-                    <option value="">— Select vehicle —</option>
+                    <option value="">— Select Vehicle —</option>
                     {formData.vehicles.map(v => (
                       <option key={v.id} value={v.id}>
                         {v.registration_number} · {v.model_name} ({v.truck_type}) · {v.status}
@@ -237,7 +237,7 @@ export function AdminTripAssignPage() {
                     onChange={e => set("trailer_id", e.target.value)}
                     required
                   >
-                    <option value="">— Select trailer —</option>
+                    <option value="">— Select Trailer —</option>
                     {formData.trailers.map(t => (
                       <option key={t.id} value={t.id}>
                         {t.registration_number} · {t.trailer_type} ({t.trailer_code}) · {t.status}
@@ -250,9 +250,9 @@ export function AdminTripAssignPage() {
 
             {/* ── Section: Schedule ── */}
             <div className="af-section">
-              <p className="af-section-title">Schedule and dispatch details</p>
+              <p className="af-section-title">Schedule And Dispatch Details</p>
               <div className="af-grid-3">
-                <Field label="Planned departure" hint="ETA will be calculated automatically from the selected route">
+                <Field label="Planned Departure" hint="ETA will be calculated automatically from the selected route">
                   <input
                     className="af-input"
                     type="datetime-local"
@@ -262,7 +262,7 @@ export function AdminTripAssignPage() {
                   />
                 </Field>
 
-                <Field label="Dock window (optional)" hint="e.g. 07:00 – 09:00 AM">
+                <Field label="Dock Window (Optional)" hint="e.g. 07:00 – 09:00 AM">
                   <input
                     className="af-input"
                     type="text"
@@ -272,7 +272,7 @@ export function AdminTripAssignPage() {
                   />
                 </Field>
 
-                <Field label="Priority level">
+                <Field label="Priority Level">
                   <select
                     className="af-select"
                     value={fields.priority_level}
@@ -288,9 +288,9 @@ export function AdminTripAssignPage() {
 
             {/* ── Section: Payout ── */}
             <div className="af-section">
-              <p className="af-section-title">Freight payout</p>
+              <p className="af-section-title">Freight Payout</p>
               <div className="af-grid-2">
-                <Field label="Freight amount (£)" hint="Driver payout for this trip">
+                <Field label="Freight Amount (£)" hint="Driver payout for this trip">
                   <div className="af-input-prefix-wrap">
                     <span className="af-prefix">£</span>
                     <input
@@ -308,8 +308,8 @@ export function AdminTripAssignPage() {
             </div>
 
             <div className="af-section">
-              <p className="af-section-title">Trip sheet and dispatcher notes</p>
-              <Field label="Dispatcher notes" hint="Printed on the trip sheet and used for reassignment or reschedule context">
+              <p className="af-section-title">Trip Sheet And Dispatcher Notes</p>
+              <Field label="Dispatcher Notes" hint="Printed on the trip sheet and used for reassignment or reschedule context">
                 <textarea className="af-input" style={{ minHeight: 86, resize: "vertical" }} value={fields.dispatcher_notes} onChange={e => set("dispatcher_notes", e.target.value)} />
               </Field>
             </div>
@@ -317,7 +317,7 @@ export function AdminTripAssignPage() {
             {submitError && (
               <div className="state-card error">
                 <span className="state-dot error" />
-                <div><strong>Submit error</strong><p>{submitError}</p></div>
+                <div><strong>Submit Error</strong><p>{submitError}</p></div>
               </div>
             )}
 
@@ -334,7 +334,7 @@ export function AdminTripAssignPage() {
                 className="af-submit-btn"
                 disabled={submitting}
               >
-                {submitting ? (isEdit ? "Saving..." : "Assigning...") : isEdit ? "Save trip →" : "Assign trip →"}
+                {submitting ? (isEdit ? "Saving..." : "Assigning...") : isEdit ? "Save Trip →" : "Assign Trip →"}
               </button>
             </div>
           </form>

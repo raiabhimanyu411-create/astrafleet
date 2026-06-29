@@ -102,7 +102,7 @@ export function TrackingVehicleDetailPage() {
 
   return (
     <AdminWorkspaceLayout
-      badge="GPS / live tracking"
+      badge="GPS / Live Tracking"
       title={vehicle?.registrationNumber || "Vehicle tracking"}
       description={vehicle ? `${vehicle.currentLocation || "Location unknown"} · ${vehicle.statusLabel}` : "Update location, speed, status, and GPS ping data."}
       highlights={[]}
@@ -110,7 +110,7 @@ export function TrackingVehicleDetailPage() {
       <div style={{ maxWidth: 920 }}>
         <div className="af-back-row">
           <button className="af-back-btn" type="button" onClick={() => navigate("/admin/tracking")}>
-            ← Back to tracking
+            ← Back To Tracking
           </button>
         </div>
 
@@ -133,7 +133,7 @@ export function TrackingVehicleDetailPage() {
             <div className="content-card" style={{ marginBottom: 16 }}>
               <div className="section-head">
                 <div>
-                  <span className="card-label">Tracking status</span>
+                  <span className="card-label">Tracking Status</span>
                   <h2 style={{ margin: "4px 0 0", fontSize: "1.35rem" }}>{vehicle.registrationNumber}</h2>
                 </div>
                 <div style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "flex-end" }}>
@@ -160,17 +160,17 @@ export function TrackingVehicleDetailPage() {
                 <div className="section-head">
                   <div>
                     <span className="card-label">Vehicle</span>
-                    <h2>Live position</h2>
+                    <h2>Live Position</h2>
                   </div>
                 </div>
                 <div className="detail-grid">
-                  <DetailBlock label="Fleet code" value={vehicle.fleetCode} />
+                  <DetailBlock label="Fleet Code" value={vehicle.fleetCode} />
                   <DetailBlock label="Model" value={vehicle.modelName} />
                   <DetailBlock label="Type" value={vehicle.truckType} />
                   <DetailBlock label="Speed" value={`${vehicle.speedKph || 0} km/h`} />
-                  <DetailBlock label="GPS accuracy" value={vehicle.accuracyLabel} />
-                  <div className="detail-wide"><DetailBlock label="Current location" value={vehicle.currentLocation || "Location unknown"} /></div>
-                  <div className="detail-wide"><DetailBlock label="Last ping" value={vehicle.lastPingMinutes != null ? `${vehicle.lastPingMinutes} min ago · ${vehicle.lastPingAt}` : "No ping data"} /></div>
+                  <DetailBlock label="GPS Accuracy" value={vehicle.accuracyLabel} />
+                  <div className="detail-wide"><DetailBlock label="Current Location" value={vehicle.currentLocation || "Location unknown"} /></div>
+                  <div className="detail-wide"><DetailBlock label="Last Ping" value={vehicle.lastPingMinutes != null ? `${vehicle.lastPingMinutes} min ago · ${vehicle.lastPingAt}` : "No ping data"} /></div>
                 </div>
               </article>
 
@@ -178,14 +178,14 @@ export function TrackingVehicleDetailPage() {
                 <div className="section-head">
                   <div>
                     <span className="card-label">Assignment</span>
-                    <h2>Trip and driver</h2>
+                    <h2>Trip And Driver</h2>
                   </div>
                 </div>
                 <div className="detail-grid">
                   <DetailBlock label="Driver" value={vehicle.driver?.name} />
                   <DetailBlock label="Phone" value={vehicle.driver?.phone} />
                   <DetailBlock label="Trip" value={vehicle.trip?.code} />
-                  <DetailBlock label="Trip status" value={vehicle.trip?.status} />
+                  <DetailBlock label="Trip Status" value={vehicle.trip?.status} />
                   <div className="detail-wide"><DetailBlock label="Lane" value={vehicle.trip?.lane} /></div>
                   <DetailBlock label="Departure" value={vehicle.trip?.departure} />
                   <DetailBlock label="ETA" value={vehicle.trip?.eta} />
@@ -196,7 +196,7 @@ export function TrackingVehicleDetailPage() {
             <div className="content-card tracking-map-card" style={{ marginBottom: 16 }}>
               <div className="section-head">
                 <div>
-                  <span className="card-label">Driver GPS map</span>
+                  <span className="card-label">Driver GPS Map</span>
                   <h2>{vehicle.driver?.name ? `${vehicle.driver.name} live position` : "Vehicle live position"}</h2>
                 </div>
                 <StatusPill tone={vehicle.stale ? "warning" : vehicle.latitude != null ? "success" : "neutral"}>
@@ -232,24 +232,24 @@ export function TrackingVehicleDetailPage() {
             <div className="content-card">
               <div className="section-head">
                 <div>
-                  <span className="card-label">Manual GPS update</span>
-                  <h2>Update ping</h2>
+                  <span className="card-label">Manual GPS Update</span>
+                  <h2>Update Ping</h2>
                 </div>
-                <StatusPill tone="neutral">Sets ping to now</StatusPill>
+                <StatusPill tone="neutral">Sets Ping To Now</StatusPill>
               </div>
 
               <form className="af-form" onSubmit={handleSubmit}>
                 <div className="af-grid-3">
                   <div className="af-field">
-                    <label className="af-label">Current location</label>
+                    <label className="af-label">Current Location</label>
                     <input className="af-input" value={fields.current_location || ""} onChange={e => set("current_location", e.target.value)} placeholder="e.g. M6 Northbound, Stoke-on-Trent" />
                   </div>
                   <div className="af-field">
-                    <label className="af-label">Speed (km/h)</label>
+                    <label className="af-label">Speed (Km/H)</label>
                     <input className="af-input" type="number" min="0" step="0.1" value={fields.speed_kph} onChange={e => set("speed_kph", e.target.value)} />
                   </div>
                   <div className="af-field">
-                    <label className="af-label">Vehicle status</label>
+                    <label className="af-label">Vehicle Status</label>
                     <select className="af-select" value={fields.status} onChange={e => set("status", e.target.value)}>
                       <option value="available">Available</option>
                       <option value="planned">Planned</option>
@@ -267,7 +267,7 @@ export function TrackingVehicleDetailPage() {
                     <input className="af-input" type="number" step="0.000001" value={fields.gps_longitude} onChange={e => set("gps_longitude", e.target.value)} placeholder="e.g. -0.127758" />
                   </div>
                   <div className="af-field">
-                    <label className="af-label">GPS accuracy (m)</label>
+                    <label className="af-label">GPS Accuracy (M)</label>
                     <input className="af-input" type="number" min="0" step="1" value={fields.gps_accuracy_m} onChange={e => set("gps_accuracy_m", e.target.value)} placeholder="e.g. 15" />
                   </div>
                 </div>
@@ -281,11 +281,11 @@ export function TrackingVehicleDetailPage() {
 
                 <div className="af-actions">
                   <button className="af-submit-btn" type="submit" disabled={saving}>
-                    {saving ? "Saving..." : "Save GPS ping →"}
+                    {saving ? "Saving..." : "Save GPS Ping →"}
                   </button>
                   {vehicle.trip?.id && (
                     <button className="header-action-button" type="button" onClick={() => navigate(`/admin/trips/${vehicle.trip.id}`)}>
-                      Open trip
+                      Open Trip
                     </button>
                   )}
                 </div>

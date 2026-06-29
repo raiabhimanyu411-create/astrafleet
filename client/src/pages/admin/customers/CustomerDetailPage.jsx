@@ -40,7 +40,7 @@ export function CustomerDetailPage() {
       <div className="af-page" style={{ maxWidth: 1000 }}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 20 }}>
           <button className="af-back-btn" type="button" onClick={() => navigate("/admin/customers")}>
-            ← Back to customers
+            ← Back To Customers
           </button>
           {data && (
             <button
@@ -48,7 +48,7 @@ export function CustomerDetailPage() {
               type="button"
               onClick={() => navigate(`/admin/customers/${id}/edit`)}
             >
-              Edit customer
+              Edit Customer
             </button>
           )}
         </div>
@@ -61,35 +61,35 @@ export function CustomerDetailPage() {
             <div className="af-section" style={{ marginBottom: 16 }}>
               <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 16, marginBottom: 16 }}>
                 <div>
-                  <p className="af-section-title" style={{ margin: 0 }}>Company profile</p>
+                  <p className="af-section-title" style={{ margin: 0 }}>Company Profile</p>
                   <h2 style={{ margin: "6px 0 4px", fontSize: "1.3rem" }}>{data.companyName}</h2>
                   <span style={{ fontSize: "0.8rem", color: "#64748b" }}>Customer since {data.since}</span>
                 </div>
                 <StatusPill tone={data.tone}>{data.status}</StatusPill>
               </div>
               <div className="detail-grid">
-                <DetailField label="Contact name"    value={data.contactName} />
+                <DetailField label="Contact Name"    value={data.contactName} />
                 <DetailField label="Email"           value={data.email} />
                 <DetailField label="Phone"           value={data.phone} />
                 <DetailField label="Postcode"        value={data.postcode} />
-                <DetailField label="VAT number"      value={data.vatNumber} />
-                <DetailField label="Tax details"     value={data.taxDetails} />
-                <DetailField label="Payment terms"   value={`Net ${data.paymentTermsDays} days`} />
-                <DetailField label="Credit limit"    value={data.creditLimitGbp ? `£${Number(data.creditLimitGbp).toLocaleString("en-GB", { minimumFractionDigits: 2 })}` : "—"} />
+                <DetailField label="VAT Number"      value={data.vatNumber} />
+                <DetailField label="Tax Details"     value={data.taxDetails} />
+                <DetailField label="Payment Terms"   value={`Net ${data.paymentTermsDays} days`} />
+                <DetailField label="Credit Limit"    value={data.creditLimitGbp ? `£${Number(data.creditLimitGbp).toLocaleString("en-GB", { minimumFractionDigits: 2 })}` : "—"} />
                 <div className="detail-wide">
                   <DetailField label="Address" value={data.address} />
                 </div>
                 <div className="detail-wide">
-                  <DetailField label="Billing address" value={data.billingAddress} />
+                  <DetailField label="Billing Address" value={data.billingAddress} />
                 </div>
                 <div className="detail-wide">
-                  <DetailField label="Saved pickup addresses" value={data.savedPickupAddresses || "—"} />
+                  <DetailField label="Saved Pickup Addresses" value={data.savedPickupAddresses || "—"} />
                 </div>
                 <div className="detail-wide">
-                  <DetailField label="Saved drop addresses" value={data.savedDropAddresses || "—"} />
+                  <DetailField label="Saved Drop Addresses" value={data.savedDropAddresses || "—"} />
                 </div>
                 <div className="detail-wide">
-                  <DetailField label="Rate contract" value={data.rateContract || "—"} />
+                  <DetailField label="Rate Contract" value={data.rateContract || "—"} />
                 </div>
               </div>
             </div>
@@ -98,8 +98,8 @@ export function CustomerDetailPage() {
             <div className="content-card" style={{ marginBottom: 16 }}>
               <div className="section-head">
                 <div>
-                  <span className="card-label">Trip history</span>
-                  <h2>Jobs linked to this customer</h2>
+                  <span className="card-label">Trip History</span>
+                  <h2>Jobs Linked To This Customer</h2>
                 </div>
                 <StatusPill tone="neutral">{data.trips.length} trips</StatusPill>
               </div>
@@ -137,8 +137,8 @@ export function CustomerDetailPage() {
             <div className="content-card">
               <div className="section-head">
                 <div>
-                  <span className="card-label">Invoice history</span>
-                  <h2>Invoices raised for this customer</h2>
+                  <span className="card-label">Invoice History</span>
+                  <h2>Invoices Raised For This Customer</h2>
                 </div>
                 <StatusPill tone="neutral">{data.invoices.length} invoices</StatusPill>
               </div>
@@ -151,7 +151,7 @@ export function CustomerDetailPage() {
                     <div className="data-row" key={inv.id}>
                       <div>
                         <strong>{inv.invoiceNo}</strong>
-                        <p>{inv.podVerified ? "POD verified" : "POD pending"}</p>
+                        <p>{inv.podVerified ? "POD Verified" : "POD Pending"}</p>
                       </div>
                       <div>
                         <span>{inv.amount}</span>

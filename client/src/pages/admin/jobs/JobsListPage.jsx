@@ -9,7 +9,7 @@ import { AdminWorkspaceLayout } from "../AdminWorkspaceLayout";
 import { getAuthSession } from "../../../utils/authSession";
 
 const STATUS_OPTIONS = [
-  { value: "", label: "All statuses" },
+  { value: "", label: "All Statuses" },
   { value: "planned", label: "Planned" },
   { value: "loading", label: "Loading" },
   { value: "active", label: "Active" },
@@ -20,17 +20,17 @@ const STATUS_OPTIONS = [
 ];
 
 const PRIORITY_OPTIONS = [
-  { value: "", label: "All priorities" },
+  { value: "", label: "All Priorities" },
   { value: "standard", label: "Standard" },
   { value: "priority", label: "Priority" },
   { value: "critical", label: "Critical" }
 ];
 
 const SORT_OPTIONS = [
-  { value: "date_asc", label: "Start date ↑" },
-  { value: "date_desc", label: "Start date ↓" },
-  { value: "freight_desc", label: "Freight (high–low)" },
-  { value: "freight_asc", label: "Freight (low–high)" },
+  { value: "date_asc", label: "Start Date ↑" },
+  { value: "date_desc", label: "Start Date ↓" },
+  { value: "freight_desc", label: "Freight (High–Low)" },
+  { value: "freight_asc", label: "Freight (Low–High)" },
   { value: "driver", label: "Driver A–Z" },
   { value: "customer", label: "Customer A–Z" },
   { value: "status", label: "Status" }
@@ -200,7 +200,7 @@ function JobNotesSection({ jobId }) {
 
   return (
     <div className="relay-notes-section">
-      <div className="relay-notes-label">Job notes</div>
+      <div className="relay-notes-label">Job Notes</div>
       <div className="relay-notes-list">
         {notes.length === 0 && <p className="relay-notes-empty">No notes yet — add one below.</p>}
         {notes.map(note => (
@@ -231,7 +231,7 @@ function JobNotesSection({ jobId }) {
         />
         {error && <p className="relay-note-error">{error}</p>}
         <button className="header-action-button" disabled={saving || !noteText.trim()} type="submit">
-          {saving ? "Saving..." : "Add note"}
+          {saving ? "Saving..." : "Add Note"}
         </button>
       </form>
     </div>
@@ -489,7 +489,7 @@ export function JobsListPage() {
           </select>
 
           <div className="relay-toggle-wrap">
-            <span className="relay-toggle-label">Show unassigned only</span>
+            <span className="relay-toggle-label">Show Unassigned Only</span>
             <button
               className={`relay-toggle ${showUnassignedOnly ? "on" : ""}`}
               type="button"
@@ -520,7 +520,7 @@ export function JobsListPage() {
           })}
           {hasActiveFilters && (
             <button className="relay-attention-chip clear" type="button" onClick={clearAllFilters}>
-              Clear filters
+              Clear Filters
             </button>
           )}
         </div>
@@ -535,7 +535,7 @@ export function JobsListPage() {
             <button className="header-action-button" type="button" onClick={load}>Refresh</button>
             <button className="header-action-button" type="button" onClick={exportJobs}>Export</button>
             <div className="relay-sort-wrap">
-              <span className="relay-sort-label">Sort by:</span>
+              <span className="relay-sort-label">Sort By:</span>
               <select className="relay-sort-select" value={sortBy} onChange={e => setSortBy(e.target.value)}>
                 {SORT_OPTIONS.map(opt => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
               </select>
@@ -557,11 +557,11 @@ export function JobsListPage() {
                   : "No jobs found."}
               </p>
               {hasActiveFilters && (
-                <button className="header-action-button" type="button" onClick={clearAllFilters}>Clear filters</button>
+                <button className="header-action-button" type="button" onClick={clearAllFilters}>Clear Filters</button>
               )}
               {tab === "upcoming" && !hasActiveFilters && (
                 <button className="af-submit-btn" type="button" onClick={() => navigate("/admin/jobs/new")}>
-                  Create first job
+                  Create First Job
                 </button>
               )}
             </div>
@@ -711,7 +711,7 @@ export function JobsListPage() {
                           disabled={busyId === job.id}
                           onClick={() => setStatus(job, "planned")}
                         >
-                          Reset to planned
+                          Reset To Planned
                         </button>
                       </div>
                     )}
@@ -725,7 +725,7 @@ export function JobsListPage() {
                           type="button"
                           onClick={() => setDelayTarget(job)}
                         >
-                          Report delay
+                          Report Delay
                         </button>
                       </div>
                     )}
@@ -735,7 +735,7 @@ export function JobsListPage() {
                       <div className="relay-status-banner warning">
                         <span>📋 POD pending · Proof of delivery has not been uploaded or verified</span>
                         <button className="header-action-button" type="button" onClick={() => navigate(`/admin/jobs/${job.id}`)}>
-                          View job
+                          View Job
                         </button>
                       </div>
                     )}
@@ -790,7 +790,7 @@ export function JobsListPage() {
                               type="button"
                               onClick={e => { e.stopPropagation(); setDelayTarget(job); }}
                             >
-                              Report delay
+                              Report Delay
                             </button>
                           )}
                         </div>
@@ -867,7 +867,7 @@ export function JobsListPage() {
                               type="button"
                               onClick={e => { e.stopPropagation(); setDelayTarget(job); }}
                             >
-                              Report delay
+                              Report Delay
                             </button>
                           )}
                         </div>
@@ -881,7 +881,7 @@ export function JobsListPage() {
                     {(job.loadingDoneTime || job.calculatedArrival) && (
                       <div className="relay-time-calc-strip">
                         <div className="relay-time-calc-item">
-                          <span className="relay-time-calc-label">Loading done</span>
+                          <span className="relay-time-calc-label">Loading Done</span>
                           <strong>{fmtTimeFull(job.loadingDoneTime)}</strong>
                         </div>
                         <div className="relay-time-calc-arrow">→</div>
@@ -896,7 +896,7 @@ export function JobsListPage() {
                         </div>
                         <div className="relay-time-calc-arrow">→</div>
                         <div className="relay-time-calc-item">
-                          <span className="relay-time-calc-label">Arrive at drop</span>
+                          <span className="relay-time-calc-label">Arrive At Drop</span>
                           <strong>{fmtTimeFull(job.calculatedArrival)}</strong>
                         </div>
                         <div className="relay-time-calc-arrow">→</div>
@@ -905,7 +905,7 @@ export function JobsListPage() {
                           <strong>{fmtTimeFull(job.calculatedUnloadEnd)}</strong>
                         </div>
                         <div className="relay-time-calc-total">
-                          <span className="relay-time-calc-label">Total job</span>
+                          <span className="relay-time-calc-label">Total Job</span>
                           <strong>{fmtMins(job.totalJobDurationMins)}</strong>
                         </div>
                       </div>
@@ -915,30 +915,30 @@ export function JobsListPage() {
                     {job.economics && (
                       <div className="relay-economics-strip">
                         <div className="relay-economics-col">
-                          <span className="relay-economics-label">Fuel cost</span>
+                          <span className="relay-economics-label">Fuel Cost</span>
                           <strong>{fmtGBP(job.economics.fuelCost)}</strong>
                           <small>{fmtGBP(job.economics.fuelCostPerMile)}/mi</small>
                         </div>
                         <div className="relay-economics-col">
-                          <span className="relay-economics-label">Driver cost</span>
+                          <span className="relay-economics-label">Driver Cost</span>
                           <strong>{fmtGBP(job.economics.driverCost)}</strong>
                           <small>{fmtMins(job.totalJobDurationMins)} job time</small>
                         </div>
                         <div className="relay-economics-col">
-                          <span className="relay-economics-label">Fleet cost</span>
+                          <span className="relay-economics-label">Fleet Cost</span>
                           <strong>{fmtGBP(job.economics.fleetCost)}</strong>
                           <small>{fmtGBP(job.economics.fleetCostPerHour)}/hr</small>
                         </div>
                         <div className="relay-economics-col">
-                          <span className="relay-economics-label">Total cost</span>
+                          <span className="relay-economics-label">Total Cost</span>
                           <strong>{fmtGBP(job.economics.totalCost)}</strong>
                         </div>
                         <div className="relay-economics-col">
-                          <span className="relay-economics-label">Suggested price</span>
+                          <span className="relay-economics-label">Suggested Price</span>
                           <strong>{fmtGBP(job.economics.suggestedPrice)}</strong>
                         </div>
                         <div className="relay-economics-col">
-                          <span className="relay-economics-label">Freight charged</span>
+                          <span className="relay-economics-label">Freight Charged</span>
                           <strong>{job.freight}</strong>
                         </div>
                         <div className={`relay-economics-col profit-col ${job.isProfitable === true ? "profit" : job.isProfitable === false ? "loss" : ""}`}>
@@ -980,7 +980,7 @@ export function JobsListPage() {
 
                     {/* ── Quick dispatch controls ── */}
                     <div className="relay-dispatch-controls">
-                      <div className="relay-dispatch-label">Quick dispatch</div>
+                      <div className="relay-dispatch-label">Quick Dispatch</div>
                       <div className="relay-dispatch-selects">
                         <div className="relay-dispatch-field">
                           <label>Driver</label>
@@ -990,7 +990,7 @@ export function JobsListPage() {
                             value={job.driverId || ""}
                             onChange={e => updatePlannerField(job, { driver_id: e.target.value ? Number(e.target.value) : null }, "driver", "Driver could not be assigned.")}
                           >
-                            <option value="">Assign driver</option>
+                            <option value="">Assign Driver</option>
                             {(data?.drivers || []).map(driver => (
                               <option key={driver.id} value={driver.id}>
                                 {driver.full_name} · {driver.shift_status}
@@ -1006,7 +1006,7 @@ export function JobsListPage() {
                             value={job.vehicleId || ""}
                             onChange={e => updatePlannerField(job, { vehicle_id: e.target.value ? Number(e.target.value) : null }, "vehicle", "Truck could not be assigned.")}
                           >
-                            <option value="">Assign truck</option>
+                            <option value="">Assign Truck</option>
                             {(data?.vehicles || []).map(vehicle => (
                               <option key={vehicle.id} value={vehicle.id}>
                                 {vehicle.registration_number} · {vehicle.truck_type || vehicle.model_name || "Truck"} · {vehicle.status}
@@ -1022,7 +1022,7 @@ export function JobsListPage() {
                             value={job.trailerId || ""}
                             onChange={e => updatePlannerField(job, { trailer_id: e.target.value ? Number(e.target.value) : null }, "trailer", "Trailer could not be assigned.")}
                           >
-                            <option value="">Assign trailer</option>
+                            <option value="">Assign Trailer</option>
                             {(data?.trailers || []).map(trailer => (
                               <option key={trailer.id} value={trailer.id}>
                                 {trailer.registration_number} · {trailer.trailer_type || "Trailer"} · {trailer.status}
@@ -1065,14 +1065,14 @@ export function JobsListPage() {
                       </div>
                       <div className="relay-footer-actions">
                         <button className="header-action-button" type="button" onClick={() => navigate(`/admin/jobs/${job.id}`)}>
-                          Open details
+                          Open Details
                         </button>
                         <button className="header-action-button" type="button" onClick={() => navigate(`/admin/jobs/${job.id}/edit`)}>
                           Edit
                         </button>
                         {(isActive || isLoading) && (
                           <button className="header-action-button" type="button" onClick={() => setDelayTarget(job)}>
-                            Report delay
+                            Report Delay
                           </button>
                         )}
                         {!isBlocked && !isCompleted && (
@@ -1100,10 +1100,10 @@ export function JobsListPage() {
       {/* Block modal */}
       <DeleteReasonModal
         open={Boolean(blockTarget)}
-        title="Block job"
+        title="Block Job"
         recordLabel={blockTarget ? `${blockTarget.code} · ${blockTarget.customer}` : ""}
         body="The job will be blocked, its vehicle and trailer will be released, and this reason will be logged."
-        confirmLabel="Block job"
+        confirmLabel="Block Job"
         loading={Boolean(busyId)}
         onCancel={() => setBlockTarget(null)}
         onConfirm={handleCancel}
@@ -1114,11 +1114,11 @@ export function JobsListPage() {
         <div className="relay-modal-overlay" onClick={() => setDelayTarget(null)}>
           <div className="relay-modal" onClick={e => e.stopPropagation()}>
             <div className="relay-modal-header">
-              <strong>Report delay</strong>
+              <strong>Report Delay</strong>
               <span>{delayTarget.code} · {delayTarget.customer}</span>
             </div>
             <div className="relay-modal-body">
-              <label className="relay-modal-label">Delay reason</label>
+              <label className="relay-modal-label">Delay Reason</label>
               <textarea
                 className="af-input"
                 rows={3}
@@ -1138,7 +1138,7 @@ export function JobsListPage() {
                 disabled={!delayReason.trim() || Boolean(busyId)}
                 onClick={submitDelay}
               >
-                {busyId ? "Saving…" : "Submit delay report"}
+                {busyId ? "Saving…" : "Submit Delay Report"}
               </button>
             </div>
           </div>

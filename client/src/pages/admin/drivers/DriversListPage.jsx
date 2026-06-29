@@ -124,7 +124,7 @@ export function DriversListPage() {
       <div className="finance-command-bar">
         <button className="header-action-button" type="button" onClick={load}>Refresh</button>
         <button className="header-action-button" type="button" onClick={exportDrivers}>Export CSV</button>
-        <button className="af-submit-btn" type="button" onClick={() => navigate("/admin/drivers/new")}>+ Add driver</button>
+        <button className="af-submit-btn" type="button" onClick={() => navigate("/admin/drivers/new")}>+ Add Driver</button>
       </div>
 
       <StateNotice loading={loading} error={error} />
@@ -134,19 +134,19 @@ export function DriversListPage() {
           <input
             className="af-input"
             type="text"
-            placeholder="Search by name, contact number, or email..."
+            placeholder="Search By Name, Contact Number, Or Email..."
             value={search}
             onChange={e => setSearch(e.target.value)}
           />
-          <button className="header-action-button" disabled={!hasFilters} type="button" onClick={clearFilters}>Clear filters</button>
+          <button className="header-action-button" disabled={!hasFilters} type="button" onClick={clearFilters}>Clear Filters</button>
         </div>
       </section>
 
       <section className="driver-register-card">
         <div className="section-head">
           <div>
-            <span className="card-label">Driver register</span>
-            <h2>Driver list</h2>
+            <span className="card-label">Driver Register</span>
+            <h2>Driver List</h2>
           </div>
           <StatusPill tone={drivers.length ? "success" : "neutral"}>{drivers.length} visible</StatusPill>
         </div>

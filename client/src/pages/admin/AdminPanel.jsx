@@ -73,8 +73,8 @@ function AdminProfileSettings() {
     <article className="content-card admin-profile-card">
       <div className="section-head">
         <div>
-          <span className="card-label">Profile settings</span>
-          <h2>Admin account</h2>
+          <span className="card-label">Profile Settings</span>
+          <h2>Admin Account</h2>
         </div>
         <StatusPill tone="neutral">{loading ? "Loading" : "Secure"}</StatusPill>
       </div>
@@ -82,30 +82,30 @@ function AdminProfileSettings() {
       <form className="admin-profile-form" onSubmit={handleSubmit}>
         <div className="profile-settings-grid">
           <label className="af-field">
-            <span className="af-label">Admin name</span>
+            <span className="af-label">Admin Name</span>
             <input className="af-input" value={profile.name} onChange={e => setProfile(prev => ({ ...prev, name: e.target.value }))} required />
           </label>
           <label className="af-field">
-            <span className="af-label">Email / username</span>
+            <span className="af-label">Email / Username</span>
             <input className="af-input" type="email" value={profile.email} onChange={e => setProfile(prev => ({ ...prev, email: e.target.value }))} required />
           </label>
           <label className="af-field">
-            <span className="af-label">Current password</span>
+            <span className="af-label">Current Password</span>
             <input className="af-input" type="password" value={passwords.currentPassword} onChange={e => setPasswords(prev => ({ ...prev, currentPassword: e.target.value }))} required />
           </label>
           <label className="af-field">
-            <span className="af-label">New password</span>
+            <span className="af-label">New Password</span>
             <input className="af-input" type="password" value={passwords.newPassword} onChange={e => setPasswords(prev => ({ ...prev, newPassword: e.target.value }))} placeholder="Leave blank to keep current" />
           </label>
           <label className="af-field">
-            <span className="af-label">Confirm new password</span>
+            <span className="af-label">Confirm New Password</span>
             <input className="af-input" type="password" value={passwords.confirmPassword} onChange={e => setPasswords(prev => ({ ...prev, confirmPassword: e.target.value }))} placeholder="Repeat new password" />
           </label>
         </div>
         {error && <p className="lp-error">{error}</p>}
         {success && <p className="lp-success">{success}</p>}
         <button className="header-action-button" type="submit" disabled={loading || saving}>
-          {saving ? "Saving..." : "Save profile"}
+          {saving ? "Saving..." : "Save Profile"}
         </button>
       </form>
     </article>
@@ -165,7 +165,7 @@ export function AdminPanel() {
           <div className="section-head">
             <div>
               <span className="card-label">Employee access</span>
-              <h2>Registration approvals</h2>
+              <h2>Registration Approvals</h2>
             </div>
             <StatusPill tone="warning">Admin controlled</StatusPill>
           </div>
@@ -204,7 +204,7 @@ export function AdminPanel() {
           <div className="section-head">
             <div>
               <span className="card-label">Admin modules</span>
-              <h2>Core transport workflows</h2>
+              <h2>Core Transport Workflows</h2>
             </div>
             <StatusPill tone="success">Pages ready</StatusPill>
           </div>
@@ -217,7 +217,7 @@ export function AdminPanel() {
                   <div className="module-row-head">
                     <h3>{module.title}</h3>
                     <Link className="module-row-link" to={module.path || moduleLinks[module.title] || "/admin"}>
-                      Open page
+                      Open Page
                     </Link>
                   </div>
                   <p>{module.description}</p>
@@ -231,7 +231,7 @@ export function AdminPanel() {
           <div className="section-head">
             <div>
               <span className="card-label">Driver management</span>
-              <h2>Approvals and assignment queue</h2>
+              <h2>Approvals And Assignment Queue</h2>
             </div>
             <StatusPill tone="warning">Needs admin review</StatusPill>
           </div>
@@ -259,7 +259,7 @@ export function AdminPanel() {
           <div className="section-head">
             <div>
               <span className="card-label">Trip / route planning</span>
-              <h2>Dispatch planning board</h2>
+              <h2>Dispatch Planning Board</h2>
             </div>
             <StatusPill tone="neutral">Planner synced</StatusPill>
           </div>
@@ -285,7 +285,7 @@ export function AdminPanel() {
           <div className="section-head">
             <div>
               <span className="card-label">Finance snapshot</span>
-              <h2>Pound-denominated invoice watch</h2>
+              <h2>Pound-Denominated Invoice Watch</h2>
             </div>
             <StatusPill tone="warning">Pound mode</StatusPill>
           </div>
@@ -313,7 +313,7 @@ export function AdminPanel() {
           <div className="section-head">
             <div>
               <span className="card-label">GPS / live tracking</span>
-              <h2>Where every truck is right now</h2>
+              <h2>Where Every Truck Is Right Now</h2>
             </div>
             <StatusPill tone="success">Live feed</StatusPill>
           </div>
@@ -339,7 +339,7 @@ export function AdminPanel() {
           <div className="section-head">
             <div>
               <span className="card-label">Control room alerts</span>
-              <h2>Priority watchlist</h2>
+              <h2>Priority Watchlist</h2>
             </div>
             <StatusPill tone="danger">Take action</StatusPill>
           </div>

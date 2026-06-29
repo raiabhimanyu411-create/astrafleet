@@ -518,7 +518,7 @@ export function JobFormPage() {
   return (
     <AdminWorkspaceLayout
       badge="Job management"
-      title={isEdit ? "Edit job" : "Add job"}
+      title={isEdit ? "Edit Job" : "Add Job"}
       description="Simple job booking with automatic ETA when a saved route is selected."
       highlights={[]}
     >
@@ -544,23 +544,23 @@ export function JobFormPage() {
         ) : (
           <form className="af-form" onSubmit={handleSubmit} noValidate>
             <div className="af-section">
-              <p className="af-section-title">Client details</p>
+              <p className="af-section-title">Client Details</p>
               <div className="af-grid-2">
-                <Field label="Customer account" hint="Optional. Select if this client already exists.">
+                <Field label="Customer Account" hint="Optional. Select if this client already exists.">
                   <select className="af-select" value={fields.customer_id} onChange={e => handleCustomerChange(e.target.value)}>
-                    <option value="">No account / enter manually</option>
+                    <option value="">No Account / Enter Manually</option>
                     {formData.customers.map(c => <option key={c.id} value={c.id}>{c.company_name}</option>)}
                   </select>
                 </Field>
-                <Field label="Client name" required error={fieldErrors.client_name}>
+                <Field label="Client Name" required error={fieldErrors.client_name}>
                   <input className="af-input" type="text" placeholder="e.g. Northline Retail" value={fields.client_name} onChange={e => set("client_name", e.target.value)} aria-invalid={Boolean(fieldErrors.client_name)} />
                 </Field>
-                <Field label="Contact number">
+                <Field label="Contact Number">
                   <input className="af-input" type="tel" placeholder="e.g. 07700 900000" value={fields.client_phone} onChange={e => set("client_phone", e.target.value)} />
                 </Field>
                 {selectedCustomer && (
                   <div style={{ gridColumn: "1 / -1", padding: 12, border: "1px solid #e2e8f0", borderRadius: 8, background: "#f8fafc" }}>
-                    <span className="card-label">Auto-filled from customer</span>
+                    <span className="card-label">Auto-Filled From Customer</span>
                     <p style={{ margin: "5px 0 0", color: "#475569", fontSize: "0.86rem" }}>
                       {selectedCustomer.contact_name || "Contact not set"} · {selectedCustomer.phone || "Phone not set"} · {selectedCustomer.email || "Email not set"}
                     </p>
@@ -570,44 +570,44 @@ export function JobFormPage() {
             </div>
 
             <div className="af-section">
-              <p className="af-section-title">Trip details</p>
+              <p className="af-section-title">Trip Details</p>
               <div className="af-grid-2">
-                <Field label="Saved route" hint="Select a route to auto-fill pickup, delivery, distance, and ETA.">
+                <Field label="Saved Route" hint="Select a route to auto-fill pickup, delivery, distance, and ETA.">
                   <select className="af-select" value={fields.route_id} onChange={e => handleRouteChange(e.target.value)}>
-                    <option value="">Custom pickup and delivery</option>
+                    <option value="">Custom Pickup And Delivery</option>
                     {formData.routes.map(r => (
                       <option key={r.id} value={r.id}>{r.origin_hub} → {r.destination_hub}</option>
                     ))}
                   </select>
                 </Field>
-                <Field label="Arrival date & time" hint="When the truck reaches pickup/loading.">
+                <Field label="Arrival Date & Time" hint="When the truck reaches pickup/loading.">
                   <input className="af-input" type="datetime-local" value={fields.planned_departure} onChange={e => handleArrivalChange(e.target.value)} />
                 </Field>
-                <Field label="Departure time" hint="Same date as pickup arrival. Used for ETA and cost.">
+                <Field label="Departure Time" hint="Same date as pickup arrival. Used for ETA and cost.">
                   <input className="af-input" type="time" value={toInputTime(fields.loading_done_time)} onChange={e => handleRouteDepartureChange(e.target.value)} />
                 </Field>
-                <Field label="Pickup address" required error={fieldErrors.pickup_address}>
+                <Field label="Pickup Address" required error={fieldErrors.pickup_address}>
                   {pickupOptions.length > 0 && (
                     <select className="af-select" style={{ marginBottom: 8 }} value="" onChange={e => e.target.value && set("pickup_address", e.target.value)}>
-                      <option value="">Choose saved pickup address</option>
+                      <option value="">Choose Saved Pickup Address</option>
                       {pickupOptions.map((address, index) => <option key={`${address}-${index}`} value={address}>{address}</option>)}
                     </select>
                   )}
                   <textarea className="af-input" style={{ minHeight: 72, resize: "vertical" }} placeholder="Full pickup address" value={fields.pickup_address} onChange={e => set("pickup_address", e.target.value)} aria-invalid={Boolean(fieldErrors.pickup_address)} />
                 </Field>
-                <Field label="Delivery address" required error={fieldErrors.drop_address}>
+                <Field label="Delivery Address" required error={fieldErrors.drop_address}>
                   {dropOptions.length > 0 && (
                     <select className="af-select" style={{ marginBottom: 8 }} value="" onChange={e => e.target.value && set("drop_address", e.target.value)}>
-                      <option value="">Choose saved delivery address</option>
+                      <option value="">Choose Saved Delivery Address</option>
                       {dropOptions.map((address, index) => <option key={`${address}-${index}`} value={address}>{address}</option>)}
                     </select>
                   )}
                   <textarea className="af-input" style={{ minHeight: 72, resize: "vertical" }} placeholder="Full delivery address" value={fields.drop_address} onChange={e => set("drop_address", e.target.value)} aria-invalid={Boolean(fieldErrors.drop_address)} />
                 </Field>
-                <Field label="Delivery arrival date & time" hint="When the truck reaches the delivery point. Auto-calculated if left blank.">
+                <Field label="Delivery Arrival Date & Time" hint="When the truck reaches the delivery point. Auto-calculated if left blank.">
                   <input className="af-input" type="datetime-local" value={fields.delivery_arrival_time} onChange={e => set("delivery_arrival_time", e.target.value)} />
                 </Field>
-                <Field label="Delivery departure time" hint="Same date as delivery arrival. Auto-calculated if left blank.">
+                <Field label="Delivery Departure Time" hint="Same date as delivery arrival. Auto-calculated if left blank.">
                   <input className="af-input" type="time" value={toInputTime(fields.delivery_departure_time)} onChange={e => handleDeliveryDepartureChange(e.target.value)} />
                 </Field>
               </div>
@@ -635,14 +635,14 @@ export function JobFormPage() {
                     </strong>
                   </div>
                   <div>
-                    <span className="card-label">Suggested delivery</span>
+                    <span className="card-label">Suggested Delivery</span>
                     <strong style={{ display: "block", color: "#1e3a8a" }}>{displayDateTime(etaPreview)}</strong>
                   </div>
                 </div>
                 {(!selectedRoute || validStops.length > 0) && (
                   <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 14, flexWrap: "wrap" }}>
                     <button className="header-action-button" type="button" disabled={estimateBusy} onClick={calculateRouteEstimate}>
-                      {estimateBusy ? "Calculating..." : validStops.length > 0 ? "Calculate with stops" : "Calculate distance"}
+                      {estimateBusy ? "Calculating..." : validStops.length > 0 ? "Calculate With Stops" : "Calculate Distance"}
                     </button>
                     {routeEstimate && (
                       <span style={{ color: "#1e40af", fontSize: "0.84rem", fontWeight: 700 }}>
@@ -655,33 +655,33 @@ export function JobFormPage() {
               </div>
 
               <div className="af-grid-2" style={{ marginTop: 16 }}>
-                <Field label="Delivery deadline" hint="Auto-filled from route ETA. You can change it.">
+                <Field label="Delivery Deadline" hint="Auto-filled from route ETA. You can change it.">
                   <input className="af-input" type="datetime-local" value={fields.delivery_deadline} onChange={e => set("delivery_deadline", e.target.value)} />
                 </Field>
               </div>
             </div>
 
             <div className="af-section">
-              <p className="af-section-title">Load & assignment</p>
+              <p className="af-section-title">Load & Assignment</p>
               <div className="af-grid-2">
-                <Field label="Goods / load details" required error={fieldErrors.load_description}>
+                <Field label="Goods / Load Details" required error={fieldErrors.load_description}>
                   <textarea className="af-input" style={{ minHeight: 78, resize: "vertical" }} placeholder="e.g. 20 pallets of retail goods" value={fields.load_description} onChange={e => set("load_description", e.target.value)} aria-invalid={Boolean(fieldErrors.load_description)} />
                 </Field>
-                <Field label="Freight amount (£)">
+                <Field label="Freight Amount (£)">
                   <div className="af-input-prefix-wrap">
                     <span className="af-prefix">£</span>
                     <input className="af-input af-input-prefixed" type="number" min="0" step="0.01" placeholder="e.g. 1800.00" value={fields.freight_amount} onChange={e => set("freight_amount", e.target.value)} />
                   </div>
                 </Field>
-                <Field label="Assign driver">
+                <Field label="Assign Driver">
                   <select className="af-select" value={fields.driver_id} onChange={e => set("driver_id", e.target.value)}>
-                    <option value="">Assign later</option>
+                    <option value="">Assign Later</option>
                     {formData.drivers.map(d => <option key={d.id} value={d.id}>{d.full_name} · {d.shift_status}</option>)}
                   </select>
                 </Field>
-                <Field label="Assign vehicle">
+                <Field label="Assign Vehicle">
                   <select className="af-select" value={fields.vehicle_id} onChange={e => set("vehicle_id", e.target.value)}>
-                    <option value="">Assign later</option>
+                    <option value="">Assign Later</option>
                     {formData.vehicles.map(v => (
                       <option key={v.id} value={v.id}>
                         {v.registration_number} · {v.truck_type || v.model_name || "Truck"} · {v.status}
@@ -689,9 +689,9 @@ export function JobFormPage() {
                     ))}
                   </select>
                 </Field>
-                <Field label="Assign trailer">
+                <Field label="Assign Trailer">
                   <select className="af-select" value={fields.trailer_id} onChange={e => set("trailer_id", e.target.value)}>
-                    <option value="">Assign later</option>
+                    <option value="">Assign Later</option>
                     {(formData.trailers || []).map(t => (
                       <option key={t.id} value={t.id}>
                         {t.registration_number} · {t.trailer_type || "Trailer"} · {t.status}
@@ -704,9 +704,9 @@ export function JobFormPage() {
 
             {/* ── Time Calculation Section ── */}
             <div className="af-section">
-              <p className="af-section-title">Time &amp; cost calculation</p>
+              <p className="af-section-title">Time & Cost Calculation</p>
               <div className="af-grid-2">
-                <Field label="Loading duration (minutes)" hint="Default: 90 min. Included in driver cost.">
+                <Field label="Loading Duration (Minutes)" hint="Default: 90 min. Included in driver cost.">
                   <input
                     className="af-input"
                     type="number"
@@ -717,7 +717,7 @@ export function JobFormPage() {
                     onChange={e => set("loading_duration_mins", e.target.value)}
                   />
                 </Field>
-                <Field label="Unloading duration (minutes)" hint="Default: 90 min. Included in driver cost.">
+                <Field label="Unloading Duration (Minutes)" hint="Default: 90 min. Included in driver cost.">
                   <input
                     className="af-input"
                     type="number"
@@ -740,22 +740,22 @@ export function JobFormPage() {
                     </div>
                     <div className="job-timing-sep">→</div>
                     <div className="job-timing-item">
-                      <span className="job-timing-label">Travel time</span>
+                      <span className="job-timing-label">Travel Time</span>
                       <strong>{fmtMins(timingCalc?.travelMins)}</strong>
                       <small>@ {avgSpeedMph} mph avg</small>
                     </div>
                     <div className="job-timing-sep">→</div>
                     <div className="job-timing-item">
-                      <span className="job-timing-label">Arrive at drop</span>
+                      <span className="job-timing-label">Arrive At Drop</span>
                       <strong>{fields.delivery_arrival_time ? fmtTime(new Date(fields.delivery_arrival_time)) : timingCalc ? fmtTime(timingCalc.arrival) : "—"}</strong>
                     </div>
                     <div className="job-timing-sep">→</div>
                     <div className="job-timing-item">
-                      <span className="job-timing-label">Depart drop</span>
+                      <span className="job-timing-label">Depart Drop</span>
                       <strong>{fields.delivery_departure_time ? fmtTime(new Date(fields.delivery_departure_time)) : timingCalc ? fmtTime(timingCalc.unloadEnd) : "—"}</strong>
                     </div>
                     <div className="job-timing-total">
-                      <span className="job-timing-label">Total job time</span>
+                      <span className="job-timing-label">Total Job Time</span>
                       <strong>{fmtMins(timingCalc?.totalMins)}</strong>
                       <small>{fmtMins(loadingMins)} load + travel + {fmtMins(unloadingMins)} unload</small>
                     </div>
@@ -770,7 +770,7 @@ export function JobFormPage() {
               {/* Cost preview */}
               {costCalc && (
                 <div className="job-economics-card" style={{ marginTop: 16 }}>
-                  <div className="job-economics-title">Job cost estimate</div>
+                  <div className="job-economics-title">Job Cost Estimate</div>
                   <div className="job-economics-grid">
                     <div className="job-economics-row">
                       <span>Fuel ({distanceMiles?.toFixed(1)} mi × {fmtGBP(costCalc.fuelCostPerMile)}/mi)</span>
@@ -785,7 +785,7 @@ export function JobFormPage() {
                       <strong>{fmtGBP(costCalc.fleetCost)}</strong>
                     </div>
                     <div className="job-economics-row total">
-                      <span>Total cost</span>
+                      <span>Total Cost</span>
                       <strong>{fmtGBP(costCalc.totalCost)}</strong>
                     </div>
                     <div className="job-economics-row suggested">
@@ -809,7 +809,7 @@ export function JobFormPage() {
             <div className="af-section">
               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
                 <p className="af-section-title" style={{ margin: 0 }}>
-                  Intermediate stops
+                  Intermediate Stops
                   {validStops.length > 0 && (
                     <span style={{ marginLeft: 8, fontSize: "0.75rem", fontWeight: 600, color: "#2563eb", background: "#eff6ff", borderRadius: 20, padding: "2px 8px" }}>
                       {validStops.length} stop{validStops.length > 1 ? "s" : ""} · calculate route for exact miles
@@ -824,7 +824,7 @@ export function JobFormPage() {
                     setStops(prev => [...prev, { ...emptyStop }]);
                   }}
                 >
-                  + Add stop
+                  + Add Stop
                 </button>
               </div>
 
@@ -851,28 +851,28 @@ export function JobFormPage() {
                     </button>
                   </div>
                   <div className="af-grid-2">
-                    <Field label="Stop type">
+                    <Field label="Stop Type">
                       <select className="af-select" value={stop.stop_type} onChange={e => updateStop(i, { stop_type: e.target.value })}>
                         <option value="delivery">Delivery</option>
                         <option value="pickup">Pickup</option>
                         <option value="waypoint">Waypoint</option>
                       </select>
                     </Field>
-                    <Field label="Planned arrival at stop">
+                    <Field label="Planned Arrival At Stop">
                       <input className="af-input" type="datetime-local" value={stop.planned_arrival} onChange={e => updateStop(i, { planned_arrival: e.target.value })} />
                     </Field>
-                    <Field label="Departure time at stop">
+                    <Field label="Departure Time At Stop">
                       <input className="af-input" type="time" value={toInputTime(stop.planned_departure)} onChange={e => handleStopDepartureChange(i, e.target.value)} />
                     </Field>
                     <div style={{ gridColumn: "1 / -1" }}>
-                      <Field label="Stop address" required>
+                      <Field label="Stop Address" required>
                         <textarea className="af-input" style={{ minHeight: 60, resize: "vertical" }} placeholder="Full address for this stop" value={stop.address} onChange={e => updateStop(i, { address: e.target.value }, true)} />
                       </Field>
                     </div>
-                    <Field label="Contact name">
+                    <Field label="Contact Name">
                       <input className="af-input" type="text" placeholder="e.g. John Smith" value={stop.contact_name} onChange={e => updateStop(i, { contact_name: e.target.value })} />
                     </Field>
-                    <Field label="Contact phone">
+                    <Field label="Contact Phone">
                       <input className="af-input" type="tel" placeholder="e.g. 07700 900123" value={stop.contact_phone} onChange={e => updateStop(i, { contact_phone: e.target.value })} />
                     </Field>
                     <div style={{ gridColumn: "1 / -1" }}>
@@ -903,7 +903,7 @@ export function JobFormPage() {
                 Cancel
               </button>
               <button type="submit" className="af-submit-btn" disabled={submitting}>
-                {submitting ? "Saving..." : isEdit ? "Save changes →" : "Create job →"}
+                {submitting ? "Saving..." : isEdit ? "Save Changes →" : "Create Job →"}
               </button>
             </div>
           </form>

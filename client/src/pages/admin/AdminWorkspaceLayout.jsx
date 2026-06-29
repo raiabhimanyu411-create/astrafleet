@@ -59,10 +59,10 @@ export function AdminWorkspaceLayout({ badge, title, description, highlights, ch
       description={description}
       highlights={highlights}
       menu={visibleMenu}
-      roleLabel={isEmployee ? "Employee workspace" : "Admin workspace"}
+      roleLabel={isEmployee ? "Employee Workspace" : "Admin Workspace"}
       scopeNote={{
-        eyebrow: isEmployee ? "Granted scope" : "Admin scope",
-        title: isEmployee ? "Assigned TMS access" : "Transport control tower",
+        eyebrow: isEmployee ? "Granted Scope" : "Admin Scope",
+        title: isEmployee ? "Assigned TMS Access" : "Transport Control Tower",
         description: isEmployee
           ? "Only admin-approved modules are visible in this workspace."
           : "Monitor driver operations, route planning, billing, and GPS movement from one workspace."

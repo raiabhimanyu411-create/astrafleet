@@ -146,8 +146,8 @@ export function DriverChatWidget({ compact = false }) {
     <article className="content-card admin-chat-card" id="admin-driver-chat">
       <div className="section-head">
         <div>
-          <span className="card-label">Driver support</span>
-          <h2>Driver support console</h2>
+          <span className="card-label">Driver Support</span>
+          <h2>Driver Support Console</h2>
         </div>
         <div className="admin-chat-head-actions">
           <StatusPill tone={unreadTotal ? "danger" : "success"}>{unreadTotal ? `${unreadTotal} unread` : "Inbox clear"}</StatusPill>
@@ -161,7 +161,7 @@ export function DriverChatWidget({ compact = false }) {
         <div className="admin-chat-driver-list">
           <input
             className="af-input admin-chat-search"
-            placeholder="Search driver or message..."
+            placeholder="Search Driver Or Message..."
             value={driverSearch}
             onChange={e => setDriverSearch(e.target.value)}
           />
@@ -243,7 +243,7 @@ export function DriverChatWidget({ compact = false }) {
               value={body}
             />
             <button className="af-submit-btn" disabled={!selectedDriver || !body.trim() || sending} type="submit">
-              {sending ? "Sending..." : "Send message"}
+              {sending ? "Sending..." : "Send Message"}
             </button>
           </form>
         </div>

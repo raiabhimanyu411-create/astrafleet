@@ -488,7 +488,7 @@ export function HomePage() {
                   setSuccess("");
                 }}
               >
-                Employee register
+                Employee Register
               </button>
             </div>
 
@@ -501,7 +501,7 @@ export function HomePage() {
                       <span className="lp-input-icon"><IconPerson /></span>
                       <input
                         type="text"
-                        placeholder="Enter your full name"
+                        placeholder="Enter Your Full Name"
                         value={name}
                         onChange={(e) => setName(e.target.value)}
                         required
@@ -514,12 +514,12 @@ export function HomePage() {
                     <div className="lp-input-wrap">
                       <select value={department} onChange={(e) => setDepartment(e.target.value)} required>
                         <option value="finance">Finance</option>
-                        <option value="trips">Dispatch planning</option>
-                        <option value="jobs">Job management</option>
+                        <option value="trips">Dispatch Planning</option>
+                        <option value="jobs">Job Management</option>
                         <option value="billing">Billing</option>
-                        <option value="tracking">Live tracking</option>
-                        <option value="drivers">Driver management</option>
-                        <option value="vehicles">Vehicle management</option>
+                        <option value="tracking">Live Tracking</option>
+                        <option value="drivers">Driver Management</option>
+                        <option value="vehicles">Vehicle Management</option>
                       </select>
                     </div>
                   </div>
@@ -542,7 +542,7 @@ export function HomePage() {
                     <div className="lp-input-wrap">
                       <input
                         type="tel"
-                        placeholder="Enter phone number"
+                        placeholder="Enter Phone Number"
                         value={phone}
                         onChange={(e) => setPhone(e.target.value)}
                       />
@@ -558,7 +558,7 @@ export function HomePage() {
                   <span className="lp-input-icon"><IconPerson /></span>
                   <input
                     type="email"
-                    placeholder="Enter your email"
+                    placeholder="Enter Your Email"
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
                     required
@@ -573,7 +573,7 @@ export function HomePage() {
                   <span className="lp-input-icon"><IconLock /></span>
                   <input
                     type={showPass ? "text" : "password"}
-                    placeholder="Enter your password"
+                    placeholder="Enter Your Password"
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
                     required
@@ -605,7 +605,7 @@ export function HomePage() {
               {/* Login btn */}
               <button type="submit" className="lp-login-btn" disabled={loading}>
                 <IconLogin />
-                {loading ? "Please wait..." : mode === "login" ? "Login" : "Submit for admin approval"}
+                {loading ? "Please wait..." : mode === "login" ? "Login" : "Submit For Admin Approval"}
               </button>
 
               <div className="lp-trust-strip">

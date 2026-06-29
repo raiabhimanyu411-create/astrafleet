@@ -29,8 +29,8 @@ export function AdminDriversPage() {
         <article className="content-card">
           <div className="section-head">
             <div>
-              <span className="card-label">Onboarding queue</span>
-              <h2>Drivers waiting for release</h2>
+              <span className="card-label">Onboarding Queue</span>
+              <h2>Drivers Waiting For Release</h2>
             </div>
             <StatusPill tone="warning">Review lane</StatusPill>
           </div>
@@ -55,8 +55,8 @@ export function AdminDriversPage() {
         <article className="content-card">
           <div className="section-head">
             <div>
-              <span className="card-label">Document expiry</span>
-              <h2>Compliance watchlist</h2>
+              <span className="card-label">Document Expiry</span>
+              <h2>Compliance Watchlist</h2>
             </div>
             <StatusPill tone="danger">Expiry risk</StatusPill>
           </div>
@@ -83,8 +83,8 @@ export function AdminDriversPage() {
         <article className="content-card">
           <div className="section-head">
             <div>
-              <span className="card-label">Trip allocation approvals</span>
-              <h2>Driver-to-trip assignments</h2>
+              <span className="card-label">Trip Allocation Approvals</span>
+              <h2>Driver-To-Trip Assignments</h2>
             </div>
             <StatusPill tone="neutral">Allocation desk</StatusPill>
           </div>

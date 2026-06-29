@@ -28,18 +28,18 @@ import { clearAuthSession, getAuthSession } from "../../utils/authSession";
 import { gpsErrorMessage, positionToPayload, requestDriverGpsAccess, watchDriverGps } from "../../utils/driverGps";
 
 const WALKAROUND_CHECKS = [
-  { key: "tyres",       label: "Tyres – pressure and condition" },
-  { key: "lights",      label: "Lights and indicators" },
-  { key: "brakes",      label: "Brakes – service and parking" },
-  { key: "mirrors",     label: "Mirrors and windscreen" },
-  { key: "fluids",      label: "Oil, coolant, and fluid levels" },
-  { key: "coupling",    label: "Coupling and trailer security" },
-  { key: "load",        label: "Load security and weight" },
-  { key: "docs",        label: "Driver docs and vehicle paperwork" },
-  { key: "bodywork",    label: "Bodywork and chassis" },
-  { key: "horn",        label: "Horn and warning devices" },
-  { key: "wipers",      label: "Wipers and washers" },
-  { key: "speedometer", label: "Speedometer and instruments" },
+  { key: "tyres",       label: "Tyres – Pressure And Condition" },
+  { key: "lights",      label: "Lights And Indicators" },
+  { key: "brakes",      label: "Brakes – Service And Parking" },
+  { key: "mirrors",     label: "Mirrors And Windscreen" },
+  { key: "fluids",      label: "Oil, Coolant, And Fluid Levels" },
+  { key: "coupling",    label: "Coupling And Trailer Security" },
+  { key: "load",        label: "Load Security And Weight" },
+  { key: "docs",        label: "Driver Docs And Vehicle Paperwork" },
+  { key: "bodywork",    label: "Bodywork And Chassis" },
+  { key: "horn",        label: "Horn And Warning Devices" },
+  { key: "wipers",      label: "Wipers And Washers" },
+  { key: "speedometer", label: "Speedometer And Instruments" },
 ];
 
 const driverMenu = [
@@ -151,7 +151,7 @@ function SignatureCanvas({ onCapture }) {
         onTouchMove={draw}
         onTouchEnd={endDraw}
       />
-      <button type="button" className="header-action-button" onClick={clearCanvas}>Clear signature</button>
+      <button type="button" className="header-action-button" onClick={clearCanvas}>Clear Signature</button>
     </div>
   );
 }
@@ -558,11 +558,11 @@ export function DriverPanel() {
   return (
     <PanelLayout
       badge={data?.header?.badge || "Driver Panel"}
-      title={data?.header?.title || "Driver workspace"}
+      title={data?.header?.title || "Driver Workspace"}
       description={data?.header?.description || "Daily driver operations in one browser panel."}
-      highlights={data?.highlights || ["Assigned jobs", "Status updates", "POD and reports"]}
+      highlights={data?.highlights || ["Assigned Jobs", "Status Updates", "POD And Reports"]}
       menu={driverMenu}
-      roleLabel="Driver workspace"
+      roleLabel="Driver Workspace"
       headerContent={(
         <>
           <NotificationBell
@@ -582,15 +582,15 @@ export function DriverPanel() {
         fetchUrl="/api/drivers/me/notifications"
         paramKey="userId"
         paramValue={userId}
-        title="Driver notification inbox"
-        eyebrow="Driver alerts"
+        title="Driver Notification Inbox"
+        eyebrow="Driver Alerts"
         emptyBody="No driver jobs, POD reminders, or shift alerts need attention right now."
       />
 
       {/* ── Document expiry warnings ── */}
       {(data?.docWarnings || []).length > 0 && (
         <div className="doc-expiry-banner">
-          <strong>Document expiry alert</strong>
+          <strong>Document Expiry Alert</strong>
           <div className="doc-expiry-list">
             {data.docWarnings.map(w => (
               <span key={w.label} className={`doc-expiry-chip ${w.tone}`}>
@@ -604,7 +604,7 @@ export function DriverPanel() {
       {notice && (
         <div className={`state-card ${noticeError ? "error" : "driver-notice"}`} aria-live="polite">
           <span className={`state-dot ${noticeError ? "error" : "success"}`} />
-          <div><strong>{noticeError ? "Action needed" : "Driver update"}</strong><p>{notice}</p></div>
+          <div><strong>{noticeError ? "Action Needed" : "Driver Update"}</strong><p>{notice}</p></div>
           {gpsBlocked && (
             <button className="header-action-button" disabled={busy === "gps"} onClick={handleRetryGps} type="button">
               {busy === "gps" ? "Checking..." : "Retry GPS"}
@@ -645,7 +645,7 @@ export function DriverPanel() {
       {/* ── Break / rest timer ── */}
       <section className="break-timer-bar">
         <div className="break-timer-info">
-          <span className="card-label">Break / rest timer</span>
+          <span className="card-label">Break / Rest Timer</span>
           <strong className={`break-timer-display ${breakActive ? "running" : ""}`}>
             {fmtTimer(breakSeconds)}
           </strong>
@@ -660,7 +660,7 @@ export function DriverPanel() {
             disabled={breakActive}
             onClick={startBreak}
           >
-            Start break
+            Start Break
           </button>
           <button
             className="header-action-button danger"
@@ -668,7 +668,7 @@ export function DriverPanel() {
             disabled={!breakActive}
             onClick={endBreak}
           >
-            End break
+            End Break
           </button>
         </div>
       </section>
@@ -677,12 +677,12 @@ export function DriverPanel() {
       <section className="content-card" id="walkaround" style={{ marginBottom: 16 }}>
         <div className="section-head">
           <div>
-            <span className="card-label">Pre-trip walkaround</span>
-            <h2>Vehicle safety checklist</h2>
+            <span className="card-label">Pre-Trip Walkaround</span>
+            <h2>Vehicle Safety Checklist</h2>
           </div>
           {data?.latestWalkaround && (
             <StatusPill tone={data.latestWalkaround.allClear ? "success" : "danger"}>
-              Last: {data.latestWalkaround.allClear ? "All clear" : "Issues"} · {data.latestWalkaround.at}
+              Last: {data.latestWalkaround.allClear ? "All Clear" : "Issues"} · {data.latestWalkaround.at}
             </StatusPill>
           )}
         </div>
@@ -696,7 +696,7 @@ export function DriverPanel() {
               style={{ marginLeft: 12 }}
               onClick={() => setWalkaround({ checks: {}, issues: "", done: false })}
             >
-              New check
+              New Check
             </button>
           </div>
         ) : (
@@ -730,7 +730,7 @@ export function DriverPanel() {
 
             {!walkaroundAllClear && walkaroundAllChecked && (
               <div className="af-field">
-                <label className="af-label">Describe the issue(s)</label>
+                <label className="af-label">Describe The Issue(s)</label>
                 <textarea
                   className="af-input"
                   value={walkaround.issues}
@@ -747,7 +747,7 @@ export function DriverPanel() {
                 type="submit"
                 disabled={!walkaroundAllChecked || busy === "walkaround"}
               >
-                {busy === "walkaround" ? "Submitting..." : walkaroundAllClear ? "Submit — All clear" : "Submit with issues"}
+                {busy === "walkaround" ? "Submitting..." : walkaroundAllClear ? "Submit — All Clear" : "Submit With Issues"}
               </button>
               {!walkaroundAllChecked && (
                 <span style={{ fontSize: "0.82rem", color: "#64748b", alignSelf: "center" }}>
@@ -764,10 +764,10 @@ export function DriverPanel() {
         <article className="content-card">
           <div className="section-head">
             <div>
-              <span className="card-label">Today&apos;s duties</span>
-              <h2>Assigned jobs</h2>
+              <span className="card-label">Today&apos;s Duties</span>
+              <h2>Assigned Jobs</h2>
             </div>
-            <StatusPill tone={data?.shift ? "success" : "warning"}>{data?.shift ? "Shift active" : "Off shift"}</StatusPill>
+            <StatusPill tone={data?.shift ? "success" : "warning"}>{data?.shift ? "Shift Active" : "Off Shift"}</StatusPill>
           </div>
           <div className="driver-job-tabs" role="tablist" aria-label="Job filters">
             <button className={jobFilter === "open" ? "active" : ""} onClick={() => setJobFilter("open")} type="button">Open ({incompleteJobs.length})</button>
@@ -790,7 +790,7 @@ export function DriverPanel() {
         <article className="content-card trip-spotlight">
           <div className="section-head">
             <div>
-              <span className="card-label">Selected job</span>
+              <span className="card-label">Selected Job</span>
               <h2>{selectedJob?.code || "No job selected"}</h2>
             </div>
             {selectedJob && <StatusPill tone={selectedJob.statusTone}>{selectedJob.statusLabel}</StatusPill>}
@@ -805,11 +805,11 @@ export function DriverPanel() {
                 <Detail label="Contact"      value={`${selectedJob.customer.contact} · ${selectedJob.customer.phone}`} />
                 <Detail label="Departure"    value={selectedJob.schedule.plannedDeparture} />
                 <Detail label="ETA"          value={selectedJob.schedule.eta} />
-                <Detail label="Dock window"  value={selectedJob.schedule.dockWindow} />
+                <Detail label="Dock Window"  value={selectedJob.schedule.dockWindow} />
                 <Detail label="Vehicle"      value={selectedJob.vehicle} />
                 <Detail label="Trailer" value={selectedJob.trailer} />
                 <Detail label="Load"         value={`${selectedJob.load.type} · ${selectedJob.load.weight}`} />
-                <Detail label="Load detail"  value={selectedJob.load.description} />
+                <Detail label="Load Detail"  value={selectedJob.load.description} />
                 <Detail label="Instructions" value={selectedJob.specialInstructions} />
               </div>
 
@@ -837,8 +837,8 @@ export function DriverPanel() {
                   onChange={e => setOdometer(o => ({ ...o, type: e.target.value }))}
                   style={{ width: "auto" }}
                 >
-                  <option value="start">Trip start</option>
-                  <option value="end">Trip end</option>
+                  <option value="start">Trip Start</option>
+                  <option value="end">Trip End</option>
                 </select>
                 <input
                   className="af-input"
@@ -856,8 +856,8 @@ export function DriverPanel() {
               </form>
 
               <div className="driver-action-row">
-                <a className="af-submit-btn driver-nav-link" href={selectedJob.route.navigationUrl} rel="noreferrer" target="_blank">Open navigation</a>
-                <a className="header-action-button driver-nav-link" href={`tel:${selectedJob.customer.phone}`}>Call customer</a>
+                <a className="af-submit-btn driver-nav-link" href={selectedJob.route.navigationUrl} rel="noreferrer" target="_blank">Open Navigation</a>
+                <a className="header-action-button driver-nav-link" href={`tel:${selectedJob.customer.phone}`}>Call Customer</a>
               </div>
             </>
           ) : <p className="driver-empty">Select a job to see route, customer, and load details.</p>}
@@ -868,18 +868,18 @@ export function DriverPanel() {
       <section className="content-card" id="status" style={{ marginBottom: 16 }}>
         <div className="section-head">
           <div>
-            <span className="card-label">Job status update</span>
-            <h2>Move job through delivery flow</h2>
+            <span className="card-label">Job Status Update</span>
+            <h2>Move Job Through Delivery Flow</h2>
           </div>
-          <StatusPill tone="neutral">Dispatch sync</StatusPill>
+          <StatusPill tone="neutral">Dispatch Sync</StatusPill>
         </div>
         {selectedJob?.status === "offered" ? (
           <div className="driver-status-grid">
             <button className="driver-status-button active" disabled={Boolean(busy)} onClick={() => handleStatus("accepted")} type="button">
-              {busy === "accepted" ? "Accepting..." : "Accept job"}
+              {busy === "accepted" ? "Accepting..." : "Accept Job"}
             </button>
             <button className="driver-status-button" disabled={Boolean(busy)} onClick={() => handleStatus("declined")} type="button">
-              {busy === "declined" ? "Declining..." : "Decline job"}
+              {busy === "declined" ? "Declining..." : "Decline Job"}
             </button>
           </div>
         ) : (
@@ -922,13 +922,13 @@ export function DriverPanel() {
           <form className="reschedule-form" onSubmit={handleRescheduleSubmit}>
             <div className="section-head" style={{ marginBottom: 10 }}>
               <div>
-                <span className="card-label">Reschedule delivery</span>
-                <h3>Set new delivery date</h3>
+                <span className="card-label">Reschedule Delivery</span>
+                <h3>Set New Delivery Date</h3>
               </div>
             </div>
             <div className="af-grid-2">
               <div className="af-field">
-                <label className="af-label">New delivery date / time</label>
+                <label className="af-label">New Delivery Date / Time</label>
                 <input
                   className="af-input"
                   type="datetime-local"
@@ -938,7 +938,7 @@ export function DriverPanel() {
                 />
               </div>
               <div className="af-field">
-                <label className="af-label">Reschedule reason</label>
+                <label className="af-label">Reschedule Reason</label>
                 <input
                   className="af-input"
                   value={reschedule.reason}
@@ -949,7 +949,7 @@ export function DriverPanel() {
             </div>
             <div className="driver-action-row">
               <button className="af-submit-btn" type="submit" disabled={!reschedule.date || busy === "reschedule"}>
-                {busy === "reschedule" ? "Rescheduling..." : "Confirm reschedule"}
+                {busy === "reschedule" ? "Rescheduling..." : "Confirm Reschedule"}
               </button>
               <button
                 type="button"
@@ -968,8 +968,8 @@ export function DriverPanel() {
         <article className="content-card">
           <div className="section-head">
             <div>
-              <span className="card-label">Proof of Delivery</span>
-              <h2>Signature, photo, notes</h2>
+              <span className="card-label">Proof Of Delivery</span>
+              <h2>Signature, Photo, Notes</h2>
             </div>
             <StatusPill tone={selectedJob?.podStatus === "verified" ? "success" : "warning"}>
               POD: {selectedJob?.podStatus || "pending"}
@@ -980,14 +980,14 @@ export function DriverPanel() {
             {/* Signature — canvas or file */}
             <div className="af-field">
               <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8 }}>
-                <label className="af-label" style={{ margin: 0 }}>Customer signature</label>
+                <label className="af-label" style={{ margin: 0 }}>Customer Signature</label>
                 <button
                   type="button"
                   className="header-action-button"
                   style={{ padding: "3px 10px", fontSize: "0.75rem" }}
                   onClick={() => setUseSigPad(v => !v)}
                 >
-                  {useSigPad ? "Use file upload" : "Use signature pad"}
+                  {useSigPad ? "Use File Upload" : "Use Signature Pad"}
                 </button>
               </div>
 
@@ -1005,7 +1005,7 @@ export function DriverPanel() {
             </div>
 
             <div className="af-field">
-              <label className="af-label">Delivery photo</label>
+              <label className="af-label">Delivery Photo</label>
               <input
                 className="af-input"
                 type="file"
@@ -1016,7 +1016,7 @@ export function DriverPanel() {
             </div>
 
             <div className="af-field">
-              <label className="af-label">Delivery notes</label>
+              <label className="af-label">Delivery Notes</label>
               <textarea
                 className="af-input"
                 value={pod.deliveryNotes}
@@ -1027,13 +1027,13 @@ export function DriverPanel() {
 
             <div className="pod-preview-grid">
               <div>
-                <span className="card-label">Signature preview</span>
+                <span className="card-label">Signature Preview</span>
                 {pod.signatureData
                   ? <img alt="Signature preview" src={pod.signatureData} />
                   : <p>No signature captured.</p>}
               </div>
               <div>
-                <span className="card-label">Delivery photo preview</span>
+                <span className="card-label">Delivery Photo Preview</span>
                 {pod.photoData
                   ? <img alt="Delivery proof preview" src={pod.photoData} />
                   : <p>No delivery photo selected.</p>}
@@ -1055,13 +1055,13 @@ export function DriverPanel() {
           <div className="section-head">
             <div>
               <span className="card-label">Shift</span>
-              <h2>Start / end shift</h2>
+              <h2>Start / End Shift</h2>
             </div>
             <StatusPill tone={data?.shift ? "success" : "neutral"}>{data?.shift?.startedAt || "Not started"}</StatusPill>
           </div>
 
           <div className="driver-shift-panel">
-            <Detail label="Current state" value={data?.shift ? "Shift active" : "Off shift"} />
+            <Detail label="Current State" value={data?.shift ? "Shift Active" : "Off Shift"} />
             <Detail label="Started"       value={data?.shift?.startedAt} />
           </div>
 
@@ -1072,14 +1072,14 @@ export function DriverPanel() {
             placeholder="Optional shift note: vehicle checks, handover, delay reason..."
           />
           <div className="driver-action-row">
-            <button className="af-submit-btn"           disabled={Boolean(data?.shift) || Boolean(busy)} onClick={handleShiftStart} type="button">Start shift</button>
-            <button className="header-action-button danger" disabled={!data?.shift || Boolean(busy)}       onClick={handleShiftEnd}   type="button">End shift</button>
+            <button className="af-submit-btn"           disabled={Boolean(data?.shift) || Boolean(busy)} onClick={handleShiftStart} type="button">Start Shift</button>
+            <button className="header-action-button danger" disabled={!data?.shift || Boolean(busy)}       onClick={handleShiftEnd}   type="button">End Shift</button>
           </div>
 
           {/* Shift history */}
           {(data?.shiftHistory || []).length > 0 && (
             <div style={{ marginTop: 16 }}>
-              <span className="card-label">Recent shifts</span>
+              <span className="card-label">Recent Shifts</span>
               <div className="data-rows compact" style={{ marginTop: 8 }}>
                 {data.shiftHistory.map(s => (
                   <div className="data-row" key={s.id}>
@@ -1104,8 +1104,8 @@ export function DriverPanel() {
         <article className="content-card">
           <div className="section-head">
             <div>
-              <span className="card-label">Expense / fuel entry</span>
-              <h2>Record cost</h2>
+              <span className="card-label">Expense / Fuel Entry</span>
+              <h2>Record Cost</h2>
             </div>
           </div>
           <form className="af-form" onSubmit={handleExpenseSubmit}>
@@ -1122,15 +1122,15 @@ export function DriverPanel() {
             </div>
             <input className="af-input" type="file" accept="image/*,.pdf" onChange={e => readFileAsDataUrl(e.target.files?.[0], value => setExpense(p => ({ ...p, receiptData: value })))} />
             <textarea className="af-input" value={expense.notes} onChange={e => setExpense(p => ({ ...p, notes: e.target.value }))} placeholder="Fuel litres, receipt ref, notes..." />
-            <button className="af-submit-btn" disabled={busy === "expense"} type="submit">{busy === "expense" ? "Saving..." : "Save expense"}</button>
+            <button className="af-submit-btn" disabled={busy === "expense"} type="submit">{busy === "expense" ? "Saving..." : "Save Expense"}</button>
           </form>
         </article>
 
         <article className="content-card">
           <div className="section-head">
             <div>
-              <span className="card-label">Vehicle defect report</span>
-              <h2>Report issue</h2>
+              <span className="card-label">Vehicle Defect Report</span>
+              <h2>Report Issue</h2>
             </div>
           </div>
           <form className="af-form" onSubmit={handleDefectSubmit}>
@@ -1144,7 +1144,7 @@ export function DriverPanel() {
               </select>
             </div>
             <textarea className="af-input" value={defect.description} onChange={e => setDefect(p => ({ ...p, description: e.target.value }))} placeholder="Describe the issue..." required />
-            <button className="af-submit-btn" disabled={busy === "defect"} type="submit">{busy === "defect" ? "Submitting..." : "Submit defect"}</button>
+            <button className="af-submit-btn" disabled={busy === "defect"} type="submit">{busy === "defect" ? "Submitting..." : "Submit Defect"}</button>
           </form>
         </article>
       </section>
@@ -1154,8 +1154,8 @@ export function DriverPanel() {
         <article className="content-card">
           <div className="section-head">
             <div>
-              <span className="card-label">Recent expenses</span>
-              <h2>Submitted costs</h2>
+              <span className="card-label">Recent Expenses</span>
+              <h2>Submitted Costs</h2>
             </div>
             <StatusPill tone="neutral">{data?.expenses?.length || 0} entries</StatusPill>
           </div>
@@ -1179,8 +1179,8 @@ export function DriverPanel() {
         <article className="content-card">
           <div className="section-head">
             <div>
-              <span className="card-label">Upcoming work</span>
-              <h2>Next assigned jobs</h2>
+              <span className="card-label">Upcoming Work</span>
+              <h2>Next Assigned Jobs</h2>
             </div>
             <StatusPill tone="neutral">{data?.upcomingJobs?.length || 0} jobs</StatusPill>
           </div>
@@ -1203,8 +1203,8 @@ export function DriverPanel() {
         <article className="content-card">
           <div className="section-head">
             <div>
-              <span className="card-label">Defect history</span>
-              <h2>Recent vehicle reports</h2>
+              <span className="card-label">Defect History</span>
+              <h2>Recent Vehicle Reports</h2>
             </div>
             <StatusPill tone="neutral">{data?.defectHistory?.length || 0} reports</StatusPill>
           </div>
@@ -1227,8 +1227,8 @@ export function DriverPanel() {
         <article className="content-card">
           <div className="section-head">
             <div>
-              <span className="card-label">POD history</span>
-              <h2>Delivered jobs</h2>
+              <span className="card-label">POD History</span>
+              <h2>Delivered Jobs</h2>
             </div>
             <StatusPill tone="neutral">{data?.podHistory?.length || 0} deliveries</StatusPill>
           </div>
@@ -1253,8 +1253,8 @@ export function DriverPanel() {
       <section className="content-card" id="messages" style={{ marginBottom: 16 }}>
         <div className="section-head">
           <div>
-            <span className="card-label">In-app messaging</span>
-            <h2>Driver ↔ Admin support</h2>
+            <span className="card-label">In-App Messaging</span>
+            <h2>Driver ↔ Admin Support</h2>
           </div>
           <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
             <button className="header-action-button" type="button" onClick={loadMessages}>Refresh</button>
@@ -1288,7 +1288,7 @@ export function DriverPanel() {
             disabled={!newMessage.trim() || msgSending}
             style={{ width: "auto" }}
           >
-            {msgSending ? "Sending..." : "Send to admin"}
+            {msgSending ? "Sending..." : "Send To Admin"}
           </button>
         </form>
       </section>

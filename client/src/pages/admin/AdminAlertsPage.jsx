@@ -122,25 +122,25 @@ export function AdminAlertsPage() {
       <section className="content-card alert-filter-card">
         <input
           className="af-input"
-          placeholder="Search alert code, owner, module, title, or description..."
+          placeholder="Search Alert Code, Owner, Module, Title, Or Description..."
           value={search}
           onChange={e => setSearch(e.target.value)}
         />
         <select className="af-select" value={severity} onChange={e => setSeverity(e.target.value)}>
-          <option value="">All severities</option>
+          <option value="">All Severities</option>
           <option value="critical">Critical</option>
           <option value="high">High</option>
           <option value="medium">Medium</option>
           <option value="low">Low</option>
         </select>
         <select className="af-select" value={status} onChange={e => setStatus(e.target.value)}>
-          <option value="">All statuses</option>
+          <option value="">All Statuses</option>
           <option value="open">Open</option>
           <option value="watch">Watch</option>
           <option value="resolved">Resolved</option>
         </select>
         <select className="af-select" value={module} onChange={e => setModule(e.target.value)}>
-          <option value="">All modules</option>
+          <option value="">All Modules</option>
           <option value="drivers">Drivers</option>
           <option value="vehicles">Vehicles</option>
           <option value="trips">Trips</option>
@@ -149,15 +149,15 @@ export function AdminAlertsPage() {
           <option value="finance">Finance</option>
           <option value="alerts">Alerts</option>
         </select>
-        <button className="header-action-button" disabled={!hasFilters} type="button" onClick={clearFilters}>Clear filters</button>
+        <button className="header-action-button" disabled={!hasFilters} type="button" onClick={clearFilters}>Clear Filters</button>
       </section>
 
       <section className="content-grid">
         <article className="content-card">
           <div className="section-head">
             <div>
-              <span className="card-label">Live escalations</span>
-              <h2>Open alert register</h2>
+              <span className="card-label">Live Escalations</span>
+              <h2>Open Alert Register</h2>
             </div>
             <StatusPill tone="danger">Critical feed</StatusPill>
           </div>
@@ -191,8 +191,8 @@ export function AdminAlertsPage() {
         <article className="content-card">
           <div className="section-head">
             <div>
-              <span className="card-label">Resolution queue</span>
-              <h2>Next actions for the desk</h2>
+              <span className="card-label">Resolution Queue</span>
+              <h2>Next Actions For The Desk</h2>
             </div>
             <StatusPill tone="warning">Pending closure</StatusPill>
           </div>
@@ -232,8 +232,8 @@ export function AdminAlertsPage() {
       <section className="content-card">
         <div className="section-head">
           <div>
-            <span className="card-label">Alert register</span>
-            <h2>Filtered control-room workload</h2>
+            <span className="card-label">Alert Register</span>
+            <h2>Filtered Control-Room Workload</h2>
           </div>
           <StatusPill tone="neutral">{allAlerts.length} visible</StatusPill>
         </div>

@@ -2,8 +2,8 @@ import { useEffect, useRef, useState } from "react";
 import { NavLink } from "react-router-dom";
 
 const defaultScopeNote = {
-  eyebrow: "Current scope",
-  title: "Admin + Driver only",
+  eyebrow: "Current Scope",
+  title: "Admin + Driver Only",
   description: "Two-panel setup for fleet operations and driver execution."
 };
 

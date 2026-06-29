@@ -114,8 +114,8 @@ function RouteMaster() {
       <article className="content-card">
         <div className="section-head">
           <div>
-            <span className="card-label">Route master</span>
-            <h2>Lane catalogue</h2>
+            <span className="card-label">Route Master</span>
+            <h2>Lane Catalogue</h2>
           </div>
           <StatusPill tone="neutral">{loading ? "Loading" : `${data?.routes?.length || 0} routes`}</StatusPill>
         </div>
@@ -158,8 +158,8 @@ function RouteMaster() {
       <article className="content-card">
         <div className="section-head">
           <div>
-            <span className="card-label">{editId ? "Edit route" : "New route"}</span>
-            <h2>{editId ? "Update lane" : "Add lane"}</h2>
+            <span className="card-label">{editId ? "Edit Route" : "New Route"}</span>
+            <h2>{editId ? "Update Lane" : "Add Lane"}</h2>
           </div>
           {editId && (
             <button className="header-action-button" type="button" onClick={resetForm}>
@@ -171,7 +171,7 @@ function RouteMaster() {
         <form className="af-form" onSubmit={handleSubmit}>
           <div className="af-grid-2">
             <div className="af-field">
-              <label className="af-label">Route code</label>
+              <label className="af-label">Route Code</label>
               <input className="af-input" value={form.route_code} onChange={e => set("route_code", e.target.value.toUpperCase())} placeholder="e.g. LON-MAN" required />
             </div>
             <div className="af-field">
@@ -185,23 +185,23 @@ function RouteMaster() {
               </select>
             </div>
             <div className="af-field">
-              <label className="af-label">Origin hub</label>
+              <label className="af-label">Origin Hub</label>
               <input className="af-input" value={form.origin_hub} onChange={e => set("origin_hub", e.target.value)} placeholder="e.g. London" required />
             </div>
             <div className="af-field">
-              <label className="af-label">Destination hub</label>
+              <label className="af-label">Destination Hub</label>
               <input className="af-input" value={form.destination_hub} onChange={e => set("destination_hub", e.target.value)} placeholder="e.g. Manchester" required />
             </div>
             <div className="af-field">
-              <label className="af-label">Distance (miles)</label>
+              <label className="af-label">Distance (Miles)</label>
               <input className="af-input" type="number" min="1" value={form.distance_km} onChange={e => set("distance_km", e.target.value)} required />
             </div>
             <div className="af-field">
-              <label className="af-label">ETA hours</label>
+              <label className="af-label">ETA Hours</label>
               <input className="af-input" type="number" min="0" step="0.1" value={form.standard_eta_hours} onChange={e => set("standard_eta_hours", e.target.value)} />
             </div>
             <div className="af-field">
-              <label className="af-label">Toll estimate (£)</label>
+              <label className="af-label">Toll Estimate (£)</label>
               <input className="af-input" type="number" min="0" step="0.01" value={form.toll_estimate_gbp} onChange={e => set("toll_estimate_gbp", e.target.value)} />
             </div>
           </div>
@@ -215,7 +215,7 @@ function RouteMaster() {
 
           <div className="af-actions">
             <button className="af-submit-btn" type="submit" disabled={saving}>
-              {saving ? "Saving..." : editId ? "Save route" : "Create route"}
+              {saving ? "Saving..." : editId ? "Save Route" : "Create Route"}
             </button>
           </div>
         </form>
@@ -378,7 +378,7 @@ export function AdminTripsPage() {
           type="button"
           onClick={() => navigate("/admin/trips/assign")}
         >
-          + Assign new trip
+          + Assign New Trip
         </button>
       </div>
 
@@ -413,7 +413,7 @@ export function AdminTripsPage() {
       <section className="content-card dispatch-filter-card">
         <input
           className="af-input"
-          placeholder="Search trip, lane, driver, truck, or trailer..."
+          placeholder="Search Trip, Lane, Driver, Truck, Or Trailer..."
           value={search}
           onChange={e => {
             setSearch(e.target.value);
@@ -422,7 +422,7 @@ export function AdminTripsPage() {
         <select className="af-select" value={status} onChange={e => {
           setStatus(e.target.value);
         }}>
-          <option value="">All statuses</option>
+          <option value="">All Statuses</option>
           <option value="planned">Planned</option>
           <option value="loading">Loading</option>
           <option value="active">Active</option>
@@ -432,12 +432,12 @@ export function AdminTripsPage() {
         <select className="af-select" value={risk} onChange={e => {
           setRisk(e.target.value);
         }}>
-          <option value="">All risk states</option>
-          <option value="assignment">Assignment gaps</option>
-          <option value="eta">ETA risk</option>
-          <option value="blocked">Blocked trips</option>
+          <option value="">All Risk States</option>
+          <option value="assignment">Assignment Gaps</option>
+          <option value="eta">ETA Risk</option>
+          <option value="blocked">Blocked Trips</option>
         </select>
-        <button className="header-action-button" disabled={!hasFilters} type="button" onClick={clearFilters}>Clear filters</button>
+        <button className="header-action-button" disabled={!hasFilters} type="button" onClick={clearFilters}>Clear Filters</button>
       </section>
 
       <section className="dispatch-tabs" aria-label="Dispatch views">
@@ -455,8 +455,8 @@ export function AdminTripsPage() {
       <section className="content-card dispatch-table-card">
         <div className="section-head">
           <div>
-            <span className="card-label">Dispatch board</span>
-            <h2>{tab === "planning" ? "Planning queue" : tab === "live" ? "Live trips" : "Issues and blocked jobs"}</h2>
+            <span className="card-label">Dispatch Board</span>
+            <h2>{tab === "planning" ? "Planning Queue" : tab === "live" ? "Live Trips" : "Issues And Blocked Jobs"}</h2>
           </div>
           <StatusPill tone={trips.length ? "success" : "neutral"}>{trips.length} visible</StatusPill>
         </div>

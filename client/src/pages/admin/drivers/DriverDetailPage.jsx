@@ -37,11 +37,11 @@ export function DriverDetailPage() {
       <div style={{ maxWidth: 980 }}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 20, flexWrap: "wrap", gap: 12 }}>
           <button className="af-back-btn" type="button" onClick={() => navigate("/admin/drivers")}>
-            ← Back to drivers
+            ← Back To Drivers
           </button>
           {data && (
             <button className="af-submit-btn" type="button" onClick={() => navigate(`/admin/drivers/${id}/edit`)}>
-              Edit driver
+              Edit Driver
             </button>
           )}
         </div>
@@ -52,7 +52,7 @@ export function DriverDetailPage() {
           <div className="content-card" style={{ marginBottom: 14 }}>
             <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 16, marginBottom: 18, flexWrap: "wrap" }}>
               <div>
-                <span className="card-label">Driver profile</span>
+                <span className="card-label">Driver Profile</span>
                 <h2 style={{ margin: "6px 0 4px", fontSize: "1.3rem" }}>{data.fullName}</h2>
               </div>
               <span style={{ fontSize: "0.78rem", color: "#94a3b8" }}>Since {data.since}</span>
@@ -60,7 +60,7 @@ export function DriverDetailPage() {
 
             <div className="detail-grid">
               <DetailField label="Name" value={data.fullName} />
-              <DetailField label="Contact number" value={data.phone} />
+              <DetailField label="Contact Number" value={data.phone} />
               <DetailField label="Email" value={data.email} />
             </div>
           </div>

@@ -62,8 +62,8 @@ export function AdminTripDetailPage() {
 
   return (
     <AdminWorkspaceLayout
-      badge="Trip detail"
-      title={trip ? `Trip ${trip.tripCode}` : "Trip detail"}
+      badge="Trip Detail"
+      title={trip ? `Trip ${trip.tripCode}` : "Trip Detail"}
       description={
         trip
           ? `${trip.route?.from || "—"} → ${trip.route?.to || "—"} · ${trip.driver?.name || "Unassigned"}`
@@ -74,7 +74,7 @@ export function AdminTripDetailPage() {
       <div style={{ maxWidth: 900 }}>
         <div className="af-back-row">
           <button className="af-back-btn" type="button" onClick={() => navigate("/admin/trips")}>
-            ← Back to trips dashboard
+            ← Back To Trips Dashboard
           </button>
         </div>
 
@@ -144,16 +144,16 @@ export function AdminTripDetailPage() {
                 <div className="section-head">
                   <div>
                     <span className="card-label">Route</span>
-                    <h2>Lane details</h2>
+                    <h2>Lane Details</h2>
                   </div>
                 </div>
                 <div className="detail-grid">
                   <DetailBlock label="From" value={trip.route?.from} />
                   <DetailBlock label="To" value={trip.route?.to} />
-                  <DetailBlock label="Route code" value={trip.route?.code} />
+                  <DetailBlock label="Route Code" value={trip.route?.code} />
                   <DetailBlock label="Distance" value={trip.route?.distanceKm ? `${Math.round(trip.route.distanceKm * 0.621371)} mi` : null} />
-                  <DetailBlock label="Est. travel time" value={trip.route?.etaHours ? `${trip.route.etaHours} hours` : null} />
-                  <DetailBlock label="Toll estimate" value={trip.route?.tollEstimate} />
+                  <DetailBlock label="Est. Travel Time" value={trip.route?.etaHours ? `${trip.route.etaHours} hours` : null} />
+                  <DetailBlock label="Toll Estimate" value={trip.route?.tollEstimate} />
                 </div>
               </div>
 
@@ -161,14 +161,14 @@ export function AdminTripDetailPage() {
                 <div className="section-head">
                   <div>
                     <span className="card-label">Schedule</span>
-                    <h2>Timing and dock</h2>
+                    <h2>Timing And Dock</h2>
                   </div>
                 </div>
                 <div className="detail-grid">
-                  <DetailBlock label="Planned departure" value={trip.schedule?.departure} />
-                  <DetailBlock label="ETA at destination" value={trip.schedule?.eta} />
+                  <DetailBlock label="Planned Departure" value={trip.schedule?.departure} />
+                  <DetailBlock label="ETA At Destination" value={trip.schedule?.eta} />
                   <div className="detail-wide">
-                    <DetailBlock label="Dock window" value={trip.schedule?.dockWindow} />
+                    <DetailBlock label="Dock Window" value={trip.schedule?.dockWindow} />
                   </div>
                 </div>
               </div>
@@ -180,7 +180,7 @@ export function AdminTripDetailPage() {
                 <div className="section-head">
                   <div>
                     <span className="card-label">Driver</span>
-                    <h2>Assigned driver</h2>
+                    <h2>Assigned Driver</h2>
                   </div>
                   {trip.driver?.compliance && (
                     <StatusPill tone={
@@ -194,12 +194,12 @@ export function AdminTripDetailPage() {
                 </div>
                 <div className="detail-grid">
                   <div className="detail-wide">
-                    <DetailBlock label="Full name" value={trip.driver?.name} />
+                    <DetailBlock label="Full Name" value={trip.driver?.name} />
                   </div>
-                  <DetailBlock label="Employee code" value={trip.driver?.employeeCode} />
+                  <DetailBlock label="Employee Code" value={trip.driver?.employeeCode} />
                   <DetailBlock label="Phone" value={trip.driver?.phone} />
                   <div className="detail-wide">
-                    <DetailBlock label="License number" value={trip.driver?.license} />
+                    <DetailBlock label="Licence Number" value={trip.driver?.license} />
                   </div>
                 </div>
               </div>
@@ -208,7 +208,7 @@ export function AdminTripDetailPage() {
                 <div className="section-head">
                   <div>
                     <span className="card-label">Vehicle</span>
-                    <h2>Assigned truck and trailer</h2>
+                    <h2>Assigned Truck And Trailer</h2>
                   </div>
                 </div>
                 <div className="detail-grid">
@@ -217,13 +217,13 @@ export function AdminTripDetailPage() {
                   </div>
                   <DetailBlock label="Model" value={trip.vehicle?.model} />
                   <DetailBlock label="Type" value={trip.vehicle?.type} />
-                  <DetailBlock label="Fleet code" value={trip.vehicle?.fleetCode} />
+                  <DetailBlock label="Fleet Code" value={trip.vehicle?.fleetCode} />
                   <div className="detail-wide">
                     <DetailBlock label="Trailer" value={trip.trailer?.registration} />
                   </div>
-                  <DetailBlock label="Trailer code" value={trip.trailer?.code} />
-                  <DetailBlock label="Trailer type" value={trip.trailer?.type} />
-                  <DetailBlock label="Trailer capacity" value={trip.trailer?.capacityTonnes ? `${trip.trailer.capacityTonnes} tonnes` : null} />
+                  <DetailBlock label="Trailer Code" value={trip.trailer?.code} />
+                  <DetailBlock label="Trailer Type" value={trip.trailer?.type} />
+                  <DetailBlock label="Trailer Capacity" value={trip.trailer?.capacityTonnes ? `${trip.trailer.capacityTonnes} tonnes` : null} />
                 </div>
               </div>
             </div>
@@ -232,8 +232,8 @@ export function AdminTripDetailPage() {
             <div className="content-card" style={{ marginBottom: 16 }}>
               <div className="section-head">
                 <div>
-                  <span className="card-label">Freight & payout</span>
-                  <h2>Financial details</h2>
+                  <span className="card-label">Freight & Payout</span>
+                  <h2>Financial Details</h2>
                 </div>
                 <StatusPill tone={trip.freight?.podStatus === "verified" ? "success" : trip.freight?.podStatus === "uploaded" ? "warning" : "neutral"}>
                   POD: {trip.freight?.podStatus || "pending"}
@@ -241,7 +241,7 @@ export function AdminTripDetailPage() {
               </div>
               <div className="detail-grid">
                 <div className="detail-wide">
-                  <DetailBlock label="Freight amount (payout)" value={trip.freight?.amount} />
+                  <DetailBlock label="Freight Amount (Payout)" value={trip.freight?.amount} />
                 </div>
               </div>
             </div>
@@ -250,13 +250,13 @@ export function AdminTripDetailPage() {
               <div className="section-head">
                 <div>
                   <span className="card-label">Trip sheet</span>
-                  <h2>Dispatcher notes and printable trip sheet</h2>
+                  <h2>Dispatcher Notes And Printable Trip Sheet</h2>
                 </div>
                 <button className="header-action-button" type="button" onClick={() => window.print()}>
-                  Print trip sheet
+                  Print Trip Sheet
                 </button>
               </div>
-              <DetailBlock label="Dispatcher notes" value={trip.dispatcherNotes} />
+              <DetailBlock label="Dispatcher Notes" value={trip.dispatcherNotes} />
             </div>
 
             <div className="af-actions">
@@ -265,21 +265,21 @@ export function AdminTripDetailPage() {
                 type="button"
                 onClick={() => navigate(`/admin/trips/${id}/edit`)}
               >
-                Edit trip
+                Edit Trip
               </button>
               <button
                 className="af-submit-btn"
                 type="button"
                 onClick={() => navigate("/admin/trips/assign")}
               >
-                + Assign new trip
+                + Assign New Trip
               </button>
               <button
                 className="header-action-button danger"
                 type="button"
                 onClick={() => setShowDeleteModal(true)}
               >
-                Delete trip
+                Delete Trip
               </button>
             </div>
           </>

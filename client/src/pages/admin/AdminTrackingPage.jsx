@@ -175,11 +175,11 @@ export function AdminTrackingPage() {
       <section className="content-card tracking-map-card">
         <div className="section-head">
           <div>
-            <span className="card-label">Live GPS map</span>
+            <span className="card-label">Live GPS Map</span>
             <h2>{selectedTruck ? `${selectedTruck.truck} · ${selectedTruck.driver}` : "Waiting for driver GPS"}</h2>
           </div>
           <StatusPill tone={selectedTruck?.stale ? "warning" : selectedTruck ? "success" : "neutral"}>
-            {selectedTruck ? (selectedTruck.stale ? "Stale ping" : "Live marker") : "No GPS yet"}
+            {selectedTruck ? (selectedTruck.stale ? "Stale Ping" : "Live Marker") : "No GPS Yet"}
           </StatusPill>
         </div>
 
@@ -199,10 +199,10 @@ export function AdminTrackingPage() {
             </div>
             <div className="tracking-map-actions">
               <a className="af-submit-btn driver-nav-link" href={openMapUrl(selectedTruck)} rel="noreferrer" target="_blank">
-                Open in Google Maps
+                Open In Google Maps
               </a>
               <button className="header-action-button" type="button" onClick={() => navigate(`/admin/tracking/vehicles/${selectedTruck.id}`)}>
-                Open vehicle detail
+                Open Vehicle Detail
               </button>
             </div>
             <div className="tracking-marker-list">
@@ -227,39 +227,39 @@ export function AdminTrackingPage() {
       <section className="content-card tracking-command-card">
         <input
           className="af-input"
-          placeholder="Search vehicle, driver, location, or fleet code..."
+          placeholder="Search Vehicle, Driver, Location, Or Fleet Code..."
           value={search}
           onChange={e => setSearch(e.target.value)}
         />
         <select className="af-select" value={status} onChange={e => setStatus(e.target.value)}>
-          <option value="">All statuses</option>
+          <option value="">All Statuses</option>
           <option value="available">Available</option>
           <option value="planned">Planned</option>
-          <option value="in_transit">In transit</option>
+          <option value="in_transit">In Transit</option>
           <option value="maintenance">Maintenance</option>
           <option value="stopped">Stopped</option>
         </select>
         <select className="af-select" value={gpsFilter} onChange={e => setGpsFilter(e.target.value)}>
-          <option value="">All GPS states</option>
+          <option value="">All GPS States</option>
           <option value="fresh">Fresh GPS</option>
-          <option value="stale">Stale pings</option>
-          <option value="missing">No GPS marker</option>
+          <option value="stale">Stale Pings</option>
+          <option value="missing">No GPS Marker</option>
         </select>
         <select className="af-select" value={riskFilter} onChange={e => setRiskFilter(e.target.value)}>
-          <option value="">All risk states</option>
-          <option value="eta">ETA risk</option>
-          <option value="speed">Speed risk</option>
-          <option value="driver">Unassigned driver</option>
+          <option value="">All Risk States</option>
+          <option value="eta">ETA Risk</option>
+          <option value="speed">Speed Risk</option>
+          <option value="driver">Unassigned Driver</option>
         </select>
-        <button className="header-action-button" disabled={!hasFilters} type="button" onClick={clearFilters}>Clear filters</button>
+        <button className="header-action-button" disabled={!hasFilters} type="button" onClick={clearFilters}>Clear Filters</button>
       </section>
 
       <section className="content-grid">
         <article className="content-card">
           <div className="section-head">
             <div>
-              <span className="card-label">Live trucks</span>
-              <h2>Current road visibility</h2>
+              <span className="card-label">Live Trucks</span>
+              <h2>Current Road Visibility</h2>
             </div>
             <StatusPill tone="success">GPS active</StatusPill>
           </div>
@@ -294,7 +294,7 @@ export function AdminTrackingPage() {
                 <div className="finance-row-actions">
                   <StatusPill tone={item.tone}>{item.status}</StatusPill>
                   {item.rawStatus !== "in_transit" && (
-                    <button className="header-action-button" type="button" onClick={() => quickStatus(item, "in_transit")}>In transit</button>
+                    <button className="header-action-button" type="button" onClick={() => quickStatus(item, "in_transit")}>In Transit</button>
                   )}
                   {item.rawStatus !== "stopped" && (
                     <button className="header-action-button" type="button" onClick={() => quickStatus(item, "stopped")}>Stop</button>
@@ -314,8 +314,8 @@ export function AdminTrackingPage() {
         <article className="content-card">
           <div className="section-head">
             <div>
-              <span className="card-label">Tracking exceptions</span>
-              <h2>Stale pings and ETA risks</h2>
+              <span className="card-label">Tracking Exceptions</span>
+              <h2>Stale Pings And ETA Risks</h2>
             </div>
             <StatusPill tone="warning">Watch closely</StatusPill>
           </div>
