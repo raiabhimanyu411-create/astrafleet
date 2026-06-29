@@ -10,5 +10,8 @@ export const completeMaintenanceJob = (id, data) => api.patch(`/api/maintenance/
 export const createJobFromDefect = (defectId, data = {}) => api.post(`/api/maintenance/defects/${defectId}/job`, data);
 export const updateDefectWorkflow = (defectId, data = {}) => api.patch(`/api/maintenance/defects/${defectId}/workflow`, data);
 export const markVehicleInspectionDone = (vehicleId, data = {}) => api.post(`/api/maintenance/vehicles/${vehicleId}/inspection-done`, data);
+export const markTrailerInspectionDone = (trailerId, data = {}) => api.post(`/api/maintenance/trailers/${trailerId}/inspection-done`, data);
+export const reportBreakdown = (data) => api.post("/api/maintenance/breakdown", data);
+export const completeEventFromSchedule = (data) => api.post("/api/maintenance/events/done", data);
 export const getJobNotes = (jobId) => api.get(`/api/maintenance/jobs/${jobId}/notes`);
 export const addJobNote = (jobId, data) => api.post(`/api/maintenance/jobs/${jobId}/notes`, data);

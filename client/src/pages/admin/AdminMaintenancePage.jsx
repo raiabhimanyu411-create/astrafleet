@@ -3,12 +3,15 @@ import { useNavigate } from "react-router-dom";
 import {
   addJobNote,
   autoPlanMaintenanceWork,
+  completeEventFromSchedule,
   completeMaintenanceJob,
   createBulkMaintenanceJobs,
   createJobFromDefect,
   getJobNotes,
   getMaintenancePortal,
+  markTrailerInspectionDone,
   markVehicleInspectionDone,
+  reportBreakdown,
   updateDefectWorkflow,
   updateMaintenanceBill,
   updateMaintenanceJob
@@ -48,15 +51,22 @@ const emptyJob = {
 
 const statusOptions = ["planned", "booked", "in_progress", "completed", "cancelled", "failed"];
 const priorityOptions = ["low", "normal", "high", "critical"];
-const maintenanceItems = [
-  { value: "Roller brake test", label: "Roller brake test", interval: "Every 6 weeks", days: 42 },
-  { value: "Safety inspection", label: "Safety inspection", interval: "Every 6 weeks", days: 42 },
-  { value: "MOT", label: "MOT", interval: "Every 12 months", months: 12 },
-  { value: "Tacho Calibration", label: "Tacho Calibration", interval: "Every 2 years", months: 24 },
-  { value: "Road Tax", label: "Road Tax", interval: "Every 6 or 12 months", roadTax: true },
-  { value: "Insurance", label: "Insurance", interval: "Every 12 months", months: 12 },
-  { value: "Full Service", label: "Full Service", interval: "Every 85,000 km", mileageKm: 85000 }
+const severityOptions = ["low", "medium", "high", "critical"];
+const allMaintenanceItems = [
+  { value: "Roller brake test", label: "Roller brake test", interval: "Every 6 weeks", days: 42, trailerOk: true },
+  { value: "Safety inspection", label: "Safety inspection", interval: "Every 6 weeks", days: 42, trailerOk: true },
+  { value: "MOT", label: "MOT", interval: "Every 12 months", months: 12, trailerOk: true },
+  { value: "Tacho Calibration", label: "Tacho Calibration", interval: "Every 2 years", months: 24, trailerOk: false },
+  { value: "Road Tax", label: "Road Tax", interval: "Every 6 or 12 months", roadTax: true, trailerOk: false },
+  { value: "Insurance", label: "Insurance", interval: "Every 12 months", months: 12, trailerOk: true },
+  { value: "Full Service", label: "Full Service", interval: "Every 85,000 km", mileageKm: 85000, trailerOk: true }
 ];
+function getMaintenanceItems(assetType) {
+  return assetType === "trailer"
+    ? allMaintenanceItems.filter((item) => item.trailerOk)
+    : allMaintenanceItems;
+}
+const maintenanceItems = allMaintenanceItems;
 const dueWindows = [
   { value: "", label: "All Due Windows" },
   { value: "overdue", label: "Overdue Only" },
@@ -208,13 +218,17 @@ function Field({ label, children }) {
 
 function JobModal({ vehicles, defects, editingJob, initialForm, onClose, onSaved }) {
   const [form, setForm] = useState(initialForm || emptyJob);
-  const [selectedServices, setSelectedServices] = useState(maintenanceItems.map((item) => item.value));
+  const selectedAssetType = form.vehicle_id?.startsWith("trailer:") ? "trailer" : "vehicle";
+  const availableItems = getMaintenanceItems(selectedAssetType);
+  const [selectedServices, setSelectedServices] = useState(availableItems.map((item) => item.value));
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
 
   useEffect(() => {
     setForm(initialForm || emptyJob);
-    setSelectedServices(editingJob ? [initialForm?.service_type].filter(Boolean) : maintenanceItems.map((item) => item.value));
+    const assetType = (initialForm?.vehicle_id || "").startsWith("trailer:") ? "trailer" : "vehicle";
+    const items = getMaintenanceItems(assetType);
+    setSelectedServices(editingJob ? [initialForm?.service_type].filter(Boolean) : items.map((i) => i.value));
   }, [initialForm]);
 
   function set(name, value) {
@@ -232,8 +246,8 @@ function JobModal({ vehicles, defects, editingJob, initialForm, onClose, onSaved
     });
   }
 
-  const selectedItem = maintenanceItems.find((item) => item.value === form.service_type);
-  const bulkRows = maintenanceItems.map((item) => {
+  const selectedItem = availableItems.find((item) => item.value === form.service_type);
+  const bulkRows = availableItems.map((item) => {
     const nextDue = item.value === "Full Service" ? (form.due_date || form.service_date || dateKey(new Date())) : nextDueForItem(item.value, form.service_date, form.road_tax_interval_months);
     const nextMileage = item.value === "Full Service" ? nextMileageForItem(item.value, form.completed_mileage_km) : "";
     return { ...item, nextDue, nextMileage, selected: selectedServices.includes(item.value) };
@@ -285,10 +299,18 @@ function JobModal({ vehicles, defects, editingJob, initialForm, onClose, onSaved
         </div>
 
         <div className="maintenance-form-grid">
-          <Field label="Vehicle">
-            <select className="af-select" value={form.vehicle_id} onChange={(e) => set("vehicle_id", e.target.value)} required>
-              <option value="">Select Vehicle</option>
-              {vehicles.map((vehicle) => <option key={vehicle.assetId || vehicle.id} value={vehicle.assetId || `vehicle:${vehicle.id}`}>{vehicle.label}</option>)}
+          <Field label="Vehicle / Trailer">
+            <select className="af-select" value={form.vehicle_id} onChange={(e) => {
+              set("vehicle_id", e.target.value);
+              const newAssetType = e.target.value.startsWith("trailer:") ? "trailer" : "vehicle";
+              const newItems = getMaintenanceItems(newAssetType);
+              setSelectedServices(newItems.map((i) => i.value));
+            }} required>
+              <option value="">Select Vehicle or Trailer</option>
+              {vehicles.filter((v) => v.assetType !== "trailer").map((v) => <option key={v.assetId} value={v.assetId}>{v.label}</option>)}
+              <optgroup label="── Trailers ──">
+                {vehicles.filter((v) => v.assetType === "trailer").map((v) => <option key={v.assetId} value={v.assetId}>{v.label}</option>)}
+              </optgroup>
             </select>
           </Field>
           {editingJob && (
@@ -444,6 +466,230 @@ function JobModal({ vehicles, defects, editingJob, initialForm, onClose, onSaved
           <button className="header-action-button" type="button" onClick={onClose}>Cancel</button>
           <button className="af-submit-btn" disabled={saving} type="submit">
             {saving ? "Saving..." : editingJob ? "Save Job" : "Save Selected Maintenance"}
+          </button>
+        </div>
+      </form>
+    </div>
+  );
+}
+
+function EventDoneModal({ event, onClose, onSaved }) {
+  const [form, setForm] = useState({
+    service_date: dateKey(new Date()),
+    garage_name: "",
+    final_cost_gbp: "",
+    bill_number: "",
+    bill_amount_gbp: "",
+    bill_notes: "",
+    bill_attachment_data: "",
+    road_tax_interval_months: "12"
+  });
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+
+  function set(name, value) {
+    setForm((c) => ({ ...c, [name]: value }));
+  }
+
+  const nextDue = useMemo(() => {
+    if (!event || !form.service_date) return "";
+    return nextDueForItem(event.type, form.service_date, form.road_tax_interval_months) || "";
+  }, [event, form.service_date, form.road_tax_interval_months]);
+
+  async function submit(e) {
+    e.preventDefault();
+    setSaving(true);
+    setError("");
+    try {
+      await completeEventFromSchedule({
+        asset_id: event.assetType === "trailer" ? `trailer:${event.vehicleId}` : `vehicle:${event.vehicleId}`,
+        service_type: event.type,
+        service_date: form.service_date,
+        garage_name: form.garage_name,
+        final_cost_gbp: form.final_cost_gbp,
+        bill_number: form.bill_number,
+        bill_amount_gbp: form.bill_amount_gbp,
+        bill_notes: form.bill_notes,
+        bill_attachment_data: form.bill_attachment_data,
+        road_tax_interval_months: form.road_tax_interval_months
+      });
+      await onSaved();
+      onClose();
+    } catch (err) {
+      setError(err.response?.data?.message || "Could not mark event as done.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  if (!event) return null;
+  return (
+    <div className="maintenance-modal-backdrop">
+      <form className="maintenance-modal event-done-modal" onSubmit={submit}>
+        <div className="section-head">
+          <div>
+            <span className="card-label">{event.assetType === "trailer" ? "Trailer" : "Vehicle"} · {event.vehicle}</span>
+            <h2>Mark {event.type} as Done</h2>
+            <p className="finance-empty">{event.type} · Next due auto-calculates from date done</p>
+          </div>
+          <button className="header-action-button" type="button" onClick={onClose}>Close</button>
+        </div>
+        {nextDue && (
+          <div className="event-done-next-due">
+            <span>Next due date will be set to</span>
+            <strong>{nextDue}</strong>
+          </div>
+        )}
+        {event.type === "Road Tax" && (
+          <div style={{ padding: "0 24px" }}>
+            <Field label="Road Tax Period">
+              <select className="af-select" value={form.road_tax_interval_months} onChange={(e) => set("road_tax_interval_months", e.target.value)}>
+                <option value="6">6 months</option>
+                <option value="12">12 months</option>
+              </select>
+            </Field>
+          </div>
+        )}
+        <div className="maintenance-form-grid" style={{ padding: "0 24px" }}>
+          <Field label="Date Done">
+            <input className="af-input" type="date" value={form.service_date} onChange={(e) => set("service_date", e.target.value)} required />
+          </Field>
+          <Field label="Garage / Vendor">
+            <input className="af-input" value={form.garage_name} onChange={(e) => set("garage_name", e.target.value)} placeholder="Workshop or vendor name" />
+          </Field>
+          <Field label="Cost (£)">
+            <input className="af-input" type="number" min="0" step="0.01" value={form.final_cost_gbp} onChange={(e) => set("final_cost_gbp", e.target.value)} />
+          </Field>
+          <Field label="Bill / Invoice Number">
+            <input className="af-input" value={form.bill_number} onChange={(e) => set("bill_number", e.target.value)} placeholder="e.g. INV-9821" />
+          </Field>
+          <Field label="Bill Amount (£)">
+            <input className="af-input" type="number" min="0" step="0.01" value={form.bill_amount_gbp} onChange={(e) => set("bill_amount_gbp", e.target.value)} />
+          </Field>
+          <Field label="Attach Bill / Document">
+            <input className="af-input" type="file" accept="image/*,.pdf,.doc,.docx,.xls,.xlsx"
+              onChange={(e) => readFileAsDataUrl(e.target.files?.[0], (v) => set("bill_attachment_data", v))} />
+          </Field>
+          <Field label="Notes">
+            <textarea className="af-textarea" value={form.bill_notes} onChange={(e) => set("bill_notes", e.target.value)} rows={2} placeholder="Certificate number, MOT pass notes, inspector..." />
+          </Field>
+          <div className="maintenance-rule-note">
+            <span>Document</span>
+            <strong>{form.bill_attachment_data ? "Document attached" : "No document"}</strong>
+          </div>
+        </div>
+        {error && <p className="lp-error" style={{ padding: "0 24px" }}>{error}</p>}
+        <div className="finance-command-bar">
+          <button className="header-action-button" type="button" onClick={onClose}>Cancel</button>
+          <button className="af-submit-btn" disabled={saving} type="submit">
+            {saving ? "Saving..." : `Mark ${event.type} Done`}
+          </button>
+        </div>
+      </form>
+    </div>
+  );
+}
+
+function BreakdownModal({ vehicles, onClose, onSaved }) {
+  const [form, setForm] = useState({
+    asset_id: "",
+    defect_type: "",
+    description: "",
+    severity: "high",
+    garage_name: "",
+    estimated_cost_gbp: "",
+    bill_number: "",
+    bill_amount_gbp: "",
+    bill_notes: "",
+    bill_attachment_data: "",
+    reported_by: ""
+  });
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+
+  function set(name, value) {
+    setForm((c) => ({ ...c, [name]: value }));
+  }
+
+  async function submit(e) {
+    e.preventDefault();
+    if (!form.asset_id || !form.defect_type) {
+      setError("Select an asset and enter the problem type.");
+      return;
+    }
+    setSaving(true);
+    setError("");
+    try {
+      await reportBreakdown(form);
+      await onSaved();
+      onClose();
+    } catch (err) {
+      setError(err.response?.data?.message || "Could not report breakdown.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="maintenance-modal-backdrop">
+      <form className="maintenance-modal breakdown-modal" onSubmit={submit}>
+        <div className="section-head">
+          <div>
+            <span className="card-label">Breakdown / Defect Report</span>
+            <h2>Report Vehicle or Trailer Problem</h2>
+            <p className="finance-empty">Creates a defect record and a linked repair job immediately.</p>
+          </div>
+          <button className="header-action-button" type="button" onClick={onClose}>Close</button>
+        </div>
+        <div className="maintenance-form-grid" style={{ padding: "0 24px" }}>
+          <Field label="Vehicle / Trailer">
+            <select className="af-select" value={form.asset_id} onChange={(e) => set("asset_id", e.target.value)} required>
+              <option value="">Select Asset</option>
+              {vehicles.filter((v) => v.assetType !== "trailer").map((v) => <option key={v.assetId} value={v.assetId}>{v.label}</option>)}
+              <optgroup label="── Trailers ──">
+                {vehicles.filter((v) => v.assetType === "trailer").map((v) => <option key={v.assetId} value={v.assetId}>{v.label}</option>)}
+              </optgroup>
+            </select>
+          </Field>
+          <Field label="Problem / Defect Type">
+            <input className="af-input" value={form.defect_type} onChange={(e) => set("defect_type", e.target.value)} placeholder="e.g. Brake failure, Tyre blowout, Engine fault" required />
+          </Field>
+          <Field label="Severity">
+            <select className="af-select" value={form.severity} onChange={(e) => set("severity", e.target.value)}>
+              {severityOptions.map((s) => <option key={s} value={s}>{s}</option>)}
+            </select>
+          </Field>
+          <Field label="Reported By">
+            <input className="af-input" value={form.reported_by} onChange={(e) => set("reported_by", e.target.value)} placeholder="Driver or staff name" />
+          </Field>
+          <Field label="Description / Details">
+            <textarea className="af-textarea" value={form.description} onChange={(e) => set("description", e.target.value)} rows={3} placeholder="Describe the breakdown or fault..." />
+          </Field>
+          <Field label="Vendor / Garage Sent To">
+            <input className="af-input" value={form.garage_name} onChange={(e) => set("garage_name", e.target.value)} placeholder="Recovery company or garage" />
+          </Field>
+          <Field label="Estimated Cost (£)">
+            <input className="af-input" type="number" min="0" step="0.01" value={form.estimated_cost_gbp} onChange={(e) => set("estimated_cost_gbp", e.target.value)} />
+          </Field>
+          <Field label="Bill / Invoice Number">
+            <input className="af-input" value={form.bill_number} onChange={(e) => set("bill_number", e.target.value)} placeholder="e.g. INV-1234" />
+          </Field>
+          <Field label="Bill Amount (£)">
+            <input className="af-input" type="number" min="0" step="0.01" value={form.bill_amount_gbp} onChange={(e) => set("bill_amount_gbp", e.target.value)} />
+          </Field>
+          <Field label="Attach Bill / Slip">
+            <input className="af-input" type="file" accept="image/*,.pdf,.doc,.docx,.xls,.xlsx"
+              onChange={(e) => readFileAsDataUrl(e.target.files?.[0], (v) => set("bill_attachment_data", v))} />
+          </Field>
+          <Field label="Document Notes">
+            <textarea className="af-textarea" value={form.bill_notes} onChange={(e) => set("bill_notes", e.target.value)} rows={2} placeholder="Repair invoice note, receipt reference..." />
+          </Field>
+        </div>
+        {error && <p className="lp-error" style={{ padding: "0 24px" }}>{error}</p>}
+        <div className="finance-command-bar">
+          <button className="header-action-button" type="button" onClick={onClose}>Cancel</button>
+          <button className="af-submit-btn" disabled={saving} type="submit">
+            {saving ? "Reporting..." : "Report Breakdown & Create Job"}
           </button>
         </div>
       </form>
@@ -624,7 +870,7 @@ function isoWeekNumber(dateStr) {
   return Math.round((d - firstThu) / 604800000) + 1;
 }
 
-function ExcelScheduleView({ data, onAddJob }) {
+function ExcelScheduleView({ data, onAddJob, onEventDone }) {
   const weeks = useMemo(() => data?.yearPlan?.weeks || [], [data]);
   const allRows = useMemo(() => data?.yearPlan?.rows || [], [data]);
 
@@ -712,17 +958,13 @@ function ExcelScheduleView({ data, onAddJob }) {
                           return (
                             <button
                               key={ev.id}
-                              className="excel-event-chip"
+                              className={`excel-event-chip${ev.tone === "success" ? " done" : ""}`}
                               style={{ background: color.bg, color: color.text }}
-                              title={`${ev.type} · ${ev.dueDate} · ${ev.dueLabel}`}
-                              onClick={() => onAddJob({
-                                vehicle_id: ev.vehicleId,
-                                service_type: ev.type,
-                                due_date: ev.dueDateRaw,
-                                priority: ev.tone === "danger" ? "critical" : ev.tone === "warning" ? "high" : "normal"
-                              })}
+                              title={`${ev.type} · ${ev.dueDate} · ${ev.dueLabel} — Click to mark done or attach document`}
+                              onClick={() => onEventDone(ev)}
                             >
                               {ev.code} {day}/{mon}
+                              {ev.hasDoc && <span className="excel-chip-doc" title="Document attached">📎</span>}
                             </button>
                           );
                         })}
@@ -760,6 +1002,8 @@ export function AdminMaintenancePage() {
   const [modalForm, setModalForm] = useState(emptyJob);
   const [savingAction, setSavingAction] = useState("");
   const [automationMessage, setAutomationMessage] = useState("");
+  const [eventDoneTarget, setEventDoneTarget] = useState(null);
+  const [showBreakdownModal, setShowBreakdownModal] = useState(false);
 
   function load() {
     setLoading(true);
@@ -944,11 +1188,16 @@ export function AdminMaintenancePage() {
     if (inspectionDate === null) return;
     const inspectorName = window.prompt("Inspector name", "");
     if (inspectorName === null) return;
-    const notes = window.prompt("Inspection notes", "6-week safety inspection completed. Vehicle roadworthy.");
+    const notes = window.prompt("Inspection notes", "6-week safety inspection completed. Roadworthy.");
     if (notes === null) return;
     setSavingAction(`inspection-${row.id}`);
     try {
-      await markVehicleInspectionDone(row.id, { inspection_date: inspectionDate, inspector_name: inspectorName, notes, result: "pass" });
+      const payload = { inspection_date: inspectionDate, inspector_name: inspectorName, notes, result: "pass" };
+      if (row.assetType === "trailer") {
+        await markTrailerInspectionDone(row.id, payload);
+      } else {
+        await markVehicleInspectionDone(row.id, payload);
+      }
       await load();
     } catch (err) {
       setError(err.response?.data?.message || "Could not mark inspection done.");
@@ -1087,6 +1336,7 @@ export function AdminMaintenancePage() {
         </div>
         <div className="maintenance-command-actions">
           <button className="af-submit-btn" type="button" onClick={() => openAddJob()}>Add Job</button>
+          <button className="header-action-button danger" type="button" onClick={() => setShowBreakdownModal(true)}>Report Breakdown</button>
           <button className="header-action-button" disabled={savingAction === "automation-plan"} type="button" onClick={handleAutoPlan}>
             {savingAction === "automation-plan" ? "Planning..." : "Auto-Plan Due Work"}
           </button>
@@ -1248,7 +1498,7 @@ export function AdminMaintenancePage() {
             ))}
           </div>
         </div>
-        <ExcelScheduleView data={data} onAddJob={openAddJob} />
+        <ExcelScheduleView data={data} onAddJob={openAddJob} onEventDone={(ev) => setEventDoneTarget(ev)} />
       </section>
       )}
 
@@ -1770,6 +2020,20 @@ export function AdminMaintenancePage() {
           editingJob={editingJob}
           initialForm={modalForm}
           onClose={() => setShowModal(false)}
+          onSaved={load}
+        />
+      )}
+      {eventDoneTarget && (
+        <EventDoneModal
+          event={eventDoneTarget}
+          onClose={() => setEventDoneTarget(null)}
+          onSaved={load}
+        />
+      )}
+      {showBreakdownModal && (
+        <BreakdownModal
+          vehicles={data?.vehicles || []}
+          onClose={() => setShowBreakdownModal(false)}
           onSaved={load}
         />
       )}

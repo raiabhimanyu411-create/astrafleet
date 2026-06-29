@@ -1656,3 +1656,69 @@
   .excel-fixed-head:nth-child(1) { min-width: 100px; }
   .excel-reg-cell { left: 0; min-width: 100px; }
 }
+
+/* ── Excel chip done state ── */
+.excel-event-chip.done {
+  opacity: 0.55;
+  text-decoration: line-through;
+}
+.excel-chip-doc {
+  margin-left: 3px;
+  font-size: 0.7rem;
+}
+
+/* ── Event Done Modal ── */
+.event-done-modal {
+  max-width: 640px;
+}
+.event-done-next-due {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 24px 4px;
+  background: var(--surface-alt, #f8fafc);
+  border-radius: var(--radius-sm, 6px);
+  margin: 0 24px 8px;
+  font-size: 0.85rem;
+}
+.event-done-next-due span {
+  color: var(--text-muted);
+}
+.event-done-next-due strong {
+  color: var(--text);
+  font-size: 0.95rem;
+}
+
+/* ── Breakdown Modal ── */
+.breakdown-modal {
+  max-width: 720px;
+}
+
+/* ── Asset type badge in job rows ── */
+.asset-type-badge {
+  display: inline-block;
+  padding: 1px 6px;
+  border-radius: 4px;
+  font-size: 0.65rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  background: #e0f2fe;
+  color: #0369a1;
+  margin-left: 4px;
+  vertical-align: middle;
+}
+.asset-type-badge.trailer {
+  background: #fef3c7;
+  color: #92400e;
+}
+
+/* ── Report Breakdown button (danger style) ── */
+.header-action-button.danger {
+  border-color: #dc2626;
+  color: #dc2626;
+}
+.header-action-button.danger:hover {
+  background: #dc2626;
+  color: #fff;
+}
