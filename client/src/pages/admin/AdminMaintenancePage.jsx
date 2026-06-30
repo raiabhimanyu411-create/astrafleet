@@ -473,7 +473,14 @@ function JobModal({ vehicles, defects, editingJob, initialForm, onClose, onSaved
   );
 }
 
-function EventDoneModal({ event, onClose, onSaved }) {
+function VehicleDetailModal({ target, profiles, onClose, onSaved }) {
+  const profile = useMemo(() => {
+    if (!target) return null;
+    const wantsTrailer = target.assetType === "trailer";
+    return profiles.find((p) => Number(p.vehicleId) === Number(target.vehicleId) && Boolean(p.assetType === "trailer") === wantsTrailer) || null;
+  }, [profiles, target]);
+
+  const [activeType, setActiveType] = useState(target?.preselectType || null);
   const [form, setForm] = useState({
     service_date: dateKey(new Date()),
     garage_name: "",
@@ -486,24 +493,49 @@ function EventDoneModal({ event, onClose, onSaved }) {
   });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+  const [successMessage, setSuccessMessage] = useState("");
+
+  useEffect(() => {
+    setActiveType(target?.preselectType || null);
+    setForm({
+      service_date: dateKey(new Date()),
+      garage_name: "",
+      final_cost_gbp: "",
+      bill_number: "",
+      bill_amount_gbp: "",
+      bill_notes: "",
+      bill_attachment_data: "",
+      road_tax_interval_months: "12"
+    });
+    setError("");
+    setSuccessMessage("");
+  }, [target?.vehicleId, target?.assetType]);
 
   function set(name, value) {
     setForm((c) => ({ ...c, [name]: value }));
   }
 
+  function openItem(type) {
+    setActiveType(type);
+    setError("");
+    setSuccessMessage("");
+    setForm((c) => ({ ...c, service_date: dateKey(new Date()) }));
+  }
+
   const nextDue = useMemo(() => {
-    if (!event || !form.service_date) return "";
-    return nextDueForItem(event.type, form.service_date, form.road_tax_interval_months) || "";
-  }, [event, form.service_date, form.road_tax_interval_months]);
+    if (!activeType || !form.service_date) return "";
+    return nextDueForItem(activeType, form.service_date, form.road_tax_interval_months) || "";
+  }, [activeType, form.service_date, form.road_tax_interval_months]);
 
   async function submit(e) {
     e.preventDefault();
+    if (!profile || !activeType) return;
     setSaving(true);
     setError("");
     try {
       await completeEventFromSchedule({
-        asset_id: event.assetType === "trailer" ? `trailer:${event.vehicleId}` : `vehicle:${event.vehicleId}`,
-        service_type: event.type,
+        asset_id: `${target.assetType === "trailer" ? "trailer" : "vehicle"}:${profile.vehicleId}`,
+        service_type: activeType,
         service_date: form.service_date,
         garage_name: form.garage_name,
         final_cost_gbp: form.final_cost_gbp,
@@ -514,78 +546,126 @@ function EventDoneModal({ event, onClose, onSaved }) {
         road_tax_interval_months: form.road_tax_interval_months
       });
       await onSaved();
-      onClose();
+      setSuccessMessage(`${activeType} marked done${form.bill_attachment_data ? " and document attached." : "."}`);
+      setActiveType(null);
     } catch (err) {
-      setError(err.response?.data?.message || "Could not mark event as done.");
+      setError(err.response?.data?.message || "Could not mark item as done.");
     } finally {
       setSaving(false);
     }
   }
 
-  if (!event) return null;
+  if (!target) return null;
+
+  if (!profile) {
+    return (
+      <div className="maintenance-modal-backdrop">
+        <div className="maintenance-modal">
+          <div className="section-head">
+            <h2>Vehicle not found</h2>
+            <button className="header-action-button" type="button" onClick={onClose}>Close</button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="maintenance-modal-backdrop">
-      <form className="maintenance-modal event-done-modal" onSubmit={submit}>
+      <div className="maintenance-modal vehicle-detail-modal">
         <div className="section-head">
           <div>
-            <span className="card-label">{event.assetType === "trailer" ? "Trailer" : "Vehicle"} · {event.vehicle}</span>
-            <h2>Mark {event.type} as Done</h2>
-            <p className="finance-empty">{event.type} · Next due auto-calculates from date done</p>
+            <span className="card-label">{target.assetType === "trailer" ? "Trailer" : "Vehicle"} · {profile.fleetCode}</span>
+            <h2>{profile.vehicle}</h2>
+            <p className="finance-empty">{profile.make} · {profile.currentKmLabel}</p>
           </div>
           <button className="header-action-button" type="button" onClick={onClose}>Close</button>
         </div>
-        {nextDue && (
-          <div className="event-done-next-due">
-            <span>Next due date will be set to</span>
-            <strong>{nextDue}</strong>
-          </div>
-        )}
-        {event.type === "Road Tax" && (
-          <div style={{ padding: "0 24px" }}>
-            <Field label="Road Tax Period">
-              <select className="af-select" value={form.road_tax_interval_months} onChange={(e) => set("road_tax_interval_months", e.target.value)}>
-                <option value="6">6 months</option>
-                <option value="12">12 months</option>
-              </select>
-            </Field>
-          </div>
-        )}
-        <div className="maintenance-form-grid" style={{ padding: "0 24px" }}>
-          <Field label="Date Done">
-            <input className="af-input" type="date" value={form.service_date} onChange={(e) => set("service_date", e.target.value)} required />
-          </Field>
-          <Field label="Garage / Vendor">
-            <input className="af-input" value={form.garage_name} onChange={(e) => set("garage_name", e.target.value)} placeholder="Workshop or vendor name" />
-          </Field>
-          <Field label="Cost (£)">
-            <input className="af-input" type="number" min="0" step="0.01" value={form.final_cost_gbp} onChange={(e) => set("final_cost_gbp", e.target.value)} />
-          </Field>
-          <Field label="Bill / Invoice Number">
-            <input className="af-input" value={form.bill_number} onChange={(e) => set("bill_number", e.target.value)} placeholder="e.g. INV-9821" />
-          </Field>
-          <Field label="Bill Amount (£)">
-            <input className="af-input" type="number" min="0" step="0.01" value={form.bill_amount_gbp} onChange={(e) => set("bill_amount_gbp", e.target.value)} />
-          </Field>
-          <Field label="Attach Bill / Document">
-            <input className="af-input" type="file" accept="image/*,.pdf,.doc,.docx,.xls,.xlsx"
-              onChange={(e) => readFileAsDataUrl(e.target.files?.[0], (v) => set("bill_attachment_data", v))} />
-          </Field>
-          <Field label="Notes">
-            <textarea className="af-textarea" value={form.bill_notes} onChange={(e) => set("bill_notes", e.target.value)} rows={2} placeholder="Certificate number, MOT pass notes, inspector..." />
-          </Field>
-          <div className="maintenance-rule-note">
-            <span>Document</span>
-            <strong>{form.bill_attachment_data ? "Document attached" : "No document"}</strong>
-          </div>
+
+        {successMessage && <p className="lp-success">{successMessage}</p>}
+
+        <div className="maintenance-profile-items vehicle-detail-items">
+          {profile.items.map((item) => {
+            const code = TYPE_TO_CODE[item.type] || item.type;
+            const color = EVENT_COLORS[code] || { bg: "#94a3b8", text: "#fff" };
+            return (
+              <button
+                className={`maintenance-profile-item${activeType === item.type ? " active" : ""}`}
+                key={item.type}
+                type="button"
+                onClick={() => openItem(item.type)}
+              >
+                <span className="vehicle-detail-item-code" style={{ background: color.bg, color: color.text }}>{code}</span>
+                <strong>{item.type}</strong>
+                <p>Last done: {item.lastDone}</p>
+                <p>Next due: {item.nextDue}</p>
+                <StatusPill tone={item.tone}>{item.status}</StatusPill>
+              </button>
+            );
+          })}
         </div>
-        {error && <p className="lp-error" style={{ padding: "0 24px" }}>{error}</p>}
-        <div className="finance-command-bar">
-          <button className="header-action-button" type="button" onClick={onClose}>Cancel</button>
-          <button className="af-submit-btn" disabled={saving} type="submit">
-            {saving ? "Saving..." : `Mark ${event.type} Done`}
-          </button>
-        </div>
-      </form>
+
+        {activeType && (
+          <form className="vehicle-detail-done-form" onSubmit={submit}>
+            <div className="section-head">
+              <div>
+                <h3>Mark {activeType} As Done</h3>
+                <p className="finance-empty">Select date done, then attach the certificate or bill below — all in this same panel.</p>
+              </div>
+              <button className="header-action-button" type="button" onClick={() => setActiveType(null)}>Cancel</button>
+            </div>
+            {nextDue && (
+              <div className="event-done-next-due">
+                <span>Next due date will be set to</span>
+                <strong>{nextDue}</strong>
+              </div>
+            )}
+            {activeType === "Road Tax" && (
+              <Field label="Road Tax Period">
+                <select className="af-select" value={form.road_tax_interval_months} onChange={(e) => set("road_tax_interval_months", e.target.value)}>
+                  <option value="6">6 months</option>
+                  <option value="12">12 months</option>
+                </select>
+              </Field>
+            )}
+            <div className="maintenance-form-grid">
+              <Field label="Date Done">
+                <input className="af-input" type="date" value={form.service_date} onChange={(e) => set("service_date", e.target.value)} required />
+              </Field>
+              <Field label="Garage / Vendor">
+                <input className="af-input" value={form.garage_name} onChange={(e) => set("garage_name", e.target.value)} placeholder="Workshop or vendor name" />
+              </Field>
+              <Field label="Cost (£)">
+                <input className="af-input" type="number" min="0" step="0.01" value={form.final_cost_gbp} onChange={(e) => set("final_cost_gbp", e.target.value)} />
+              </Field>
+              <Field label="Bill / Invoice Number">
+                <input className="af-input" value={form.bill_number} onChange={(e) => set("bill_number", e.target.value)} placeholder="e.g. INV-9821" />
+              </Field>
+              <Field label="Bill Amount (£)">
+                <input className="af-input" type="number" min="0" step="0.01" value={form.bill_amount_gbp} onChange={(e) => set("bill_amount_gbp", e.target.value)} />
+              </Field>
+              <Field label="Attach Document / Certificate">
+                <input className="af-input" type="file" accept="image/*,.pdf,.doc,.docx,.xls,.xlsx"
+                  onChange={(e) => readFileAsDataUrl(e.target.files?.[0], (v) => set("bill_attachment_data", v))} />
+              </Field>
+              <Field label="Notes">
+                <textarea className="af-textarea" value={form.bill_notes} onChange={(e) => set("bill_notes", e.target.value)} rows={2} placeholder="Certificate number, MOT pass notes, inspector..." />
+              </Field>
+              <div className="maintenance-rule-note">
+                <span>Document</span>
+                <strong>{form.bill_attachment_data ? "Document attached" : "No document"}</strong>
+              </div>
+            </div>
+            {error && <p className="lp-error">{error}</p>}
+            <div className="finance-command-bar">
+              <button className="header-action-button" type="button" onClick={() => setActiveType(null)}>Cancel</button>
+              <button className="af-submit-btn" disabled={saving} type="submit">
+                {saving ? "Saving..." : `Mark ${activeType} Done`}
+              </button>
+            </div>
+          </form>
+        )}
+      </div>
     </div>
   );
 }
@@ -860,6 +940,16 @@ const COMPANY_COLORS = [
   "#c0392b", "#1a5276", "#117a65", "#6c3483", "#784212", "#0e6655", "#1f3a5f"
 ];
 
+const TYPE_TO_CODE = {
+  "Road Tax": "TAX",
+  "Safety inspection": "IB",
+  MOT: "MOT",
+  "Roller brake test": "RBT",
+  Insurance: "INS",
+  "Tacho Calibration": "T",
+  "Full Service": "SRV"
+};
+
 function isoWeekNumber(dateStr) {
   if (!dateStr) return 0;
   const d = new Date(`${dateStr}T12:00:00`);
@@ -870,7 +960,7 @@ function isoWeekNumber(dateStr) {
   return Math.round((d - firstThu) / 604800000) + 1;
 }
 
-function ExcelScheduleView({ data, onAddJob, onEventDone }) {
+function ExcelScheduleView({ data, onAddJob, onOpenVehicle }) {
   const weeks = useMemo(() => data?.yearPlan?.weeks || [], [data]);
   const allRows = useMemo(() => data?.yearPlan?.rows || [], [data]);
 
@@ -939,18 +1029,25 @@ function ExcelScheduleView({ data, onAddJob, onEventDone }) {
                   {company.toUpperCase()}
                 </td>
               </tr>
-              {rows.map((row) => (
+              {rows.map((row) => {
+                const assetType = row.assetType === "trailer" ? "trailer" : "vehicle";
+                return (
                 <tr key={row.vehicleId} className="excel-vehicle-row">
-                  <td className="excel-reg-cell">
+                  <td className="excel-reg-cell" onClick={() => onOpenVehicle(row, assetType)} title="Click to open vehicle details">
                     <strong>{row.vehicle}</strong>
                     {row.fleetCode && <span>{row.fleetCode}</span>}
                   </td>
-                  <td className="excel-freq-cell">{row.inspectionFrequency}</td>
-                  <td className="excel-make-cell">{row.make}</td>
+                  <td className="excel-freq-cell" onClick={() => onOpenVehicle(row, assetType)}>{row.inspectionFrequency}</td>
+                  <td className="excel-make-cell" onClick={() => onOpenVehicle(row, assetType)}>{row.make}</td>
                   {weeks.map((week) => {
                     const events = (row.events || []).filter((ev) => ev.weekKey === week.key);
                     return (
-                      <td key={`${row.vehicleId}-${week.key}`} className="excel-event-cell">
+                      <td
+                        key={`${row.vehicleId}-${week.key}`}
+                        className="excel-event-cell"
+                        onClick={() => onOpenVehicle(row, assetType)}
+                        title="Click to open vehicle details"
+                      >
                         {events.map((ev) => {
                           const color = EVENT_COLORS[ev.code] || { bg: "#94a3b8", text: "#fff" };
                           const day = ev.dueDateRaw?.slice(8, 10);
@@ -961,10 +1058,12 @@ function ExcelScheduleView({ data, onAddJob, onEventDone }) {
                               className={`excel-event-chip${ev.tone === "success" ? " done" : ""}`}
                               style={{ background: color.bg, color: color.text }}
                               title={`${ev.type} · ${ev.dueDate} · ${ev.dueLabel} — Click to mark done or attach document`}
-                              onClick={() => onEventDone(ev)}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                onOpenVehicle(row, assetType, ev.type);
+                              }}
                             >
                               {ev.code} {day}/{mon}
-                              {ev.hasDoc && <span className="excel-chip-doc" title="Document attached">📎</span>}
                             </button>
                           );
                         })}
@@ -972,7 +1071,8 @@ function ExcelScheduleView({ data, onAddJob, onEventDone }) {
                     );
                   })}
                 </tr>
-              ))}
+                );
+              })}
             </React.Fragment>
           ))}
           {companies.length === 0 && (
@@ -1002,7 +1102,7 @@ export function AdminMaintenancePage() {
   const [modalForm, setModalForm] = useState(emptyJob);
   const [savingAction, setSavingAction] = useState("");
   const [automationMessage, setAutomationMessage] = useState("");
-  const [eventDoneTarget, setEventDoneTarget] = useState(null);
+  const [vehicleDetailTarget, setVehicleDetailTarget] = useState(null);
   const [showBreakdownModal, setShowBreakdownModal] = useState(false);
 
   function load() {
@@ -1106,6 +1206,10 @@ export function AdminMaintenancePage() {
   function openVehiclePlan(vehicleId) {
     setSelectedPlanVehicleId(vehicleId);
     setActiveView("planner");
+  }
+
+  function openVehicleDetail(row, assetType = "vehicle", preselectType = null) {
+    setVehicleDetailTarget({ vehicleId: row.vehicleId, assetType, preselectType });
   }
 
   function openAddJob(prefill = {}) {
@@ -1502,7 +1606,7 @@ export function AdminMaintenancePage() {
             ))}
           </div>
         </div>
-        <ExcelScheduleView data={data} onAddJob={openAddJob} onEventDone={(ev) => setEventDoneTarget(ev)} />
+        <ExcelScheduleView data={data} onAddJob={openAddJob} onOpenVehicle={openVehicleDetail} />
       </section>
       )}
 
@@ -2027,10 +2131,11 @@ export function AdminMaintenancePage() {
           onSaved={load}
         />
       )}
-      {eventDoneTarget && (
-        <EventDoneModal
-          event={eventDoneTarget}
-          onClose={() => setEventDoneTarget(null)}
+      {vehicleDetailTarget && (
+        <VehicleDetailModal
+          target={vehicleDetailTarget}
+          profiles={data?.vehicleProfiles || []}
+          onClose={() => setVehicleDetailTarget(null)}
           onSaved={load}
         />
       )}

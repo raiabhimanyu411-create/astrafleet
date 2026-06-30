@@ -1039,7 +1039,7 @@ exports.getMaintenancePortal = async (_req, res) => {
     const allComplianceItems = [...complianceItems, ...trailerComplianceItems]
       .sort((a, b) => (a.daysLeft ?? 9999) - (b.daysLeft ?? 9999));
 
-    const profileItemTypes = ["MOT", "Road Tax", "Tacho Calibration", "Safety inspection", "Roller brake test", "Full Service"];
+    const profileItemTypes = ["MOT", "Road Tax", "Insurance", "Tacho Calibration", "Safety inspection", "Roller brake test", "Full Service"];
     const trailerProfileItemTypes = ["MOT", "Insurance", "Safety inspection", "Roller brake test", "Full Service"];
     const vehicleProfiles = rows.map((v) => {
       const currentKm = odometerByVehicle.get(Number(v.id)) || null;

@@ -761,6 +761,32 @@
   font-size: 0.72rem;
 }
 
+.maintenance-profile-item.active {
+  border-color: var(--primary-ring);
+  background: var(--primary-soft);
+}
+
+.vehicle-detail-items {
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  margin-top: 14px;
+}
+
+.vehicle-detail-item-code {
+  display: inline-block;
+  width: fit-content;
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-size: 0.65rem;
+  font-weight: 800;
+  letter-spacing: 0.03em;
+}
+
+.vehicle-detail-done-form {
+  margin-top: 18px;
+  padding-top: 16px;
+  border-top: 1px solid var(--border);
+}
+
 .maintenance-inventory-list {
   display: flex;
   flex-direction: column;
@@ -1580,6 +1606,7 @@
   padding: 5px 8px;
   vertical-align: middle;
   border-color: #e2e8f0;
+  cursor: pointer;
 }
 
 .excel-reg-cell { left: 0; min-width: 140px; }
@@ -1607,6 +1634,11 @@
   text-align: center;
   min-width: 60px;
   border-color: #e2e8f0;
+  cursor: pointer;
+}
+
+.excel-event-cell:hover {
+  background: #eff6ff;
 }
 
 .excel-event-chip {
