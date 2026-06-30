@@ -901,13 +901,23 @@ function isoWeekNumber(dateStr) {
 }
 
 function eventBelongsToWeek(event, week) {
-  const eventDate = event.kind === "completed"
-    ? event.displayDateRaw || event.dueDateRaw
-    : event.weekKey;
   if (event.kind === "completed") {
+    const eventDate = event.dueDateRaw;
     return Boolean(eventDate && eventDate >= week.startRaw && eventDate <= week.endRaw);
   }
-  return eventDate === week.key;
+  return event.weekKey === week.key;
+}
+
+function uniqueWeekEvents(events) {
+  const seen = new Set();
+  return events.filter((event) => {
+    const key = event.kind === "completed"
+      ? `${event.kind}-${event.vehicleId}-${event.assetType || "vehicle"}-${event.type}-${event.dueDateRaw}`
+      : event.id;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
 }
 
 function ExcelScheduleView({ data, onOpenVehicle }) {
@@ -1025,7 +1035,7 @@ function ExcelScheduleView({ data, onOpenVehicle }) {
                   <td className="excel-freq-cell" onClick={() => onOpenVehicle(row, assetType)}>{row.inspectionFrequency}</td>
                   <td className="excel-make-cell" onClick={() => onOpenVehicle(row, assetType)}>{row.make}</td>
                   {weeks.map((week) => {
-                    const events = (row.events || []).filter((ev) => eventBelongsToWeek(ev, week));
+                    const events = uniqueWeekEvents((row.events || []).filter((ev) => eventBelongsToWeek(ev, week)));
                     return (
                       <td
                         key={`${row.vehicleId}-${week.key}`}
