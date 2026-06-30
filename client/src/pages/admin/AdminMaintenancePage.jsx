@@ -899,6 +899,7 @@ function isoWeekNumber(dateStr) {
 }
 
 function ExcelScheduleView({ data, onOpenVehicle }) {
+  const [search, setSearch] = useState("");
   const weeks = useMemo(() => data?.yearPlan?.weeks || [], [data]);
   const allRows = useMemo(() => data?.yearPlan?.rows || [], [data]);
 
@@ -917,15 +918,26 @@ function ExcelScheduleView({ data, onOpenVehicle }) {
     return groups;
   }, [weeks]);
 
+  const filteredRows = useMemo(() => {
+    if (!search.trim()) return allRows;
+    const q = search.toLowerCase();
+    return allRows.filter(row =>
+      row.vehicle?.toLowerCase().includes(q) ||
+      row.fleetCode?.toLowerCase().includes(q) ||
+      row.make?.toLowerCase().includes(q) ||
+      row.companyName?.toLowerCase().includes(q)
+    );
+  }, [allRows, search]);
+
   const companies = useMemo(() => {
     const map = new Map();
-    for (const row of allRows) {
+    for (const row of filteredRows) {
       const co = row.companyName || "Fleet";
       if (!map.has(co)) map.set(co, []);
       map.get(co).push(row);
     }
     return [...map.entries()];
-  }, [allRows]);
+  }, [filteredRows]);
 
   const totalCols = 3 + weeks.length;
 
@@ -934,6 +946,20 @@ function ExcelScheduleView({ data, onOpenVehicle }) {
   }
 
   return (
+    <>
+      <div className="schedule-search-bar">
+        <input
+          className="af-input"
+          placeholder="Search reg number, trailer, make/model, fleet code, or company..."
+          value={search}
+          onChange={e => setSearch(e.target.value)}
+        />
+        {search && (
+          <span className="schedule-search-count">
+            {filteredRows.length} of {allRows.length} vehicles
+          </span>
+        )}
+      </div>
     <div className="excel-schedule-wrap">
       <table className="excel-schedule-table">
         <thead>
@@ -1028,6 +1054,7 @@ function ExcelScheduleView({ data, onOpenVehicle }) {
         </tbody>
       </table>
     </div>
+    </>
   );
 }
 

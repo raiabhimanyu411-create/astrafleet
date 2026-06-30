@@ -1075,10 +1075,12 @@ exports.getTracking = async (req, res) => {
       `SELECT v.id, v.registration_number, v.fleet_code, v.model_name, v.current_location, v.speed_kph, v.status, v.last_ping_at,
               v.gps_latitude, v.gps_longitude, v.gps_accuracy_m,
               t.id AS trip_id, t.trip_code, t.eta, t.dispatch_status, t.driver_job_status, t.failed_delivery_reason,
-              d.full_name as driver_name
+              d.full_name as driver_name,
+              tr.trailer_code, tr.registration_number AS trailer_reg
        FROM vehicles v
        LEFT JOIN trips t ON t.vehicle_id = v.id AND t.dispatch_status IN ('planned','loading','active','blocked')
        LEFT JOIN drivers d ON t.driver_id = d.id
+       LEFT JOIN trailers tr ON t.trailer_id = tr.id
        ORDER BY v.last_ping_at DESC LIMIT 50`
     );
     const [exceptionRows] = await db.query(
@@ -1135,6 +1137,8 @@ exports.getTracking = async (req, res) => {
           truck: r.registration_number,
           fleetCode: r.fleet_code,
           model: r.model_name,
+          trailerCode: r.trailer_code || null,
+          trailerReg: r.trailer_reg || null,
           driver: r.driver_name || "Unassigned",
           location: r.current_location || "Location unknown",
           latitude: r.gps_latitude != null ? Number(r.gps_latitude) : null,

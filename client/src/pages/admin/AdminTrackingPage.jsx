@@ -60,7 +60,10 @@ export function AdminTrackingPage() {
         truck.truck.toLowerCase().includes(query) ||
         truck.driver.toLowerCase().includes(query) ||
         truck.location.toLowerCase().includes(query) ||
-        truck.fleetCode?.toLowerCase().includes(query)
+        truck.fleetCode?.toLowerCase().includes(query) ||
+        truck.model?.toLowerCase().includes(query) ||
+        truck.trailerCode?.toLowerCase().includes(query) ||
+        truck.trailerReg?.toLowerCase().includes(query)
       );
     });
   }, [data, gpsFilter, riskFilter, search, status]);
@@ -227,7 +230,7 @@ export function AdminTrackingPage() {
       <section className="content-card tracking-command-card">
         <input
           className="af-input"
-          placeholder="Search Vehicle, Driver, Location, Or Fleet Code..."
+          placeholder="Search reg no., fleet code, make/model, trailer, driver, or location..."
           value={search}
           onChange={e => setSearch(e.target.value)}
         />

@@ -1497,12 +1497,31 @@
   padding: 18px;
 }
 
+.schedule-search-bar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 14px;
+}
+
+.schedule-search-bar .af-input {
+  margin: 0;
+  max-width: 420px;
+}
+
+.schedule-search-count {
+  font-size: 0.78rem;
+  color: var(--muted);
+  font-weight: 600;
+  white-space: nowrap;
+}
+
 .excel-schedule-wrap {
   overflow: auto;
   max-height: 75vh;
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
-  margin-top: 14px;
+  margin-top: 10px;
 }
 
 .excel-schedule-table {
