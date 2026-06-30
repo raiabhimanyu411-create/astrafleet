@@ -88,6 +88,13 @@ function abbrevAddr(addr) {
   return addr.split(",")[0].trim();
 }
 
+function extractUkPostcode(addr) {
+  if (!addr || addr === "—") return "—";
+  const text = String(addr).toUpperCase().replace(/\s+/g, " ");
+  const match = text.match(/\b([A-Z]{1,2}\d[A-Z\d]?\s*\d[A-Z]{2})\b/);
+  return match ? match[1].replace(/\s+/g, "") : abbrevAddr(addr);
+}
+
 function driverTone(driver, assigned) {
   if (!assigned) return "neutral";
   if (!driver) return "warning";
@@ -763,8 +770,8 @@ export function JobsListPage() {
             const vehicleToneVal = vehicleTone(assignedVehicle, job.vehicleAssigned);
             const trolleyToneVal = trolleyTone(assignedTrolley, job.trailerAssigned);
 
-            const pickupShort = abbrevAddr(job.pickupAddress);
-            const dropShort = abbrevAddr(job.dropAddress);
+            const pickupShort = extractUkPostcode(job.pickupAddress);
+            const dropShort = extractUkPostcode(job.dropAddress);
             const routeStops = Array.isArray(job.stops) ? job.stops : [];
             const stopCount = routeStops.length;
             const totalStops = stopCount + 2;
@@ -1330,7 +1337,7 @@ export function JobsListPage() {
                               const busyElsewhere = trailer.busy_trip_id && Number(trailer.busy_trip_id) !== Number(job.id);
                               return (
                                 <option key={trailer.id} value={trailer.id} disabled={busyElsewhere}>
-                                  {trailer.registration_number} · {trailer.trailer_type || "Trailer"} · {busyElsewhere ? `busy on ${trailer.busy_trip_code}` : trailer.status}
+                                  {trailer.trailer_code || trailer.registration_number} · {trailer.trailer_type || "Trailer"} · {busyElsewhere ? `busy on ${trailer.busy_trip_code}` : trailer.status}
                                 </option>
                               );
                             })}

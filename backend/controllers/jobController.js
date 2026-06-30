@@ -749,7 +749,7 @@ exports.listJobs = async (req, res) => {
           vehicleModel: r.model_name || "—",
           vehicleType: r.truck_type || "—",
           vehicleAssigned: Boolean(r.registration_number),
-          trailer: r.trailer_registration || "Unassigned",
+          trailer: r.trailer_code || "Unassigned",
           trailerCode: r.trailer_code || "—",
           trailerType: r.trailer_type || "—",
           trailerAssigned: Boolean(r.trailer_registration),
