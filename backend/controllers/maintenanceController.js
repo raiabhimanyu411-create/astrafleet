@@ -523,11 +523,15 @@ async function ensureRecurringJob(vehicleId, serviceType, dueDate, sourceJobId =
   const daysLeft = daysUntil(dueDate);
   const [result] = await db.query(
     `INSERT INTO maintenance_jobs
-      (job_number, vehicle_id, service_type, due_date, priority, status, notes)
-     VALUES (?, ?, ?, ?, ?, 'planned', ?)`,
-    [jobNumber, vehicleId, serviceType, dueDate, recurringPriority(daysLeft), sourceJobId ? `Auto-created from completed job #${sourceJobId}` : "Auto-created recurring maintenance"]
+      (job_number, vehicle_id, service_type, due_date, priority, status)
+     VALUES (?, ?, ?, ?, ?, 'planned')`,
+    [jobNumber, vehicleId, serviceType, dueDate, recurringPriority(daysLeft)]
   );
   return result.insertId;
+}
+
+function isGeneratedMaintenanceNote(note) {
+  return /^auto-created/i.test(String(note || "").trim());
 }
 
 async function ensureDefectRepairJob(defect, defaults = {}) {
@@ -580,7 +584,10 @@ async function decrementInventoryFromText(partsText) {
 
 async function applyCompletedMaintenance(job, completion = {}) {
   const finalCost = Number(completion.finalCost ?? job.final_cost_gbp ?? job.estimated_cost_gbp ?? 0);
-  const completionNotes = completion.completionNotes ?? job.completion_notes ?? job.notes ?? null;
+  const fallbackNotes = isGeneratedMaintenanceNote(job.completion_notes)
+    ? null
+    : job.completion_notes || (isGeneratedMaintenanceNote(job.notes) ? null : job.notes);
+  const completionNotes = completion.completionNotes ?? fallbackNotes ?? null;
   const serviceDate = completion.serviceDate || job.service_date || rawDate(new Date());
   const nextDueDate = completion.nextDueDate || calculateNextDueDate(job.service_type, serviceDate, job.road_tax_interval_months) || job.due_date || null;
   const completedMileageKm = completion.completedMileageKm || job.completed_mileage_km || null;
@@ -1213,7 +1220,7 @@ exports.getMaintenancePortal = async (_req, res) => {
           weekKey: week.key,
           weekLabel: week.label,
           kind: "completed",
-          completionNotes: job.completionNotes && job.completionNotes !== "-" ? job.completionNotes : ""
+          completionNotes: job.completionNotes && job.completionNotes !== "-" && !isGeneratedMaintenanceNote(job.completionNotes) ? job.completionNotes : ""
         });
       }
       return {
@@ -1297,7 +1304,7 @@ exports.getMaintenancePortal = async (_req, res) => {
           weekKey: week.key,
           weekLabel: week.label,
           kind: "completed",
-          completionNotes: job.completionNotes && job.completionNotes !== "-" ? job.completionNotes : ""
+          completionNotes: job.completionNotes && job.completionNotes !== "-" && !isGeneratedMaintenanceNote(job.completionNotes) ? job.completionNotes : ""
         });
       }
       return {
@@ -2226,6 +2233,7 @@ exports.completeEventFromSchedule = async (req, res) => {
     const finalCostGbp = Number(req.body.final_cost_gbp || req.body.finalCostGbp || 0);
     const billAttachmentData = req.body.bill_attachment_data || req.body.billAttachmentData || null;
     const billNotes = String(req.body.bill_notes || req.body.billNotes || "").trim() || null;
+    const completionNotes = String(req.body.completion_notes || req.body.completionNotes || req.body.notes || "").trim() || billNotes;
     const billNumber = String(req.body.bill_number || req.body.billNumber || "").trim() || null;
     const billAmountGbp = req.body.bill_amount_gbp || req.body.billAmountGbp || null;
     const roadTaxIntervalMonths = req.body.road_tax_interval_months || 12;
@@ -2235,12 +2243,44 @@ exports.completeEventFromSchedule = async (req, res) => {
     }
 
     const nextDueDate = calculateNextDueDate(serviceType, serviceDate, roadTaxIntervalMonths);
+    const idField = assetType === "trailer" ? "trailer_id" : "vehicle_id";
+
+    const [[completedSameDay]] = await db.query(
+      `SELECT id FROM maintenance_jobs
+       WHERE ${idField}=?
+         AND service_type=?
+         AND status='completed'
+         AND service_date=?
+       LIMIT 1`,
+      [assetNumericId, serviceType, serviceDate]
+    );
+
+    if (completedSameDay) {
+      await db.query(
+        `UPDATE maintenance_jobs
+         SET garage_name=COALESCE(?,garage_name),
+             final_cost_gbp=?,
+             bill_attachment_data=COALESCE(?,bill_attachment_data),
+             bill_notes=COALESCE(?,bill_notes),
+             completion_notes=COALESCE(?,completion_notes),
+             bill_number=COALESCE(?,bill_number),
+             bill_amount_gbp=COALESCE(?,bill_amount_gbp)
+         WHERE id=?`,
+        [garageName, finalCostGbp, billAttachmentData, billNotes, completionNotes, billNumber, billAmountGbp, completedSameDay.id]
+      );
+      return res.json({ message: "Event already marked as done.", jobId: completedSameDay.id, nextDueDate });
+    }
 
     // Find existing open job or create one
-    const vehicleField = assetType === "trailer" ? "trailer_id" : "vehicle_id";
     const [[existing]] = await db.query(
-      `SELECT id FROM maintenance_jobs WHERE ${vehicleField}=? AND service_type=? AND status NOT IN ('completed','cancelled') LIMIT 1`,
-      [assetNumericId, serviceType]
+      `SELECT id FROM maintenance_jobs
+       WHERE ${idField}=?
+         AND service_type=?
+         AND status NOT IN ('completed','cancelled')
+         AND (due_date IS NULL OR due_date <= DATE_ADD(?, INTERVAL 7 DAY))
+       ORDER BY due_date IS NULL, due_date DESC, id DESC
+       LIMIT 1`,
+      [assetNumericId, serviceType, serviceDate]
     );
 
     let jobId;
@@ -2248,19 +2288,19 @@ exports.completeEventFromSchedule = async (req, res) => {
       jobId = existing.id;
       await db.query(
         `UPDATE maintenance_jobs SET garage_name=COALESCE(?,garage_name), final_cost_gbp=?, bill_attachment_data=COALESCE(?,bill_attachment_data),
-         bill_notes=COALESCE(?,bill_notes), bill_number=COALESCE(?,bill_number), bill_amount_gbp=COALESCE(?,bill_amount_gbp)
+         bill_notes=COALESCE(?,bill_notes), completion_notes=COALESCE(?,completion_notes), bill_number=COALESCE(?,bill_number), bill_amount_gbp=COALESCE(?,bill_amount_gbp)
          WHERE id=?`,
-        [garageName, finalCostGbp, billAttachmentData, billNotes, billNumber, billAmountGbp, jobId]
+        [garageName, finalCostGbp, billAttachmentData, billNotes, completionNotes, billNumber, billAmountGbp, jobId]
       );
     } else {
       const jobNumber = await nextJobNumber();
       const [newJob] = await db.query(
         `INSERT INTO maintenance_jobs
-          (job_number, asset_type, ${vehicleField}, service_type, due_date, garage_name, final_cost_gbp,
-           bill_attachment_data, bill_notes, bill_number, bill_amount_gbp, status, priority, service_date)
-         VALUES (?,?,?,?,?,?,?,?,?,?,?,'planned','normal',?)`,
-        [jobNumber, assetType, assetNumericId, serviceType, nextDueDate || serviceDate, garageName, finalCostGbp,
-         billAttachmentData, billNotes, billNumber, billAmountGbp, serviceDate]
+          (job_number, asset_type, ${idField}, service_type, due_date, garage_name, final_cost_gbp,
+           bill_attachment_data, bill_notes, completion_notes, bill_number, bill_amount_gbp, status, priority, service_date)
+         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,'planned','normal',?)`,
+        [jobNumber, assetType, assetNumericId, serviceType, serviceDate, garageName, finalCostGbp,
+         billAttachmentData, billNotes, completionNotes, billNumber, billAmountGbp, serviceDate]
       );
       jobId = newJob.insertId;
     }
@@ -2270,6 +2310,7 @@ exports.completeEventFromSchedule = async (req, res) => {
       finalCost: finalCostGbp,
       serviceDate,
       nextDueDate: nextDueDate || job.due_date,
+      completionNotes,
       billAmountGbp
     });
 

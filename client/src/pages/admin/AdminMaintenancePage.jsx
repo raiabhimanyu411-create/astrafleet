@@ -470,6 +470,7 @@ function VehicleDetailModal({ target, profiles, onClose, onSaved }) {
         bill_number: form.bill_number,
         bill_amount_gbp: form.bill_amount_gbp,
         bill_notes: form.bill_notes,
+        completion_notes: form.bill_notes,
         bill_attachment_data: form.bill_attachment_data,
         road_tax_interval_months: form.road_tax_interval_months
       });
@@ -909,15 +910,38 @@ function eventBelongsToWeek(event, week) {
 }
 
 function uniqueWeekEvents(events) {
-  const seen = new Set();
-  return events.filter((event) => {
-    const key = event.kind === "completed"
+  const completed = new Map();
+  const scheduled = [];
+  for (const event of events) {
+    if (event.kind !== "completed") {
+      scheduled.push(event);
+      continue;
+    }
+    const key = `${event.kind}-${event.vehicleId}-${event.assetType || "vehicle"}-${event.type}`;
+    const current = completed.get(key);
+    if (!current || String(event.dueDateRaw || "") > String(current.dueDateRaw || "")) {
+      completed.set(key, event);
+    }
+  }
+  const completedEvents = [...completed.values()];
+  const seen = new Set(completedEvents.map((event) =>
+    `${event.kind}-${event.vehicleId}-${event.assetType || "vehicle"}-${event.type}`
+  ));
+  return [
+    ...completedEvents,
+    ...scheduled.filter((event) => {
+      const key = event.kind === "completed"
       ? `${event.kind}-${event.vehicleId}-${event.assetType || "vehicle"}-${event.type}-${event.dueDateRaw}`
       : event.id;
-    if (seen.has(key)) return false;
-    seen.add(key);
-    return true;
-  });
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    })
+  ];
+}
+
+function isGeneratedMaintenanceNote(note) {
+  return /^auto-created/i.test(String(note || "").trim());
 }
 
 function ExcelScheduleView({ data, onOpenVehicle }) {
@@ -1108,7 +1132,7 @@ function ExcelScheduleView({ data, onOpenVehicle }) {
           <span className="ccp-label">Completed</span>
           <span className="ccp-value">{popover.ev.dueDate}</span>
         </div>
-        {popover.ev.completionNotes && (
+        {popover.ev.completionNotes && !isGeneratedMaintenanceNote(popover.ev.completionNotes) && (
           <div className="ccp-notes">
             <span className="ccp-label">Notes</span>
             <p className="ccp-notes-text">{popover.ev.completionNotes}</p>
