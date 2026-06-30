@@ -404,6 +404,7 @@ export function JobFormPage() {
     try {
       const estimate = await fetchRouteEstimate();
       setRouteEstimate(estimate);
+      setFields(prev => ({ ...prev, delivery_arrival_time: "", delivery_departure_time: "" }));
     } catch (err) {
       setEstimateErr(err?.response?.data?.message || err?.message || "Could not calculate distance from postcodes.");
     } finally {

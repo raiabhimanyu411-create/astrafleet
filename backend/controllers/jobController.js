@@ -1589,7 +1589,7 @@ exports.updateJob = async (req, res) => {
         `INSERT INTO driver_messages (driver_id, sender_role, sender_name, body, trip_id) VALUES (?, 'dispatch', 'Dispatch', ?, ?)`,
         [driver_id, body, id]
       );
-      const [[createdMsg]] = await db.query(`SELECT * FROM driver_messages WHERE id = ?`, [msgResult.insertId]);
+      const [[createdMsg]] = await conn.query(`SELECT * FROM driver_messages WHERE id = ?`, [msgResult.insertId]);
       emitDriverChatMessage({
         id: createdMsg.id,
         driverId: Number(driver_id),
