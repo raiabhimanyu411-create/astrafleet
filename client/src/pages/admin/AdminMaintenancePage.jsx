@@ -52,17 +52,19 @@ const statusOptions = ["planned", "booked", "in_progress", "completed", "cancell
 const priorityOptions = ["low", "normal", "high", "critical"];
 const severityOptions = ["low", "medium", "high", "critical"];
 const allMaintenanceItems = [
-  { value: "Roller brake test", label: "Roller brake test", interval: "Every 6 weeks", days: 42, trailerOk: true },
+  { value: "Roller brake test", label: "Roller brake test", interval: "Every 6 weeks", days: 42, trailerOk: false },
   { value: "Safety inspection", label: "Safety inspection", interval: "Every 6 weeks", days: 42, trailerOk: true },
   { value: "MOT", label: "MOT", interval: "Every 12 months", months: 12, trailerOk: true },
   { value: "Tacho Calibration", label: "Tacho Calibration", interval: "Every 2 years", months: 24, trailerOk: false },
   { value: "Road Tax", label: "Road Tax", interval: "Every 6 or 12 months", roadTax: true, trailerOk: false },
-  { value: "Insurance", label: "Insurance", interval: "Every 12 months", months: 12, trailerOk: true },
-  { value: "Full Service", label: "Full Service", interval: "Every 85,000 km", mileageKm: 85000, trailerOk: true }
+  { value: "Insurance", label: "Insurance", interval: "Every 12 months", months: 12, trailerOk: false },
+  { value: "Full Service", label: "Full Service", interval: "Every 85,000 km", mileageKm: 85000, trailerOk: false }
 ];
 function getMaintenanceItems(assetType) {
   return assetType === "trailer"
-    ? allMaintenanceItems.filter((item) => item.trailerOk)
+    ? allMaintenanceItems
+        .filter((item) => item.trailerOk)
+        .map((item) => item.value === "Safety inspection" ? { ...item, interval: "Every 10 weeks", days: 70 } : item)
     : allMaintenanceItems;
 }
 const maintenanceItems = allMaintenanceItems;
@@ -84,10 +86,11 @@ function addMonthsToKey(value, months) {
   return dateKey(date);
 }
 
-function nextDueForItem(serviceType, serviceDate, roadTaxIntervalMonths) {
+function nextDueForItem(serviceType, serviceDate, roadTaxIntervalMonths, assetType = "vehicle") {
   const item = maintenanceItems.find((option) => option.value === serviceType);
   if (!item || !serviceDate) return "";
   if (item.roadTax) return addMonthsToKey(serviceDate, Number(roadTaxIntervalMonths || 12));
+  if (assetType === "trailer" && serviceType === "Safety inspection") return addDaysToKey(serviceDate, 70);
   if (item.days) return addDaysToKey(serviceDate, item.days);
   if (item.months) return addMonthsToKey(serviceDate, item.months);
   return "";
@@ -164,7 +167,8 @@ function JobModal({ vehicles, defects, editingJob, initialForm, onClose, onSaved
     setForm((current) => {
       const next = { ...current, [name]: value };
       if (["service_type", "service_date", "road_tax_interval_months"].includes(name)) {
-        const calculatedDue = nextDueForItem(next.service_type, next.service_date, next.road_tax_interval_months);
+        const assetType = next.vehicle_id?.startsWith("trailer:") ? "trailer" : "vehicle";
+        const calculatedDue = nextDueForItem(next.service_type, next.service_date, next.road_tax_interval_months, assetType);
         if (calculatedDue) next.due_date = calculatedDue;
       }
       if (["service_type", "completed_mileage_km"].includes(name)) {
@@ -176,7 +180,7 @@ function JobModal({ vehicles, defects, editingJob, initialForm, onClose, onSaved
 
   const selectedItem = availableItems.find((item) => item.value === form.service_type);
   const bulkRows = availableItems.map((item) => {
-    const nextDue = item.value === "Full Service" ? (form.due_date || form.service_date || dateKey(new Date())) : nextDueForItem(item.value, form.service_date, form.road_tax_interval_months);
+    const nextDue = item.value === "Full Service" ? (form.due_date || form.service_date || dateKey(new Date())) : nextDueForItem(item.value, form.service_date, form.road_tax_interval_months, selectedAssetType);
     const nextMileage = item.value === "Full Service" ? nextMileageForItem(item.value, form.completed_mileage_km) : "";
     return { ...item, nextDue, nextMileage, selected: selectedServices.includes(item.value) };
   });
@@ -452,8 +456,8 @@ function VehicleDetailModal({ target, profiles, onClose, onSaved }) {
 
   const nextDue = useMemo(() => {
     if (!activeType || !form.service_date) return "";
-    return nextDueForItem(activeType, form.service_date, form.road_tax_interval_months) || "";
-  }, [activeType, form.service_date, form.road_tax_interval_months]);
+    return nextDueForItem(activeType, form.service_date, form.road_tax_interval_months, target?.assetType) || "";
+  }, [activeType, form.service_date, form.road_tax_interval_months, target?.assetType]);
 
   async function submit(e) {
     e.preventDefault();

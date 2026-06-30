@@ -1,6 +1,7 @@
 const db = require("../db/connection");
 
 const INSPECTION_INTERVAL_DAYS = 42;
+const TRAILER_INSPECTION_INTERVAL_DAYS = 70;
 const MAINTENANCE_RULES = {
   "Roller brake test": { days: 42 },
   "Safety inspection": { days: 42 },
@@ -267,7 +268,7 @@ async function syncMaintenanceSchema() {
   await addColumnIfMissing("trailers", "insurance_expiry", "DATE DEFAULT NULL");
   await addColumnIfMissing("trailers", "next_service_due", "DATE DEFAULT NULL");
   await addColumnIfMissing("trailers", "next_inspection_due", "DATE DEFAULT NULL");
-  await addColumnIfMissing("trailers", "inspection_frequency_weeks", "INT DEFAULT 6");
+  await addColumnIfMissing("trailers", "inspection_frequency_weeks", "INT DEFAULT 10");
   await addColumnIfMissing("trailers", "company_name", "VARCHAR(160) DEFAULT NULL");
 
   await db.query(`
@@ -387,21 +388,21 @@ function planCodeForType(type) {
   }[type] || null;
 }
 
-function addIntervalForPlan(date, type, roadTaxIntervalMonths = 12) {
-  if (["Safety inspection", "Roller brake test"].includes(type)) return addDays(date, INSPECTION_INTERVAL_DAYS);
+function addIntervalForPlan(date, type, roadTaxIntervalMonths = 12, inspectionIntervalDays = INSPECTION_INTERVAL_DAYS) {
+  if (["Safety inspection", "Roller brake test"].includes(type)) return addDays(date, inspectionIntervalDays);
   if (type === "Road Tax") return addMonths(date, Number(roadTaxIntervalMonths || 12));
   if (type === "Tacho Calibration") return addMonths(date, 24);
   if (["MOT", "Insurance"].includes(type)) return addMonths(date, 12);
   return null;
 }
 
-function buildFuturePlanDates(seedDateRaw, type, horizonStart, horizonEnd, roadTaxIntervalMonths) {
+function buildFuturePlanDates(seedDateRaw, type, horizonStart, horizonEnd, roadTaxIntervalMonths, inspectionIntervalDays = INSPECTION_INTERVAL_DAYS) {
   if (!seedDateRaw) return [];
   let cursor = new Date(`${seedDateRaw}T00:00:00`);
   if (Number.isNaN(cursor.getTime())) return [];
   let guard = 0;
   while (cursor < horizonStart && guard < 80) {
-    const next = addIntervalForPlan(cursor, type, roadTaxIntervalMonths);
+    const next = addIntervalForPlan(cursor, type, roadTaxIntervalMonths, inspectionIntervalDays);
     if (!next) break;
     cursor = next;
     guard += 1;
@@ -409,7 +410,7 @@ function buildFuturePlanDates(seedDateRaw, type, horizonStart, horizonEnd, roadT
   const dates = [];
   while (cursor <= horizonEnd && guard < 120) {
     dates.push(rawDate(cursor));
-    const next = addIntervalForPlan(cursor, type, roadTaxIntervalMonths);
+    const next = addIntervalForPlan(cursor, type, roadTaxIntervalMonths, inspectionIntervalDays);
     if (!next) break;
     cursor = next;
     guard += 1;
@@ -417,13 +418,13 @@ function buildFuturePlanDates(seedDateRaw, type, horizonStart, horizonEnd, roadT
   return dates;
 }
 
-function calculateNextDueDate(serviceType, serviceDate, roadTaxIntervalMonths) {
+function calculateNextDueDate(serviceType, serviceDate, roadTaxIntervalMonths, inspectionIntervalDays = INSPECTION_INTERVAL_DAYS) {
   if (!serviceType || !serviceDate) return "";
   if (serviceType === "Road Tax") {
     return rawDate(addMonths(serviceDate, Number(roadTaxIntervalMonths || 12)));
   }
   const rule = MAINTENANCE_RULES[serviceType];
-  if (rule?.days) return rawDate(addDays(serviceDate, rule.days));
+  if (rule?.days) return rawDate(addDays(serviceDate, inspectionIntervalDays));
   if (rule?.months) return rawDate(addMonths(serviceDate, rule.months));
   return "";
 }
@@ -532,6 +533,10 @@ async function ensureRecurringJob(vehicleId, serviceType, dueDate, sourceJobId =
 
 function isGeneratedMaintenanceNote(note) {
   return /^auto-created/i.test(String(note || "").trim());
+}
+
+function isTrailerMaintenanceTypeAllowed(serviceType) {
+  return ["Safety inspection", "MOT"].includes(serviceType);
 }
 
 async function ensureDefectRepairJob(defect, defaults = {}) {
@@ -795,7 +800,7 @@ exports.getMaintenancePortal = async (_req, res) => {
     });
 
     const trailerPlannerRows = trailerRows.map((t) => {
-      const serviceDays = daysUntil(t.next_service_due);
+      const serviceDays = null;
       const inspectionDays = daysUntil(t.next_inspection_due);
       const priorityDays = [serviceDays, inspectionDays].filter((v) => v !== null).sort((a, b) => a - b)[0] ?? null;
       const tone = dueTone(priorityDays, t.open_defects, t.status);
@@ -809,18 +814,18 @@ exports.getMaintenancePortal = async (_req, res) => {
         status: t.status,
         statusLabel: (t.status || "").replace("_", " "),
         currentLocation: t.current_location || "-",
-        inspectionFrequency: "6-week safety inspection",
+        inspectionFrequency: "10-week safety inspection",
         lastService: "-",
         lastServiceRaw: "",
         lastServiceType: "No service record",
         lastGarage: "-",
         lastMileage: "-",
-        nextService: fmtDate(t.next_service_due),
-        nextServiceRaw: rawDate(t.next_service_due),
+        nextService: "-",
+        nextServiceRaw: "",
         serviceDaysLeft: serviceDays,
         serviceDueLabel: dueLabel(serviceDays),
         lastInspection: fmtDate(t.last_inspection_date),
-        lastInspectionType: "6-week safety inspection",
+        lastInspectionType: "10-week safety inspection",
         lastInspectionResult: "-",
         nextInspection: fmtDate(t.next_inspection_due),
         nextInspectionRaw: rawDate(t.next_inspection_due),
@@ -1017,10 +1022,7 @@ exports.getMaintenancePortal = async (_req, res) => {
 
     const trailerComplianceItems = trailerRows.flatMap((t) => [
       { vehicleId: t.id, assetType: "trailer", vehicle: t.registration_number, itemType: "MOT", dueDateRaw: rawDate(t.mot_expiry), dueDate: fmtDate(t.mot_expiry), daysLeft: daysUntil(t.mot_expiry) },
-      { vehicleId: t.id, assetType: "trailer", vehicle: t.registration_number, itemType: "Insurance", dueDateRaw: rawDate(t.insurance_expiry), dueDate: fmtDate(t.insurance_expiry), daysLeft: daysUntil(t.insurance_expiry) },
-      { vehicleId: t.id, assetType: "trailer", vehicle: t.registration_number, itemType: "Full Service", dueDateRaw: rawDate(t.next_service_due), dueDate: fmtDate(t.next_service_due), daysLeft: daysUntil(t.next_service_due) },
-      { vehicleId: t.id, assetType: "trailer", vehicle: t.registration_number, itemType: "Safety inspection", dueDateRaw: rawDate(t.next_inspection_due), dueDate: fmtDate(t.next_inspection_due), daysLeft: daysUntil(t.next_inspection_due) },
-      { vehicleId: t.id, assetType: "trailer", vehicle: t.registration_number, itemType: "Roller brake test", dueDateRaw: rawDate(t.next_inspection_due), dueDate: fmtDate(t.next_inspection_due), daysLeft: daysUntil(t.next_inspection_due) }
+      { vehicleId: t.id, assetType: "trailer", vehicle: t.registration_number, itemType: "Safety inspection", dueDateRaw: rawDate(t.next_inspection_due), dueDate: fmtDate(t.next_inspection_due), daysLeft: daysUntil(t.next_inspection_due) }
     ]).filter((item) => item.dueDateRaw).map((item) => ({
       ...item,
       dueLabel: dueLabel(item.daysLeft),
@@ -1055,7 +1057,7 @@ exports.getMaintenancePortal = async (_req, res) => {
       .sort((a, b) => (a.daysLeft ?? 9999) - (b.daysLeft ?? 9999));
 
     const profileItemTypes = ["MOT", "Road Tax", "Insurance", "Tacho Calibration", "Safety inspection", "Roller brake test", "Full Service"];
-    const trailerProfileItemTypes = ["MOT", "Insurance", "Safety inspection", "Roller brake test", "Full Service"];
+    const trailerProfileItemTypes = ["MOT", "Safety inspection"];
     const vehicleProfiles = rows.map((v) => {
       const currentKm = odometerByVehicle.get(Number(v.id)) || null;
       return {
@@ -1115,8 +1117,6 @@ exports.getMaintenancePortal = async (_req, res) => {
       items: trailerProfileItemTypes.map((type) => {
         const latest = latestServiceByVehicleAndType.get(`trailer:${t.id}:${type}`);
         const dueDateRaw = type === "MOT" ? rawDate(t.mot_expiry)
-          : type === "Insurance" ? rawDate(t.insurance_expiry)
-          : type === "Full Service" ? rawDate(t.next_service_due)
           : rawDate(t.next_inspection_due);
         const daysLeft = daysUntil(dueDateRaw);
         const serviceStatus = statusFromDays(daysLeft);
@@ -1237,19 +1237,21 @@ exports.getMaintenancePortal = async (_req, res) => {
       };
     });
 
-    const trailerYearPlanTypes = ["Safety inspection", "MOT", "Insurance", "Full Service"];
     const trailerYearPlanRows = trailerRows.map((t) => {
       const events = [];
       const seeds = [
         { type: "Safety inspection", dueDateRaw: rawDate(t.next_inspection_due), roadTaxIntervalMonths: 12 },
-        { type: "MOT", dueDateRaw: rawDate(t.mot_expiry), roadTaxIntervalMonths: 12 },
-        { type: "Insurance", dueDateRaw: rawDate(t.insurance_expiry), roadTaxIntervalMonths: 12 },
-        { type: "Full Service", dueDateRaw: rawDate(t.next_service_due), roadTaxIntervalMonths: 12 }
+        { type: "MOT", dueDateRaw: rawDate(t.mot_expiry), roadTaxIntervalMonths: 12 }
       ];
       for (const seed of seeds) {
-        const dates = seed.type === "Full Service"
-          ? [seed.dueDateRaw].filter(Boolean)
-          : buildFuturePlanDates(seed.dueDateRaw, seed.type, planStart, planEnd, seed.roadTaxIntervalMonths);
+        const dates = buildFuturePlanDates(
+          seed.dueDateRaw,
+          seed.type,
+          planStart,
+          planEnd,
+          seed.roadTaxIntervalMonths,
+          seed.type === "Safety inspection" ? TRAILER_INSPECTION_INTERVAL_DAYS : INSPECTION_INTERVAL_DAYS
+        );
         for (const dueDateRaw of dates) {
           const daysLeft = daysUntil(dueDateRaw);
           const displayDateRaw = dueDateRaw < rawDate(planStart) ? rawDate(planStart) : dueDateRaw;
@@ -1280,7 +1282,7 @@ exports.getMaintenancePortal = async (_req, res) => {
       for (const job of jobs) {
         if (!job.trailerId || Number(job.trailerId) !== Number(t.id)) continue;
         if (job.status !== "completed" || !job.serviceDateRaw) continue;
-        if (job.serviceType === "Roller brake test") continue;
+        if (!["Safety inspection", "MOT"].includes(job.serviceType)) continue;
         if (job.serviceDateRaw < rawDate(planStart) || job.serviceDateRaw > rawDate(planEnd)) continue;
         const week = planWeeks.find((w) => job.serviceDateRaw >= w.startRaw && job.serviceDateRaw <= w.endRaw);
         if (!week) continue;
@@ -1313,7 +1315,7 @@ exports.getMaintenancePortal = async (_req, res) => {
         vehicle: t.registration_number,
         fleetCode: t.fleet_code,
         make: t.trailer_type,
-        inspectionFrequency: `${t.inspection_frequency_weeks || 6} WEEKS`,
+        inspectionFrequency: "10 WEEKS",
         companyName: t.company_name || "",
         status: t.status,
         currentKmLabel: "-",
@@ -1823,9 +1825,17 @@ exports.createJob = async (req, res) => {
   try {
     const job = cleanJobPayload(req.body);
     if (!job.due_date && job.service_date) {
-      job.due_date = calculateNextDueDate(job.service_type, job.service_date, job.road_tax_interval_months);
+      job.due_date = calculateNextDueDate(
+        job.service_type,
+        job.service_date,
+        job.road_tax_interval_months,
+        job.asset_type === "trailer" && job.service_type === "Safety inspection" ? TRAILER_INSPECTION_INTERVAL_DAYS : INSPECTION_INTERVAL_DAYS
+      );
     }
     const assetId = job.trailer_id || job.vehicle_id;
+    if (job.asset_type === "trailer" && !isTrailerMaintenanceTypeAllowed(job.service_type)) {
+      return res.status(400).json({ message: "Trailers only support MOT and safety inspection." });
+    }
     if (!assetId || !job.service_type || !job.due_date) {
       return res.status(400).json({ message: "Asset, service type, and due date are required." });
     }
@@ -1877,6 +1887,9 @@ exports.createBulkJobs = async (req, res) => {
       const serviceType = String(rawItem.service_type || rawItem.serviceType || "").trim();
       const dueDate = rawItem.due_date || rawItem.dueDate || "";
       if (!serviceType || !dueDate) continue;
+      if (base.asset_type === "trailer" && !isTrailerMaintenanceTypeAllowed(serviceType)) {
+        return res.status(400).json({ message: "Trailers only support MOT and safety inspection." });
+      }
 
       const jobNumber = await nextJobNumber();
       const status = rawItem.status || base.status || "planned";
@@ -1930,9 +1943,17 @@ exports.updateJob = async (req, res) => {
     const id = Number(req.params.id);
     const job = cleanJobPayload(req.body);
     if (!job.due_date && job.service_date) {
-      job.due_date = calculateNextDueDate(job.service_type, job.service_date, job.road_tax_interval_months);
+      job.due_date = calculateNextDueDate(
+        job.service_type,
+        job.service_date,
+        job.road_tax_interval_months,
+        job.asset_type === "trailer" && job.service_type === "Safety inspection" ? TRAILER_INSPECTION_INTERVAL_DAYS : INSPECTION_INTERVAL_DAYS
+      );
     }
     const assetId = job.trailer_id || job.vehicle_id;
+    if (job.asset_type === "trailer" && !isTrailerMaintenanceTypeAllowed(job.service_type)) {
+      return res.status(400).json({ message: "Trailers only support MOT and safety inspection." });
+    }
     if (!id || !assetId || !job.service_type || !job.due_date) {
       return res.status(400).json({ message: "Valid job, asset, service type, and due date are required." });
     }
@@ -2111,7 +2132,7 @@ exports.markTrailerInspectionDone = async (req, res) => {
     const inspectorName = String(req.body.inspector_name || req.body.inspectorName || "").trim() || null;
     const notes = String(req.body.notes || "").trim() || null;
     const inspectionDate = req.body.inspection_date || req.body.inspectionDate || rawDate(new Date());
-    const nextDue = rawDate(addDays(inspectionDate, INSPECTION_INTERVAL_DAYS));
+    const nextDue = rawDate(addDays(inspectionDate, TRAILER_INSPECTION_INTERVAL_DAYS));
 
     if (!trailerId) return res.status(400).json({ message: "Valid trailer id is required." });
     if (!["pass", "advisory", "fail"].includes(result)) {
@@ -2123,7 +2144,7 @@ exports.markTrailerInspectionDone = async (req, res) => {
 
     const [inserted] = await db.query(
       `INSERT INTO trailer_inspections (trailer_id, inspection_date, inspection_type, inspector_name, result, notes, next_due)
-       VALUES (?, ?, '6-week safety inspection', ?, ?, ?, ?)`,
+       VALUES (?, ?, '10-week safety inspection', ?, ?, ?, ?)`,
       [trailerId, inspectionDate, inspectorName, result, notes, nextDue]
     );
 
@@ -2138,12 +2159,12 @@ exports.markTrailerInspectionDone = async (req, res) => {
              completion_notes=COALESCE(completion_notes, ?),
              completed_at=COALESCE(completed_at, NOW())
          WHERE trailer_id=? AND status IN ('planned','booked','in_progress') AND LOWER(service_type) LIKE '%inspection%'`,
-        [inspectionDate, notes || "6-week safety inspection completed.", trailerId]
+        [inspectionDate, notes || "10-week safety inspection completed.", trailerId]
       );
     }
 
     res.status(201).json({
-      message: result === "fail" ? "Inspection recorded, trailer kept in maintenance." : "Inspection done. Next 6-week inspection scheduled.",
+      message: result === "fail" ? "Inspection recorded, trailer kept in maintenance." : "Inspection done. Next 10-week inspection scheduled.",
       id: inserted.insertId,
       nextDue
     });
@@ -2241,8 +2262,16 @@ exports.completeEventFromSchedule = async (req, res) => {
     if (!assetNumericId || !serviceType) {
       return res.status(400).json({ message: "Asset and service type are required." });
     }
+    if (assetType === "trailer" && !isTrailerMaintenanceTypeAllowed(serviceType)) {
+      return res.status(400).json({ message: "Trailers only support MOT and safety inspection." });
+    }
 
-    const nextDueDate = calculateNextDueDate(serviceType, serviceDate, roadTaxIntervalMonths);
+    const nextDueDate = calculateNextDueDate(
+      serviceType,
+      serviceDate,
+      roadTaxIntervalMonths,
+      assetType === "trailer" && serviceType === "Safety inspection" ? TRAILER_INSPECTION_INTERVAL_DAYS : INSPECTION_INTERVAL_DAYS
+    );
     const idField = assetType === "trailer" ? "trailer_id" : "vehicle_id";
 
     const [[completedSameDay]] = await db.query(
