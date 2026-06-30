@@ -1521,6 +1521,7 @@
 
 /* ── Fixed header rows ── */
 .excel-month-row th,
+.excel-date-row th,
 .excel-week-row th {
   position: sticky;
   z-index: 4;
@@ -1530,7 +1531,8 @@
 }
 
 .excel-month-row { top: 0; }
-.excel-week-row { top: 32px; }
+.excel-date-row { top: 26px; }
+.excel-week-row { top: 44px; }
 
 .excel-month-head {
   top: 0;
@@ -1542,8 +1544,19 @@
   border-color: #334155;
 }
 
+.excel-date-head {
+  top: 26px;
+  background: #334155;
+  color: #cbd5e1;
+  padding: 3px 2px;
+  font-size: 0.56rem;
+  min-width: 60px;
+  letter-spacing: 0.02em;
+  border-color: #334155;
+}
+
 .excel-week-head {
-  top: 32px;
+  top: 44px;
   background: #1e293b;
   color: #94a3b8;
   padding: 4px 2px;

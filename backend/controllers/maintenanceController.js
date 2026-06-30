@@ -78,6 +78,7 @@ async function syncMaintenanceSchema() {
   await addColumnIfMissing("maintenance_records", "mileage", "INT DEFAULT NULL");
   await addColumnIfMissing("maintenance_records", "next_due_date", "DATE DEFAULT NULL");
   await addColumnIfMissing("maintenance_records", "garage_name", "VARCHAR(120) DEFAULT NULL");
+  await modifyColumnBestEffort("maintenance_records", "service_type", "VARCHAR(100) NOT NULL");
 
   await addColumnIfMissing("vehicle_inspections", "inspection_type", "VARCHAR(80) NOT NULL DEFAULT 'Routine'");
   await addColumnIfMissing("vehicle_inspections", "inspector_name", "VARCHAR(120) DEFAULT NULL");
