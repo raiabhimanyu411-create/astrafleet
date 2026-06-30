@@ -1696,9 +1696,12 @@ exports.markVehicleInspectionDone = async (req, res) => {
     } else {
       await db.query(
         `UPDATE maintenance_jobs
-         SET status='completed', completion_notes=COALESCE(completion_notes, ?), completed_at=COALESCE(completed_at, NOW())
+         SET status='completed',
+             service_date=?,
+             completion_notes=COALESCE(completion_notes, ?),
+             completed_at=COALESCE(completed_at, NOW())
          WHERE vehicle_id=? AND status IN ('planned','booked','in_progress') AND LOWER(service_type) LIKE '%inspection%'`,
-        [notes || "6-week safety inspection completed.", vehicleId]
+        [inspectionDate, notes || "6-week safety inspection completed.", vehicleId]
       );
       const [[open]] = await db.query(
         `SELECT
@@ -2121,6 +2124,15 @@ exports.markTrailerInspectionDone = async (req, res) => {
       await db.query(`UPDATE trailers SET status='maintenance' WHERE id=?`, [trailerId]);
     } else {
       await db.query(`UPDATE trailers SET next_inspection_due=?, status=CASE WHEN status='maintenance' THEN 'available' ELSE status END WHERE id=?`, [nextDue, trailerId]);
+      await db.query(
+        `UPDATE maintenance_jobs
+         SET status='completed',
+             service_date=?,
+             completion_notes=COALESCE(completion_notes, ?),
+             completed_at=COALESCE(completed_at, NOW())
+         WHERE trailer_id=? AND status IN ('planned','booked','in_progress') AND LOWER(service_type) LIKE '%inspection%'`,
+        [inspectionDate, notes || "6-week safety inspection completed.", trailerId]
+      );
     }
 
     res.status(201).json({

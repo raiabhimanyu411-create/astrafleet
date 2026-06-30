@@ -900,6 +900,16 @@ function isoWeekNumber(dateStr) {
   return Math.floor((d - firstMonday) / 604800000) + 1;
 }
 
+function eventBelongsToWeek(event, week) {
+  const eventDate = event.kind === "completed"
+    ? event.displayDateRaw || event.dueDateRaw
+    : event.weekKey;
+  if (event.kind === "completed") {
+    return Boolean(eventDate && eventDate >= week.startRaw && eventDate <= week.endRaw);
+  }
+  return eventDate === week.key;
+}
+
 function ExcelScheduleView({ data, onOpenVehicle }) {
   const [search, setSearch] = useState("");
   const [popover, setPopover] = useState(null); // { ev, x, y }
@@ -1015,7 +1025,7 @@ function ExcelScheduleView({ data, onOpenVehicle }) {
                   <td className="excel-freq-cell" onClick={() => onOpenVehicle(row, assetType)}>{row.inspectionFrequency}</td>
                   <td className="excel-make-cell" onClick={() => onOpenVehicle(row, assetType)}>{row.make}</td>
                   {weeks.map((week) => {
-                    const events = (row.events || []).filter((ev) => ev.weekKey === week.key);
+                    const events = (row.events || []).filter((ev) => eventBelongsToWeek(ev, week));
                     return (
                       <td
                         key={`${row.vehicleId}-${week.key}`}
