@@ -1288,11 +1288,14 @@ export function JobsListPage() {
                             onChange={e => updatePlannerField(job, { driver_id: e.target.value ? Number(e.target.value) : null }, "driver", "Driver could not be assigned.")}
                           >
                             <option value="">Assign Driver</option>
-                            {(data?.drivers || []).map(driver => (
-                              <option key={driver.id} value={driver.id}>
-                                {driver.full_name} · {driver.shift_status}
-                              </option>
-                            ))}
+                            {(data?.drivers || []).map(driver => {
+                              const busyElsewhere = driver.busy_trip_id && Number(driver.busy_trip_id) !== Number(job.id);
+                              return (
+                                <option key={driver.id} value={driver.id} disabled={busyElsewhere}>
+                                  {driver.full_name} · {busyElsewhere ? `busy on ${driver.busy_trip_code}` : driver.shift_status}
+                                </option>
+                              );
+                            })}
                           </select>
                         </div>
                         <div className="relay-dispatch-field">
@@ -1304,11 +1307,14 @@ export function JobsListPage() {
                             onChange={e => updatePlannerField(job, { vehicle_id: e.target.value ? Number(e.target.value) : null }, "vehicle", "Truck could not be assigned.")}
                           >
                             <option value="">Assign Truck</option>
-                            {(data?.vehicles || []).map(vehicle => (
-                              <option key={vehicle.id} value={vehicle.id}>
-                                {vehicle.registration_number} · {vehicle.truck_type || vehicle.model_name || "Truck"} · {vehicle.status}
-                              </option>
-                            ))}
+                            {(data?.vehicles || []).map(vehicle => {
+                              const busyElsewhere = vehicle.busy_trip_id && Number(vehicle.busy_trip_id) !== Number(job.id);
+                              return (
+                                <option key={vehicle.id} value={vehicle.id} disabled={busyElsewhere}>
+                                  {vehicle.registration_number} · {vehicle.truck_type || vehicle.model_name || "Truck"} · {busyElsewhere ? `busy on ${vehicle.busy_trip_code}` : vehicle.status}
+                                </option>
+                              );
+                            })}
                           </select>
                         </div>
                         <div className="relay-dispatch-field">
@@ -1320,11 +1326,14 @@ export function JobsListPage() {
                             onChange={e => updatePlannerField(job, { trailer_id: e.target.value ? Number(e.target.value) : null }, "trailer", "Trailer could not be assigned.")}
                           >
                             <option value="">Assign Trailer</option>
-                            {(data?.trailers || []).map(trailer => (
-                              <option key={trailer.id} value={trailer.id}>
-                                {trailer.registration_number} · {trailer.trailer_type || "Trailer"} · {trailer.status}
-                              </option>
-                            ))}
+                            {(data?.trailers || []).map(trailer => {
+                              const busyElsewhere = trailer.busy_trip_id && Number(trailer.busy_trip_id) !== Number(job.id);
+                              return (
+                                <option key={trailer.id} value={trailer.id} disabled={busyElsewhere}>
+                                  {trailer.registration_number} · {trailer.trailer_type || "Trailer"} · {busyElsewhere ? `busy on ${trailer.busy_trip_code}` : trailer.status}
+                                </option>
+                              );
+                            })}
                           </select>
                         </div>
                         <div className="relay-dispatch-field">

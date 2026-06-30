@@ -481,11 +481,23 @@ exports.getFormData = async (req, res) => {
     );
     const [drivers] = await db.query(
       `SELECT id, full_name, employee_code, phone, shift_status, compliance_status
-       FROM drivers WHERE compliance_status != 'blocked' ORDER BY shift_status='ready' DESC, full_name ASC`
+       FROM drivers
+       WHERE compliance_status != 'blocked'
+         AND NOT EXISTS (
+           SELECT 1 FROM trips t WHERE t.driver_id = drivers.id
+             AND t.deleted_at IS NULL AND t.dispatch_status IN ('planned','loading','active')
+         )
+       ORDER BY shift_status='ready' DESC, full_name ASC`
     );
     const [vehicles] = await db.query(
       `SELECT id, registration_number, fleet_code, model_name, truck_type, status, capacity_tonnes
-       FROM vehicles WHERE status IN ('available','planned') ORDER BY status='available' DESC, registration_number ASC`
+       FROM vehicles
+       WHERE status IN ('available','planned')
+         AND NOT EXISTS (
+           SELECT 1 FROM trips t WHERE t.vehicle_id = vehicles.id
+             AND t.deleted_at IS NULL AND t.dispatch_status IN ('planned','loading','active')
+         )
+       ORDER BY status='available' DESC, registration_number ASC`
     );
     const [routes] = await db.query(
       `SELECT id, route_code, origin_hub, destination_hub, distance_km, standard_eta_hours, toll_estimate_gbp
@@ -493,7 +505,13 @@ exports.getFormData = async (req, res) => {
     );
     const [trailers] = await db.query(
       `SELECT id, trailer_code, registration_number, trailer_type, capacity_tonnes, status
-       FROM trailers WHERE status IN ('available','planned') ORDER BY status='available' DESC, trailer_code ASC`
+       FROM trailers
+       WHERE status IN ('available','planned')
+         AND NOT EXISTS (
+           SELECT 1 FROM trips t WHERE t.trailer_id = trailers.id
+             AND t.deleted_at IS NULL AND t.dispatch_status IN ('planned','loading','active')
+         )
+       ORDER BY status='available' DESC, trailer_code ASC`
     );
 
     res.json({ customers, drivers, vehicles, trailers, routes });
@@ -619,19 +637,37 @@ exports.listJobs = async (req, res) => {
     );
 
     const [drivers] = await db.query(
-      `SELECT id, full_name, employee_code, phone, shift_status, compliance_status
+      `SELECT id, full_name, employee_code, phone, shift_status, compliance_status,
+              (SELECT t.id FROM trips t WHERE t.driver_id = drivers.id
+                 AND t.deleted_at IS NULL AND t.dispatch_status IN ('planned','loading','active')
+               ORDER BY t.id DESC LIMIT 1) AS busy_trip_id,
+              (SELECT t.trip_code FROM trips t WHERE t.driver_id = drivers.id
+                 AND t.deleted_at IS NULL AND t.dispatch_status IN ('planned','loading','active')
+               ORDER BY t.id DESC LIMIT 1) AS busy_trip_code
        FROM drivers
        WHERE compliance_status != 'blocked'
        ORDER BY shift_status='ready' DESC, full_name ASC`
     );
     const [vehicles] = await db.query(
-      `SELECT id, registration_number, fleet_code, model_name, truck_type, status, capacity_tonnes
+      `SELECT id, registration_number, fleet_code, model_name, truck_type, status, capacity_tonnes,
+              (SELECT t.id FROM trips t WHERE t.vehicle_id = vehicles.id
+                 AND t.deleted_at IS NULL AND t.dispatch_status IN ('planned','loading','active')
+               ORDER BY t.id DESC LIMIT 1) AS busy_trip_id,
+              (SELECT t.trip_code FROM trips t WHERE t.vehicle_id = vehicles.id
+                 AND t.deleted_at IS NULL AND t.dispatch_status IN ('planned','loading','active')
+               ORDER BY t.id DESC LIMIT 1) AS busy_trip_code
        FROM vehicles
        WHERE status != 'stopped'
        ORDER BY registration_number ASC`
     );
     const [trailers] = await db.query(
-      `SELECT id, trailer_code, registration_number, trailer_type, capacity_tonnes, status
+      `SELECT id, trailer_code, registration_number, trailer_type, capacity_tonnes, status,
+              (SELECT t.id FROM trips t WHERE t.trailer_id = trailers.id
+                 AND t.deleted_at IS NULL AND t.dispatch_status IN ('planned','loading','active')
+               ORDER BY t.id DESC LIMIT 1) AS busy_trip_id,
+              (SELECT t.trip_code FROM trips t WHERE t.trailer_id = trailers.id
+                 AND t.deleted_at IS NULL AND t.dispatch_status IN ('planned','loading','active')
+               ORDER BY t.id DESC LIMIT 1) AS busy_trip_code
        FROM trailers
        WHERE status != 'maintenance'
        ORDER BY trailer_code ASC`
@@ -809,14 +845,29 @@ exports.updateJobAssignment = async (req, res) => {
         [driverId]
       );
       if (!driver) return res.status(400).json({ message: "Selected driver is not available for assignment." });
+      const [[busyDriver]] = await db.query(
+        `SELECT trip_code FROM trips WHERE driver_id = ? AND id != ? AND deleted_at IS NULL AND dispatch_status IN ('planned','loading','active')`,
+        [driverId, id]
+      );
+      if (busyDriver) return res.status(400).json({ message: `Driver is already assigned to job ${busyDriver.trip_code} and won't be free until that job is finished.` });
     }
     if (vehicleId) {
       const [[vehicle]] = await db.query(`SELECT id FROM vehicles WHERE id = ? AND status != 'stopped'`, [vehicleId]);
       if (!vehicle) return res.status(400).json({ message: "Selected truck is not available for assignment." });
+      const [[busyVehicle]] = await db.query(
+        `SELECT trip_code FROM trips WHERE vehicle_id = ? AND id != ? AND deleted_at IS NULL AND dispatch_status IN ('planned','loading','active')`,
+        [vehicleId, id]
+      );
+      if (busyVehicle) return res.status(400).json({ message: `Truck is already assigned to job ${busyVehicle.trip_code} and won't be free until that job is finished.` });
     }
     if (trailerId) {
       const [[trailer]] = await db.query(`SELECT id FROM trailers WHERE id = ? AND status != 'maintenance'`, [trailerId]);
       if (!trailer) return res.status(400).json({ message: "Selected trailer is not available for assignment." });
+      const [[busyTrailer]] = await db.query(
+        `SELECT trip_code FROM trips WHERE trailer_id = ? AND id != ? AND deleted_at IS NULL AND dispatch_status IN ('planned','loading','active')`,
+        [trailerId, id]
+      );
+      if (busyTrailer) return res.status(400).json({ message: `Trailer is already assigned to job ${busyTrailer.trip_code} and won't be free until that job is finished.` });
     }
 
     const driverChanged = Object.prototype.hasOwnProperty.call(req.body, "driver_id") || Object.prototype.hasOwnProperty.call(req.body, "driverId")
@@ -1195,6 +1246,37 @@ exports.createJob = async (req, res) => {
       return res.status(400).json({ message: "Select a customer or enter a client name." });
     }
 
+    if (driver_id) {
+      const [[busyDriver]] = await conn.query(
+        `SELECT trip_code FROM trips WHERE driver_id = ? AND deleted_at IS NULL AND dispatch_status IN ('planned','loading','active')`,
+        [driver_id]
+      );
+      if (busyDriver) {
+        await conn.rollback();
+        return res.status(400).json({ message: `Driver is already assigned to job ${busyDriver.trip_code} and won't be free until that job is finished.` });
+      }
+    }
+    if (vehicle_id) {
+      const [[busyVehicle]] = await conn.query(
+        `SELECT trip_code FROM trips WHERE vehicle_id = ? AND deleted_at IS NULL AND dispatch_status IN ('planned','loading','active')`,
+        [vehicle_id]
+      );
+      if (busyVehicle) {
+        await conn.rollback();
+        return res.status(400).json({ message: `Truck is already assigned to job ${busyVehicle.trip_code} and won't be free until that job is finished.` });
+      }
+    }
+    if (trailer_id) {
+      const [[busyTrailer]] = await conn.query(
+        `SELECT trip_code FROM trips WHERE trailer_id = ? AND deleted_at IS NULL AND dispatch_status IN ('planned','loading','active')`,
+        [trailer_id]
+      );
+      if (busyTrailer) {
+        await conn.rollback();
+        return res.status(400).json({ message: `Trailer is already assigned to job ${busyTrailer.trip_code} and won't be free until that job is finished.` });
+      }
+    }
+
     const routeStartTime = loading_done_time || planned_departure;
     let eta = null;
     if (estimated_eta_mins && routeStartTime) {
@@ -1345,6 +1427,37 @@ exports.updateJob = async (req, res) => {
     if (!customer_id && !resolvedClientName) {
       await conn.rollback();
       return res.status(400).json({ message: "Select a customer or enter a client name." });
+    }
+
+    if (driver_id) {
+      const [[busyDriver]] = await conn.query(
+        `SELECT trip_code FROM trips WHERE driver_id = ? AND id != ? AND deleted_at IS NULL AND dispatch_status IN ('planned','loading','active')`,
+        [driver_id, id]
+      );
+      if (busyDriver) {
+        await conn.rollback();
+        return res.status(400).json({ message: `Driver is already assigned to job ${busyDriver.trip_code} and won't be free until that job is finished.` });
+      }
+    }
+    if (vehicle_id) {
+      const [[busyVehicle]] = await conn.query(
+        `SELECT trip_code FROM trips WHERE vehicle_id = ? AND id != ? AND deleted_at IS NULL AND dispatch_status IN ('planned','loading','active')`,
+        [vehicle_id, id]
+      );
+      if (busyVehicle) {
+        await conn.rollback();
+        return res.status(400).json({ message: `Truck is already assigned to job ${busyVehicle.trip_code} and won't be free until that job is finished.` });
+      }
+    }
+    if (trailer_id) {
+      const [[busyTrailer]] = await conn.query(
+        `SELECT trip_code FROM trips WHERE trailer_id = ? AND id != ? AND deleted_at IS NULL AND dispatch_status IN ('planned','loading','active')`,
+        [trailer_id, id]
+      );
+      if (busyTrailer) {
+        await conn.rollback();
+        return res.status(400).json({ message: `Trailer is already assigned to job ${busyTrailer.trip_code} and won't be free until that job is finished.` });
+      }
     }
 
     const routeStartTime = loading_done_time || planned_departure;
