@@ -1731,12 +1731,8 @@
 .excel-event-chip.completed {
   background: #16a34a !important;
   color: #fff !important;
-  font-size: 0.62rem;
-  font-weight: 900;
-  border: 2px solid #15803d;
-  box-shadow: 0 0 0 1px #bbf7d0, 0 2px 4px rgba(22,163,74,0.35);
-  letter-spacing: 0.02em;
-  padding: 3px 2px;
+  border: 1px solid #15803d;
+  box-shadow: 0 1px 3px rgba(22,163,74,0.3);
 }
 /* ── Completed event popover box ── */
 .completed-chip-popover {

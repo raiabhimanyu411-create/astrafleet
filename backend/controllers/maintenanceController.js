@@ -1186,10 +1186,11 @@ exports.getMaintenancePortal = async (_req, res) => {
           });
         }
       }
-      // Add completed events within the plan window
+      // Add completed events within the plan window (RBT excluded — IB covers both)
       for (const job of jobs) {
         if (job.trailerId || Number(job.vehicleId) !== Number(v.id)) continue;
         if (job.status !== "completed" || !job.serviceDateRaw) continue;
+        if (job.serviceType === "Roller brake test") continue;
         if (job.serviceDateRaw < rawDate(planStart) || job.serviceDateRaw > rawDate(planEnd)) continue;
         const week = planWeeks.find((w) => job.serviceDateRaw >= w.startRaw && job.serviceDateRaw <= w.endRaw);
         if (!week) continue;
@@ -1268,10 +1269,11 @@ exports.getMaintenancePortal = async (_req, res) => {
           });
         }
       }
-      // Add completed trailer events within the plan window
+      // Add completed trailer events within the plan window (RBT excluded — IB covers both)
       for (const job of jobs) {
         if (!job.trailerId || Number(job.trailerId) !== Number(t.id)) continue;
         if (job.status !== "completed" || !job.serviceDateRaw) continue;
+        if (job.serviceType === "Roller brake test") continue;
         if (job.serviceDateRaw < rawDate(planStart) || job.serviceDateRaw > rawDate(planEnd)) continue;
         const week = planWeeks.find((w) => job.serviceDateRaw >= w.startRaw && job.serviceDateRaw <= w.endRaw);
         if (!week) continue;
