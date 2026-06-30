@@ -384,7 +384,7 @@ function planCodeForType(type) {
     Insurance: "INS",
     "Tacho Calibration": "T",
     "Full Service": "SRV"
-  }[type] || type;
+  }[type] || null;
 }
 
 function addIntervalForPlan(date, type, roadTaxIntervalMonths = 12) {
