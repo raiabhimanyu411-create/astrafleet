@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   addJobNote,
@@ -902,6 +902,8 @@ function isoWeekNumber(dateStr) {
 
 function ExcelScheduleView({ data, onOpenVehicle }) {
   const [search, setSearch] = useState("");
+  const [popover, setPopover] = useState(null); // { ev, x, y }
+  const popoverTimer = useRef(null);
   const weeks = useMemo(() => data?.yearPlan?.weeks || [], [data]);
   const allRows = useMemo(() => data?.yearPlan?.rows || [], [data]);
 
@@ -1022,21 +1024,32 @@ function ExcelScheduleView({ data, onOpenVehicle }) {
                         title="Click to open vehicle details"
                       >
                         {events.map((ev) => {
-                          const color = EVENT_COLORS[ev.code] || { bg: "#94a3b8", text: "#fff" };
+                          const isCompleted = ev.kind === "completed";
+                          const color = isCompleted
+                            ? { bg: "#16a34a", text: "#fff" }
+                            : (EVENT_COLORS[ev.code] || { bg: "#94a3b8", text: "#fff" });
                           const day = ev.dueDateRaw?.slice(8, 10);
                           const mon = ev.dueDateRaw?.slice(5, 7);
                           return (
                             <button
                               key={ev.id}
-                              className={`excel-event-chip${ev.tone === "success" ? " done" : ""}`}
+                              className={`excel-event-chip${isCompleted ? " completed" : ""}`}
                               style={{ background: color.bg, color: color.text }}
-                              title={`${ev.type} · ${ev.dueDate} · ${ev.dueLabel} — Click to mark done or attach document`}
+                              title={isCompleted ? undefined : `${ev.type} · ${ev.dueDate} · ${ev.dueLabel} — Click to mark done or attach document`}
+                              onMouseEnter={isCompleted ? (e) => {
+                                clearTimeout(popoverTimer.current);
+                                const rect = e.currentTarget.getBoundingClientRect();
+                                setPopover({ ev, x: rect.left + rect.width / 2, y: rect.top - 8 });
+                              } : undefined}
+                              onMouseLeave={isCompleted ? () => {
+                                popoverTimer.current = setTimeout(() => setPopover(null), 150);
+                              } : undefined}
                               onClick={(e) => {
                                 e.stopPropagation();
                                 onOpenVehicle(row, assetType, ev.type);
                               }}
                             >
-                              {ev.code} {day}/{mon}
+                              {isCompleted ? `✓ ${ev.code} ${day}/${mon}` : `${ev.code} ${day}/${mon}`}
                             </button>
                           );
                         })}
@@ -1056,6 +1069,34 @@ function ExcelScheduleView({ data, onOpenVehicle }) {
         </tbody>
       </table>
     </div>
+
+    {/* Completed event popover */}
+    {popover && (
+      <div
+        className="completed-chip-popover"
+        style={{ left: popover.x, top: popover.y }}
+        onMouseEnter={() => clearTimeout(popoverTimer.current)}
+        onMouseLeave={() => { popoverTimer.current = setTimeout(() => setPopover(null), 150); }}
+      >
+        <div className="ccp-header">
+          <span className="ccp-badge" style={{ background: EVENT_COLORS[popover.ev.code]?.bg || "#16a34a" }}>
+            {popover.ev.code}
+          </span>
+          <strong className="ccp-title">{popover.ev.type}</strong>
+        </div>
+        <div className="ccp-row">
+          <span className="ccp-label">Completed</span>
+          <span className="ccp-value">{popover.ev.dueDate}</span>
+        </div>
+        {popover.ev.completionNotes && (
+          <div className="ccp-notes">
+            <span className="ccp-label">Notes</span>
+            <p className="ccp-notes-text">{popover.ev.completionNotes}</p>
+          </div>
+        )}
+        <div className="ccp-arrow" />
+      </div>
+    )}
     </>
   );
 }

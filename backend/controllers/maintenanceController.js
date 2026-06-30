@@ -1186,6 +1186,35 @@ exports.getMaintenancePortal = async (_req, res) => {
           });
         }
       }
+      // Add completed events within the plan window
+      for (const job of jobs) {
+        if (job.trailerId || Number(job.vehicleId) !== Number(v.id)) continue;
+        if (job.status !== "completed" || !job.serviceDateRaw) continue;
+        if (job.serviceDateRaw < rawDate(planStart) || job.serviceDateRaw > rawDate(planEnd)) continue;
+        const week = planWeeks.find((w) => job.serviceDateRaw >= w.startRaw && job.serviceDateRaw <= w.endRaw);
+        if (!week) continue;
+        const code = planCodeForType(job.serviceType);
+        if (!code) continue;
+        events.push({
+          id: `done-${job.id}`,
+          vehicleId: v.id,
+          vehicle: v.registration_number,
+          fleetCode: v.fleet_code,
+          make: v.model_name,
+          type: job.serviceType,
+          code,
+          dueDateRaw: job.serviceDateRaw,
+          displayDateRaw: job.serviceDateRaw,
+          dueDate: job.serviceDate,
+          dueLabel: "Completed",
+          daysLeft: -999,
+          tone: "success",
+          weekKey: week.key,
+          weekLabel: week.label,
+          kind: "completed",
+          completionNotes: job.completionNotes && job.completionNotes !== "-" ? job.completionNotes : ""
+        });
+      }
       return {
         vehicleId: v.id,
         vehicle: v.registration_number,
@@ -1238,6 +1267,36 @@ exports.getMaintenancePortal = async (_req, res) => {
             weekLabel: week.label
           });
         }
+      }
+      // Add completed trailer events within the plan window
+      for (const job of jobs) {
+        if (!job.trailerId || Number(job.trailerId) !== Number(t.id)) continue;
+        if (job.status !== "completed" || !job.serviceDateRaw) continue;
+        if (job.serviceDateRaw < rawDate(planStart) || job.serviceDateRaw > rawDate(planEnd)) continue;
+        const week = planWeeks.find((w) => job.serviceDateRaw >= w.startRaw && job.serviceDateRaw <= w.endRaw);
+        if (!week) continue;
+        const code = planCodeForType(job.serviceType);
+        if (!code) continue;
+        events.push({
+          id: `done-trailer-${job.id}`,
+          vehicleId: t.id,
+          assetType: "trailer",
+          vehicle: t.registration_number,
+          fleetCode: t.fleet_code,
+          make: t.trailer_type,
+          type: job.serviceType,
+          code,
+          dueDateRaw: job.serviceDateRaw,
+          displayDateRaw: job.serviceDateRaw,
+          dueDate: job.serviceDate,
+          dueLabel: "Completed",
+          daysLeft: -999,
+          tone: "success",
+          weekKey: week.key,
+          weekLabel: week.label,
+          kind: "completed",
+          completionNotes: job.completionNotes && job.completionNotes !== "-" ? job.completionNotes : ""
+        });
       }
       return {
         vehicleId: t.id,
