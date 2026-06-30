@@ -891,11 +891,13 @@ function formatWeekStart(dateStr) {
 function isoWeekNumber(dateStr) {
   if (!dateStr) return 0;
   const d = new Date(`${dateStr}T12:00:00`);
-  const day = (d.getDay() + 6) % 7;
-  d.setDate(d.getDate() - day + 3);
-  const firstThu = new Date(d.getFullYear(), 0, 4);
-  firstThu.setDate(firstThu.getDate() - ((firstThu.getDay() + 6) % 7) + 3);
-  return Math.round((d - firstThu) / 604800000) + 1;
+  const year = d.getFullYear();
+  const jan1 = new Date(year, 0, 1);
+  const dow = jan1.getDay(); // 0=Sun,1=Mon,...
+  const daysToFirstMonday = dow === 1 ? 0 : dow === 0 ? 1 : 8 - dow;
+  const firstMonday = new Date(year, 0, 1 + daysToFirstMonday);
+  if (d < firstMonday) return 0;
+  return Math.floor((d - firstMonday) / 604800000) + 1;
 }
 
 function ExcelScheduleView({ data, onOpenVehicle }) {
