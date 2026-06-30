@@ -85,6 +85,8 @@ async function syncMaintenanceSchema() {
   await addColumnIfMissing("vehicle_inspections", "result", "ENUM('pass','advisory','fail') NOT NULL DEFAULT 'pass'");
   await addColumnIfMissing("vehicle_inspections", "notes", "TEXT DEFAULT NULL");
   await addColumnIfMissing("vehicle_inspections", "next_due", "DATE DEFAULT NULL");
+  await modifyColumnBestEffort("vehicle_inspections", "driver_id", "INT DEFAULT NULL");
+  await modifyColumnBestEffort("vehicle_inspections", "inspection_type", "VARCHAR(80) NOT NULL DEFAULT 'Routine'");
 
   await addColumnIfMissing("vehicles", "company_name", "VARCHAR(160) DEFAULT NULL");
   await addColumnIfMissing("vehicles", "inspection_frequency_weeks", "INT DEFAULT 6");
