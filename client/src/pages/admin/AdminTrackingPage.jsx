@@ -267,7 +267,10 @@ export function AdminTrackingPage() {
           <div className="data-rows compact finance-list">
             {trucks.map((item) => (
               <div
-                className="data-row finance-row tracking-row"
+                className={[
+                  "data-row finance-row tracking-row",
+                  item.stale ? "tracking-row--stale" : item.etaRisk ? "tracking-row--risk" : item.overspeed ? "tracking-row--overspeed" : ""
+                ].filter(Boolean).join(" ")}
                 key={item.truck}
               >
                 <button
@@ -288,7 +291,15 @@ export function AdminTrackingPage() {
                   </div>
                   <div>
                     <span>{item.hasGps ? item.accuracyLabel : "No GPS marker"}</span>
-                    <p>{item.stale ? item.note : "Fresh tracking"}{item.etaRisk ? " · ETA risk" : ""}{item.overspeed ? " · Speed risk" : ""}</p>
+                    {(item.stale || item.etaRisk || item.overspeed) ? (
+                      <div className="tracking-risk-pills">
+                        {item.stale && <span className="tracking-risk-pill stale">{item.note}</span>}
+                        {item.etaRisk && <span className="tracking-risk-pill risk">ETA risk</span>}
+                        {item.overspeed && <span className="tracking-risk-pill speed">Overspeed</span>}
+                      </div>
+                    ) : (
+                      <p>Fresh tracking</p>
+                    )}
                   </div>
                 </button>
                 <div className="finance-row-actions">

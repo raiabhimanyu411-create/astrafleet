@@ -4946,6 +4946,12 @@ p.lp-success {
   border-radius: var(--radius-sm);
   background: var(--surface-2);
   border: 1px solid var(--border);
+  transition: border-color 140ms, background 140ms;
+}
+
+.alert-card:hover {
+  border-color: var(--border-strong);
+  background: var(--surface-3);
 }
 
 .alert-card strong { display: block; font-size: 0.875rem; font-weight: 600; margin-bottom: 3px; }
@@ -5084,6 +5090,69 @@ p.lp-success {
 
 .tracking-marker-list strong { font-size: 0.82rem; font-weight: 800; }
 .tracking-marker-list span   { margin-top: 3px; color: var(--muted); font-size: 0.74rem; }
+
+.tracking-marker-list button.active {
+  border-color: var(--primary);
+  color: var(--text);
+}
+.tracking-marker-list button.active strong { color: var(--primary); }
+
+/* ── Tracking Row States ─────────────────────────────── */
+
+.tracking-row {
+  transition: border-color 130ms, background 130ms, box-shadow 130ms;
+}
+
+.data-row.tracking-row--stale {
+  background: linear-gradient(to right, #fffdf0, var(--surface-2) 60%);
+  box-shadow: inset 3px 0 0 var(--warning);
+}
+.data-row.tracking-row--stale:hover {
+  background: linear-gradient(to right, #fef9e0, var(--surface) 60%);
+  border-color: var(--warning-ring);
+}
+
+.data-row.tracking-row--risk {
+  background: linear-gradient(to right, #fff5f5, var(--surface-2) 60%);
+  box-shadow: inset 3px 0 0 var(--danger);
+}
+.data-row.tracking-row--risk:hover {
+  background: linear-gradient(to right, #ffe8e8, var(--surface) 60%);
+  border-color: var(--danger-ring);
+}
+
+.data-row.tracking-row--overspeed {
+  background: linear-gradient(to right, #fff7ed, var(--surface-2) 60%);
+  box-shadow: inset 3px 0 0 #f97316;
+}
+.data-row.tracking-row--overspeed:hover {
+  background: linear-gradient(to right, #feedd6, var(--surface) 60%);
+  border-color: #fed7aa;
+}
+
+/* ── Tracking Risk Pills ─────────────────────────────── */
+
+.tracking-risk-pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 5px;
+}
+
+.tracking-risk-pill {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 7px;
+  border-radius: 999px;
+  font-size: 0.67rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+}
+
+.tracking-risk-pill.stale { background: var(--warning-soft); color: var(--warning-text); border: 1px solid var(--warning-ring); }
+.tracking-risk-pill.risk  { background: var(--danger-soft);  color: var(--danger-text);  border: 1px solid var(--danger-ring); }
+.tracking-risk-pill.speed { background: #fff7ed; color: #c2410c; border: 1px solid #fed7aa; }
 
 /* ── Trip Detail ─────────────────────────────────────── */
 
