@@ -442,10 +442,11 @@ function priorityTone(priority) {
 async function nextJobNumber() {
   const year = new Date().getFullYear();
   const [[row]] = await db.query(
-    `SELECT COUNT(*) AS count FROM maintenance_jobs WHERE job_number LIKE ?`,
+    `SELECT COALESCE(MAX(CAST(SUBSTRING_INDEX(job_number, '-', -1) AS UNSIGNED)), 0) AS maxNum
+     FROM maintenance_jobs WHERE job_number LIKE ?`,
     [`MJ-${year}-%`]
   );
-  return `MJ-${year}-${String(Number(row.count || 0) + 1).padStart(4, "0")}`;
+  return `MJ-${year}-${String(Number(row.maxNum || 0) + 1).padStart(4, "0")}`;
 }
 
 function cleanJobPayload(body) {
