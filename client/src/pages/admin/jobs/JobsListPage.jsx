@@ -138,6 +138,22 @@ function fmtTimeFull(rawStr) {
   return d.toLocaleString("en-GB", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" });
 }
 
+function fmtRouteStamp(rawStr, fallback = "") {
+  if (rawStr) {
+    const d = new Date(rawStr);
+    if (!isNaN(d.getTime())) {
+      return d.toLocaleString("en-GB", {
+        weekday: "short",
+        day: "2-digit",
+        month: "short",
+        hour: "2-digit",
+        minute: "2-digit"
+      });
+    }
+  }
+  return fallback && fallback !== "—" ? fallback : "TBD";
+}
+
 function fmtGBP(n) {
   return `£${Number(n).toFixed(2)}`;
 }
@@ -773,8 +789,32 @@ export function JobsListPage() {
             const pickupShort = extractUkPostcode(job.pickupAddress);
             const dropShort = extractUkPostcode(job.dropAddress);
             const routeStops = Array.isArray(job.stops) ? job.stops : [];
-            const stopCount = routeStops.length;
-            const totalStops = stopCount + 2;
+            const routeTimelinePoints = [
+              {
+                key: "pickup",
+                index: 1,
+                name: pickupShort,
+                title: job.pickupAddress,
+                arrival: fmtRouteStamp(job.departureRaw, job.departure),
+                departure: fmtRouteStamp(job.actualDepartureRaw || job.loadingDoneTime, job.actualDeparture)
+              },
+              {
+                key: "delivery",
+                index: 2,
+                name: dropShort,
+                title: job.dropAddress,
+                arrival: fmtRouteStamp(job.actualArrivalRaw || job.calculatedArrival, job.actualArrival),
+                departure: fmtRouteStamp(job.calculatedUnloadEnd)
+              },
+              ...routeStops.map((stop, index) => ({
+                key: stop.id || `stop-${index}`,
+                index: index + 3,
+                name: extractUkPostcode(stop.address),
+                title: stop.address,
+                arrival: fmtRouteStamp(stop.plannedArrivalRaw, stop.actualArrival),
+                departure: fmtRouteStamp(stop.plannedDepartureRaw, stop.plannedDeparture)
+              }))
+            ];
             const hasGap = !job.driverAssigned || !job.vehicleAssigned;
             const podPending = isPodPending(job);
             const loadIcon = LOAD_ICONS[job.loadType] || "📦";
@@ -837,19 +877,22 @@ export function JobsListPage() {
 
                   {/* Route visualization */}
                   <div className="relay-route-vis">
-                    <div className="relay-stop-node">
-                      <span className="relay-stop-bubble">1</span>
-                      <span className="relay-stop-name" title={job.pickupAddress}>{pickupShort}</span>
-                    </div>
-                    <div className="relay-route-arrow">
-                      <span className="relay-route-line" />
-                      {stopCount > 0 && <span className="relay-route-mid">+{stopCount} stops</span>}
-                      <span className="relay-route-arrowhead">→</span>
-                    </div>
-                    <div className="relay-stop-node">
-                      <span className="relay-stop-bubble">{totalStops}</span>
-                      <span className="relay-stop-name" title={job.dropAddress}>{dropShort}</span>
-                    </div>
+                    {routeTimelinePoints.map((point, index) => (
+                      <div className="relay-route-segment" key={point.key}>
+                        <div className="relay-stop-node">
+                          <span className="relay-stop-bubble">{point.index}</span>
+                          <span className="relay-stop-name" title={point.title}>{point.name}</span>
+                          <span className="relay-route-time-line"><strong>Arrival</strong> {point.arrival}</span>
+                          <span className="relay-route-time-line"><strong>Departure</strong> {point.departure}</span>
+                        </div>
+                        {index < routeTimelinePoints.length - 1 && (
+                          <div className="relay-route-arrow">
+                            <span className="relay-route-line" />
+                            <span className="relay-route-arrowhead">→</span>
+                          </div>
+                        )}
+                      </div>
+                    ))}
                   </div>
 
                   {/* Distance / ETA */}

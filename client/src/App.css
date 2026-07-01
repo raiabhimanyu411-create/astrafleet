@@ -2189,18 +2189,30 @@ p.lp-success {
 .relay-route-vis {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
   flex: 1;
   min-width: 0;
+  overflow-x: auto;
+  scrollbar-width: thin;
+  padding: 2px 0;
 }
 
-.relay-stop-node {
+.relay-route-segment {
   display: flex;
   align-items: center;
   gap: 6px;
+  min-width: max-content;
+}
+
+.relay-stop-node {
+  display: grid;
+  grid-template-columns: 22px minmax(74px, 1fr);
+  align-items: start;
+  column-gap: 6px;
+  row-gap: 2px;
   min-width: 0;
+  width: 150px;
   flex-shrink: 0;
-  max-width: 200px;
 }
 
 .relay-stop-bubble {
@@ -2224,14 +2236,34 @@ p.lp-success {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  line-height: 1.1;
+  min-width: 0;
+}
+
+.relay-route-time-line {
+  grid-column: 2;
+  color: var(--muted);
+  font-size: 0.63rem;
+  font-weight: 500;
+  line-height: 1.15;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.relay-route-time-line strong {
+  color: var(--text-soft);
+  font-size: 0.6rem;
+  font-weight: 700;
+  text-transform: uppercase;
 }
 
 .relay-route-arrow {
   display: flex;
   align-items: center;
   gap: 4px;
-  flex: 1;
-  min-width: 32px;
+  width: 28px;
+  min-width: 28px;
 }
 
 .relay-route-line {
