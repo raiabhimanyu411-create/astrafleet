@@ -46,7 +46,6 @@ const driverMenu = [
   { href: "#overview",   label: "Overview" },
   { href: "#live",       label: "Live Work" },
   { href: "#notifications", label: "Notifications" },
-  { href: "#walkaround", label: "Walkaround" },
   { href: "#pod",        label: "POD" },
   { href: "#reports",    label: "Reports" },
   { href: "#history",    label: "History" },
@@ -55,7 +54,6 @@ const driverMenu = [
 
 const driverWorkspaces = [
   { key: "live", label: "Live Work", detail: "Jobs + status + route" },
-  { key: "walkaround", label: "Walkaround", detail: "Safety check" },
   { key: "pod", label: "POD + Shift", detail: "Proof and shift" },
   { key: "reports", label: "Reports", detail: "Expense or defect" },
   { key: "history", label: "History", detail: "Past activity" },
@@ -592,7 +590,7 @@ export function DriverPanel() {
       badge={data?.header?.badge || "Driver Panel"}
       title={data?.header?.title || "Driver Workspace"}
       description={data?.header?.description || "Daily driver operations in one browser panel."}
-      highlights={data?.highlights || ["Assigned Jobs", "Status Updates", "POD And Reports"]}
+      highlights={[]}
       menu={driverPanelMenu}
       roleLabel="Driver Workspace"
       headerContent={(
@@ -724,92 +722,6 @@ export function DriverPanel() {
           </section>
         </>
       )}
-
-      {/* ── Walkaround checklist ── */}
-      {activeSection === "walkaround" && <section className="content-card" id="walkaround" style={{ marginBottom: 16 }}>
-        <div className="section-head">
-          <div>
-            <span className="card-label">Pre-Trip Walkaround</span>
-            <h2>Vehicle Safety Checklist</h2>
-          </div>
-          {data?.latestWalkaround && (
-            <StatusPill tone={data.latestWalkaround.allClear ? "success" : "danger"}>
-              Last: {data.latestWalkaround.allClear ? "All Clear" : "Issues"} · {data.latestWalkaround.at}
-            </StatusPill>
-          )}
-        </div>
-
-        {walkaround.done ? (
-          <div className="driver-form-notice">
-            Walkaround submitted. Refresh the panel to record a new check.
-            <button
-              type="button"
-              className="header-action-button"
-              style={{ marginLeft: 12 }}
-              onClick={() => setWalkaround({ checks: {}, issues: "", done: false })}
-            >
-              New Check
-            </button>
-          </div>
-        ) : (
-          <form className="af-form" onSubmit={handleWalkaroundSubmit}>
-            <div className="walkaround-grid">
-              {WALKAROUND_CHECKS.map(item => {
-                const val = walkaround.checks[item.key];
-                return (
-                  <label key={item.key} className={`walkaround-item ${val === true ? "pass" : val === false ? "fail" : ""}`}>
-                    <span className="walkaround-label">{item.label}</span>
-                    <div className="walkaround-toggle">
-                      <button
-                        type="button"
-                        className={`wt-btn pass ${val === true ? "active" : ""}`}
-                        onClick={() => setWalkaround(w => ({ ...w, checks: { ...w.checks, [item.key]: true } }))}
-                      >
-                        OK
-                      </button>
-                      <button
-                        type="button"
-                        className={`wt-btn fail ${val === false ? "active" : ""}`}
-                        onClick={() => setWalkaround(w => ({ ...w, checks: { ...w.checks, [item.key]: false } }))}
-                      >
-                        Fail
-                      </button>
-                    </div>
-                  </label>
-                );
-              })}
-            </div>
-
-            {!walkaroundAllClear && walkaroundAllChecked && (
-              <div className="af-field">
-                <label className="af-label">Describe The Issue(s)</label>
-                <textarea
-                  className="af-input"
-                  value={walkaround.issues}
-                  onChange={e => setWalkaround(w => ({ ...w, issues: e.target.value }))}
-                  placeholder="Describe defects found during walkaround..."
-                  required
-                />
-              </div>
-            )}
-
-            <div className="driver-action-row">
-              <button
-                className="af-submit-btn"
-                type="submit"
-                disabled={!walkaroundAllChecked || busy === "walkaround"}
-              >
-                {busy === "walkaround" ? "Submitting..." : walkaroundAllClear ? "Submit — All Clear" : "Submit With Issues"}
-              </button>
-              {!walkaroundAllChecked && (
-                <span style={{ fontSize: "0.82rem", color: "#64748b", alignSelf: "center" }}>
-                  {WALKAROUND_CHECKS.filter(c => walkaround.checks[c.key] !== undefined).length} / {WALKAROUND_CHECKS.length} checked
-                </span>
-              )}
-            </div>
-          </form>
-        )}
-      </section>}
 
       {/* ── Jobs + Job spotlight ── */}
       {activeSection === "live" && <section className="content-grid" id="live">
