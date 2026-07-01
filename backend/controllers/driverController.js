@@ -327,24 +327,28 @@ async function getDriverFromSession(req) {
   return driver || null;
 }
 
-function mapDriverJob(row) {
+function mapDriverJob(row, stops = []) {
   const status = row.driver_job_status || "accepted";
   const pickup = row.pickup_address || row.origin_hub || "Pickup TBD";
   const drop = row.drop_address || row.destination_hub || "Drop TBD";
   const navQuery = encodeURIComponent(`${pickup} to ${drop}`);
+  const customerName = row.customer_name || row.client_name || "Customer TBD";
+  const customerPhone = row.cust_phone || row.client_phone || "—";
 
   return {
     id: row.id,
     code: row.trip_code,
+    reference: row.reference || "—",
+    loadId: row.load_id || "—",
     status,
     statusLabel: driverStatusLabel[status] || status,
     statusTone: driverStatusTone[status] || "neutral",
     dispatchStatus: row.dispatch_status,
     priority: row.priority_level,
     customer: {
-      name: row.customer_name || "Customer TBD",
+      name: customerName,
       contact: row.cust_contact || "—",
-      phone: row.cust_phone || "—",
+      phone: customerPhone,
       email: row.cust_email || "—"
     },
     route: {
@@ -358,18 +362,38 @@ function mapDriverJob(row) {
       plannedDate: row.planned_departure ? new Date(row.planned_departure).toISOString().slice(0, 10) : null,
       plannedDeparture: fmtDateTime(row.planned_departure),
       eta: fmtDateTime(row.eta),
-      dockWindow: row.dock_window || "—"
+      dockWindow: row.dock_window || "—",
+      deliveryDeadline: fmtDateTime(row.delivery_deadline),
+      actualDeparture: fmtDateTime(row.actual_departure),
+      actualArrival: fmtDateTime(row.actual_arrival)
     },
     vehicle: row.registration_number ? `${row.registration_number} · ${row.model_name || row.truck_type || "Vehicle"}` : "Unassigned",
     trailer: row.trailer_registration ? `${row.trailer_registration} · ${row.trailer_type || row.trailer_code || "Trailer"}` : "No trailer assigned",
     load: {
       type: row.load_type || "general",
       weight: row.load_weight_kg ? `${row.load_weight_kg} kg` : "—",
-      description: row.load_description || "—"
+      volume: row.load_volume_cbm ? `${row.load_volume_cbm} cbm` : "—",
+      vehicleRequirement: row.vehicle_type_requirement || "—",
+      description: row.load_description || "—",
+      freight: fmtAmount(row.freight_amount_gbp)
     },
     podStatus: row.pod_status,
     deliveryNotes: row.delivery_notes || "",
-    specialInstructions: row.special_instructions || "—"
+    specialInstructions: row.special_instructions || "—",
+    dispatcherNotes: row.dispatcher_notes || "—",
+    stops: stops.map((stop, index) => ({
+      id: stop.id,
+      order: stop.stop_order || index + 1,
+      type: stop.stop_type || "stop",
+      label: `${(stop.stop_type || "Stop").replace("_", " ")} ${stop.stop_order || index + 1}`,
+      address: stop.address || "—",
+      contactName: stop.contact_name || "—",
+      contactPhone: stop.contact_phone || "—",
+      plannedArrival: fmtDateTime(stop.planned_arrival),
+      plannedDeparture: fmtDateTime(stop.planned_departure),
+      notes: stop.notes || "—",
+      status: stop.status || "pending"
+    }))
   };
 }
 
@@ -389,7 +413,21 @@ async function getDriverJobs(driverId) {
      ORDER BY COALESCE(t.planned_departure, t.created_at) ASC`,
     [driverId]
   );
-  return rows.map(mapDriverJob);
+  if (!rows.length) return [];
+
+  const tripIds = rows.map((row) => row.id);
+  const [stops] = await db.query(
+    `SELECT * FROM job_stops WHERE trip_id IN (?) ORDER BY trip_id ASC, stop_order ASC`,
+    [tripIds]
+  );
+  const stopsByTrip = new Map();
+  for (const stop of stops) {
+    const list = stopsByTrip.get(stop.trip_id) || [];
+    list.push(stop);
+    stopsByTrip.set(stop.trip_id, list);
+  }
+
+  return rows.map((row) => mapDriverJob(row, stopsByTrip.get(row.id) || []));
 }
 
 // GET /api/drivers/me/panel?userId=:userId

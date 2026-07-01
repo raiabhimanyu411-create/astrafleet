@@ -231,6 +231,7 @@ export function DriverPanel() {
   const [msgLoading,  setMsgLoading]  = useState(false);
   const [newMessage,  setNewMessage]  = useState("");
   const [msgSending,  setMsgSending]  = useState(false);
+  const [messageAlert, setMessageAlert] = useState(null);
 
   // Failed delivery reschedule
   const [reschedule, setReschedule] = useState({ visible: false, date: "", reason: "" });
@@ -365,6 +366,9 @@ export function DriverPanel() {
     function handleChatMessage(message) {
       if (Number(message.driverId) !== Number(driverId)) return;
       setMessages(prev => prev.some(item => item.id === message.id) ? prev : [...prev, message]);
+      if (message.senderRole !== "driver") {
+        setMessageAlert(message);
+      }
     }
     function handleJobAssigned(payload) {
       if (Number(payload.driverId) !== Number(driverId)) return;
@@ -609,6 +613,32 @@ export function DriverPanel() {
     >
       <StateNotice loading={loading} error={error} />
 
+      {messageAlert && (
+        <div className="driver-message-alert" role="status" aria-live="polite">
+          <button
+            className="driver-message-alert-main"
+            onClick={() => {
+              setActiveSection("messages");
+              setMessageAlert(null);
+              window.history.replaceState(null, "", "#messages");
+            }}
+            type="button"
+          >
+            <span className="card-label">New admin message</span>
+            <strong>{messageAlert.senderName || "Dispatch"}</strong>
+            <p>{messageAlert.body}</p>
+          </button>
+          <button
+            aria-label="Dismiss message alert"
+            className="driver-message-alert-close"
+            onClick={() => setMessageAlert(null)}
+            type="button"
+          >
+            ×
+          </button>
+        </div>
+      )}
+
       {/* ── Document expiry warnings ── */}
       {(data?.docWarnings || []).length > 0 && (
         <div className="doc-expiry-banner">
@@ -764,19 +794,53 @@ export function DriverPanel() {
           {selectedJob ? (
             <>
               <div className="detail-grid">
+                <Detail label="Reference"    value={selectedJob.reference} />
+                <Detail label="Load ID"      value={selectedJob.loadId} />
                 <Detail label="Pickup"       value={selectedJob.route.pickupAddress} />
                 <Detail label="Drop"         value={selectedJob.route.dropAddress} />
-                <Detail label="Customer"     value={selectedJob.customer.name} />
+                <Detail label="Client"       value={selectedJob.customer.name} />
                 <Detail label="Contact"      value={`${selectedJob.customer.contact} · ${selectedJob.customer.phone}`} />
                 <Detail label="Departure"    value={selectedJob.schedule.plannedDeparture} />
                 <Detail label="ETA"          value={selectedJob.schedule.eta} />
+                <Detail label="Deadline"     value={selectedJob.schedule.deliveryDeadline} />
                 <Detail label="Dock Window"  value={selectedJob.schedule.dockWindow} />
                 <Detail label="Vehicle"      value={selectedJob.vehicle} />
                 <Detail label="Trailer" value={selectedJob.trailer} />
                 <Detail label="Load"         value={`${selectedJob.load.type} · ${selectedJob.load.weight}`} />
+                <Detail label="Volume"       value={selectedJob.load.volume} />
+                <Detail label="Required Vehicle" value={selectedJob.load.vehicleRequirement} />
+                <Detail label="Freight"      value={selectedJob.load.freight} />
                 <Detail label="Load Detail"  value={selectedJob.load.description} />
                 <Detail label="Instructions" value={selectedJob.specialInstructions} />
+                <Detail label="Dispatcher Notes" value={selectedJob.dispatcherNotes} />
               </div>
+
+              {(selectedJob.stops || []).length > 0 && (
+                <div className="driver-stops-panel">
+                  <div className="section-head">
+                    <div>
+                      <span className="card-label">Intermediate Stops</span>
+                      <h2>{selectedJob.stops.length} stop{selectedJob.stops.length === 1 ? "" : "s"} on this route</h2>
+                    </div>
+                  </div>
+                  <div className="driver-stops-list">
+                    {selectedJob.stops.map((stop) => (
+                      <div className="driver-stop-card" key={stop.id || `${stop.order}-${stop.address}`}>
+                        <div>
+                          <span className="card-label">Stop {stop.order}</span>
+                          <strong>{stop.address}</strong>
+                          <p>{stop.contactName} · {stop.contactPhone}</p>
+                        </div>
+                        <div>
+                          <span>Arrive: {stop.plannedArrival}</span>
+                          <span>Depart: {stop.plannedDeparture}</span>
+                          {stop.notes !== "—" && <span>{stop.notes}</span>}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
 
               {/* ETA update */}
               <form className="eta-update-row" onSubmit={handleEtaUpdate}>
