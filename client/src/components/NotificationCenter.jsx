@@ -110,33 +110,34 @@ export function NotificationCenter({
       ) : (
         <div className="notification-center-list">
           {filtered.map((item) => (
-            <button
-              className={`notification-center-item ${item.type || "info"}`}
-              disabled={!item.link}
-              key={item.id}
-              onClick={() => openNotification(item)}
-              type="button"
-            >
-              <span className="notification-center-rail" />
-              <span className="notification-center-copy">
-                <strong>{item.title}</strong>
-                <span>{item.body}</span>
-              </span>
-              <StatusPill tone={tonePill[item.type] || "info"}>
-                {item.acknowledged ? "Acked" : toneLabel[item.type] || "Info"}
-              </StatusPill>
-              {!item.acknowledged && (
-                <span
-                  className="header-action-button"
-                  onClick={(event) => {
-                    event.stopPropagation();
-                    acknowledge(item);
-                  }}
-                >
-                  Acknowledge
+            <div className={`notification-center-item ${item.type || "info"}`} key={item.id}>
+              <button
+                className="notification-center-open"
+                disabled={!item.link}
+                onClick={() => openNotification(item)}
+                type="button"
+              >
+                <span className="notification-center-rail" />
+                <span className="notification-center-copy">
+                  <strong>{item.title}</strong>
+                  <span>{item.body}</span>
                 </span>
-              )}
-            </button>
+              </button>
+              <div className="notification-center-item-actions">
+                <StatusPill tone={tonePill[item.type] || "info"}>
+                  {item.acknowledged ? "Acked" : toneLabel[item.type] || "Info"}
+                </StatusPill>
+                {!item.acknowledged && (
+                  <button
+                    className="header-action-button"
+                    onClick={() => acknowledge(item)}
+                    type="button"
+                  >
+                    Acknowledge
+                  </button>
+                )}
+              </div>
+            </div>
           ))}
         </div>
       )}
