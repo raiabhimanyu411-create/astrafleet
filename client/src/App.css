@@ -2344,10 +2344,10 @@ p.lp-success {
   width: 34px;
   height: 34px;
   flex-shrink: 0;
-  border: 1px solid var(--border);
+  border: 1px solid #bfdbfe;
   border-radius: 8px;
-  background: #fff;
-  color: var(--text-soft);
+  background: #eff6ff;
+  color: #2563eb;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -2356,7 +2356,7 @@ p.lp-success {
 
 .relay-job-chat-btn:hover {
   border-color: rgba(37, 99, 235, 0.34);
-  background: var(--primary-soft);
+  background: #dbeafe;
   color: var(--primary);
 }
 
@@ -3257,17 +3257,17 @@ p.lp-success {
   justify-content: center;
   width: 30px;
   height: 30px;
-  border: 1px solid var(--border);
+  border: 1px solid #cbd5e1;
   border-radius: 6px;
-  background: var(--surface);
-  color: var(--muted);
+  background: #f8fafc;
+  color: #475569;
   cursor: pointer;
   transition: background 0.15s, color 0.15s, border-color 0.15s;
 }
 .relay-notes-icon-btn:hover {
-  background: var(--primary, #2563eb);
+  background: #334155;
   color: #fff;
-  border-color: var(--primary, #2563eb);
+  border-color: #334155;
 }
 
 /* ── Job Details Modal (Notes / Payout / Shipment) ── */

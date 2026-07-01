@@ -968,9 +968,10 @@ export function JobsListPage() {
                     title="View job notes & details"
                     onClick={e => { e.stopPropagation(); setNotesModalJob(job); }}
                   >
-                    <svg viewBox="0 0 20 20" fill="none" width="16" height="16">
-                      <path d="M17 2H3a1 1 0 00-1 1v11a1 1 0 001 1h2v3l4-3h8a1 1 0 001-1V3a1 1 0 00-1-1z" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round"/>
-                      <path d="M6 7h8M6 10h5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+                    <svg viewBox="0 0 20 20" fill="none" width="16" height="16" aria-hidden="true">
+                      <path d="M6 3.5h8.2c.7 0 1.3.6 1.3 1.3v10.4c0 .7-.6 1.3-1.3 1.3H5.8c-.7 0-1.3-.6-1.3-1.3V4.8c0-.7.6-1.3 1.3-1.3H6z" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round"/>
+                      <path d="M7.5 7h5M7.5 10h5M7.5 13h3.2" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+                      <path d="M7 2.5h6" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
                     </svg>
                   </button>
 
