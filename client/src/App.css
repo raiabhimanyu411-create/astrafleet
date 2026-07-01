@@ -5795,10 +5795,66 @@ p.lp-success {
   border: 1px solid var(--border);
 }
 
+.pod-proof-thumb {
+  width: 100%;
+  border: 0;
+  padding: 0;
+  background: transparent;
+  cursor: zoom-in;
+}
+
+.pod-proof-thumb:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 3px;
+  border-radius: var(--radius-sm);
+}
+
 .pod-preview-grid p {
   margin: 10px 0 0;
   font-size: 0.82rem;
   color: var(--subtle);
+}
+
+.pod-lightbox {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 28px;
+  background: rgba(15, 23, 42, 0.72);
+}
+
+.pod-lightbox-panel {
+  width: min(1120px, 96vw);
+  max-height: 92vh;
+  border-radius: 10px;
+  background: #fff;
+  box-shadow: 0 24px 70px rgba(15, 23, 42, 0.34);
+  overflow: hidden;
+}
+
+.pod-lightbox-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--border);
+}
+
+.pod-lightbox-head > div {
+  display: flex;
+  gap: 8px;
+}
+
+.pod-lightbox img {
+  display: block;
+  width: 100%;
+  max-height: calc(92vh - 58px);
+  object-fit: contain;
+  background: #f8fafc;
 }
 
 .driver-mini-row {

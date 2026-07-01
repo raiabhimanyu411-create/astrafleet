@@ -54,6 +54,7 @@ export function JobDetailPage() {
   const [newStop, setNewStop] = useState({ address: "", stop_type: "delivery", contact_name: "", contact_phone: "", planned_arrival: "", notes: "" });
   const [stopSaving, setStopSaving] = useState(false);
   const [stopRemoving, setStopRemoving] = useState(null);
+  const [proofPreview, setProofPreview] = useState(null);
 
   const loadingRef = useRef(false);
 
@@ -414,7 +415,13 @@ export function JobDetailPage() {
                   <div>
                     <span className="card-label">Signature</span>
                     {data.proofOfDelivery?.signatureData ? (
-                      <img alt="Driver signature proof" src={data.proofOfDelivery.signatureData} />
+                      <button
+                        className="pod-proof-thumb"
+                        type="button"
+                        onClick={() => setProofPreview({ title: "Driver Signature", src: data.proofOfDelivery.signatureData })}
+                      >
+                        <img alt="Driver signature proof" src={data.proofOfDelivery.signatureData} />
+                      </button>
                     ) : (
                       <p>No signature uploaded.</p>
                     )}
@@ -422,7 +429,13 @@ export function JobDetailPage() {
                   <div>
                     <span className="card-label">Delivery Photo</span>
                     {data.proofOfDelivery?.photoData ? (
-                      <img alt="Delivery proof" src={data.proofOfDelivery.photoData} />
+                      <button
+                        className="pod-proof-thumb"
+                        type="button"
+                        onClick={() => setProofPreview({ title: "Delivery Photo", src: data.proofOfDelivery.photoData })}
+                      >
+                        <img alt="Delivery proof" src={data.proofOfDelivery.photoData} />
+                      </button>
                     ) : (
                       <p>No delivery photo uploaded.</p>
                     )}
@@ -430,6 +443,21 @@ export function JobDetailPage() {
                 </div>
               </SectionCard>
             </div>
+
+            {proofPreview && (
+              <div className="pod-lightbox" role="dialog" aria-modal="true" aria-label={proofPreview.title} onClick={() => setProofPreview(null)}>
+                <div className="pod-lightbox-panel" onClick={e => e.stopPropagation()}>
+                  <div className="pod-lightbox-head">
+                    <strong>{proofPreview.title}</strong>
+                    <div>
+                      <a className="header-action-button" href={proofPreview.src} target="_blank" rel="noreferrer">Open</a>
+                      <button className="header-action-button danger" type="button" onClick={() => setProofPreview(null)}>Close</button>
+                    </div>
+                  </div>
+                  <img alt={proofPreview.title} src={proofPreview.src} />
+                </div>
+              </div>
+            )}
 
             <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0,1fr))", gap: 14 }}>
               <SectionCard label="Driver Expenses" title="Fuel And Trip Costs" badge={`${data.driverExpenses?.length || 0} entries`} badgeTone="neutral">
