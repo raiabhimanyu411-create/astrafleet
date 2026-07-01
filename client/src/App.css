@@ -5215,6 +5215,62 @@ p.lp-success {
 
 .driver-job-list { display: flex; flex-direction: column; gap: 10px; }
 
+.driver-workspace-tabs {
+  position: sticky;
+  top: 12px;
+  z-index: 8;
+  display: grid;
+  grid-template-columns: repeat(8, minmax(0, 1fr));
+  gap: 8px;
+  margin: 0 0 16px;
+  padding: 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: rgba(255, 255, 255, 0.94);
+  box-shadow: var(--shadow-xs);
+  backdrop-filter: blur(12px);
+}
+
+.driver-workspace-tabs button {
+  min-width: 0;
+  min-height: 54px;
+  padding: 8px 10px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-soft);
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 140ms, background 140ms, color 140ms;
+}
+
+.driver-workspace-tabs button:hover,
+.driver-workspace-tabs button.active {
+  border-color: rgba(37, 99, 235, 0.34);
+  background: var(--primary-soft);
+  color: var(--primary-hover);
+}
+
+.driver-workspace-tabs strong,
+.driver-workspace-tabs span {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.driver-workspace-tabs strong {
+  font-size: 0.78rem;
+  font-weight: 800;
+}
+
+.driver-workspace-tabs span {
+  margin-top: 3px;
+  color: var(--muted);
+  font-size: 0.68rem;
+  font-weight: 700;
+}
+
 .driver-job-tabs {
   display: flex;
   flex-wrap: wrap;
@@ -6031,6 +6087,11 @@ p.lp-success {
 
   .module-check-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 
+  .driver-workspace-tabs {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    top: 8px;
+  }
+
   .driver-command-strip { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 
   .driver-stepper { grid-template-columns: repeat(4, minmax(0, 1fr)); }
@@ -6130,6 +6191,19 @@ p.lp-success {
   .finance-row-actions { justify-content: flex-start; }
 
   .module-check-grid { grid-template-columns: 1fr; }
+
+  .driver-workspace-tabs {
+    display: flex;
+    overflow-x: auto;
+    padding: 6px;
+    scroll-snap-type: x proximity;
+  }
+
+  .driver-workspace-tabs button {
+    flex: 0 0 132px;
+    min-height: 50px;
+    scroll-snap-align: start;
+  }
 
   .driver-job-button { grid-template-columns: 1fr; }
 

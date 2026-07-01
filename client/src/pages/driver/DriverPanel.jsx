@@ -44,15 +44,24 @@ const WALKAROUND_CHECKS = [
 
 const driverMenu = [
   { href: "#overview",   label: "Overview" },
+  { href: "#live",       label: "Live Work" },
   { href: "#notifications", label: "Notifications" },
   { href: "#walkaround", label: "Walkaround" },
-  { href: "#jobs",       label: "Jobs" },
-  { href: "#status",     label: "Status" },
   { href: "#pod",        label: "POD" },
-  { href: "#shift",      label: "Shift" },
   { href: "#reports",    label: "Reports" },
   { href: "#history",    label: "History" },
   { href: "#messages",   label: "Messages" },
+];
+
+const driverWorkspaces = [
+  { key: "live", label: "Live Work", detail: "Jobs + status + route" },
+  { key: "walkaround", label: "Walkaround", detail: "Safety check" },
+  { key: "pod", label: "POD + Shift", detail: "Proof and shift" },
+  { key: "reports", label: "Reports", detail: "Expense or defect" },
+  { key: "history", label: "History", detail: "Past activity" },
+  { key: "messages", label: "Messages", detail: "Admin chat" },
+  { key: "notifications", label: "Alerts", detail: "Inbox" },
+  { key: "overview", label: "Overview", detail: "Driver summary" },
 ];
 
 const allowedStatusTransitions = {
@@ -228,6 +237,7 @@ export function DriverPanel() {
   // Failed delivery reschedule
   const [reschedule, setReschedule] = useState({ visible: false, date: "", reason: "" });
   const [jobFilter, setJobFilter] = useState("open");
+  const [activeSection, setActiveSection] = useState("live");
 
   const navigate         = useNavigate();
   const session          = getAuthSession();
@@ -256,6 +266,28 @@ export function DriverPanel() {
         : incompleteJobs;
   const selectedStatus = selectedJob?.status || "accepted";
   const allowedNextStatuses = new Set([selectedStatus, ...(allowedStatusTransitions[selectedStatus] || [])]);
+  const driverPanelMenu = useMemo(() => driverMenu.map(item => ({
+    ...item,
+    onClick: () => setActiveSection(item.href.replace("#", "") || "live")
+  })), []);
+
+  function selectSection(section) {
+    setActiveSection(section);
+    window.history.replaceState(null, "", `#${section}`);
+  }
+
+  useEffect(() => {
+    function syncHashSection() {
+      const hashSection = window.location.hash.replace("#", "");
+      if (driverWorkspaces.some(item => item.key === hashSection)) {
+        setActiveSection(hashSection);
+      }
+    }
+
+    syncHashSection();
+    window.addEventListener("hashchange", syncHashSection);
+    return () => window.removeEventListener("hashchange", syncHashSection);
+  }, []);
 
   // ── Break timer persistence ─────────────────────────────────
   useEffect(() => {
@@ -561,7 +593,7 @@ export function DriverPanel() {
       title={data?.header?.title || "Driver Workspace"}
       description={data?.header?.description || "Daily driver operations in one browser panel."}
       highlights={data?.highlights || ["Assigned Jobs", "Status Updates", "POD And Reports"]}
-      menu={driverMenu}
+      menu={driverPanelMenu}
       roleLabel="Driver Workspace"
       headerContent={(
         <>
@@ -577,15 +609,6 @@ export function DriverPanel() {
       )}
     >
       <StateNotice loading={loading} error={error} />
-
-      <NotificationCenter
-        fetchUrl="/api/drivers/me/notifications"
-        paramKey="userId"
-        paramValue={userId}
-        title="Driver Notification Inbox"
-        eyebrow="Driver Alerts"
-        emptyBody="No driver jobs, POD reminders, or shift alerts need attention right now."
-      />
 
       {/* ── Document expiry warnings ── */}
       {(data?.docWarnings || []).length > 0 && (
@@ -613,68 +636,97 @@ export function DriverPanel() {
         </div>
       )}
 
-      {/* ── Stats ── */}
-      <section className="stats-grid" id="overview">
-        {(data?.stats || []).map(item => <StatCard item={item} key={item.label} />)}
-      </section>
-
-      {/* ── Driver command strip ── */}
-      <section className="driver-command-strip">
-        <article>
-          <span className="card-label">Driver</span>
-          <strong>{data?.driver?.name || "—"}</strong>
-          <p>{data?.driver?.employeeCode || "No employee code"} · {data?.driver?.homeDepot || "Depot not set"}</p>
-        </article>
-        <article>
-          <span className="card-label">Contact</span>
-          <strong>{data?.driver?.phone || "—"}</strong>
-          <p>{data?.driver?.email || "Email not linked"}</p>
-        </article>
-        <article>
-          <span className="card-label">Readiness</span>
-          <strong>{data?.driver?.shiftStatus || "rest"}</strong>
-          <p>Compliance: {data?.driver?.complianceStatus || "review"}</p>
-        </article>
-        <article>
-          <span className="card-label">Queue</span>
-          <strong>{incompleteJobs.length} open</strong>
-          <p>{completedJobs.length} completed or closed</p>
-        </article>
-      </section>
-
-      {/* ── Break / rest timer ── */}
-      <section className="break-timer-bar">
-        <div className="break-timer-info">
-          <span className="card-label">Break / Rest Timer</span>
-          <strong className={`break-timer-display ${breakActive ? "running" : ""}`}>
-            {fmtTimer(breakSeconds)}
-          </strong>
-          {breakActive && breakSeconds >= 2700 && (
-            <span className="break-timer-badge success">45 min target reached</span>
-          )}
-        </div>
-        <div className="driver-action-row" style={{ marginTop: 0 }}>
+      <nav className="driver-workspace-tabs" aria-label="Driver workspace sections">
+        {driverWorkspaces.map(item => (
           <button
-            className="af-submit-btn"
+            className={activeSection === item.key ? "active" : ""}
+            key={item.key}
+            onClick={() => selectSection(item.key)}
             type="button"
-            disabled={breakActive}
-            onClick={startBreak}
           >
-            Start Break
+            <strong>{item.label}</strong>
+            <span>{item.detail}</span>
           </button>
-          <button
-            className="header-action-button danger"
-            type="button"
-            disabled={!breakActive}
-            onClick={endBreak}
-          >
-            End Break
-          </button>
-        </div>
-      </section>
+        ))}
+      </nav>
+
+      {activeSection === "notifications" && (
+        <NotificationCenter
+          fetchUrl="/api/drivers/me/notifications"
+          paramKey="userId"
+          paramValue={userId}
+          title="Driver Notification Inbox"
+          eyebrow="Driver Alerts"
+          emptyBody="No driver jobs, POD reminders, or shift alerts need attention right now."
+        />
+      )}
+
+      {activeSection === "overview" && (
+        <>
+          {/* ── Stats ── */}
+          <section className="stats-grid" id="overview">
+            {(data?.stats || []).map(item => <StatCard item={item} key={item.label} />)}
+          </section>
+
+          {/* ── Driver command strip ── */}
+          <section className="driver-command-strip">
+            <article>
+              <span className="card-label">Driver</span>
+              <strong>{data?.driver?.name || "—"}</strong>
+              <p>{data?.driver?.employeeCode || "No employee code"} · {data?.driver?.homeDepot || "Depot not set"}</p>
+            </article>
+            <article>
+              <span className="card-label">Contact</span>
+              <strong>{data?.driver?.phone || "—"}</strong>
+              <p>{data?.driver?.email || "Email not linked"}</p>
+            </article>
+            <article>
+              <span className="card-label">Readiness</span>
+              <strong>{data?.driver?.shiftStatus || "rest"}</strong>
+              <p>Compliance: {data?.driver?.complianceStatus || "review"}</p>
+            </article>
+            <article>
+              <span className="card-label">Queue</span>
+              <strong>{incompleteJobs.length} open</strong>
+              <p>{completedJobs.length} completed or closed</p>
+            </article>
+          </section>
+
+          {/* ── Break / rest timer ── */}
+          <section className="break-timer-bar">
+            <div className="break-timer-info">
+              <span className="card-label">Break / Rest Timer</span>
+              <strong className={`break-timer-display ${breakActive ? "running" : ""}`}>
+                {fmtTimer(breakSeconds)}
+              </strong>
+              {breakActive && breakSeconds >= 2700 && (
+                <span className="break-timer-badge success">45 min target reached</span>
+              )}
+            </div>
+            <div className="driver-action-row" style={{ marginTop: 0 }}>
+              <button
+                className="af-submit-btn"
+                type="button"
+                disabled={breakActive}
+                onClick={startBreak}
+              >
+                Start Break
+              </button>
+              <button
+                className="header-action-button danger"
+                type="button"
+                disabled={!breakActive}
+                onClick={endBreak}
+              >
+                End Break
+              </button>
+            </div>
+          </section>
+        </>
+      )}
 
       {/* ── Walkaround checklist ── */}
-      <section className="content-card" id="walkaround" style={{ marginBottom: 16 }}>
+      {activeSection === "walkaround" && <section className="content-card" id="walkaround" style={{ marginBottom: 16 }}>
         <div className="section-head">
           <div>
             <span className="card-label">Pre-Trip Walkaround</span>
@@ -757,10 +809,10 @@ export function DriverPanel() {
             </div>
           </form>
         )}
-      </section>
+      </section>}
 
       {/* ── Jobs + Job spotlight ── */}
-      <section className="content-grid" id="jobs">
+      {activeSection === "live" && <section className="content-grid" id="live">
         <article className="content-card">
           <div className="section-head">
             <div>
@@ -862,10 +914,10 @@ export function DriverPanel() {
             </>
           ) : <p className="driver-empty">Select a job to see route, customer, and load details.</p>}
         </article>
-      </section>
+      </section>}
 
       {/* ── Job status ── */}
-      <section className="content-card" id="status" style={{ marginBottom: 16 }}>
+      {activeSection === "live" && <section className="content-card" id="status" style={{ marginBottom: 16 }}>
         <div className="section-head">
           <div>
             <span className="card-label">Job Status Update</span>
@@ -961,10 +1013,10 @@ export function DriverPanel() {
             </div>
           </form>
         )}
-      </section>
+      </section>}
 
       {/* ── POD + Shift ── */}
-      <section className="content-grid" id="pod">
+      {activeSection === "pod" && <section className="content-grid" id="pod">
         <article className="content-card">
           <div className="section-head">
             <div>
@@ -1097,10 +1149,10 @@ export function DriverPanel() {
             </div>
           )}
         </article>
-      </section>
+      </section>}
 
       {/* ── Reports ── */}
-      <section className="content-grid" id="reports">
+      {activeSection === "reports" && <section className="content-grid" id="reports">
         <article className="content-card">
           <div className="section-head">
             <div>
@@ -1147,10 +1199,10 @@ export function DriverPanel() {
             <button className="af-submit-btn" disabled={busy === "defect"} type="submit">{busy === "defect" ? "Submitting..." : "Submit Defect"}</button>
           </form>
         </article>
-      </section>
+      </section>}
 
       {/* ── Expenses + Upcoming jobs ── */}
-      <section className="content-grid">
+      {activeSection === "history" && <section className="content-grid">
         <article className="content-card">
           <div className="section-head">
             <div>
@@ -1196,10 +1248,10 @@ export function DriverPanel() {
             )) : <p className="driver-empty">No upcoming jobs in the queue.</p>}
           </div>
         </article>
-      </section>
+      </section>}
 
       {/* ── History: Defects + POD ── */}
-      <section className="content-grid" id="history">
+      {activeSection === "history" && <section className="content-grid" id="history">
         <article className="content-card">
           <div className="section-head">
             <div>
@@ -1247,10 +1299,10 @@ export function DriverPanel() {
             )) : <p className="driver-empty">No delivered jobs yet.</p>}
           </div>
         </article>
-      </section>
+      </section>}
 
       {/* ── In-app messaging ── */}
-      <section className="content-card" id="messages" style={{ marginBottom: 16 }}>
+      {activeSection === "messages" && <section className="content-card" id="messages" style={{ marginBottom: 16 }}>
         <div className="section-head">
           <div>
             <span className="card-label">In-App Messaging</span>
@@ -1291,7 +1343,7 @@ export function DriverPanel() {
             {msgSending ? "Sending..." : "Send To Admin"}
           </button>
         </form>
-      </section>
+      </section>}
     </PanelLayout>
   );
 }

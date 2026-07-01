@@ -116,7 +116,14 @@ export function PanelLayout({
                 {item.label}
               </NavLink>
             ) : (
-              <a key={item.href} href={item.href} onClick={() => setSidebarOpen(false)}>
+              <a
+                key={item.href}
+                href={item.href}
+                onClick={(event) => {
+                  item.onClick?.(event);
+                  setSidebarOpen(false);
+                }}
+              >
                 {item.label}
               </a>
             )
