@@ -860,20 +860,14 @@ export function JobsListPage() {
                     {job.code}
                   </button>
 
-                  {(job.reference || job.loadId) && (
-                    <div style={{ display: "flex", alignItems: "center", gap: 8, marginLeft: 4 }}>
-                      {job.reference && (
-                        <span style={{ fontSize: "0.72rem", fontWeight: 600, color: "#2563eb", background: "#eff6ff", border: "1px solid #bfdbfe", borderRadius: 20, padding: "2px 8px", whiteSpace: "nowrap" }}>
-                          Ref: {job.reference}
-                        </span>
-                      )}
-                      {job.loadId && (
-                        <span style={{ fontSize: "0.72rem", fontWeight: 600, color: "#059669", background: "#ecfdf5", border: "1px solid #a7f3d0", borderRadius: 20, padding: "2px 8px", whiteSpace: "nowrap" }}>
-                          Load: {job.loadId}
-                        </span>
-                      )}
-                    </div>
-                  )}
+                  <div style={{ display: "flex", alignItems: "center", gap: 8, marginLeft: 4 }}>
+                    <span style={{ fontSize: "0.72rem", fontWeight: 600, color: "#2563eb", background: "#eff6ff", border: "1px solid #bfdbfe", borderRadius: 20, padding: "2px 8px", whiteSpace: "nowrap", minWidth: 102 }}>
+                      Ref: {job.reference || ""}
+                    </span>
+                    <span style={{ fontSize: "0.72rem", fontWeight: 600, color: "#059669", background: "#ecfdf5", border: "1px solid #a7f3d0", borderRadius: 20, padding: "2px 8px", whiteSpace: "nowrap", minWidth: 92 }}>
+                      Load: {job.loadId || ""}
+                    </span>
+                  </div>
 
                   {/* Route visualization */}
                   <div className="relay-route-vis">
