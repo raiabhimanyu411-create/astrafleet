@@ -24,7 +24,7 @@ const corsOptions = process.env.CORS_ORIGIN
   : { origin: true };
 
 app.use(cors(corsOptions));
-app.use(express.json({ limit: "10mb" }));
+app.use(express.json({ limit: process.env.JSON_BODY_LIMIT || "25mb" }));
 
 if (process.env.NODE_ENV !== "production") {
   app.get("/", (_req, res) => {
@@ -52,6 +52,13 @@ app.use("/api/drivers",   driverRoutes);
 app.use("/api/vehicles",  vehicleRoutes);
 app.use("/api/maintenance", maintenanceRoutes);
 app.use("/api/settings",   settingsRoutes);
+
+app.use((err, _req, res, next) => {
+  if (err?.type === "entity.too.large") {
+    return res.status(413).json({ message: "Upload is too large. Please use a smaller POD photo." });
+  }
+  return next(err);
+});
 
 const httpServer = http.createServer(app);
 const io = new Server(httpServer, {

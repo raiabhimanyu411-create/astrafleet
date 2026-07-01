@@ -101,6 +101,14 @@ function fmtTimer(secs) {
   return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
 }
 
+function actionErrorMessage(err) {
+  const data = err?.response?.data;
+  if (data?.message) return data.message;
+  if (typeof data === "string" && data.trim()) return data.slice(0, 180);
+  if (err?.message) return err.message;
+  return "Action failed. Please try again.";
+}
+
 // ── Canvas signature pad ────────────────────────────────────────
 function SignatureCanvas({ onCapture }) {
   const canvasRef = useRef(null);
@@ -456,7 +464,7 @@ export function DriverPanel() {
       setNoticeError(false);
       await loadPanel(selectedJob?.id);
     } catch (err) {
-      setNotice(err.response?.data?.message || "Action failed. Please try again.");
+      setNotice(actionErrorMessage(err));
       setNoticeError(true);
     } finally {
       setBusy("");

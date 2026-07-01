@@ -812,7 +812,7 @@ exports.submitMyProofOfDelivery = async (req, res) => {
       return res.status(400).json({ message: "POD signature or delivery photo is required." });
     }
     const [[job]] = await db.query(
-      `SELECT t.id, t.vehicle_id, t.driver_job_status, t.pickup_address, r.origin_hub
+      `SELECT t.id, t.vehicle_id, t.driver_job_status, t.primary_drop_status, t.pickup_address, r.origin_hub
        FROM trips t
        LEFT JOIN routes r ON r.id = t.route_id
        WHERE t.id = ? AND t.driver_id = ?`,
@@ -821,9 +821,6 @@ exports.submitMyProofOfDelivery = async (req, res) => {
     if (!job) return res.status(404).json({ message: "Assigned job not found." });
     if (["failed_delivery", "declined"].includes(job.driver_job_status)) {
       return res.status(409).json({ message: "POD cannot be submitted for a failed or declined job." });
-    }
-    if ((job.primary_drop_status || "pending") !== "completed") {
-      return res.status(400).json({ message: "Complete Drop 1 before submitting POD." });
     }
     const pickupPostcode = extractPostcode(job.pickup_address || job.origin_hub);
     const [[lastStop]] = await db.query(
@@ -839,6 +836,15 @@ exports.submitMyProofOfDelivery = async (req, res) => {
     const incompleteDeliveryStops = openStops.filter(stop => !isReturnStop(stop, pickupPostcode, lastStop?.id || null));
     if (incompleteDeliveryStops.length > 0) {
       return res.status(400).json({ message: `Complete ${incompleteDeliveryStops.length} delivery stop(s) before submitting POD.` });
+    }
+    if ((job.primary_drop_status || "pending") !== "completed") {
+      await db.query(
+        `UPDATE trips
+         SET primary_drop_status='completed',
+             primary_drop_completed_at=COALESCE(primary_drop_completed_at, NOW())
+         WHERE id=? AND driver_id=?`,
+        [jobId, driver.id]
+      );
     }
     if (!(await hasActiveShift(driver.id))) {
       await db.query(
