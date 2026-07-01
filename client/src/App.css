@@ -5553,6 +5553,49 @@ p.lp-success {
 .driver-mini-row p       { margin: 3px 0 0; color: var(--muted); font-size: 0.775rem; }
 .driver-mini-row > span  { color: var(--text-soft); font-size: 0.775rem; font-weight: 700; text-align: right; }
 
+.driver-route-timeline {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.driver-route-point {
+  min-width: 0;
+  padding: 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+}
+
+.driver-route-point.pickup {
+  border-color: rgba(37, 99, 235, 0.24);
+  background: var(--primary-soft);
+}
+
+.driver-route-point strong {
+  display: block;
+  margin: 4px 0 10px;
+  color: var(--text);
+  font-size: 0.92rem;
+  font-weight: 800;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+
+.driver-route-point div {
+  display: grid;
+  gap: 5px;
+}
+
+.driver-route-point p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 700;
+  line-height: 1.35;
+}
+
 .driver-stops-panel {
   margin-top: 12px;
   padding: 12px;
@@ -6708,6 +6751,26 @@ p.lp-success {
 
   .driver-panel-shell .message-compose {
     gap: 10px;
+  }
+
+  .driver-panel-shell .driver-route-timeline {
+    grid-template-columns: 1fr;
+    gap: 8px;
+    margin-bottom: 10px;
+  }
+
+  .driver-panel-shell .driver-route-point {
+    padding: 11px;
+    border-radius: 8px;
+  }
+
+  .driver-panel-shell .driver-route-point strong {
+    font-size: 0.84rem;
+    margin-bottom: 8px;
+  }
+
+  .driver-panel-shell .driver-route-point p {
+    font-size: 0.72rem;
   }
 
   .driver-panel-shell .driver-stops-panel {

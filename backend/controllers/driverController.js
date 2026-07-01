@@ -334,6 +334,32 @@ function mapDriverJob(row, stops = []) {
   const navQuery = encodeURIComponent(`${pickup} to ${drop}`);
   const customerName = row.customer_name || row.client_name || "Customer TBD";
   const customerPhone = row.cust_phone || row.client_phone || "—";
+  const routePoints = [
+    {
+      id: "pickup",
+      type: "pickup",
+      label: "Pickup",
+      address: pickup,
+      arrival: fmtDateTime(row.planned_departure),
+      departure: fmtDateTime(row.loading_done_time || row.planned_departure)
+    },
+    {
+      id: "drop-1",
+      type: "drop",
+      label: "Drop 1",
+      address: drop,
+      arrival: fmtDateTime(row.calculated_arrival || row.eta),
+      departure: fmtDateTime(row.calculated_unload_end)
+    },
+    ...stops.map((stop, index) => ({
+      id: stop.id,
+      type: "drop",
+      label: `Drop ${index + 2}`,
+      address: stop.address || "—",
+      arrival: fmtDateTime(stop.planned_arrival),
+      departure: fmtDateTime(stop.planned_departure)
+    }))
+  ];
 
   return {
     id: row.id,
@@ -375,6 +401,7 @@ function mapDriverJob(row, stops = []) {
     },
     podStatus: row.pod_status,
     deliveryNotes: row.delivery_notes || "",
+    routePoints,
     stops: stops.map((stop, index) => ({
       id: stop.id,
       order: stop.stop_order || index + 1,

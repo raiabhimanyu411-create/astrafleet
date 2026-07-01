@@ -793,48 +793,43 @@ export function DriverPanel() {
 
           {selectedJob ? (
             <>
+              <div className="driver-route-timeline">
+                {(selectedJob.routePoints || [
+                  {
+                    id: "pickup",
+                    label: "Pickup",
+                    address: selectedJob.route.pickupAddress,
+                    arrival: selectedJob.schedule.plannedDeparture,
+                    departure: selectedJob.schedule.plannedDeparture
+                  },
+                  {
+                    id: "drop-1",
+                    label: "Drop 1",
+                    address: selectedJob.route.dropAddress,
+                    arrival: selectedJob.schedule.eta,
+                    departure: "—"
+                  }
+                ]).map((point) => (
+                  <div className={`driver-route-point ${point.type || ""}`} key={point.id || point.label}>
+                    <span className="card-label">{point.label}</span>
+                    <strong>{point.address}</strong>
+                    <div>
+                      <p>Arrival: {point.arrival || "—"}</p>
+                      <p>Departure: {point.departure || "—"}</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+
               <div className="detail-grid">
                 <Detail label="Reference"    value={selectedJob.reference} />
                 <Detail label="Load ID"      value={selectedJob.loadId} />
-                <Detail label="Pickup"       value={selectedJob.route.pickupAddress} />
-                <Detail label="Drop"         value={selectedJob.route.dropAddress} />
                 <Detail label="Client"       value={selectedJob.customer.name} />
-                <Detail label="Contact"      value={`${selectedJob.customer.contact} · ${selectedJob.customer.phone}`} />
-                <Detail label="Departure"    value={selectedJob.schedule.plannedDeparture} />
-                <Detail label="ETA"          value={selectedJob.schedule.eta} />
-                <Detail label="Dock Window"  value={selectedJob.schedule.dockWindow} />
                 <Detail label="Vehicle"      value={selectedJob.vehicle} />
                 <Detail label="Trailer" value={selectedJob.trailer} />
                 <Detail label="Load"         value={`${selectedJob.load.type} · ${selectedJob.load.weight}`} />
                 <Detail label="Load Detail"  value={selectedJob.load.description} />
               </div>
-
-              {(selectedJob.stops || []).length > 0 && (
-                <div className="driver-stops-panel">
-                  <div className="section-head">
-                    <div>
-                      <span className="card-label">Intermediate Stops</span>
-                      <h2>{selectedJob.stops.length} stop{selectedJob.stops.length === 1 ? "" : "s"} on this route</h2>
-                    </div>
-                  </div>
-                  <div className="driver-stops-list">
-                    {selectedJob.stops.map((stop) => (
-                      <div className="driver-stop-card" key={stop.id || `${stop.order}-${stop.address}`}>
-                        <div>
-                          <span className="card-label">Stop {stop.order}</span>
-                          <strong>{stop.address}</strong>
-                          <p>{stop.contactName} · {stop.contactPhone}</p>
-                        </div>
-                        <div>
-                          <span>Arrive: {stop.plannedArrival}</span>
-                          <span>Depart: {stop.plannedDeparture}</span>
-                          {stop.notes !== "—" && <span>{stop.notes}</span>}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
 
               {/* ETA update */}
               <form className="eta-update-row" onSubmit={handleEtaUpdate}>
@@ -880,7 +875,6 @@ export function DriverPanel() {
 
               <div className="driver-action-row">
                 <a className="af-submit-btn driver-nav-link" href={selectedJob.route.navigationUrl} rel="noreferrer" target="_blank">Open Navigation</a>
-                <a className="header-action-button driver-nav-link" href={`tel:${selectedJob.customer.phone}`}>Call Customer</a>
               </div>
             </>
           ) : <p className="driver-empty">Select a job to see route, customer, and load details.</p>}
