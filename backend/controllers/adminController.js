@@ -35,6 +35,11 @@ function rawDateTime(d) {
   return new Date(date.getTime() - offsetMs).toISOString().slice(0, 16);
 }
 
+function fmtTime(d) {
+  if (!d) return "—";
+  return new Date(d).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" });
+}
+
 function fmtAmount(n) {
   return n != null
     ? `£${Number(n).toLocaleString("en-GB", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
@@ -118,6 +123,7 @@ async function ensureDriverOpsSchema() {
   await addColumnIfMissing("trips", "special_instructions", "TEXT DEFAULT NULL");
   await addColumnIfMissing("trips", "actual_departure", "DATETIME DEFAULT NULL");
   await addColumnIfMissing("trips", "actual_arrival", "DATETIME DEFAULT NULL");
+  await addColumnIfMissing("trips", "eta_updated_at", "DATETIME DEFAULT NULL");
   await db.query(
     `CREATE TABLE IF NOT EXISTS defect_reports (
       id INT AUTO_INCREMENT PRIMARY KEY,
@@ -1154,7 +1160,7 @@ exports.getTracking = async (req, res) => {
           overspeed: r.overspeed,
           tripId: r.trip_id,
           tripCode: r.trip_code,
-          eta: r.eta ? fmtDate(r.eta) : "—",
+          eta: r.eta ? fmtTime(r.eta) : "—",
           etaRaw: rawDateTime(r.eta),
           etaRisk: r.eta_risk,
           driverJobStatus: driverStatusDisplay(r.driver_job_status),
@@ -1263,7 +1269,7 @@ exports.getTrackingVehicleById = async (req, res) => {
         status: vehicle.dispatch_status,
         lane: vehicle.origin_hub && vehicle.destination_hub ? `${vehicle.origin_hub} → ${vehicle.destination_hub}` : "Route TBD",
         departure: fmtDate(vehicle.planned_departure),
-        eta: fmtDate(vehicle.eta),
+        eta: fmtTime(vehicle.eta),
         dockWindow: vehicle.dock_window || "—"
       } : null,
       driver: vehicle.driver_name ? {
@@ -1525,7 +1531,7 @@ exports.getTrips = async (req, res) => {
       lane: r.origin_hub && r.destination_hub ? `${r.origin_hub} → ${r.destination_hub}` : "Route TBD",
       schedule: r.planned_departure ? `Departure ${fmtDate(r.planned_departure)}` : "Schedule pending",
       departureRaw: rawDateTime(r.planned_departure),
-      eta: r.eta ? fmtDate(r.eta) : "—",
+      eta: r.eta ? fmtTime(r.eta) : "—",
       etaRaw: rawDateTime(r.eta),
       etaRisk: r.eta && new Date(r.eta).getTime() < Date.now() && ["planned", "loading", "active"].includes(r.dispatch_status),
       vehicle: r.registration_number || "Unassigned",
@@ -1545,7 +1551,7 @@ exports.getTrips = async (req, res) => {
       trip: r.trip_code,
       warehouse: r.destination_hub || "TBD",
       window: r.dock_window,
-      note: r.eta ? `ETA ${fmtDate(r.eta)}` : "ETA pending",
+      note: r.eta ? `ETA ${fmtTime(r.eta)}` : "ETA pending",
       etaRisk: r.eta && new Date(r.eta).getTime() < Date.now() && ["planned", "loading", "active"].includes(r.dispatch_status),
       status: r.dispatch_status === "active" ? "Slot confirmed" : r.dispatch_status === "blocked" ? "On hold" : "Pre-booked",
       tone: dispatchTone[r.dispatch_status] || "neutral"
@@ -2202,6 +2208,15 @@ exports.getNotifications = async (req, res) => {
          AND (v.last_ping_at IS NULL OR v.last_ping_at < NOW() - INTERVAL 15 MINUTE)
        LIMIT 4`
     );
+    const [etaRows] = await db.query(
+      `SELECT t.id, t.trip_code, t.eta, t.eta_updated_at, d.full_name
+       FROM trips t
+       LEFT JOIN drivers d ON d.id = t.driver_id
+       WHERE t.eta_updated_at IS NOT NULL
+         AND t.deleted_at IS NULL
+         AND t.dispatch_status IN ('planned','loading','active')
+       ORDER BY t.eta_updated_at DESC LIMIT 5`
+    );
     const [auditRows] = await db.query(
       `SELECT id, actor_name, module_key, entity_type, entity_label, reason, created_at
        FROM activity_logs
@@ -2244,6 +2259,13 @@ exports.getNotifications = async (req, res) => {
         title: `Stale GPS: ${r.registration_number}`,
         body: "No GPS ping for over 15 minutes while in transit.",
         link: `/admin/tracking/vehicles/${r.id}`
+      })),
+      ...etaRows.map(r => ({
+        id: `eta-${r.id}-${rawDateTime(r.eta_updated_at)}`,
+        type: "info",
+        title: `Driver ETA updated: ${r.trip_code}`,
+        body: `${r.full_name || "Driver"} set ETA ${fmtTime(r.eta)}.`,
+        link: `/admin/jobs/${r.id}`
       })),
       ...auditRows.map(r => ({
         id: `audit-${r.id}`,
@@ -2674,7 +2696,7 @@ exports.getOverview = async (req, res) => {
         location: v.current_location || "No ping",
         status: v.status.replace("_", " "),
         note: v.speed_kph != null ? `${Number(v.speed_kph)} kph` : "Speed unavailable",
-        eta: v.eta ? fmtDate(v.eta) : "—",
+        eta: v.eta ? fmtTime(v.eta) : "—",
         tone: vehicleTone[v.status] || "neutral"
       })),
       alerts: alertRows.map(a => ({

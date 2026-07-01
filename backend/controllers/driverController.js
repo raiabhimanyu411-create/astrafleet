@@ -96,7 +96,8 @@ const tripColumnDefinitions = {
   load_description: "TEXT DEFAULT NULL",
   special_instructions: "TEXT DEFAULT NULL",
   actual_departure: "DATETIME DEFAULT NULL",
-  actual_arrival: "DATETIME DEFAULT NULL"
+  actual_arrival: "DATETIME DEFAULT NULL",
+  eta_updated_at: "DATETIME DEFAULT NULL"
 };
 
 const statusTransitions = {
@@ -279,6 +280,26 @@ async function ensureDriverOpsSchema() {
     ) ENGINE=InnoDB`
   );
 
+  await db.query(
+    `CREATE TABLE IF NOT EXISTS job_stops (
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      trip_id INT NOT NULL,
+      stop_order INT NOT NULL DEFAULT 1,
+      stop_type ENUM('pickup','delivery','waypoint') NOT NULL DEFAULT 'delivery',
+      address TEXT NOT NULL,
+      contact_name VARCHAR(120) DEFAULT NULL,
+      contact_phone VARCHAR(30) DEFAULT NULL,
+      planned_arrival DATETIME DEFAULT NULL,
+      actual_arrival DATETIME DEFAULT NULL,
+      status ENUM('pending','arrived','completed','skipped') NOT NULL DEFAULT 'pending',
+      notes TEXT DEFAULT NULL,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      INDEX idx_job_stops_trip (trip_id),
+      CONSTRAINT fk_driver_job_stops_trip FOREIGN KEY (trip_id) REFERENCES trips (id) ON DELETE CASCADE
+    ) ENGINE=InnoDB`
+  );
+  await addColumnIfMissing("job_stops", "planned_departure", "DATETIME DEFAULT NULL");
+
   driverOpsSchemaReady = true;
 }
 
@@ -346,9 +367,14 @@ function mapDriverJob(row, stops = []) {
   const status = row.driver_job_status || "accepted";
   const pickup = row.pickup_address || row.origin_hub || "Pickup TBD";
   const drop = row.drop_address || row.destination_hub || "Drop TBD";
-  const navQuery = encodeURIComponent(`${pickup} to ${drop}`);
+  const navStops = [pickup, drop, ...stops.map(stop => stop.address).filter(Boolean)];
+  const navQuery = encodeURIComponent(navStops.filter(Boolean).join(" to "));
   const customerName = row.customer_name || row.client_name || "Customer TBD";
   const customerPhone = row.cust_phone || row.client_phone || "—";
+  const pickupPostcode = extractPostcode(pickup);
+  const lastStopId = stops.length ? stops[stops.length - 1].id : null;
+  const jobIsPastPickup = ["loaded", "in_transit", "arrived_drop", "delivered"].includes(status);
+  const jobIsAtDrop = ["arrived_drop", "delivered"].includes(status);
   const routePoints = [
     {
       id: "pickup",
@@ -356,7 +382,9 @@ function mapDriverJob(row, stops = []) {
       label: "Pickup",
       address: pickup,
       arrival: fmtDateTime(row.planned_departure),
-      departure: fmtDateTime(row.loading_done_time || row.planned_departure)
+      departure: fmtDateTime(row.loading_done_time || row.planned_departure),
+      status: jobIsPastPickup ? "completed" : ["arrived_pickup", "loaded"].includes(status) ? "arrived" : "pending",
+      statusLabel: jobIsPastPickup ? "Completed" : ["arrived_pickup", "loaded"].includes(status) ? "At pickup" : "Pending"
     },
     {
       id: "drop-1",
@@ -364,15 +392,21 @@ function mapDriverJob(row, stops = []) {
       label: "Drop 1",
       address: drop,
       arrival: fmtDateTime(row.calculated_arrival || row.eta),
-      departure: fmtDateTime(row.calculated_unload_end)
+      departure: fmtDateTime(row.calculated_unload_end),
+      status: status === "delivered" ? "completed" : jobIsAtDrop ? "arrived" : "pending",
+      statusLabel: status === "delivered" ? "Completed" : jobIsAtDrop ? "At drop" : "Pending"
     },
     ...stops.map((stop, index) => ({
       id: stop.id,
-      type: "drop",
-      label: `Drop ${index + 2}`,
+      stopId: stop.id,
+      type: isReturnStop(stop, pickupPostcode, lastStopId) ? "return" : "drop",
+      label: isReturnStop(stop, pickupPostcode, lastStopId) ? "Return point" : `Drop ${index + 2}`,
       address: stop.address || "—",
       arrival: fmtDateTime(stop.planned_arrival),
-      departure: fmtDateTime(stop.planned_departure)
+      departure: fmtDateTime(stop.planned_departure),
+      status: stop.status || "pending",
+      statusLabel: stopStatusLabel[stop.status] || "Pending",
+      isReturnPoint: isReturnStop(stop, pickupPostcode, lastStopId)
     }))
   ];
 
@@ -428,9 +462,40 @@ function mapDriverJob(row, stops = []) {
       plannedArrival: fmtDateTime(stop.planned_arrival),
       plannedDeparture: fmtDateTime(stop.planned_departure),
       notes: stop.notes || "—",
-      status: stop.status || "pending"
+      status: stop.status || "pending",
+      statusLabel: stopStatusLabel[stop.status] || "Pending",
+      isReturnPoint: isReturnStop(stop, pickupPostcode, lastStopId)
     }))
   };
+}
+
+const stopStatusLabel = {
+  pending: "Pending",
+  arrived: "Arrived",
+  completed: "Completed",
+  skipped: "Skipped"
+};
+
+function extractPostcode(value) {
+  const text = String(value || "").toUpperCase().replace(/\s+/g, " ");
+  const match = text.match(/\b([A-Z]{1,2}\d[A-Z\d]?\s*\d[A-Z]{2})\b/);
+  return match ? match[1].replace(/\s+/g, "") : "";
+}
+
+function isReturnStop(stop, pickupPostcode, lastStopId) {
+  if (!stop || !pickupPostcode || stop.id !== lastStopId) return false;
+  return extractPostcode(stop.address) === pickupPostcode;
+}
+
+function combineEtaDateAndTime(value, job) {
+  const raw = String(value || "").trim();
+  const timeOnlyMatch = raw.match(/^([01]\d|2[0-3]):([0-5]\d)$/);
+  if (!timeOnlyMatch) return new Date(raw);
+
+  const base = new Date(job.eta || job.planned_departure || Date.now());
+  if (Number.isNaN(base.getTime())) return new Date(raw);
+  base.setHours(Number(timeOnlyMatch[1]), Number(timeOnlyMatch[2]), 0, 0);
+  return base;
 }
 
 async function getDriverJobs(driverId) {
@@ -628,7 +693,13 @@ exports.updateMyJobStatus = async (req, res) => {
       return res.status(400).json({ message: "Invalid driver job status." });
     }
 
-    const [[job]] = await db.query(`SELECT id, vehicle_id, driver_job_status FROM trips WHERE id = ? AND driver_id = ?`, [jobId, driver.id]);
+    const [[job]] = await db.query(
+      `SELECT t.id, t.vehicle_id, t.driver_job_status, t.pickup_address, r.origin_hub
+       FROM trips t
+       LEFT JOIN routes r ON r.id = t.route_id
+       WHERE t.id = ? AND t.driver_id = ?`,
+      [jobId, driver.id]
+    );
     if (!job) return res.status(404).json({ message: "Assigned job not found." });
 
     const currentStatus = job.driver_job_status || "accepted";
@@ -722,10 +793,31 @@ exports.submitMyProofOfDelivery = async (req, res) => {
     if (!signatureData && !photoData) {
       return res.status(400).json({ message: "POD signature or delivery photo is required." });
     }
-    const [[job]] = await db.query(`SELECT id, vehicle_id, driver_job_status FROM trips WHERE id = ? AND driver_id = ?`, [jobId, driver.id]);
+    const [[job]] = await db.query(
+      `SELECT t.id, t.vehicle_id, t.driver_job_status, t.pickup_address, r.origin_hub
+       FROM trips t
+       LEFT JOIN routes r ON r.id = t.route_id
+       WHERE t.id = ? AND t.driver_id = ?`,
+      [jobId, driver.id]
+    );
     if (!job) return res.status(404).json({ message: "Assigned job not found." });
     if (["failed_delivery", "declined"].includes(job.driver_job_status)) {
       return res.status(409).json({ message: "POD cannot be submitted for a failed or declined job." });
+    }
+    const pickupPostcode = extractPostcode(job.pickup_address || job.origin_hub);
+    const [[lastStop]] = await db.query(
+      `SELECT id, address FROM job_stops WHERE trip_id=? ORDER BY stop_order DESC LIMIT 1`,
+      [jobId]
+    );
+    const [openStops] = await db.query(
+      `SELECT id, address FROM job_stops
+       WHERE trip_id=? AND status NOT IN ('completed','skipped')
+       ORDER BY stop_order ASC`,
+      [jobId]
+    );
+    const incompleteDeliveryStops = openStops.filter(stop => !isReturnStop(stop, pickupPostcode, lastStop?.id || null));
+    if (incompleteDeliveryStops.length > 0) {
+      return res.status(400).json({ message: `Complete ${incompleteDeliveryStops.length} delivery stop(s) before submitting POD.` });
     }
     if (!(await hasActiveShift(driver.id))) {
       await db.query(
@@ -969,16 +1061,69 @@ exports.updateJobEta = async (req, res) => {
 
     const { jobId } = req.params;
     const { eta } = req.body;
-    const etaDate = new Date(eta);
-    if (!eta || Number.isNaN(etaDate.getTime())) return res.status(400).json({ message: "A valid ETA is required." });
+    if (!eta) return res.status(400).json({ message: "A valid ETA is required." });
 
-    const [[job]] = await db.query(`SELECT id FROM trips WHERE id=? AND driver_id=?`, [jobId, driver.id]);
+    const [[job]] = await db.query(
+      `SELECT id, trip_code, vehicle_id, eta, planned_departure FROM trips WHERE id=? AND driver_id=?`,
+      [jobId, driver.id]
+    );
     if (!job) return res.status(404).json({ message: "Assigned job not found." });
 
-    await db.query(`UPDATE trips SET eta=? WHERE id=? AND driver_id=?`, [etaDate, jobId, driver.id]);
-    res.json({ message: "ETA updated successfully." });
+    const etaDate = combineEtaDateAndTime(eta, job);
+    if (Number.isNaN(etaDate.getTime())) return res.status(400).json({ message: "A valid ETA is required." });
+
+    await db.query(`UPDATE trips SET eta=?, eta_updated_at=NOW() WHERE id=? AND driver_id=?`, [etaDate, jobId, driver.id]);
+
+    const etaTime = etaDate.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" });
+    await createControlRoomAlert({
+      title: `Driver ETA updated: ${job.trip_code}`,
+      description: `${driver.full_name || "Driver"} set ETA to ${etaTime}.`,
+      severity: "medium",
+      driverId: driver.id,
+      tripId: jobId,
+      vehicleId: job.vehicle_id || null
+    });
+    emitJobUpdate({ jobId: Number(jobId), source: "driver-eta", eta: etaDate.toISOString(), etaTime });
+
+    res.json({ message: `ETA updated successfully for ${etaTime}.`, eta: etaDate.toISOString(), etaTime });
   } catch (err) {
     res.status(500).json({ message: "ETA update error", error: err.message });
+  }
+};
+
+// PATCH /api/drivers/me/jobs/:jobId/stops/:stopId/status
+exports.updateJobStopStatus = async (req, res) => {
+  try {
+    await ensureDriverOpsSchema();
+    const driver = await getDriverFromSession(req);
+    if (!driver) return res.status(404).json({ message: "Driver profile not linked." });
+
+    const { jobId, stopId } = req.params;
+    const { status } = req.body;
+    const allowedStatuses = new Set(["pending", "arrived", "completed", "skipped"]);
+    if (!allowedStatuses.has(status)) return res.status(400).json({ message: "Invalid stop status." });
+
+    const [[stop]] = await db.query(
+      `SELECT js.id, js.status, js.address, js.trip_id, t.trip_code, t.vehicle_id
+       FROM job_stops js
+       INNER JOIN trips t ON t.id = js.trip_id
+       WHERE js.id=? AND js.trip_id=? AND t.driver_id=?`,
+      [stopId, jobId, driver.id]
+    );
+    if (!stop) return res.status(404).json({ message: "Assigned stop not found." });
+
+    await db.query(
+      `UPDATE job_stops
+       SET status=?, actual_arrival=IF(? IN ('arrived','completed'), COALESCE(actual_arrival, NOW()), actual_arrival)
+       WHERE id=? AND trip_id=?`,
+      [status, status, stopId, jobId]
+    );
+
+    emitJobUpdate({ jobId: Number(jobId), stopId: Number(stopId), source: "driver-stop", stopStatus: status });
+
+    res.json({ message: `${stop.address || "Stop"} marked ${stopStatusLabel[status] || status}.`, status });
+  } catch (err) {
+    res.status(500).json({ message: "Stop status update error", error: err.message });
   }
 };
 

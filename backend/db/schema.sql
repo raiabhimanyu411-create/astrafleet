@@ -182,6 +182,7 @@ CREATE TABLE IF NOT EXISTS trips (
   priority_level    ENUM('standard', 'priority', 'critical') NOT NULL DEFAULT 'standard',
   planned_departure DATETIME DEFAULT NULL,
   eta               DATETIME DEFAULT NULL,
+  eta_updated_at    DATETIME DEFAULT NULL,
   actual_departure  DATETIME DEFAULT NULL,
   actual_arrival    DATETIME DEFAULT NULL,
   dock_window       VARCHAR(80) DEFAULT NULL,

@@ -2255,6 +2255,12 @@ p.lp-success {
   color: #059669;
 }
 
+.relay-meta-badge.eta {
+  background: #f5f3ff;
+  border: 1px solid #ddd6fe;
+  color: #6d28d9;
+}
+
 /* ── Route visualization ── */
 .relay-route-vis {
   display: flex;
@@ -2503,6 +2509,11 @@ p.lp-success {
 .relay-status-banner.warning {
   background: var(--warning-soft);
   color: var(--warning-text);
+}
+
+.relay-status-banner.info {
+  background: #eff6ff;
+  color: #1d4ed8;
 }
 
 .relay-driver-progress {
@@ -5812,6 +5823,36 @@ p.lp-success {
   background: var(--primary-soft);
 }
 
+.driver-route-point.drop.pending,
+.driver-route-point.return.pending {
+  border-color: rgba(220, 38, 38, 0.22);
+  background: #fff7f7;
+}
+
+.driver-route-point.drop.arrived,
+.driver-route-point.return.arrived {
+  border-color: rgba(217, 119, 6, 0.28);
+  background: #fffbeb;
+}
+
+.driver-route-point.drop.completed,
+.driver-route-point.return.completed,
+.driver-route-point.pickup.completed {
+  border-color: rgba(5, 150, 105, 0.26);
+  background: #ecfdf5;
+}
+
+.driver-route-point.return {
+  border-style: dashed;
+}
+
+.driver-route-point-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
 .driver-route-point strong {
   display: block;
   margin: 4px 0 10px;
@@ -5833,6 +5874,24 @@ p.lp-success {
   font-size: 0.78rem;
   font-weight: 700;
   line-height: 1.35;
+}
+
+.driver-route-return-note {
+  margin-top: 8px !important;
+  color: #1d4ed8 !important;
+}
+
+.driver-stop-actions {
+  display: flex !important;
+  flex-direction: row;
+  flex-wrap: wrap;
+  gap: 8px !important;
+  margin-top: 10px;
+}
+
+.driver-stop-actions .header-action-button {
+  padding: 6px 10px;
+  font-size: 0.76rem;
 }
 
 .driver-stops-panel {

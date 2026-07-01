@@ -14,7 +14,8 @@ import {
   submitDriverWalkaround,
   updateDriverJobEta,
   updateDriverJobStatus,
-  updateDriverLocation
+  updateDriverLocation,
+  updateDriverStopStatus
 } from "../../api/driverApi";
 import { getRealtimeSocket } from "../../api/realtime";
 import { logout } from "../../api/authApi";
@@ -72,6 +73,13 @@ const allowedStatusTransitions = {
   delivered: [],
   failed_delivery: [],
   declined: []
+};
+
+const STOP_STATUS_TONE = {
+  pending: "danger",
+  arrived: "warning",
+  completed: "success",
+  skipped: "neutral"
 };
 
 const emptyPod     = { signatureData: "", photoData: "", deliveryNotes: "" };
@@ -549,6 +557,13 @@ export function DriverPanel() {
     });
   }
 
+  function handleStopStatus(point, status) {
+    if (!selectedJob || !point?.stopId) return;
+    runAction(`stop-${point.stopId}-${status}`, () => (
+      updateDriverStopStatus(userId, selectedJob.id, point.stopId, { status })
+    ));
+  }
+
   async function handleSendMessage(event) {
     event.preventDefault();
     if (!newMessage.trim() || msgSending) return;
@@ -581,13 +596,18 @@ export function DriverPanel() {
   const walkaroundAllChecked = WALKAROUND_CHECKS.every(c => walkaround.checks[c.key] !== undefined);
   const walkaroundAllClear   = WALKAROUND_CHECKS.every(c => walkaround.checks[c.key] === true);
   const hasPodEvidence       = Boolean(pod.signatureData || pod.photoData);
+  const pendingDeliveryStops = (selectedJob?.stops || []).filter(stop => (
+    !stop.isReturnPoint && !["completed", "skipped"].includes(stop.status)
+  ));
   const podBlockedReason = !selectedJob
     ? "Select a job before submitting POD."
     : ["failed_delivery", "declined"].includes(selectedJob.status)
       ? "POD cannot be submitted for a failed or declined job."
-      : !hasPodEvidence
-        ? "Signature or delivery photo is required before POD submission."
-        : "";
+      : pendingDeliveryStops.length > 0
+        ? `Complete ${pendingDeliveryStops.length} delivery stop(s) before submitting POD.`
+        : !hasPodEvidence
+          ? "Signature or delivery photo is required before POD submission."
+          : "";
 
   return (
     <PanelLayout
@@ -800,25 +820,62 @@ export function DriverPanel() {
                     label: "Pickup",
                     address: selectedJob.route.pickupAddress,
                     arrival: selectedJob.schedule.plannedDeparture,
-                    departure: selectedJob.schedule.plannedDeparture
+                    departure: selectedJob.schedule.plannedDeparture,
+                    status: "pending",
+                    statusLabel: "Pending"
                   },
                   {
                     id: "drop-1",
                     label: "Drop 1",
                     address: selectedJob.route.dropAddress,
                     arrival: selectedJob.schedule.eta,
-                    departure: "—"
+                    departure: "—",
+                    status: "pending",
+                    statusLabel: "Pending"
                   }
-                ]).map((point) => (
-                  <div className={`driver-route-point ${point.type || ""}`} key={point.id || point.label}>
-                    <span className="card-label">{point.label}</span>
-                    <strong>{point.address}</strong>
-                    <div>
-                      <p>Arrival: {point.arrival || "—"}</p>
-                      <p>Departure: {point.departure || "—"}</p>
+                ]).map((point) => {
+                  const stopBusyPrefix = point.stopId ? `stop-${point.stopId}-` : "";
+                  return (
+                    <div className={`driver-route-point ${point.type || ""} ${point.status || "pending"}`} key={point.id || point.label}>
+                      <div className="driver-route-point-head">
+                        <span className="card-label">{point.label}</span>
+                        <StatusPill tone={STOP_STATUS_TONE[point.status] || "neutral"}>{point.statusLabel || point.status || "Pending"}</StatusPill>
+                      </div>
+                      <strong>{point.address}</strong>
+                      <div>
+                        <p>Arrival: {point.arrival || "—"}</p>
+                        <p>Departure: {point.departure || "—"}</p>
+                      </div>
+                      {point.isReturnPoint && (
+                        <p className="driver-route-return-note">Return to pickup postcode after delivery.</p>
+                      )}
+                      {point.stopId && (
+                        <div className="driver-stop-actions">
+                          {point.status === "pending" && (
+                            <button
+                              className="header-action-button"
+                              disabled={Boolean(busy)}
+                              onClick={() => handleStopStatus(point, "arrived")}
+                              type="button"
+                            >
+                              {busy === `${stopBusyPrefix}arrived` ? "Updating..." : "Arrived"}
+                            </button>
+                          )}
+                          {point.status !== "completed" && (
+                            <button
+                              className="header-action-button"
+                              disabled={Boolean(busy)}
+                              onClick={() => handleStopStatus(point, "completed")}
+                              type="button"
+                            >
+                              {busy === `${stopBusyPrefix}completed` ? "Updating..." : "Complete"}
+                            </button>
+                          )}
+                        </div>
+                      )}
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
 
               <div className="detail-grid">
@@ -834,7 +891,7 @@ export function DriverPanel() {
                 <span className="card-label" style={{ alignSelf: "center" }}>Update ETA</span>
                 <input
                   className="af-input"
-                  type="datetime-local"
+                  type="time"
                   value={etaInput}
                   onChange={e => setEtaInput(e.target.value)}
                   style={{ flex: 1, minWidth: 0 }}

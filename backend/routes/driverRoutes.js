@@ -7,6 +7,7 @@ router.get("/me/panel",                    d.getMyDriverPanel);
 router.get("/me/notifications",            d.getMyNotifications);
 router.patch("/me/jobs/:jobId/status",     d.updateMyJobStatus);
 router.patch("/me/jobs/:jobId/eta",        d.updateJobEta);
+router.patch("/me/jobs/:jobId/stops/:stopId/status", d.updateJobStopStatus);
 router.post("/me/jobs/:jobId/pod",         d.submitMyProofOfDelivery);
 router.post("/me/jobs/:jobId/reschedule",  d.rescheduleJob);
 router.post("/me/shift/start",             d.startMyShift);

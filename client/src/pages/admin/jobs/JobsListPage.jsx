@@ -929,6 +929,11 @@ export function JobsListPage() {
                     <span className="relay-meta-badge load">
                       Load: {job.loadId || ""}
                     </span>
+                    {job.hasDriverEtaUpdate && (
+                      <span className="relay-meta-badge eta">
+                        Driver ETA: {job.etaTime}
+                      </span>
+                    )}
                   </div>
 
                   {/* Route visualization */}
@@ -1061,6 +1066,19 @@ export function JobsListPage() {
                           onClick={() => setDelayTarget(job)}
                         >
                           Report Delay
+                        </button>
+                      </div>
+                    )}
+
+                    {job.hasDriverEtaUpdate && (
+                      <div className="relay-status-banner info">
+                        <span>Driver ETA updated · Expected arrival {job.etaTime}</span>
+                        <button
+                          className="header-action-button"
+                          type="button"
+                          onClick={() => navigate(`/admin/jobs/${job.id}`)}
+                        >
+                          Open Job
                         </button>
                       </div>
                     )}
