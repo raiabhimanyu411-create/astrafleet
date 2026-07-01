@@ -879,11 +879,11 @@ export function JobsListPage() {
                     {job.code}
                   </button>
 
-                  <div style={{ display: "flex", alignItems: "center", gap: 8, marginLeft: 4 }}>
-                    <span style={{ fontSize: "0.72rem", fontWeight: 600, color: "#2563eb", background: "#eff6ff", border: "1px solid #bfdbfe", borderRadius: 20, padding: "2px 8px", whiteSpace: "nowrap", minWidth: 102 }}>
+                  <div className="relay-job-meta-badges">
+                    <span className="relay-meta-badge ref">
                       Ref: {job.reference || ""}
                     </span>
-                    <span style={{ fontSize: "0.72rem", fontWeight: 600, color: "#059669", background: "#ecfdf5", border: "1px solid #a7f3d0", borderRadius: 20, padding: "2px 8px", whiteSpace: "nowrap", minWidth: 92 }}>
+                    <span className="relay-meta-badge load">
                       Load: {job.loadId || ""}
                     </span>
                   </div>

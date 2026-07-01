@@ -2145,13 +2145,15 @@ p.lp-success {
 
 /* ── Collapsed header ── */
 .relay-job-header {
-  display: flex;
+  display: grid;
+  grid-template-columns: 14px 104px 214px minmax(250px, 1fr) 124px 132px 34px 118px 142px 34px 116px;
   align-items: center;
   gap: 10px;
   padding: 11px 14px;
   cursor: pointer;
   user-select: none;
   transition: background 0.12s;
+  min-width: 0;
 }
 
 .relay-job-header:hover { background: var(--surface-2); }
@@ -2176,21 +2178,54 @@ p.lp-success {
   font-weight: 700;
   cursor: pointer;
   padding: 0;
-  width: 104px;
-  flex-shrink: 0;
+  width: 100%;
   text-align: left;
   text-decoration: underline;
   text-underline-offset: 2px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .relay-job-code:hover { color: var(--primary-hover); }
+
+.relay-job-meta-badges {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.relay-meta-badge {
+  border-radius: 20px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  min-width: 0;
+  overflow: hidden;
+  padding: 2px 8px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.relay-meta-badge.ref {
+  background: #eff6ff;
+  border: 1px solid #bfdbfe;
+  color: #2563eb;
+}
+
+.relay-meta-badge.load {
+  background: #ecfdf5;
+  border: 1px solid #a7f3d0;
+  color: #059669;
+}
 
 /* ── Route visualization ── */
 .relay-route-vis {
   display: flex;
   align-items: center;
   gap: 6px;
-  flex: 1;
+  width: 100%;
   min-width: 0;
   overflow-x: auto;
   scrollbar-width: thin;
@@ -2293,8 +2328,10 @@ p.lp-success {
 /* ── Header meta cells ── */
 .relay-job-stats {
   display: flex;
+  align-items: center;
+  justify-content: flex-end;
   gap: 5px;
-  flex-shrink: 0;
+  min-width: 0;
 }
 
 .relay-job-stats span {
@@ -2310,8 +2347,7 @@ p.lp-success {
 .relay-job-vehicle-cell {
   display: flex;
   flex-direction: column;
-  width: 132px;
-  flex-shrink: 0;
+  min-width: 0;
   font-size: 0.79rem;
   font-weight: 600;
   color: var(--text-soft);
@@ -2328,8 +2364,8 @@ p.lp-success {
 }
 
 .relay-job-freight {
-  width: 120px;
-  flex-shrink: 0;
+  align-items: flex-start;
+  min-width: 0;
   font-size: 0.84rem;
   font-weight: 700;
   color: var(--text);
@@ -2384,8 +2420,7 @@ p.lp-success {
 }
 
 .relay-job-driver-cell {
-  width: 120px;
-  flex-shrink: 0;
+  min-width: 0;
   font-size: 0.8rem;
   color: var(--text-soft);
   font-weight: 600;
@@ -2397,7 +2432,8 @@ p.lp-success {
 .relay-job-status-cell {
   display: flex;
   gap: 4px;
-  flex-shrink: 0;
+  justify-content: center;
+  min-width: 0;
   align-items: center;
   flex-wrap: wrap;
 }
@@ -3255,10 +3291,10 @@ p.lp-success {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 30px;
-  height: 30px;
+  width: 34px;
+  height: 34px;
   border: 1px solid #cbd5e1;
-  border-radius: 6px;
+  border-radius: 8px;
   background: #f8fafc;
   color: #475569;
   cursor: pointer;
