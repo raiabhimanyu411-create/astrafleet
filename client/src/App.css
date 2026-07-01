@@ -2628,6 +2628,11 @@ p.lp-success {
   flex-shrink: 0;
 }
 
+.relay-stop-location .relay-stop-bubble.return {
+  background: #2563eb;
+  font-size: 0.68rem;
+}
+
 .relay-stop-location strong {
   font-size: 0.84rem;
   font-weight: 700;
@@ -5879,6 +5884,28 @@ p.lp-success {
 .driver-route-return-note {
   margin-top: 8px !important;
   color: #1d4ed8 !important;
+}
+
+.driver-route-contact {
+  display: flex !important;
+  flex-direction: row;
+  flex-wrap: wrap;
+  gap: 8px !important;
+  margin-top: 8px;
+}
+
+.driver-route-contact span,
+.driver-route-note {
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.68);
+  color: var(--text-soft) !important;
+  font-size: 0.75rem !important;
+  font-weight: 700 !important;
+  padding: 4px 7px;
+}
+
+.driver-route-note {
+  margin-top: 8px !important;
 }
 
 .driver-stop-actions {

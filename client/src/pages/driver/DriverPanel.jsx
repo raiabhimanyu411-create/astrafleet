@@ -846,6 +846,15 @@ export function DriverPanel() {
                         <p>Arrival: {point.arrival || "—"}</p>
                         <p>Departure: {point.departure || "—"}</p>
                       </div>
+                      {(point.contactName && point.contactName !== "—") || (point.contactPhone && point.contactPhone !== "—") ? (
+                        <div className="driver-route-contact">
+                          {point.contactName && point.contactName !== "—" && <span>Contact: {point.contactName}</span>}
+                          {point.contactPhone && point.contactPhone !== "—" && <span>Phone: {point.contactPhone}</span>}
+                        </div>
+                      ) : null}
+                      {point.notes && point.notes !== "—" && (
+                        <p className="driver-route-note">{point.notes}</p>
+                      )}
                       {point.isReturnPoint && (
                         <p className="driver-route-return-note">Return to pickup postcode after delivery.</p>
                       )}
@@ -930,6 +939,11 @@ export function DriverPanel() {
 
               <div className="driver-action-row">
                 <a className="af-submit-btn driver-nav-link" href={selectedJob.route.navigationUrl} rel="noreferrer" target="_blank">Open Navigation</a>
+                {pendingDeliveryStops.length === 0 && selectedJob.status === "arrived_drop" && selectedJob.podStatus !== "verified" && (
+                  <button className="header-action-button" type="button" onClick={() => setActiveSection("pod")}>
+                    Submit POD
+                  </button>
+                )}
               </div>
             </>
           ) : <p className="driver-empty">Select a job to see route, customer, and load details.</p>}
@@ -984,7 +998,14 @@ export function DriverPanel() {
               })}
             </div>
             {selectedJob?.status === "arrived_drop" && (
-              <p className="driver-empty" style={{ marginTop: 10 }}>Submit POD with a signature or photo to complete this job.</p>
+              <div className="driver-action-row" style={{ marginTop: 10 }}>
+                <p className="driver-empty" style={{ margin: 0 }}>Submit POD with a signature or photo to complete this job.</p>
+                {pendingDeliveryStops.length === 0 && (
+                  <button className="header-action-button" type="button" onClick={() => setActiveSection("pod")}>
+                    Submit POD
+                  </button>
+                )}
+              </div>
             )}
           </>
         )}

@@ -384,7 +384,10 @@ function mapDriverJob(row, stops = []) {
       arrival: fmtDateTime(row.planned_departure),
       departure: fmtDateTime(row.loading_done_time || row.planned_departure),
       status: jobIsPastPickup ? "completed" : ["arrived_pickup", "loaded"].includes(status) ? "arrived" : "pending",
-      statusLabel: jobIsPastPickup ? "Completed" : ["arrived_pickup", "loaded"].includes(status) ? "At pickup" : "Pending"
+      statusLabel: jobIsPastPickup ? "Completed" : ["arrived_pickup", "loaded"].includes(status) ? "At pickup" : "Pending",
+      contactName: row.cust_contact || "—",
+      contactPhone: customerPhone,
+      notes: row.special_instructions || "—"
     },
     {
       id: "drop-1",
@@ -394,7 +397,10 @@ function mapDriverJob(row, stops = []) {
       arrival: fmtDateTime(row.calculated_arrival || row.eta),
       departure: fmtDateTime(row.calculated_unload_end),
       status: status === "delivered" ? "completed" : jobIsAtDrop ? "arrived" : "pending",
-      statusLabel: status === "delivered" ? "Completed" : jobIsAtDrop ? "At drop" : "Pending"
+      statusLabel: status === "delivered" ? "Completed" : jobIsAtDrop ? "At drop" : "Pending",
+      contactName: row.cust_contact || "—",
+      contactPhone: customerPhone,
+      notes: row.dispatcher_notes || row.special_instructions || "—"
     },
     ...stops.map((stop, index) => ({
       id: stop.id,
@@ -406,7 +412,10 @@ function mapDriverJob(row, stops = []) {
       departure: fmtDateTime(stop.planned_departure),
       status: stop.status || "pending",
       statusLabel: stopStatusLabel[stop.status] || "Pending",
-      isReturnPoint: isReturnStop(stop, pickupPostcode, lastStopId)
+      isReturnPoint: isReturnStop(stop, pickupPostcode, lastStopId),
+      contactName: stop.contact_name || "—",
+      contactPhone: stop.contact_phone || "—",
+      notes: stop.notes || "—"
     }))
   ];
 

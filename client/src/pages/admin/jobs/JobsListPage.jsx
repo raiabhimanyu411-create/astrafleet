@@ -55,6 +55,13 @@ const DRIVER_STATUS_TONE = {
   delivered: "success", failed_delivery: "danger", declined: "danger"
 };
 
+const STOP_STATUS_TONE = {
+  pending: "warning",
+  arrived: "warning",
+  completed: "success",
+  skipped: "neutral"
+};
+
 const TAB_STATUSES = {
   upcoming: ["planned", "loading"],
   intransit: ["active"],
@@ -871,7 +878,7 @@ export function JobsListPage() {
                 index: index + 3,
                 name: extractUkPostcode(stop.address),
                 title: stop.address,
-                arrival: fmtRouteStamp(stop.plannedArrivalRaw, stop.actualArrival),
+                arrival: fmtRouteStamp(stop.actualArrivalRaw || stop.plannedArrivalRaw, stop.actualArrival),
                 departure: fmtRouteStamp(stop.plannedDepartureRaw, stop.plannedDeparture)
               }))
             ];
@@ -1297,23 +1304,27 @@ export function JobsListPage() {
                       </div>
 
                       {/* Intermediate stops */}
-                      {routeStops.map((stop, index) => (
+                      {routeStops.map((stop, index) => {
+                        const stopTone = STOP_STATUS_TONE[stop.status] || "neutral";
+                        return (
                         <div className="relay-stop-block" key={stop.id || `${job.id}-stop-${index}`}>
                           <div className="relay-stop-row">
                             <div className="relay-stop-location">
-                              <span className="relay-stop-bubble">{index + 2}</span>
+                              <span className={`relay-stop-bubble${stop.isReturnPoint ? " return" : ""}`}>{stop.isReturnPoint ? "R" : index + 2}</span>
                               <div>
                                 <strong>{abbrevAddr(stop.address)}</strong>
                                 <small>{stop.address !== "—" ? stop.address : "Address not set"}</small>
                                 <small className="relay-dock-label">
-                                  {(stop.type || "stop").replace(/^./, c => c.toUpperCase())} stop{stop.status ? ` · ${stop.status}` : ""}
+                                  {stop.isReturnPoint ? "Return point" : `${(stop.type || "stop").replace(/^./, c => c.toUpperCase())} stop`}
                                 </small>
+                                <span className={`relay-driver-stop-status ${stopTone}`}>{stop.statusLabel || stop.status || "Pending"}</span>
                               </div>
                             </div>
                             <div className="relay-stop-equipment">
-                              <span>Stop type <strong>{stop.type || "—"}</strong></span>
+                              <span>Stop type <strong>{stop.isReturnPoint ? "return" : stop.type || "—"}</strong></span>
                               <span>Contact <strong>{stop.contactName !== "—" ? stop.contactName : "—"}</strong></span>
                               {stop.contactPhone !== "—" && <span>Phone <strong>{stop.contactPhone}</strong></span>}
+                              {stop.notes !== "—" && <span>Notes <strong>{stop.notes}</strong></span>}
                             </div>
                             <div className="relay-stop-time">
                               <strong>{stop.actualArrival !== "—" ? stop.actualArrival : stop.plannedArrival !== "—" ? stop.plannedArrival : "TBD"}</strong>
@@ -1355,7 +1366,8 @@ export function JobsListPage() {
                             )}
                           </div>
                         </div>
-                      ))}
+                      );
+                      })}
                     </div>
 
                     {/* ── Time Calculation ── */}

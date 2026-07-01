@@ -49,6 +49,12 @@ const driverStatusTone = {
   failed_delivery: "danger",
   declined: "danger"
 };
+const stopStatusLabel = {
+  pending: "Pending",
+  arrived: "Arrived",
+  completed: "Completed",
+  skipped: "Skipped"
+};
 
 let driverOpsSchemaReady = false;
 let softDeleteSchemaReady = false;
@@ -255,6 +261,11 @@ function extractUkPostcode(value) {
   const text = String(value || "").toUpperCase().replace(/\s+/g, " ");
   const match = text.match(/\b([A-Z]{1,2}\d[A-Z\d]?\s*\d[A-Z]{2})\b/);
   return match ? match[1].replace(/\s+/g, "") : "";
+}
+
+function isReturnStop(stop, pickupPostcode, lastStopId) {
+  if (!stop || !pickupPostcode || stop.id !== lastStopId) return false;
+  return extractUkPostcode(stop.address) === pickupPostcode;
 }
 
 async function fetchJson(url, timeoutMs = 8000) {
@@ -600,7 +611,7 @@ exports.listJobs = async (req, res) => {
         COALESCE(SUM(dispatch_status='loading'), 0)   as loading,
         COALESCE(SUM(priority_level='critical'), 0)   as critical,
         COALESCE(SUM(driver_id IS NULL OR vehicle_id IS NULL), 0) as assignment_gaps,
-        COALESCE(SUM(eta IS NOT NULL AND eta < NOW() AND dispatch_status IN ('planned','loading','active')), 0) as eta_risk,
+        COALESCE(SUM(eta IS NOT NULL AND eta < NOW() AND dispatch_status IN ('planned','loading','active') AND COALESCE(driver_job_status, '') NOT IN ('arrived_drop','delivered')), 0) as eta_risk,
         COALESCE(SUM(freight_amount_gbp), 0) as booked_value
        FROM trips
        WHERE deleted_at IS NULL`
@@ -749,6 +760,9 @@ exports.listJobs = async (req, res) => {
       vehicles,
       trailers,
       jobs: hydratedRows.map(r => {
+        const stopsForTrip = stopsByTrip.get(r.id) || [];
+        const pickupPostcode = extractUkPostcode(r.pickup_address || r.origin_hub);
+        const lastStopId = stopsForTrip.length ? stopsForTrip[stopsForTrip.length - 1].id : null;
         const fallbackTravelMins = r.standard_eta_hours ? Math.round(Number(r.standard_eta_hours) * 60) : 0;
         const loadingMins = effectiveLoadingMins(r);
         const unloadingMins = effectiveUnloadingMins(r);
@@ -828,7 +842,7 @@ exports.listJobs = async (req, res) => {
           actualDepartureRaw: rawDateTime(r.actual_departure),
           actualArrival: fmtDateTime(r.actual_arrival),
           actualArrivalRaw: rawDateTime(r.actual_arrival),
-          etaRisk: r.eta && new Date(r.eta).getTime() < Date.now() && ["planned", "loading", "active"].includes(r.dispatch_status),
+          etaRisk: r.eta && new Date(r.eta).getTime() < Date.now() && ["planned", "loading", "active"].includes(r.dispatch_status) && !["arrived_drop", "delivered"].includes(r.driver_job_status),
           freight: fmtAmount(r.freight_amount_gbp),
           freightValue,
           loadType: r.load_type || "general",
@@ -844,11 +858,13 @@ exports.listJobs = async (req, res) => {
           priorityTone: priorityTone[r.priority_level] || "neutral",
           podStatus: r.pod_status,
           stopCount: r.stop_count,
-          stops: (stopsByTrip.get(r.id) || []).map((s, i) => ({
+          stops: stopsForTrip.map((s, i) => {
+            const isReturnPoint = isReturnStop(s, pickupPostcode, lastStopId);
+            return ({
             id: s.id,
             order: i + 1,
             type: s.stop_type,
-            label: `${(s.stop_type || "stop").toUpperCase()} ${i + 1}`,
+            label: isReturnPoint ? "Return point" : `${(s.stop_type || "stop").toUpperCase()} ${i + 1}`,
             address: s.address || "—",
             contactName: s.contact_name || "—",
             contactPhone: s.contact_phone || "—",
@@ -857,9 +873,13 @@ exports.listJobs = async (req, res) => {
             plannedDeparture: fmtDateTime(s.planned_departure),
             plannedDepartureRaw: rawDateTime(s.planned_departure),
             actualArrival: fmtDateTime(s.actual_arrival),
+            actualArrivalRaw: rawDateTime(s.actual_arrival),
             status: s.status || "pending",
+            statusLabel: stopStatusLabel[s.status] || "Pending",
+            isReturnPoint,
             notes: s.notes || "—"
-          })),
+          });
+          }),
           reference: r.reference || "",
           loadId: r.load_id || "",
           cancellationReason: r.cancellation_reason || "",

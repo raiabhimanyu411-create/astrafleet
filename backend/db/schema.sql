@@ -223,6 +223,7 @@ CREATE TABLE IF NOT EXISTS job_stops (
   contact_name    VARCHAR(120) DEFAULT NULL,
   contact_phone   VARCHAR(30) DEFAULT NULL,
   planned_arrival DATETIME DEFAULT NULL,
+  planned_departure DATETIME DEFAULT NULL,
   actual_arrival  DATETIME DEFAULT NULL,
   status          ENUM('pending','arrived','completed','skipped') NOT NULL DEFAULT 'pending',
   notes           TEXT DEFAULT NULL,
