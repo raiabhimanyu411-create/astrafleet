@@ -106,6 +106,21 @@ async function ensureDriverOpsSchema() {
   await addColumnIfMissing("trips", "delivery_deadline", "DATETIME DEFAULT NULL");
   await addColumnIfMissing("trips", "dispatcher_notes", "TEXT DEFAULT NULL");
 
+  await db.query(
+    `CREATE TABLE IF NOT EXISTS driver_job_status_events (
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      trip_id INT NOT NULL,
+      driver_id INT DEFAULT NULL,
+      status VARCHAR(40) NOT NULL,
+      reason TEXT DEFAULT NULL,
+      source ENUM('driver','dispatch','admin','system') NOT NULL DEFAULT 'driver',
+      created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      INDEX idx_driver_job_status_trip (trip_id, created_at),
+      CONSTRAINT fk_driver_job_status_trip FOREIGN KEY (trip_id) REFERENCES trips (id) ON DELETE CASCADE,
+      CONSTRAINT fk_driver_job_status_driver FOREIGN KEY (driver_id) REFERENCES drivers (id) ON DELETE SET NULL
+    ) ENGINE=InnoDB`
+  );
+
   // Ensure dispatch_status ENUM includes all possible statuses
   try {
     await db.query(
@@ -680,6 +695,7 @@ exports.listJobs = async (req, res) => {
     }
     const jobIds = hydratedRows.map(row => row.id);
     const stopsByTrip = new Map();
+    const driverStatusEventsByTrip = new Map();
     if (jobIds.length > 0) {
       const [stopRows] = await db.query(
         `SELECT id, trip_id, stop_order, stop_type, address, contact_name, contact_phone,
@@ -693,6 +709,21 @@ exports.listJobs = async (req, res) => {
         const list = stopsByTrip.get(stop.trip_id) || [];
         list.push(stop);
         stopsByTrip.set(stop.trip_id, list);
+      }
+
+      const [eventRows] = await db.query(
+        `SELECT e.id, e.trip_id, e.driver_id, e.status, e.reason, e.source, e.created_at,
+                d.full_name AS driver_name
+         FROM driver_job_status_events e
+         LEFT JOIN drivers d ON d.id = e.driver_id
+         WHERE e.trip_id IN (?)
+         ORDER BY e.trip_id ASC, e.created_at ASC, e.id ASC`,
+        [jobIds]
+      );
+      for (const event of eventRows) {
+        const list = driverStatusEventsByTrip.get(event.trip_id) || [];
+        list.push(event);
+        driverStatusEventsByTrip.set(event.trip_id, list);
       }
     }
 
@@ -720,6 +751,30 @@ exports.listJobs = async (req, res) => {
         const totalJobDurationMins = r.total_job_duration_mins || econ?.totalMins || null;
         const freightValue = Number(r.freight_amount_gbp || 0);
         const profitLossValue = econ ? freightValue - econ.totalCost : null;
+        const driverTimeline = (driverStatusEventsByTrip.get(r.id) || []).map(event => ({
+          id: event.id,
+          status: event.status,
+          label: driverStatusLabel[event.status] || event.status,
+          tone: driverStatusTone[event.status] || "neutral",
+          reason: event.reason || "",
+          source: event.source,
+          driverName: event.driver_name || r.driver_name || "Driver",
+          at: fmtDateTime(event.created_at),
+          atRaw: rawDateTime(event.created_at)
+        }));
+        if (driverTimeline.length === 0 && r.driver_job_status) {
+          driverTimeline.push({
+            id: `current-${r.id}`,
+            status: r.driver_job_status,
+            label: driverStatusLabel[r.driver_job_status] || r.driver_job_status,
+            tone: driverStatusTone[r.driver_job_status] || "neutral",
+            reason: "",
+            source: "system",
+            driverName: r.driver_name || "Driver",
+            at: "Time not recorded",
+            atRaw: ""
+          });
+        }
         return {
           id: r.id,
           code: r.trip_code,
@@ -744,6 +799,7 @@ exports.listJobs = async (req, res) => {
           driverEmployeeCode: r.employee_code || "—",
           driverAssigned: Boolean(r.driver_name),
           driverJobStatus: r.driver_job_status || "—",
+          driverStatusTimeline: driverTimeline,
           vehicle: r.registration_number || "Unassigned",
           vehicleFleetCode: r.fleet_code || "—",
           vehicleModel: r.model_name || "—",
@@ -909,6 +965,12 @@ exports.updateJobAssignment = async (req, res) => {
     );
 
     if (driverChanged && driverId) {
+      await db.query(
+        `INSERT INTO driver_job_status_events (trip_id, driver_id, status, reason, source)
+         VALUES (?, ?, 'offered', 'Job offered by dispatch', 'dispatch')`,
+        [id, driverId]
+      );
+
       const [[assignedJob]] = await db.query(
         `SELECT t.trip_code, t.planned_departure,
                 COALESCE(c.company_name, t.client_name, 'Customer TBD') AS customer_name,

@@ -361,6 +361,19 @@ CREATE TABLE IF NOT EXISTS driver_messages (
   CONSTRAINT fk_msg_trip FOREIGN KEY (trip_id) REFERENCES trips (id) ON DELETE SET NULL
 ) ENGINE=InnoDB;
 
+CREATE TABLE IF NOT EXISTS driver_job_status_events (
+  id         INT AUTO_INCREMENT PRIMARY KEY,
+  trip_id    INT NOT NULL,
+  driver_id  INT DEFAULT NULL,
+  status     VARCHAR(40) NOT NULL,
+  reason     TEXT DEFAULT NULL,
+  source     ENUM('driver', 'dispatch', 'admin', 'system') NOT NULL DEFAULT 'driver',
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  INDEX idx_driver_job_status_trip (trip_id, created_at),
+  CONSTRAINT fk_driver_job_status_trip FOREIGN KEY (trip_id) REFERENCES trips (id) ON DELETE CASCADE,
+  CONSTRAINT fk_driver_job_status_driver FOREIGN KEY (driver_id) REFERENCES drivers (id) ON DELETE SET NULL
+) ENGINE=InnoDB;
+
 CREATE TABLE IF NOT EXISTS invoices (
   id             INT AUTO_INCREMENT PRIMARY KEY,
   invoice_no     VARCHAR(40) NOT NULL UNIQUE,

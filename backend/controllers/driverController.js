@@ -264,6 +264,21 @@ async function ensureDriverOpsSchema() {
     ) ENGINE=InnoDB`
   );
 
+  await db.query(
+    `CREATE TABLE IF NOT EXISTS driver_job_status_events (
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      trip_id INT NOT NULL,
+      driver_id INT DEFAULT NULL,
+      status VARCHAR(40) NOT NULL,
+      reason TEXT DEFAULT NULL,
+      source ENUM('driver','dispatch','admin','system') NOT NULL DEFAULT 'driver',
+      created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      INDEX idx_driver_job_status_trip (trip_id, created_at),
+      CONSTRAINT fk_driver_job_status_trip FOREIGN KEY (trip_id) REFERENCES trips (id) ON DELETE CASCADE,
+      CONSTRAINT fk_driver_job_status_driver FOREIGN KEY (driver_id) REFERENCES drivers (id) ON DELETE SET NULL
+    ) ENGINE=InnoDB`
+  );
+
   driverOpsSchemaReady = true;
 }
 
@@ -630,6 +645,7 @@ exports.updateMyJobStatus = async (req, res) => {
       return res.status(400).json({ message: "Submit an all-clear walkaround before moving this job forward." });
     }
 
+    const changedStatus = status !== currentStatus;
     const updates = ["driver_job_status=?"];
     const values = [status];
     let dispatchStatus = null;
@@ -665,6 +681,14 @@ exports.updateMyJobStatus = async (req, res) => {
 
     values.push(jobId, driver.id);
     await db.query(`UPDATE trips SET ${updates.join(", ")} WHERE id=? AND driver_id=?`, values);
+
+    if (changedStatus) {
+      await db.query(
+        `INSERT INTO driver_job_status_events (trip_id, driver_id, status, reason, source)
+         VALUES (?, ?, ?, ?, 'driver')`,
+        [jobId, driver.id, status, reason || null]
+      );
+    }
 
     if (job.vehicle_id && dispatchStatus) {
       const vehicleStatus = dispatchStatus === "active" ? "in_transit" : dispatchStatus === "completed" || dispatchStatus === "blocked" ? "available" : "planned";
@@ -721,6 +745,13 @@ exports.submitMyProofOfDelivery = async (req, res) => {
        WHERE id=? AND driver_id=?`,
       [signatureData || null, photoData || null, deliveryNotes || null, new Date(), jobId, driver.id]
     );
+    if (job.driver_job_status !== "delivered") {
+      await db.query(
+        `INSERT INTO driver_job_status_events (trip_id, driver_id, status, reason, source)
+         VALUES (?, ?, 'delivered', ?, 'driver')`,
+        [jobId, driver.id, deliveryNotes || null]
+      );
+    }
     if (job.vehicle_id) {
       await db.query(`UPDATE vehicles SET status='available' WHERE id=?`, [job.vehicle_id]);
     }

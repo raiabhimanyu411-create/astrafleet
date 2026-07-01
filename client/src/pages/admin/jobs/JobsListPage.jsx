@@ -58,6 +58,7 @@ const DRIVER_STATUS_TONE = {
 const TAB_STATUSES = {
   upcoming: ["planned", "loading"],
   intransit: ["active"],
+  completed: ["completed"],
   history: ["planned", "loading", "active", "completed", "blocked", "failed", "cancelled"]
 };
 
@@ -83,6 +84,23 @@ function getWeekRange(offset = 0) {
 function fmtWeekLabel(start, end) {
   const opts = { day: "numeric", month: "short" };
   return `${start.toLocaleDateString("en-GB", opts)} – ${end.toLocaleDateString("en-GB", opts)}`;
+}
+
+function toDateInputValue(rawStr) {
+  if (!rawStr) return "";
+  const d = new Date(rawStr);
+  if (isNaN(d.getTime())) return "";
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function fmtDateInputLabel(value) {
+  if (!value) return "";
+  const [year, month, day] = value.split("-").map(Number);
+  const d = new Date(year, month - 1, day);
+  return d.toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" });
 }
 
 function abbrevAddr(addr) {
@@ -441,6 +459,7 @@ export function JobsListPage() {
   const [search, setSearch] = useState("");
   const [tab, setTab] = useState("upcoming");
   const [weekOffset, setWeekOffset] = useState(0);
+  const [selectedDate, setSelectedDate] = useState("");
   const [showUnassignedOnly, setShowUnassignedOnly] = useState(false);
   const [statusFilter, setStatusFilter] = useState("");
   const [priorityFilter, setPriorityFilter] = useState("");
@@ -524,10 +543,10 @@ export function JobsListPage() {
 
   function clearAllFilters() {
     setSearch(""); setStatusFilter(""); setPriorityFilter("");
-    setAttentionFilter(""); setShowUnassignedOnly(false);
+    setAttentionFilter(""); setShowUnassignedOnly(false); setSelectedDate("");
   }
 
-  const hasActiveFilters = Boolean(search || statusFilter || priorityFilter || attentionFilter || showUnassignedOnly);
+  const hasActiveFilters = Boolean(search || statusFilter || priorityFilter || attentionFilter || showUnassignedOnly || selectedDate);
 
   const filteredJobs = useMemo(() => {
     const statusSet = new Set(TAB_STATUSES[tab] || []);
@@ -538,7 +557,13 @@ export function JobsListPage() {
       if (priorityFilter && job.priority !== priorityFilter) return false;
       if (showUnassignedOnly && job.driverAssigned && job.vehicleAssigned) return false;
 
-      // History tab shows all jobs — no date restriction applied
+      const jobDate = toDateInputValue(job.departureRaw || job.loadingDoneTime || job.etaRaw);
+      if (selectedDate) {
+        if (jobDate !== selectedDate) return false;
+      } else if (jobDate) {
+        const jobTime = new Date(jobDate).getTime();
+        if (jobTime < weekRange.start.getTime() || jobTime > weekRange.end.getTime()) return false;
+      }
 
       if (attentionFilter === "eta_risk" && !job.etaRisk) return false;
       if (attentionFilter === "unassigned" && (job.driverAssigned && job.vehicleAssigned)) return false;
@@ -552,7 +577,7 @@ export function JobsListPage() {
               job.reference, job.loadId]
         .some(v => String(v || "").toLowerCase().includes(query));
     });
-  }, [data, tab, weekRange, search, showUnassignedOnly, statusFilter, priorityFilter, attentionFilter]);
+  }, [data, tab, weekRange, selectedDate, search, showUnassignedOnly, statusFilter, priorityFilter, attentionFilter]);
 
   const jobs = useMemo(() => sortJobs(filteredJobs, sortBy), [filteredJobs, sortBy]);
 
@@ -561,6 +586,7 @@ export function JobsListPage() {
     return {
       upcoming: all.filter(j => TAB_STATUSES.upcoming.includes(j.status)).length,
       intransit: all.filter(j => TAB_STATUSES.intransit.includes(j.status)).length,
+      completed: all.filter(j => TAB_STATUSES.completed.includes(j.status)).length,
       history: all.filter(j => TAB_STATUSES.history.includes(j.status)).length
     };
   }, [data]);
@@ -667,6 +693,10 @@ export function JobsListPage() {
             In Transit
             {tabCounts.intransit > 0 && <span className="relay-tab-count relay-tab-count--live">{tabCounts.intransit}</span>}
           </button>
+          <button className={tab === "completed" ? "active" : ""} type="button" onClick={() => { setTab("completed"); setAttentionFilter(""); }}>
+            Completed Jobs
+            {tabCounts.completed > 0 && <span className="relay-tab-count">{tabCounts.completed}</span>}
+          </button>
           <button className={tab === "history" ? "active" : ""} type="button" onClick={() => { setTab("history"); setAttentionFilter(""); }}>
             All Jobs
             {tabCounts.history > 0 && <span className="relay-tab-count">{tabCounts.history}</span>}
@@ -693,12 +723,24 @@ export function JobsListPage() {
             />
           </div>
 
-          {tab !== "history" && (
-            <div className="relay-date-nav">
-              <button className="relay-date-arrow" type="button" onClick={() => setWeekOffset(o => o - 1)}>‹</button>
-              <span className="relay-date-label">{weekLabel}</span>
-              <button className="relay-date-arrow" type="button" onClick={() => setWeekOffset(o => o + 1)}>›</button>
-            </div>
+          <div className="relay-date-nav">
+            <button className="relay-date-arrow" type="button" onClick={() => { setSelectedDate(""); setWeekOffset(o => o - 1); }}>‹</button>
+            <span className="relay-date-label">{selectedDate ? fmtDateInputLabel(selectedDate) : weekLabel}</span>
+            <button className="relay-date-arrow" type="button" onClick={() => { setSelectedDate(""); setWeekOffset(o => o + 1); }}>›</button>
+          </div>
+
+          <input
+            className="relay-date-picker"
+            aria-label="Filter jobs by exact date"
+            type="date"
+            value={selectedDate}
+            onChange={e => setSelectedDate(e.target.value)}
+          />
+
+          {selectedDate && (
+            <button className="relay-date-clear" type="button" onClick={() => setSelectedDate("")}>
+              Clear Date
+            </button>
           )}
 
           <select className="relay-filter-select" value={statusFilter} onChange={e => setStatusFilter(e.target.value)}>
@@ -775,6 +817,7 @@ export function JobsListPage() {
                   ? "No jobs match your current filters."
                   : tab === "upcoming" ? "No upcoming jobs."
                   : tab === "intransit" ? "No jobs currently in transit."
+                  : tab === "completed" ? "No completed jobs."
                   : "No jobs found."}
               </p>
               {hasActiveFilters && (
@@ -1038,6 +1081,30 @@ export function JobsListPage() {
                         </button>
                       </div>
                     )}
+
+                    <div className="relay-driver-progress">
+                      <div className="relay-driver-progress-head">
+                        <span className="card-label">Driver Timeline</span>
+                        {driverStatusLabel && (
+                          <StatusPill tone={driverStatusToneVal}>{driverStatusLabel}</StatusPill>
+                        )}
+                      </div>
+                      <div className="relay-driver-progress-track">
+                        {(job.driverStatusTimeline || []).map((event, index) => (
+                          <div className={`relay-driver-progress-item ${event.tone || "neutral"}`} key={event.id || `${job.id}-driver-status-${index}`}>
+                            <span className="relay-driver-progress-dot" />
+                            <div>
+                              <strong>{event.label}</strong>
+                              <p>{event.at}</p>
+                              {event.reason && <small>{event.reason}</small>}
+                            </div>
+                          </div>
+                        ))}
+                        {(!job.driverStatusTimeline || job.driverStatusTimeline.length === 0) && (
+                          <p className="driver-empty">Driver status timeline will appear as the driver updates this job.</p>
+                        )}
+                      </div>
+                    </div>
 
                     {/* ── Stop table ── */}
                     <div className="relay-stop-table">
