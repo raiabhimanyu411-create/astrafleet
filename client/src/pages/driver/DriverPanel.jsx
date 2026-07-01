@@ -15,6 +15,7 @@ import {
   updateDriverJobEta,
   updateDriverJobStatus,
   updateDriverLocation,
+  updateDriverPrimaryDropStatus,
   updateDriverStopStatus
 } from "../../api/driverApi";
 import { getRealtimeSocket } from "../../api/realtime";
@@ -564,6 +565,13 @@ export function DriverPanel() {
     ));
   }
 
+  function handlePrimaryDropStatus(point, status) {
+    if (!selectedJob || !point?.isPrimaryDrop) return;
+    runAction(`primary-drop-${status}`, () => (
+      updateDriverPrimaryDropStatus(userId, selectedJob.id, { status })
+    ));
+  }
+
   async function handleSendMessage(event) {
     event.preventDefault();
     if (!newMessage.trim() || msgSending) return;
@@ -599,10 +607,14 @@ export function DriverPanel() {
   const pendingDeliveryStops = (selectedJob?.stops || []).filter(stop => (
     !stop.isReturnPoint && !["completed", "skipped"].includes(stop.status)
   ));
+  const primaryDropPoint = selectedJob?.routePoints?.find(point => point.isPrimaryDrop);
+  const primaryDropPending = Boolean(primaryDropPoint && !["completed", "skipped"].includes(primaryDropPoint.status));
   const podBlockedReason = !selectedJob
     ? "Select a job before submitting POD."
     : ["failed_delivery", "declined"].includes(selectedJob.status)
       ? "POD cannot be submitted for a failed or declined job."
+      : primaryDropPending
+        ? "Complete Drop 1 before submitting POD."
       : pendingDeliveryStops.length > 0
         ? `Complete ${pendingDeliveryStops.length} delivery stop(s) before submitting POD.`
         : !hasPodEvidence
@@ -857,6 +869,18 @@ export function DriverPanel() {
                       )}
                       {point.isReturnPoint && (
                         <p className="driver-route-return-note">Return to pickup postcode after delivery.</p>
+                      )}
+                      {point.isPrimaryDrop && point.status === "arrived" && (
+                        <div className="driver-stop-actions">
+                          <button
+                            className="header-action-button"
+                            disabled={Boolean(busy)}
+                            onClick={() => handlePrimaryDropStatus(point, "completed")}
+                            type="button"
+                          >
+                            {busy === "primary-drop-completed" ? "Updating..." : "Complete Drop 1"}
+                          </button>
+                        </div>
                       )}
                       {point.stopId && (
                         <div className="driver-stop-actions">

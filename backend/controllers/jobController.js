@@ -146,6 +146,8 @@ async function ensureDriverOpsSchema() {
   await addColumnIfMissing("trips", "actual_departure", "DATETIME DEFAULT NULL");
   await addColumnIfMissing("trips", "actual_arrival", "DATETIME DEFAULT NULL");
   await addColumnIfMissing("trips", "eta_updated_at", "DATETIME DEFAULT NULL");
+  await addColumnIfMissing("trips", "primary_drop_status", "VARCHAR(40) DEFAULT 'pending'");
+  await addColumnIfMissing("trips", "primary_drop_completed_at", "DATETIME DEFAULT NULL");
   await addColumnIfMissing("vehicles", "current_location", "VARCHAR(160) DEFAULT NULL");
   await addColumnIfMissing("vehicles", "speed_kph", "DECIMAL(5,1) DEFAULT 0");
   await addColumnIfMissing("vehicles", "last_ping_at", "DATETIME DEFAULT NULL");
@@ -640,7 +642,8 @@ exports.listJobs = async (req, res) => {
     const [rows] = await db.query(
       `SELECT t.id, t.trip_code, t.customer_id, t.client_name, t.route_id, t.vehicle_id, t.trailer_id, t.driver_id,
               t.dispatch_status, t.priority_level, t.driver_job_status,
-              t.planned_departure, t.eta, t.eta_updated_at, t.delivery_deadline, t.actual_departure, t.actual_arrival,
+              t.planned_departure, t.eta, t.eta_updated_at, t.primary_drop_status, t.primary_drop_completed_at,
+              t.delivery_deadline, t.actual_departure, t.actual_arrival,
               t.dock_window, t.freight_amount_gbp, t.load_type, t.load_weight_kg, t.load_volume_cbm,
               t.vehicle_type_requirement, t.load_description, t.special_instructions, t.dispatcher_notes,
               t.pod_status, t.pickup_address, t.drop_address, t.client_phone, t.created_at, t.cancellation_reason, t.delay_reason,
@@ -843,6 +846,10 @@ exports.listJobs = async (req, res) => {
           actualArrival: fmtDateTime(r.actual_arrival),
           actualArrivalRaw: rawDateTime(r.actual_arrival),
           etaRisk: r.eta && new Date(r.eta).getTime() < Date.now() && ["planned", "loading", "active"].includes(r.dispatch_status) && !["arrived_drop", "delivered"].includes(r.driver_job_status),
+          primaryDropStatus: r.primary_drop_status || "pending",
+          primaryDropStatusLabel: stopStatusLabel[r.primary_drop_status] || "Pending",
+          primaryDropCompletedAt: fmtDateTime(r.primary_drop_completed_at),
+          primaryDropCompletedAtRaw: rawDateTime(r.primary_drop_completed_at),
           freight: fmtAmount(r.freight_amount_gbp),
           freightValue,
           loadType: r.load_type || "general",

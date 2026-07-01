@@ -43,6 +43,9 @@ export const logDriverOdometer = (userId, data) =>
 export const updateDriverJobEta = (userId, jobId, data) =>
   api.patch(`/api/drivers/me/jobs/${jobId}/eta`, data, { params: { userId } });
 
+export const updateDriverPrimaryDropStatus = (userId, jobId, data) =>
+  api.patch(`/api/drivers/me/jobs/${jobId}/primary-drop/status`, data, { params: { userId } });
+
 export const updateDriverStopStatus = (userId, jobId, stopId, data) =>
   api.patch(`/api/drivers/me/jobs/${jobId}/stops/${stopId}/status`, data, { params: { userId } });
 

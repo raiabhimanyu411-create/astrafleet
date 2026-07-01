@@ -870,8 +870,8 @@ export function JobsListPage() {
                 index: 2,
                 name: dropShort,
                 title: job.dropAddress,
-                arrival: fmtRouteStamp(job.actualArrivalRaw || job.calculatedArrival, job.actualArrival),
-                departure: fmtRouteStamp(job.calculatedUnloadEnd)
+                arrival: fmtRouteStamp(job.primaryDropCompletedAtRaw || job.actualArrivalRaw || job.calculatedArrival, job.primaryDropCompletedAt || job.actualArrival),
+                departure: fmtRouteStamp(job.primaryDropCompletedAtRaw || job.calculatedUnloadEnd, job.primaryDropCompletedAt)
               },
               ...routeStops.map((stop, index) => ({
                 key: stop.id || `stop-${index}`,
@@ -1242,17 +1242,22 @@ export function JobsListPage() {
                             {driverStatusLabel && (
                               <span className={`relay-driver-stop-status ${driverStatusToneVal}`}>{driverStatusLabel}</span>
                             )}
+                            <span className={`relay-driver-stop-status ${STOP_STATUS_TONE[job.primaryDropStatus] || "neutral"}`}>
+                              Drop 1: {job.primaryDropStatusLabel || job.primaryDropStatus || "Pending"}
+                            </span>
                           </div>
                           <div className="relay-stop-time">
                             <strong className={arrTimeTone}>
-                              {job.actualArrival && job.actualArrival !== "—"
+                              {job.primaryDropCompletedAt && job.primaryDropCompletedAt !== "—"
+                                ? job.primaryDropCompletedAt
+                                : job.actualArrival && job.actualArrival !== "—"
                                 ? job.actualArrival
                                 : job.calculatedArrival ? fmtTimeFull(job.calculatedArrival) : "TBD"}
                             </strong>
-                            {job.calculatedArrival && job.actualArrival && job.actualArrival !== "—" && (
+                            {job.calculatedArrival && ((job.actualArrival && job.actualArrival !== "—") || (job.primaryDropCompletedAt && job.primaryDropCompletedAt !== "—")) && (
                               <small className="relay-sch-time">Sch. {fmtTimeFull(job.calculatedArrival)}</small>
                             )}
-                            {!job.actualArrival && job.calculatedArrival && (
+                            {!job.actualArrival && (!job.primaryDropCompletedAt || job.primaryDropCompletedAt === "—") && job.calculatedArrival && (
                               <small className="relay-sch-time">Sch. {fmtTimeFull(job.calculatedArrival)}</small>
                             )}
                             {isActive && (
@@ -1263,7 +1268,9 @@ export function JobsListPage() {
                             )}
                           </div>
                           <div className="relay-stop-time">
-                            {job.calculatedUnloadEnd
+                            {job.primaryDropCompletedAt && job.primaryDropCompletedAt !== "—"
+                              ? <strong>{job.primaryDropCompletedAt}</strong>
+                              : job.calculatedUnloadEnd
                               ? <strong>{fmtTimeFull(job.calculatedUnloadEnd)}</strong>
                               : <span className="relay-time-dash">—</span>}
                             {job.calculatedUnloadEnd && (

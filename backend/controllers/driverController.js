@@ -97,7 +97,9 @@ const tripColumnDefinitions = {
   special_instructions: "TEXT DEFAULT NULL",
   actual_departure: "DATETIME DEFAULT NULL",
   actual_arrival: "DATETIME DEFAULT NULL",
-  eta_updated_at: "DATETIME DEFAULT NULL"
+  eta_updated_at: "DATETIME DEFAULT NULL",
+  primary_drop_status: "VARCHAR(40) DEFAULT 'pending'",
+  primary_drop_completed_at: "DATETIME DEFAULT NULL"
 };
 
 const statusTransitions = {
@@ -365,6 +367,7 @@ async function getDriverFromSession(req) {
 
 function mapDriverJob(row, stops = []) {
   const status = row.driver_job_status || "accepted";
+  const primaryDropStatus = row.primary_drop_status || (status === "delivered" ? "completed" : "pending");
   const pickup = row.pickup_address || row.origin_hub || "Pickup TBD";
   const drop = row.drop_address || row.destination_hub || "Drop TBD";
   const navStops = [pickup, drop, ...stops.map(stop => stop.address).filter(Boolean)];
@@ -375,6 +378,11 @@ function mapDriverJob(row, stops = []) {
   const lastStopId = stops.length ? stops[stops.length - 1].id : null;
   const jobIsPastPickup = ["loaded", "in_transit", "arrived_drop", "delivered"].includes(status);
   const jobIsAtDrop = ["arrived_drop", "delivered"].includes(status);
+  const primaryDropDone = primaryDropStatus === "completed" || status === "delivered";
+  const nextDeliveryStopIndex = stops.findIndex(stop => !isReturnStop(stop, pickupPostcode, lastStopId) && !["completed", "skipped"].includes(stop.status));
+  const displayStatusLabel = status === "arrived_drop" && primaryDropDone && nextDeliveryStopIndex >= 0
+    ? `Going to Drop ${nextDeliveryStopIndex + 2}`
+    : driverStatusLabel[status] || status;
   const routePoints = [
     {
       id: "pickup",
@@ -395,9 +403,10 @@ function mapDriverJob(row, stops = []) {
       label: "Drop 1",
       address: drop,
       arrival: fmtDateTime(row.calculated_arrival || row.eta),
-      departure: fmtDateTime(row.calculated_unload_end),
-      status: status === "delivered" ? "completed" : jobIsAtDrop ? "arrived" : "pending",
-      statusLabel: status === "delivered" ? "Completed" : jobIsAtDrop ? "At drop" : "Pending",
+      departure: primaryDropDone ? fmtDateTime(row.primary_drop_completed_at || row.calculated_unload_end) : fmtDateTime(row.calculated_unload_end),
+      status: primaryDropDone ? "completed" : jobIsAtDrop ? "arrived" : "pending",
+      statusLabel: primaryDropDone ? "Completed" : jobIsAtDrop ? "At drop" : "Pending",
+      isPrimaryDrop: true,
       contactName: row.cust_contact || "—",
       contactPhone: customerPhone,
       notes: row.dispatcher_notes || row.special_instructions || "—"
@@ -425,7 +434,7 @@ function mapDriverJob(row, stops = []) {
     reference: row.reference || "—",
     loadId: row.load_id || "—",
     status,
-    statusLabel: driverStatusLabel[status] || status,
+    statusLabel: displayStatusLabel,
     statusTone: driverStatusTone[status] || "neutral",
     dispatchStatus: row.dispatch_status,
     priority: row.priority_level,
@@ -703,7 +712,7 @@ exports.updateMyJobStatus = async (req, res) => {
     }
 
     const [[job]] = await db.query(
-      `SELECT t.id, t.vehicle_id, t.driver_job_status, t.pickup_address, r.origin_hub
+      `SELECT t.id, t.vehicle_id, t.driver_job_status, t.primary_drop_status, t.pickup_address, r.origin_hub
        FROM trips t
        LEFT JOIN routes r ON r.id = t.route_id
        WHERE t.id = ? AND t.driver_id = ?`,
@@ -812,6 +821,9 @@ exports.submitMyProofOfDelivery = async (req, res) => {
     if (!job) return res.status(404).json({ message: "Assigned job not found." });
     if (["failed_delivery", "declined"].includes(job.driver_job_status)) {
       return res.status(409).json({ message: "POD cannot be submitted for a failed or declined job." });
+    }
+    if ((job.primary_drop_status || "pending") !== "completed") {
+      return res.status(400).json({ message: "Complete Drop 1 before submitting POD." });
     }
     const pickupPostcode = extractPostcode(job.pickup_address || job.origin_hub);
     const [[lastStop]] = await db.query(
@@ -1100,6 +1112,75 @@ exports.updateJobEta = async (req, res) => {
   }
 };
 
+// PATCH /api/drivers/me/jobs/:jobId/primary-drop/status
+exports.updatePrimaryDropStatus = async (req, res) => {
+  try {
+    await ensureDriverOpsSchema();
+    const driver = await getDriverFromSession(req);
+    if (!driver) return res.status(404).json({ message: "Driver profile not linked." });
+
+    const { jobId } = req.params;
+    const { status } = req.body;
+    const allowedStatuses = new Set(["arrived", "completed"]);
+    if (!allowedStatuses.has(status)) return res.status(400).json({ message: "Invalid Drop 1 status." });
+
+    const [[job]] = await db.query(
+      `SELECT t.id, t.driver_job_status, t.pickup_address, r.origin_hub
+       FROM trips t
+       LEFT JOIN routes r ON r.id = t.route_id
+       WHERE t.id=? AND t.driver_id=?`,
+      [jobId, driver.id]
+    );
+    if (!job) return res.status(404).json({ message: "Assigned job not found." });
+
+    const pickupPostcode = extractPostcode(job.pickup_address || job.origin_hub);
+    const [[lastStop]] = await db.query(
+      `SELECT id, address FROM job_stops WHERE trip_id=? ORDER BY stop_order DESC LIMIT 1`,
+      [jobId]
+    );
+    const [openStops] = await db.query(
+      `SELECT id, address FROM job_stops
+       WHERE trip_id=? AND status NOT IN ('completed','skipped')
+       ORDER BY stop_order ASC`,
+      [jobId]
+    );
+    const remainingDeliveryStops = openStops.filter(stop => !isReturnStop(stop, pickupPostcode, lastStop?.id || null));
+    const nextDriverStatus = status === "completed" && remainingDeliveryStops.length > 0 ? "in_transit" : "arrived_drop";
+
+    await db.query(
+      `UPDATE trips
+       SET primary_drop_status=?,
+           primary_drop_completed_at=IF(?='completed', COALESCE(primary_drop_completed_at, NOW()), primary_drop_completed_at),
+           driver_job_status=?,
+           dispatch_status='active'
+       WHERE id=? AND driver_id=?`,
+      [status, status, nextDriverStatus, jobId, driver.id]
+    );
+
+    if (job.driver_job_status !== nextDriverStatus) {
+      await db.query(
+        `INSERT INTO driver_job_status_events (trip_id, driver_id, status, reason, source)
+         VALUES (?, ?, ?, ?, 'driver')`,
+        [jobId, driver.id, nextDriverStatus, status === "completed" ? "Drop 1 completed; moving to next drop." : "Driver arrived at Drop 1."]
+      );
+    }
+
+    emitJobUpdate({ jobId: Number(jobId), source: "driver-primary-drop", primaryDropStatus: status, status: nextDriverStatus });
+
+    res.json({
+      message: status === "completed"
+        ? remainingDeliveryStops.length > 0
+          ? "Drop 1 completed. Continue to the next drop."
+          : "Drop 1 completed. Submit POD to finish the job."
+        : "Drop 1 marked arrived.",
+      status,
+      driverJobStatus: nextDriverStatus
+    });
+  } catch (err) {
+    res.status(500).json({ message: "Drop 1 status update error", error: err.message });
+  }
+};
+
 // PATCH /api/drivers/me/jobs/:jobId/stops/:stopId/status
 exports.updateJobStopStatus = async (req, res) => {
   try {
@@ -1127,6 +1208,34 @@ exports.updateJobStopStatus = async (req, res) => {
        WHERE id=? AND trip_id=?`,
       [status, status, stopId, jobId]
     );
+
+    if (status === "completed" || status === "skipped") {
+      const [[trip]] = await db.query(
+        `SELECT t.primary_drop_status, t.pickup_address, r.origin_hub
+         FROM trips t
+         LEFT JOIN routes r ON r.id = t.route_id
+         WHERE t.id=? AND t.driver_id=?`,
+        [jobId, driver.id]
+      );
+      const pickupPostcode = extractPostcode(trip?.pickup_address || trip?.origin_hub);
+      const [[lastStop]] = await db.query(
+        `SELECT id, address FROM job_stops WHERE trip_id=? ORDER BY stop_order DESC LIMIT 1`,
+        [jobId]
+      );
+      const [openStops] = await db.query(
+        `SELECT id, address FROM job_stops
+         WHERE trip_id=? AND status NOT IN ('completed','skipped')
+         ORDER BY stop_order ASC`,
+        [jobId]
+      );
+      const remainingDeliveryStops = openStops.filter(row => !isReturnStop(row, pickupPostcode, lastStop?.id || null));
+      if ((trip?.primary_drop_status || "pending") === "completed") {
+        await db.query(
+          `UPDATE trips SET driver_job_status=? WHERE id=? AND driver_id=?`,
+          [remainingDeliveryStops.length > 0 ? "in_transit" : "arrived_drop", jobId, driver.id]
+        );
+      }
+    }
 
     emitJobUpdate({ jobId: Number(jobId), stopId: Number(stopId), source: "driver-stop", stopStatus: status });
 

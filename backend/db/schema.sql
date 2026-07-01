@@ -183,6 +183,8 @@ CREATE TABLE IF NOT EXISTS trips (
   planned_departure DATETIME DEFAULT NULL,
   eta               DATETIME DEFAULT NULL,
   eta_updated_at    DATETIME DEFAULT NULL,
+  primary_drop_status VARCHAR(40) DEFAULT 'pending',
+  primary_drop_completed_at DATETIME DEFAULT NULL,
   actual_departure  DATETIME DEFAULT NULL,
   actual_arrival    DATETIME DEFAULT NULL,
   dock_window       VARCHAR(80) DEFAULT NULL,
