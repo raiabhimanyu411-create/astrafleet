@@ -99,6 +99,7 @@ const tripColumnDefinitions = {
   actual_arrival: "DATETIME DEFAULT NULL",
   eta_updated_at: "DATETIME DEFAULT NULL",
   primary_drop_status: "VARCHAR(40) DEFAULT 'pending'",
+  primary_drop_arrived_at: "DATETIME DEFAULT NULL",
   primary_drop_completed_at: "DATETIME DEFAULT NULL"
 };
 
@@ -292,7 +293,9 @@ async function ensureDriverOpsSchema() {
       contact_name VARCHAR(120) DEFAULT NULL,
       contact_phone VARCHAR(30) DEFAULT NULL,
       planned_arrival DATETIME DEFAULT NULL,
+      planned_departure DATETIME DEFAULT NULL,
       actual_arrival DATETIME DEFAULT NULL,
+      actual_departure DATETIME DEFAULT NULL,
       status ENUM('pending','arrived','completed','skipped') NOT NULL DEFAULT 'pending',
       notes TEXT DEFAULT NULL,
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -301,6 +304,7 @@ async function ensureDriverOpsSchema() {
     ) ENGINE=InnoDB`
   );
   await addColumnIfMissing("job_stops", "planned_departure", "DATETIME DEFAULT NULL");
+  await addColumnIfMissing("job_stops", "actual_departure", "DATETIME DEFAULT NULL");
 
   driverOpsSchemaReady = true;
 }
@@ -402,7 +406,7 @@ function mapDriverJob(row, stops = []) {
       type: "drop",
       label: "Drop 1",
       address: drop,
-      arrival: fmtDateTime(row.calculated_arrival || row.eta),
+      arrival: fmtDateTime(row.primary_drop_arrived_at || row.calculated_arrival || row.eta),
       departure: primaryDropDone ? fmtDateTime(row.primary_drop_completed_at || row.calculated_unload_end) : fmtDateTime(row.calculated_unload_end),
       status: primaryDropDone ? "completed" : jobIsAtDrop ? "arrived" : "pending",
       statusLabel: primaryDropDone ? "Completed" : jobIsAtDrop ? "At drop" : "Pending",
@@ -417,8 +421,8 @@ function mapDriverJob(row, stops = []) {
       type: isReturnStop(stop, pickupPostcode, lastStopId) ? "return" : "drop",
       label: isReturnStop(stop, pickupPostcode, lastStopId) ? "Return point" : `Drop ${index + 2}`,
       address: stop.address || "—",
-      arrival: fmtDateTime(stop.planned_arrival),
-      departure: fmtDateTime(stop.planned_departure),
+      arrival: fmtDateTime(stop.actual_arrival || stop.planned_arrival),
+      departure: fmtDateTime(stop.actual_departure || stop.planned_departure),
       status: stop.status || "pending",
       statusLabel: stopStatusLabel[stop.status] || "Pending",
       isReturnPoint: isReturnStop(stop, pickupPostcode, lastStopId),
@@ -479,6 +483,8 @@ function mapDriverJob(row, stops = []) {
       contactPhone: stop.contact_phone || "—",
       plannedArrival: fmtDateTime(stop.planned_arrival),
       plannedDeparture: fmtDateTime(stop.planned_departure),
+      actualArrival: fmtDateTime(stop.actual_arrival),
+      actualDeparture: fmtDateTime(stop.actual_departure),
       notes: stop.notes || "—",
       status: stop.status || "pending",
       statusLabel: stopStatusLabel[stop.status] || "Pending",
@@ -751,6 +757,10 @@ exports.updateMyJobStatus = async (req, res) => {
       updates.push("actual_departure=COALESCE(actual_departure, ?)");
       values.push(new Date());
     }
+    if (status === "arrived_drop") {
+      updates.push("primary_drop_arrived_at=COALESCE(primary_drop_arrived_at, ?)");
+      values.push(new Date());
+    }
     if (status === "delivered") {
       updates.push("actual_arrival=COALESCE(actual_arrival, ?)", "pod_status='uploaded'");
       values.push(new Date());
@@ -841,6 +851,7 @@ exports.submitMyProofOfDelivery = async (req, res) => {
       await db.query(
         `UPDATE trips
          SET primary_drop_status='completed',
+             primary_drop_arrived_at=COALESCE(primary_drop_arrived_at, NOW()),
              primary_drop_completed_at=COALESCE(primary_drop_completed_at, NOW())
          WHERE id=? AND driver_id=?`,
         [jobId, driver.id]
@@ -1156,11 +1167,12 @@ exports.updatePrimaryDropStatus = async (req, res) => {
     await db.query(
       `UPDATE trips
        SET primary_drop_status=?,
+           primary_drop_arrived_at=IF(? IN ('arrived','completed'), COALESCE(primary_drop_arrived_at, NOW()), primary_drop_arrived_at),
            primary_drop_completed_at=IF(?='completed', COALESCE(primary_drop_completed_at, NOW()), primary_drop_completed_at),
            driver_job_status=?,
            dispatch_status='active'
        WHERE id=? AND driver_id=?`,
-      [status, status, nextDriverStatus, jobId, driver.id]
+      [status, status, status, nextDriverStatus, jobId, driver.id]
     );
 
     if (job.driver_job_status !== nextDriverStatus) {
@@ -1210,9 +1222,11 @@ exports.updateJobStopStatus = async (req, res) => {
 
     await db.query(
       `UPDATE job_stops
-       SET status=?, actual_arrival=IF(? IN ('arrived','completed'), COALESCE(actual_arrival, NOW()), actual_arrival)
+       SET status=?,
+           actual_arrival=IF(? IN ('arrived','completed'), COALESCE(actual_arrival, NOW()), actual_arrival),
+           actual_departure=IF(? IN ('completed','skipped'), COALESCE(actual_departure, NOW()), actual_departure)
        WHERE id=? AND trip_id=?`,
-      [status, status, stopId, jobId]
+      [status, status, status, stopId, jobId]
     );
 
     if (status === "completed" || status === "skipped") {

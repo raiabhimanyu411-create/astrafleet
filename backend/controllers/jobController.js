@@ -147,6 +147,7 @@ async function ensureDriverOpsSchema() {
   await addColumnIfMissing("trips", "actual_arrival", "DATETIME DEFAULT NULL");
   await addColumnIfMissing("trips", "eta_updated_at", "DATETIME DEFAULT NULL");
   await addColumnIfMissing("trips", "primary_drop_status", "VARCHAR(40) DEFAULT 'pending'");
+  await addColumnIfMissing("trips", "primary_drop_arrived_at", "DATETIME DEFAULT NULL");
   await addColumnIfMissing("trips", "primary_drop_completed_at", "DATETIME DEFAULT NULL");
   await addColumnIfMissing("vehicles", "current_location", "VARCHAR(160) DEFAULT NULL");
   await addColumnIfMissing("vehicles", "speed_kph", "DECIMAL(5,1) DEFAULT 0");
@@ -199,6 +200,7 @@ async function ensureDriverOpsSchema() {
     ) ENGINE=InnoDB`
   );
   await addColumnIfMissing("job_stops", "planned_departure", "DATETIME DEFAULT NULL");
+  await addColumnIfMissing("job_stops", "actual_departure", "DATETIME DEFAULT NULL");
   await db.query(
     `CREATE TABLE IF NOT EXISTS defect_reports (
       id INT AUTO_INCREMENT PRIMARY KEY,
@@ -642,7 +644,7 @@ exports.listJobs = async (req, res) => {
     const [rows] = await db.query(
       `SELECT t.id, t.trip_code, t.customer_id, t.client_name, t.route_id, t.vehicle_id, t.trailer_id, t.driver_id,
               t.dispatch_status, t.priority_level, t.driver_job_status,
-              t.planned_departure, t.eta, t.eta_updated_at, t.primary_drop_status, t.primary_drop_completed_at,
+              t.planned_departure, t.eta, t.eta_updated_at, t.primary_drop_status, t.primary_drop_arrived_at, t.primary_drop_completed_at,
               t.delivery_deadline, t.actual_departure, t.actual_arrival,
               t.dock_window, t.freight_amount_gbp, t.load_type, t.load_weight_kg, t.load_volume_cbm,
               t.vehicle_type_requirement, t.load_description, t.special_instructions, t.dispatcher_notes,
@@ -718,7 +720,7 @@ exports.listJobs = async (req, res) => {
     if (jobIds.length > 0) {
       const [stopRows] = await db.query(
         `SELECT id, trip_id, stop_order, stop_type, address, contact_name, contact_phone,
-                planned_arrival, planned_departure, actual_arrival, status, notes
+                planned_arrival, planned_departure, actual_arrival, actual_departure, status, notes
          FROM job_stops
          WHERE trip_id IN (?)
          ORDER BY trip_id ASC, stop_order ASC`,
@@ -848,6 +850,8 @@ exports.listJobs = async (req, res) => {
           etaRisk: r.eta && new Date(r.eta).getTime() < Date.now() && ["planned", "loading", "active"].includes(r.dispatch_status) && !["arrived_drop", "delivered"].includes(r.driver_job_status),
           primaryDropStatus: r.primary_drop_status || "pending",
           primaryDropStatusLabel: stopStatusLabel[r.primary_drop_status] || "Pending",
+          primaryDropArrivedAt: fmtDateTime(r.primary_drop_arrived_at),
+          primaryDropArrivedAtRaw: rawDateTime(r.primary_drop_arrived_at),
           primaryDropCompletedAt: fmtDateTime(r.primary_drop_completed_at),
           primaryDropCompletedAtRaw: rawDateTime(r.primary_drop_completed_at),
           freight: fmtAmount(r.freight_amount_gbp),
@@ -881,6 +885,8 @@ exports.listJobs = async (req, res) => {
             plannedDepartureRaw: rawDateTime(s.planned_departure),
             actualArrival: fmtDateTime(s.actual_arrival),
             actualArrivalRaw: rawDateTime(s.actual_arrival),
+            actualDeparture: fmtDateTime(s.actual_departure),
+            actualDepartureRaw: rawDateTime(s.actual_departure),
             status: s.status || "pending",
             statusLabel: stopStatusLabel[s.status] || "Pending",
             isReturnPoint,

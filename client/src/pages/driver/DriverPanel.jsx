@@ -94,6 +94,33 @@ function readFileAsDataUrl(file, setter) {
   reader.readAsDataURL(file);
 }
 
+function readCompressedImage(file, setter, { maxSize = 1280, quality = 0.72 } = {}) {
+  if (!file) return;
+  if (!file.type?.startsWith("image/")) {
+    readFileAsDataUrl(file, setter);
+    return;
+  }
+
+  const reader = new FileReader();
+  reader.onload = () => {
+    const img = new Image();
+    img.onload = () => {
+      const scale = Math.min(1, maxSize / Math.max(img.width, img.height));
+      const width = Math.max(1, Math.round(img.width * scale));
+      const height = Math.max(1, Math.round(img.height * scale));
+      const canvas = document.createElement("canvas");
+      canvas.width = width;
+      canvas.height = height;
+      const ctx = canvas.getContext("2d");
+      ctx.drawImage(img, 0, 0, width, height);
+      setter(canvas.toDataURL("image/jpeg", quality));
+    };
+    img.onerror = () => setter(reader.result);
+    img.src = reader.result;
+  };
+  reader.readAsDataURL(file);
+}
+
 function fmtTimer(secs) {
   const h = Math.floor(secs / 3600);
   const m = Math.floor((secs % 3600) / 60);
@@ -104,7 +131,14 @@ function fmtTimer(secs) {
 function actionErrorMessage(err) {
   const data = err?.response?.data;
   if (data?.message) return data.message;
-  if (typeof data === "string" && data.trim()) return data.slice(0, 180);
+  if (typeof data === "string" && data.trim()) {
+    const text = data.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim();
+    if (/413|request entity too large/i.test(text)) {
+      return "POD photo is too large. Please clear it and upload a smaller photo.";
+    }
+    return text.slice(0, 180);
+  }
+  if (err?.response?.status === 413) return "POD photo is too large. Please clear it and upload a smaller photo.";
   if (err?.message) return err.message;
   return "Action failed. Please try again.";
 }
@@ -1114,6 +1148,16 @@ export function DriverPanel() {
                 >
                   {useSigPad ? "Use File Upload" : "Use Signature Pad"}
                 </button>
+                {pod.signatureData && (
+                  <button
+                    type="button"
+                    className="header-action-button danger"
+                    style={{ padding: "3px 10px", fontSize: "0.75rem" }}
+                    onClick={() => setPod(p => ({ ...p, signatureData: "" }))}
+                  >
+                    Clear Signature
+                  </button>
+                )}
               </div>
 
               {useSigPad ? (
@@ -1130,13 +1174,24 @@ export function DriverPanel() {
             </div>
 
             <div className="af-field">
-              <label className="af-label">Delivery Photo</label>
+              <div className="pod-field-head">
+                <label className="af-label">Delivery Photo</label>
+                {pod.photoData && (
+                  <button
+                    className="header-action-button danger"
+                    type="button"
+                    onClick={() => setPod(p => ({ ...p, photoData: "" }))}
+                  >
+                    Delete Photo
+                  </button>
+                )}
+              </div>
               <input
                 className="af-input"
                 type="file"
                 accept="image/*"
                 capture="environment"
-                onChange={e => readFileAsDataUrl(e.target.files?.[0], value => setPod(p => ({ ...p, photoData: value })))}
+                onChange={e => readCompressedImage(e.target.files?.[0], value => setPod(p => ({ ...p, photoData: value })))}
               />
             </div>
 
@@ -1158,7 +1213,18 @@ export function DriverPanel() {
                   : <p>No signature captured.</p>}
               </div>
               <div>
-                <span className="card-label">Delivery Photo Preview</span>
+                <div className="pod-preview-head">
+                  <span className="card-label">Delivery Photo Preview</span>
+                  {pod.photoData && (
+                    <button
+                      className="header-action-button danger"
+                      type="button"
+                      onClick={() => setPod(p => ({ ...p, photoData: "" }))}
+                    >
+                      Delete
+                    </button>
+                  )}
+                </div>
                 {pod.photoData
                   ? <img alt="Delivery proof preview" src={pod.photoData} />
                   : <p>No delivery photo selected.</p>}

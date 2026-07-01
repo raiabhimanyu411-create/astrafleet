@@ -5758,6 +5758,24 @@ p.lp-success {
   gap: 12px;
 }
 
+.pod-field-head,
+.pod-preview-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.pod-field-head .af-label {
+  margin: 0;
+}
+
+.pod-field-head .header-action-button,
+.pod-preview-head .header-action-button {
+  padding: 4px 10px;
+  font-size: 0.74rem;
+}
+
 .pod-preview-grid > div {
   min-height: 148px;
   padding: 12px;

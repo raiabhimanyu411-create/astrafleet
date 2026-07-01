@@ -870,7 +870,7 @@ export function JobsListPage() {
                 index: 2,
                 name: dropShort,
                 title: job.dropAddress,
-                arrival: fmtRouteStamp(job.primaryDropCompletedAtRaw || job.actualArrivalRaw || job.calculatedArrival, job.primaryDropCompletedAt || job.actualArrival),
+                arrival: fmtRouteStamp(job.primaryDropArrivedAtRaw || job.primaryDropCompletedAtRaw || job.actualArrivalRaw || job.calculatedArrival, job.primaryDropArrivedAt || job.primaryDropCompletedAt || job.actualArrival),
                 departure: fmtRouteStamp(job.primaryDropCompletedAtRaw || job.calculatedUnloadEnd, job.primaryDropCompletedAt)
               },
               ...routeStops.map((stop, index) => ({
@@ -879,7 +879,7 @@ export function JobsListPage() {
                 name: extractUkPostcode(stop.address),
                 title: stop.address,
                 arrival: fmtRouteStamp(stop.actualArrivalRaw || stop.plannedArrivalRaw, stop.actualArrival),
-                departure: fmtRouteStamp(stop.plannedDepartureRaw, stop.plannedDeparture)
+                departure: fmtRouteStamp(stop.actualDepartureRaw || stop.plannedDepartureRaw, stop.actualDeparture || stop.plannedDeparture)
               }))
             ];
             const hasGap = !job.driverAssigned || !job.vehicleAssigned;
@@ -1248,16 +1248,18 @@ export function JobsListPage() {
                           </div>
                           <div className="relay-stop-time">
                             <strong className={arrTimeTone}>
-                              {job.primaryDropCompletedAt && job.primaryDropCompletedAt !== "—"
+                              {job.primaryDropArrivedAt && job.primaryDropArrivedAt !== "—"
+                                ? job.primaryDropArrivedAt
+                                : job.primaryDropCompletedAt && job.primaryDropCompletedAt !== "—"
                                 ? job.primaryDropCompletedAt
                                 : job.actualArrival && job.actualArrival !== "—"
                                 ? job.actualArrival
                                 : job.calculatedArrival ? fmtTimeFull(job.calculatedArrival) : "TBD"}
                             </strong>
-                            {job.calculatedArrival && ((job.actualArrival && job.actualArrival !== "—") || (job.primaryDropCompletedAt && job.primaryDropCompletedAt !== "—")) && (
+                            {job.calculatedArrival && ((job.actualArrival && job.actualArrival !== "—") || (job.primaryDropArrivedAt && job.primaryDropArrivedAt !== "—") || (job.primaryDropCompletedAt && job.primaryDropCompletedAt !== "—")) && (
                               <small className="relay-sch-time">Sch. {fmtTimeFull(job.calculatedArrival)}</small>
                             )}
-                            {!job.actualArrival && (!job.primaryDropCompletedAt || job.primaryDropCompletedAt === "—") && job.calculatedArrival && (
+                            {!job.actualArrival && (!job.primaryDropArrivedAt || job.primaryDropArrivedAt === "—") && (!job.primaryDropCompletedAt || job.primaryDropCompletedAt === "—") && job.calculatedArrival && (
                               <small className="relay-sch-time">Sch. {fmtTimeFull(job.calculatedArrival)}</small>
                             )}
                             {isActive && (
@@ -1343,8 +1345,11 @@ export function JobsListPage() {
                               )}
                             </div>
                             <div className="relay-stop-time">
-                              <strong>{stop.plannedDeparture !== "—" ? stop.plannedDeparture : "—"}</strong>
-                              {stop.plannedDeparture !== "—" && (
+                              <strong>{stop.actualDeparture !== "—" ? stop.actualDeparture : stop.plannedDeparture !== "—" ? stop.plannedDeparture : "—"}</strong>
+                              {stop.actualDeparture !== "—" && stop.plannedDeparture !== "—" && (
+                                <small className="relay-sch-time">Sch. {stop.plannedDeparture}</small>
+                              )}
+                              {stop.actualDeparture === "—" && stop.plannedDeparture !== "—" && (
                                 <small className="relay-sch-time">Sch. {stop.plannedDeparture}</small>
                               )}
                             </div>
