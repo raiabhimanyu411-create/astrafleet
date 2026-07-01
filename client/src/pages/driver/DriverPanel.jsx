@@ -824,7 +824,6 @@ export function DriverPanel() {
               <div className="detail-grid">
                 <Detail label="Reference"    value={selectedJob.reference} />
                 <Detail label="Load ID"      value={selectedJob.loadId} />
-                <Detail label="Client"       value={selectedJob.customer.name} />
                 <Detail label="Vehicle"      value={selectedJob.vehicle} />
                 <Detail label="Trailer" value={selectedJob.trailer} />
                 <Detail label="Load"         value={`${selectedJob.load.type} · ${selectedJob.load.weight}`} />
