@@ -42,6 +42,7 @@ export function PanelLayout({
   roleLabel,
   headerContent,
   scopeNote = defaultScopeNote,
+  className = "",
   children
 }) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -61,7 +62,7 @@ export function PanelLayout({
   }, [sidebarOpen]);
 
   return (
-    <div className="panel-shell">
+    <div className={["panel-shell", className].filter(Boolean).join(" ")}>
       {/* Mobile top bar */}
       <div className="mobile-topbar">
         <div className="mobile-topbar-brand">

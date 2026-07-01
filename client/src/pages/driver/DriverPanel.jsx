@@ -593,6 +593,7 @@ export function DriverPanel() {
       highlights={[]}
       menu={driverPanelMenu}
       roleLabel="Driver Workspace"
+      className="driver-panel-shell"
       headerContent={(
         <>
           <NotificationBell

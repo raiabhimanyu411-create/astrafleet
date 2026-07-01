@@ -6241,6 +6241,323 @@ p.lp-success {
   .af-grid-3 { grid-template-columns: 1fr; }
 }
 
+@media (max-width: 560px) {
+  .driver-panel-shell .mobile-topbar {
+    padding: 8px 10px;
+    gap: 8px;
+  }
+
+  .driver-panel-shell .mobile-topbar-brand {
+    min-width: 0;
+    gap: 8px;
+    font-size: 0.82rem;
+  }
+
+  .driver-panel-shell .mobile-topbar-brand svg {
+    width: 26px;
+    height: 26px;
+    flex-shrink: 0;
+  }
+
+  .driver-panel-shell .mobile-topbar > div:last-child {
+    min-width: 0;
+    gap: 6px !important;
+  }
+
+  .driver-panel-shell .mobile-topbar .header-action-button {
+    height: 34px;
+    padding: 0 10px;
+    font-size: 0.74rem;
+  }
+
+  .driver-panel-shell .mobile-topbar .notif-bell-btn,
+  .driver-panel-shell .hamburger-btn {
+    width: 34px;
+    height: 34px;
+    padding: 7px;
+    border-radius: 8px;
+  }
+
+  .driver-panel-shell .panel-main {
+    padding: 14px 12px 24px;
+    background: #f4f7fb;
+  }
+
+  .driver-panel-shell .panel-header {
+    margin: -2px -2px 12px;
+    padding: 12px 2px 2px;
+    gap: 8px;
+  }
+
+  .driver-panel-shell .panel-header h1 {
+    margin: 7px 0 4px;
+    font-size: 1.18rem;
+    line-height: 1.2;
+  }
+
+  .driver-panel-shell .panel-header p {
+    max-width: 34ch;
+    font-size: 0.76rem;
+    line-height: 1.45;
+  }
+
+  .driver-panel-shell .panel-header .header-actions {
+    display: none;
+  }
+
+  .driver-panel-shell .section-chip {
+    padding: 3px 9px;
+    font-size: 0.62rem;
+  }
+
+  .driver-panel-shell .state-card,
+  .driver-panel-shell .doc-expiry-banner {
+    margin-bottom: 10px;
+    padding: 10px 12px;
+    border-radius: 8px;
+  }
+
+  .driver-panel-shell .driver-workspace-tabs {
+    position: sticky;
+    top: 51px;
+    z-index: 30;
+    margin: 0 -12px 12px;
+    padding: 8px 12px;
+    border-width: 1px 0;
+    border-radius: 0;
+    background: rgba(244, 247, 251, 0.96);
+    box-shadow: 0 8px 18px rgba(15, 23, 42, 0.08);
+    scrollbar-width: none;
+  }
+
+  .driver-panel-shell .driver-workspace-tabs::-webkit-scrollbar {
+    display: none;
+  }
+
+  .driver-panel-shell .driver-workspace-tabs button {
+    flex-basis: 118px;
+    min-height: 48px;
+    padding: 8px 10px;
+    border-color: var(--border);
+    background: var(--surface);
+    box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+  }
+
+  .driver-panel-shell .driver-workspace-tabs button.active {
+    border-color: rgba(37, 99, 235, 0.42);
+    box-shadow: inset 0 -3px 0 var(--primary), 0 4px 12px rgba(37, 99, 235, 0.12);
+  }
+
+  .driver-panel-shell .driver-workspace-tabs strong {
+    font-size: 0.74rem;
+  }
+
+  .driver-panel-shell .driver-workspace-tabs span {
+    font-size: 0.63rem;
+  }
+
+  .driver-panel-shell .content-grid {
+    gap: 10px;
+    margin-bottom: 10px;
+  }
+
+  .driver-panel-shell .content-card {
+    padding: 14px;
+    border-radius: 10px;
+  }
+
+  .driver-panel-shell .section-head {
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 12px;
+  }
+
+  .driver-panel-shell .section-head h2 {
+    font-size: 0.88rem;
+    line-height: 1.25;
+  }
+
+  .driver-panel-shell .card-label {
+    font-size: 0.62rem;
+  }
+
+  .driver-panel-shell .status-pill {
+    padding: 3px 8px;
+    font-size: 0.66rem;
+  }
+
+  .driver-panel-shell .driver-job-tabs {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 7px;
+  }
+
+  .driver-panel-shell .driver-job-tabs button,
+  .driver-panel-shell .driver-status-button {
+    min-height: 42px;
+    border-radius: 8px;
+    font-size: 0.74rem;
+  }
+
+  .driver-panel-shell .driver-job-list {
+    gap: 8px;
+  }
+
+  .driver-panel-shell .driver-job-button {
+    padding: 12px;
+    border-radius: 9px;
+    gap: 8px;
+  }
+
+  .driver-panel-shell .driver-job-button strong {
+    font-size: 0.86rem;
+  }
+
+  .driver-panel-shell .driver-job-button p,
+  .driver-panel-shell .driver-empty {
+    font-size: 0.74rem;
+    line-height: 1.4;
+  }
+
+  .driver-panel-shell .detail-grid {
+    gap: 8px;
+  }
+
+  .driver-panel-shell .detail-grid > div,
+  .driver-panel-shell .driver-shift-panel > div {
+    padding: 10px 11px;
+    border-radius: 8px;
+  }
+
+  .driver-panel-shell .eta-update-row,
+  .driver-panel-shell .odometer-row {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 8px;
+    margin: 10px 0;
+  }
+
+  .driver-panel-shell .eta-update-row .card-label,
+  .driver-panel-shell .odometer-row .card-label {
+    margin-bottom: -2px;
+  }
+
+  .driver-panel-shell .eta-update-row .af-select,
+  .driver-panel-shell .eta-update-row .af-input,
+  .driver-panel-shell .odometer-row .af-select,
+  .driver-panel-shell .odometer-row .af-input,
+  .driver-panel-shell .eta-update-row .header-action-button,
+  .driver-panel-shell .odometer-row .header-action-button {
+    width: 100% !important;
+  }
+
+  .driver-panel-shell .driver-stepper {
+    display: flex;
+    overflow-x: auto;
+    gap: 8px;
+    margin: 0 -2px 12px;
+    padding-bottom: 4px;
+    scrollbar-width: none;
+  }
+
+  .driver-panel-shell .driver-stepper::-webkit-scrollbar {
+    display: none;
+  }
+
+  .driver-panel-shell .driver-step {
+    flex: 0 0 112px;
+    min-height: 56px;
+    border-radius: 8px;
+  }
+
+  .driver-panel-shell .driver-status-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+  }
+
+  .driver-panel-shell .driver-action-row {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 8px;
+    margin-top: 12px;
+  }
+
+  .driver-panel-shell .driver-action-row .af-submit-btn,
+  .driver-panel-shell .driver-action-row .header-action-button,
+  .driver-panel-shell .driver-nav-link,
+  .driver-panel-shell .content-card > .af-submit-btn,
+  .driver-panel-shell .af-form > .af-submit-btn,
+  .driver-panel-shell .message-compose .af-submit-btn {
+    width: 100%;
+  }
+
+  .driver-panel-shell .af-submit-btn,
+  .driver-panel-shell .header-action-button,
+  .driver-panel-shell .af-input,
+  .driver-panel-shell .af-select {
+    min-height: 42px;
+    border-radius: 8px;
+  }
+
+  .driver-panel-shell .af-input,
+  .driver-panel-shell .af-select {
+    font-size: 0.86rem;
+  }
+
+  .driver-panel-shell .pod-preview-grid {
+    gap: 8px;
+  }
+
+  .driver-panel-shell .pod-preview-grid > div {
+    min-height: 118px;
+    padding: 10px;
+  }
+
+  .driver-panel-shell .pod-preview-grid img {
+    height: 86px;
+  }
+
+  .driver-panel-shell .driver-command-strip {
+    gap: 8px;
+    margin-bottom: 10px;
+  }
+
+  .driver-panel-shell .driver-command-strip article,
+  .driver-panel-shell .stat-card,
+  .driver-panel-shell .break-timer-bar {
+    padding: 12px;
+    border-radius: 10px;
+  }
+
+  .driver-panel-shell .stat-card strong {
+    font-size: 1.25rem;
+  }
+
+  .driver-panel-shell .break-timer-bar {
+    display: grid;
+    gap: 10px;
+  }
+
+  .driver-panel-shell .break-timer-info {
+    justify-content: space-between;
+    gap: 8px;
+  }
+
+  .driver-panel-shell .break-timer-display {
+    font-size: 1.2rem;
+  }
+
+  .driver-panel-shell .message-thread {
+    max-height: 360px;
+    min-height: 220px;
+    border-radius: 10px;
+  }
+
+  .driver-panel-shell .message-compose {
+    gap: 10px;
+  }
+}
+
 /* ═══════════════════════════════════════════════════════════
    NOTIFICATION BELL
 ════════════════════════════════════════════════════════════ */
