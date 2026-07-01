@@ -4,7 +4,7 @@ import { getRealtimeSocket } from "../../api/realtime";
 import { StatusPill } from "../../components/StatusPill";
 import { getAuthSession } from "../../utils/authSession";
 
-export function DriverChatWidget({ compact = false }) {
+export function DriverChatWidget({ compact = false, initialDriverId = null, hideDriverList = false, title = "Driver Support Console" }) {
   const [drivers, setDrivers] = useState([]);
   const [selectedDriver, setSelectedDriver] = useState(null);
   const [messages, setMessages] = useState([]);
@@ -29,8 +29,14 @@ export function DriverChatWidget({ compact = false }) {
       if (showLoading) setLoading(true);
       setError("");
       const res = await getDriverChats();
-      setDrivers(res.data.drivers || []);
-      setSelectedDriver(current => current || res.data.drivers?.[0] || null);
+      const nextDrivers = res.data.drivers || [];
+      setDrivers(nextDrivers);
+      setSelectedDriver(current => {
+        if (initialDriverId) {
+          return nextDrivers.find(driver => Number(driver.id) === Number(initialDriverId)) || current || null;
+        }
+        return current || nextDrivers[0] || null;
+      });
     } catch (err) {
       setError(err?.response?.data?.message || "Could not load driver chats.");
     } finally {
@@ -54,7 +60,7 @@ export function DriverChatWidget({ compact = false }) {
 
   useEffect(() => {
     loadChats();
-  }, []);
+  }, [initialDriverId]);
 
   useEffect(() => {
     function handleExternalSelect(event) {
@@ -147,7 +153,7 @@ export function DriverChatWidget({ compact = false }) {
       <div className="section-head">
         <div>
           <span className="card-label">Driver Support</span>
-          <h2>Driver Support Console</h2>
+          <h2>{title}</h2>
         </div>
         <div className="admin-chat-head-actions">
           <StatusPill tone={unreadTotal ? "danger" : "success"}>{unreadTotal ? `${unreadTotal} unread` : "Inbox clear"}</StatusPill>
@@ -158,34 +164,36 @@ export function DriverChatWidget({ compact = false }) {
       {error && <p className="driver-empty">{error}</p>}
 
       <div className={`admin-chat-layout ${compact ? "compact" : ""}`}>
-        <div className="admin-chat-driver-list">
-          <input
-            className="af-input admin-chat-search"
-            placeholder="Search Driver Or Message..."
-            value={driverSearch}
-            onChange={e => setDriverSearch(e.target.value)}
-          />
-          {loading && <p className="driver-empty">Loading drivers...</p>}
-          {!loading && filteredDrivers.length === 0 && <p className="driver-empty">No drivers found.</p>}
-          {filteredDrivers.map(driver => (
-            <button
-              className={`admin-chat-driver ${selectedDriver?.id === driver.id ? "active" : ""}`}
-              key={driver.id}
-              type="button"
-              onClick={() => setSelectedDriver(driver)}
-            >
-              <div>
-                <strong>{driver.fullName}</strong>
-                <p>{driver.employeeCode} · {driver.phone}</p>
-                <span>{driver.lastMessage?.body || "No messages yet"}</span>
-              </div>
-              <div>
-                {driver.unreadCount > 0 && <StatusPill tone="danger">{driver.unreadCount} new</StatusPill>}
-                <small>{driver.lastMessage?.at || "Open chat"}</small>
-              </div>
-            </button>
-          ))}
-        </div>
+        {!hideDriverList && (
+          <div className="admin-chat-driver-list">
+            <input
+              className="af-input admin-chat-search"
+              placeholder="Search Driver Or Message..."
+              value={driverSearch}
+              onChange={e => setDriverSearch(e.target.value)}
+            />
+            {loading && <p className="driver-empty">Loading drivers...</p>}
+            {!loading && filteredDrivers.length === 0 && <p className="driver-empty">No drivers found.</p>}
+            {filteredDrivers.map(driver => (
+              <button
+                className={`admin-chat-driver ${selectedDriver?.id === driver.id ? "active" : ""}`}
+                key={driver.id}
+                type="button"
+                onClick={() => setSelectedDriver(driver)}
+              >
+                <div>
+                  <strong>{driver.fullName}</strong>
+                  <p>{driver.employeeCode} · {driver.phone}</p>
+                  <span>{driver.lastMessage?.body || "No messages yet"}</span>
+                </div>
+                <div>
+                  {driver.unreadCount > 0 && <StatusPill tone="danger">{driver.unreadCount} new</StatusPill>}
+                  <small>{driver.lastMessage?.at || "Open chat"}</small>
+                </div>
+              </button>
+            ))}
+          </div>
+        )}
 
         <div className="admin-chat-thread-wrap">
           <div className="admin-chat-thread-head">

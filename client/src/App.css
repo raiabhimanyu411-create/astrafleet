@@ -2310,7 +2310,7 @@ p.lp-success {
 .relay-job-vehicle-cell {
   display: flex;
   flex-direction: column;
-  width: 120px;
+  width: 132px;
   flex-shrink: 0;
   font-size: 0.79rem;
   font-weight: 600;
@@ -2337,6 +2337,50 @@ p.lp-success {
   display: flex;
   flex-direction: column;
   gap: 2px;
+}
+
+.relay-job-chat-btn {
+  position: relative;
+  width: 34px;
+  height: 34px;
+  flex-shrink: 0;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: #fff;
+  color: var(--text-soft);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+
+.relay-job-chat-btn:hover {
+  border-color: rgba(37, 99, 235, 0.34);
+  background: var(--primary-soft);
+  color: var(--primary);
+}
+
+.relay-job-chat-btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.48;
+}
+
+.relay-chat-count {
+  position: absolute;
+  top: -6px;
+  right: -6px;
+  min-width: 17px;
+  height: 17px;
+  border-radius: 999px;
+  background: var(--danger);
+  color: #fff;
+  border: 2px solid #fff;
+  font-size: 0.62rem;
+  font-weight: 800;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 4px;
 }
 
 .relay-job-driver-cell {
@@ -2950,6 +2994,26 @@ p.lp-success {
   width: 100%;
   max-width: 480px;
   overflow: hidden;
+}
+
+.relay-chat-modal {
+  max-width: 760px;
+}
+
+.relay-chat-modal .admin-chat-card {
+  margin: 0;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+}
+
+.relay-chat-modal .admin-chat-layout {
+  min-height: 0;
+}
+
+.relay-chat-modal .admin-chat-thread {
+  min-height: 260px;
+  max-height: 360px;
 }
 
 .relay-modal-header {

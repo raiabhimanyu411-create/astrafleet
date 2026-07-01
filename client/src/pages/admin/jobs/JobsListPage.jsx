@@ -1,10 +1,12 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { getDriverChats } from "../../../api/adminApi";
 import { getRealtimeSocket } from "../../../api/realtime";
 import { addJobNote, cancelJob, getJobNotes, getJobs, updateJobAssignment, updateJobStatus } from "../../../api/jobApi";
 import { DeleteReasonModal } from "../../../components/DeleteReasonModal";
 import { StateNotice } from "../../../components/StateNotice";
 import { StatusPill } from "../../../components/StatusPill";
+import { DriverChatWidget } from "../DriverChatWidget";
 import { AdminWorkspaceLayout } from "../AdminWorkspaceLayout";
 import { getAuthSession } from "../../../utils/authSession";
 
@@ -452,6 +454,8 @@ export function JobsListPage() {
   const [delayTarget, setDelayTarget] = useState(null);
   const [delayReason, setDelayReason] = useState("");
   const [notesModalJob, setNotesModalJob] = useState(null);
+  const [chatModalJob, setChatModalJob] = useState(null);
+  const [chatDrivers, setChatDrivers] = useState([]);
 
   function load() {
     setLoading(true);
@@ -463,15 +467,28 @@ export function JobsListPage() {
 
   useEffect(() => { load(); }, []);
 
+  function loadChatDrivers() {
+    return getDriverChats()
+      .then(res => setChatDrivers(res.data.drivers || []))
+      .catch(() => {});
+  }
+
+  useEffect(() => { loadChatDrivers(); }, []);
+
   useEffect(() => {
     const socket = getRealtimeSocket();
     const handleJobUpdate = () => load();
+    const handleDriverMessage = () => loadChatDrivers();
     socket.connect();
     socket.emit("admin-jobs:join");
+    socket.emit("admin-chat:join");
     socket.on("job:updated", handleJobUpdate);
+    socket.on("driver-chat:message", handleDriverMessage);
     return () => {
       socket.off("job:updated", handleJobUpdate);
+      socket.off("driver-chat:message", handleDriverMessage);
       socket.emit("admin-jobs:leave");
+      socket.emit("admin-chat:leave");
     };
   }, []);
 
@@ -818,6 +835,8 @@ export function JobsListPage() {
             const hasGap = !job.driverAssigned || !job.vehicleAssigned;
             const podPending = isPodPending(job);
             const loadIcon = LOAD_ICONS[job.loadType] || "📦";
+            const chatDriver = chatDrivers.find(driver => Number(driver.id) === Number(job.driverId));
+            const chatUnreadCount = Number(chatDriver?.unreadCount || 0);
 
             const driverStatusLabel = job.driverJobStatus && job.driverJobStatus !== "—"
               ? DRIVER_STATUS_LABEL[job.driverJobStatus] || job.driverJobStatus
@@ -892,30 +911,36 @@ export function JobsListPage() {
                   {/* Distance / ETA */}
                   <div className="relay-job-stats">
                     {job.distanceKm && <span>{Math.round(job.distanceKm * 0.621371)} mi</span>}
-                    {job.etaHours && <span>{job.etaHours}h route</span>}
+                    {job.totalJobDurationMins
+                      ? <span>{fmtMins(job.totalJobDurationMins)} job</span>
+                      : job.etaHours && <span>{job.etaHours}h route</span>}
                   </div>
 
-                  {/* Load icon + vehicle type */}
+                  {/* Load icon + vehicle / trailer */}
                   <div className="relay-job-vehicle-cell">
                     <span>
                       <span className="relay-load-icon">{loadIcon}</span>
-                      {job.vehicleType !== "—" ? job.vehicleType : job.vehicleAssigned ? job.vehicle : <em className="relay-unassigned">No truck</em>}
+                      {job.vehicleAssigned ? job.vehicle : <em className="relay-unassigned">No truck</em>}
                     </span>
-                    {job.trailerType !== "—" && <small>{job.trailerType}</small>}
+                    <small>Trailer ID {job.trailerAssigned ? job.trailerCode : "—"}</small>
                   </div>
 
-                  {/* Freight + Profit/Loss */}
-                  <div className="relay-job-freight">
-                    <span>{job.freight}</span>
-                    {job.profitLoss && (
-                      <span className={`relay-profit-badge ${job.isProfitable ? "profit" : "loss"}`}>
-                        {job.isProfitable ? "▲" : "▼"} {job.profitLoss}
-                      </span>
+                  {/* Driver chat */}
+                  <button
+                    className="relay-job-chat-btn"
+                    type="button"
+                    title={job.driverAssigned ? `Open chat with ${job.driver}` : "Assign driver to chat"}
+                    disabled={!job.driverAssigned}
+                    onClick={e => { e.stopPropagation(); setChatModalJob(job); }}
+                  >
+                    <svg viewBox="0 0 20 20" fill="none" width="16" height="16">
+                      <path d="M17 2H3a1 1 0 00-1 1v11a1 1 0 001 1h2v3l4-3h8a1 1 0 001-1V3a1 1 0 00-1-1z" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round"/>
+                      <path d="M6 7h8M6 10h5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+                    </svg>
+                    {chatUnreadCount > 0 && (
+                      <span className="relay-chat-count">{chatUnreadCount > 9 ? "9+" : chatUnreadCount}</span>
                     )}
-                    {!job.profitLoss && job.economics && (
-                      <span className="relay-profit-badge pending">calc pending</span>
-                    )}
-                  </div>
+                  </button>
 
                   {/* Driver + driver status */}
                   <div className="relay-job-driver-cell">
@@ -948,6 +973,19 @@ export function JobsListPage() {
                       <path d="M6 7h8M6 10h5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
                     </svg>
                   </button>
+
+                  {/* Freight + Profit/Loss */}
+                  <div className="relay-job-freight">
+                    <span>{job.freight}</span>
+                    {job.profitLoss && (
+                      <span className={`relay-profit-badge ${job.isProfitable ? "profit" : "loss"}`}>
+                        {job.isProfitable ? "▲" : "▼"} {job.profitLoss}
+                      </span>
+                    )}
+                    {!job.profitLoss && job.economics && (
+                      <span className="relay-profit-badge pending">calc pending</span>
+                    )}
+                  </div>
                 </div>
 
                 {/* ── Expanded body ── */}
@@ -1472,6 +1510,24 @@ export function JobsListPage() {
       {/* Job details modal (Notes / Payout / Shipment) */}
       {notesModalJob && (
         <JobDetailsModal job={notesModalJob} onClose={() => setNotesModalJob(null)} />
+      )}
+
+      {/* Driver chat modal */}
+      {chatModalJob && (
+        <div className="relay-modal-overlay" onClick={() => setChatModalJob(null)}>
+          <div className="relay-modal relay-chat-modal" onClick={e => e.stopPropagation()}>
+            <div className="relay-modal-header">
+              <strong>Driver Chat</strong>
+              <span>{chatModalJob.code} · {chatModalJob.driver}</span>
+            </div>
+            <DriverChatWidget
+              compact
+              hideDriverList
+              initialDriverId={chatModalJob.driverId}
+              title={`Chat With ${chatModalJob.driver}`}
+            />
+          </div>
+        </div>
       )}
 
       {/* Report delay modal */}
