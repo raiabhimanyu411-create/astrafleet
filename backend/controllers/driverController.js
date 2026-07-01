@@ -641,10 +641,6 @@ exports.updateMyJobStatus = async (req, res) => {
     if (!["accepted", "declined", currentStatus].includes(status) && !(await hasActiveShift(driver.id))) {
       return res.status(400).json({ message: "Start your shift before updating job progress." });
     }
-    if (["loaded", "in_transit", "arrived_drop"].includes(status) && !(await hasClearWalkaround(driver.id, jobId))) {
-      return res.status(400).json({ message: "Submit an all-clear walkaround before moving this job forward." });
-    }
-
     const changedStatus = status !== currentStatus;
     const updates = ["driver_job_status=?"];
     const values = [status];
