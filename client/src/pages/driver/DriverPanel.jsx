@@ -802,17 +802,11 @@ export function DriverPanel() {
                 <Detail label="Contact"      value={`${selectedJob.customer.contact} · ${selectedJob.customer.phone}`} />
                 <Detail label="Departure"    value={selectedJob.schedule.plannedDeparture} />
                 <Detail label="ETA"          value={selectedJob.schedule.eta} />
-                <Detail label="Deadline"     value={selectedJob.schedule.deliveryDeadline} />
                 <Detail label="Dock Window"  value={selectedJob.schedule.dockWindow} />
                 <Detail label="Vehicle"      value={selectedJob.vehicle} />
                 <Detail label="Trailer" value={selectedJob.trailer} />
                 <Detail label="Load"         value={`${selectedJob.load.type} · ${selectedJob.load.weight}`} />
-                <Detail label="Volume"       value={selectedJob.load.volume} />
-                <Detail label="Required Vehicle" value={selectedJob.load.vehicleRequirement} />
-                <Detail label="Freight"      value={selectedJob.load.freight} />
                 <Detail label="Load Detail"  value={selectedJob.load.description} />
-                <Detail label="Instructions" value={selectedJob.specialInstructions} />
-                <Detail label="Dispatcher Notes" value={selectedJob.dispatcherNotes} />
               </div>
 
               {(selectedJob.stops || []).length > 0 && (

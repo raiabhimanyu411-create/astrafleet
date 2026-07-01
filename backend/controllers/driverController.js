@@ -363,24 +363,18 @@ function mapDriverJob(row, stops = []) {
       plannedDeparture: fmtDateTime(row.planned_departure),
       eta: fmtDateTime(row.eta),
       dockWindow: row.dock_window || "—",
-      deliveryDeadline: fmtDateTime(row.delivery_deadline),
       actualDeparture: fmtDateTime(row.actual_departure),
       actualArrival: fmtDateTime(row.actual_arrival)
     },
     vehicle: row.registration_number ? `${row.registration_number} · ${row.model_name || row.truck_type || "Vehicle"}` : "Unassigned",
-    trailer: row.trailer_registration ? `${row.trailer_registration} · ${row.trailer_type || row.trailer_code || "Trailer"}` : "No trailer assigned",
+    trailer: row.trailer_code ? `${row.trailer_code} · ${row.trailer_type || "Trailer"}` : "No trailer assigned",
     load: {
       type: row.load_type || "general",
       weight: row.load_weight_kg ? `${row.load_weight_kg} kg` : "—",
-      volume: row.load_volume_cbm ? `${row.load_volume_cbm} cbm` : "—",
-      vehicleRequirement: row.vehicle_type_requirement || "—",
-      description: row.load_description || "—",
-      freight: fmtAmount(row.freight_amount_gbp)
+      description: row.load_description || "—"
     },
     podStatus: row.pod_status,
     deliveryNotes: row.delivery_notes || "",
-    specialInstructions: row.special_instructions || "—",
-    dispatcherNotes: row.dispatcher_notes || "—",
     stops: stops.map((stop, index) => ({
       id: stop.id,
       order: stop.stop_order || index + 1,
