@@ -75,7 +75,7 @@ const allowedStatusTransitions = {
 };
 
 const emptyPod     = { signatureData: "", photoData: "", deliveryNotes: "" };
-const emptyExpense = { expenseType: "fuel", amount: "", notes: "", receiptData: "" };
+const emptyExpense = { expenseType: "fuel", amount: "", fuelLitres: "", notes: "", receiptData: "" };
 const emptyDefect  = { defectType: "Vehicle defect", severity: "medium", description: "" };
 
 function readFileAsDataUrl(file, setter) {
@@ -1125,7 +1125,7 @@ export function DriverPanel() {
           </div>
           <form className="af-form" onSubmit={handleExpenseSubmit}>
             <div className="af-grid-2">
-              <select className="af-select" value={expense.expenseType} onChange={e => setExpense(p => ({ ...p, expenseType: e.target.value }))}>
+              <select className="af-select" value={expense.expenseType} onChange={e => setExpense(p => ({ ...p, expenseType: e.target.value, amount: "", fuelLitres: "" }))}>
                 <option value="fuel">Fuel</option>
                 <option value="toll">Toll</option>
                 <option value="parking">Parking</option>
@@ -1133,10 +1133,14 @@ export function DriverPanel() {
                 <option value="meal">Meal</option>
                 <option value="other">Other</option>
               </select>
-              <input className="af-input" type="number" min="0" step="0.01" value={expense.amount} onChange={e => setExpense(p => ({ ...p, amount: e.target.value }))} placeholder="Amount GBP" required />
+              {expense.expenseType === "fuel" ? (
+                <input className="af-input" type="number" min="0" step="0.01" value={expense.fuelLitres} onChange={e => setExpense(p => ({ ...p, fuelLitres: e.target.value }))} placeholder="Litres filled" required />
+              ) : (
+                <input className="af-input" type="number" min="0" step="0.01" value={expense.amount} onChange={e => setExpense(p => ({ ...p, amount: e.target.value }))} placeholder="Amount GBP" required />
+              )}
             </div>
             <input className="af-input" type="file" accept="image/*,.pdf" onChange={e => readFileAsDataUrl(e.target.files?.[0], value => setExpense(p => ({ ...p, receiptData: value })))} />
-            <textarea className="af-input" value={expense.notes} onChange={e => setExpense(p => ({ ...p, notes: e.target.value }))} placeholder="Fuel litres, receipt ref, notes..." />
+            <textarea className="af-input" value={expense.notes} onChange={e => setExpense(p => ({ ...p, notes: e.target.value }))} placeholder={expense.expenseType === "fuel" ? "Receipt ref, pump number, notes..." : "Receipt ref, notes..."} />
             <button className="af-submit-btn" disabled={busy === "expense"} type="submit">{busy === "expense" ? "Saving..." : "Save Expense"}</button>
           </form>
         </article>

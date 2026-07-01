@@ -784,24 +784,36 @@ exports.createMyExpense = async (req, res) => {
     const driver = await getDriverFromSession(req);
     if (!driver) return res.status(404).json({ message: "Driver profile not linked to this login." });
 
-    const { tripId, expenseType, amount, notes, receiptData } = req.body;
-    const amountValue = Number(amount);
-    if (!Number.isFinite(amountValue) || amountValue <= 0) return res.status(400).json({ message: "A valid expense amount is required." });
+    const { tripId, expenseType, amount, fuelLitres, notes, receiptData } = req.body;
     const allowedCategory = ["fuel", "toll", "parking", "repair", "meal", "other"].includes(expenseType) ? expenseType : "other";
+    const fuelLitresValue = Number(fuelLitres);
+    const amountValue = allowedCategory === "fuel" ? 0 : Number(amount);
+    if (allowedCategory === "fuel" && (!Number.isFinite(fuelLitresValue) || fuelLitresValue <= 0)) {
+      return res.status(400).json({ message: "Fuel litres are required." });
+    }
+    if (allowedCategory !== "fuel" && (!Number.isFinite(amountValue) || amountValue <= 0)) {
+      return res.status(400).json({ message: "A valid expense amount is required." });
+    }
     if (tripId) {
       const [[trip]] = await db.query(`SELECT id FROM trips WHERE id=? AND driver_id=?`, [tripId, driver.id]);
       if (!trip) return res.status(404).json({ message: "Assigned trip not found for this expense." });
     }
 
+    const finalNotes = allowedCategory === "fuel"
+      ? [`Fuel litres: ${fuelLitresValue}`, notes || ""].filter(Boolean).join(". ")
+      : notes || null;
+
     const [result] = await db.query(
       `INSERT INTO driver_expenses
          (driver_id, trip_id, expense_type, amount_gbp, notes, receipt_data)
        VALUES (?, ?, ?, ?, ?, ?)`,
-      [driver.id, tripId || null, allowedCategory, amountValue, notes || null, receiptData || null]
+      [driver.id, tripId || null, allowedCategory, amountValue, finalNotes, receiptData || null]
     );
     await createControlRoomAlert({
       title: `Driver expense submitted`,
-      description: `${driver.full_name} submitted ${allowedCategory} expense for £${amountValue.toFixed(2)}.`,
+      description: allowedCategory === "fuel"
+        ? `${driver.full_name} submitted fuel entry for ${fuelLitresValue} litres.`
+        : `${driver.full_name} submitted ${allowedCategory} expense for £${amountValue.toFixed(2)}.`,
       severity: "medium",
       driverId: driver.id,
       tripId: tripId || null
