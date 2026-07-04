@@ -961,7 +961,7 @@ function ExcelScheduleView({ data, onOpenVehicle }) {
     for (const week of weeks) {
       const month = week.month;
       if (!current || current.month !== month) {
-        current = { month, count: 1 };
+        current = { month, count: 1, key: week.key };
         groups.push(current);
       } else {
         current.count++;
@@ -1020,7 +1020,7 @@ function ExcelScheduleView({ data, onOpenVehicle }) {
             <th className="excel-fixed-head" rowSpan={3}>Inspection Frequency</th>
             <th className="excel-fixed-head" rowSpan={3}>Make</th>
             {monthGroups.map((group) => (
-              <th key={group.month} colSpan={group.count} className="excel-month-head">
+              <th key={group.key} colSpan={group.count} className="excel-month-head">
                 {group.month.toUpperCase()}
               </th>
             ))}
@@ -1055,7 +1055,7 @@ function ExcelScheduleView({ data, onOpenVehicle }) {
               {rows.map((row) => {
                 const assetType = row.assetType === "trailer" ? "trailer" : "vehicle";
                 return (
-                <tr key={row.vehicleId} className="excel-vehicle-row">
+                <tr key={`${assetType}-${row.vehicleId}`} className="excel-vehicle-row">
                   <td className="excel-reg-cell" onClick={() => onOpenVehicle(row, assetType)} title="Click to open vehicle details">
                     <strong>{row.vehicle}</strong>
                     {row.fleetCode && <span>{row.fleetCode}</span>}
@@ -1381,7 +1381,7 @@ export function AdminMaintenancePage() {
         </div>
         <div className="maintenance-profile-grid">
           {(data?.vehicleProfiles || []).slice(0, 8).map((profile) => (
-            <div className="maintenance-profile-card" key={profile.vehicleId}>
+            <div className="maintenance-profile-card" key={`${profile.assetType === "trailer" ? "trailer" : "vehicle"}-${profile.vehicleId}`}>
               <div className="maintenance-profile-head">
                 <div>
                   <strong>{profile.vehicle}</strong>
