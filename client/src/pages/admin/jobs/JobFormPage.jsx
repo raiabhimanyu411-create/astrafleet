@@ -170,6 +170,10 @@ export function JobFormPage() {
 
   useEffect(() => {
     async function init() {
+      setLoading(true);
+      setFields(emptyFields);
+      setStops([]);
+      setRouteEstimate(null);
       try {
         const [fdRes, stRes] = await Promise.all([getJobFormData(), getSettings()]);
         setFormData(fdRes.data);

@@ -2,6 +2,7 @@ const db = require("../db/connection");
 const { emitDriverChatMessage, emitDriverJobAssigned, emitJobUpdate } = require("../realtime");
 const { logActivity, requireDeleteReason } = require("../utils/auditLogger");
 const { getSettingsMap } = require("./settingsController");
+const maintenanceController = require("./maintenanceController");
 
 function fmtDate(d) {
   if (!d) return "—";
@@ -1581,6 +1582,7 @@ exports.updateJob = async (req, res) => {
       await conn.query(`UPDATE trailers SET status='available' WHERE id=?`, [existing.trailer_id]);
     }
     if (vehicle_id) {
+      const vehicleChanged = String(existing.vehicle_id || "") !== String(vehicle_id || "") ? 1 : 0;
       await conn.query(
         `UPDATE vehicles
          SET status='planned',
@@ -1591,15 +1593,7 @@ exports.updateJob = async (req, res) => {
              gps_accuracy_m=IF(? = 1, NULL, gps_accuracy_m),
              last_ping_at=IF(? = 1, NULL, last_ping_at)
          WHERE id=?`,
-        [
-          String(existing.vehicle_id || "") !== String(vehicle_id || "") || String(existing.driver_id || "") !== String(driver_id || "") ? 1 : 0,
-          String(existing.vehicle_id || "") !== String(vehicle_id || "") || String(existing.driver_id || "") !== String(driver_id || "") ? 1 : 0,
-          String(existing.vehicle_id || "") !== String(vehicle_id || "") || String(existing.driver_id || "") !== String(driver_id || "") ? 1 : 0,
-          String(existing.vehicle_id || "") !== String(vehicle_id || "") || String(existing.driver_id || "") !== String(driver_id || "") ? 1 : 0,
-          String(existing.vehicle_id || "") !== String(vehicle_id || "") || String(existing.driver_id || "") !== String(driver_id || "") ? 1 : 0,
-          String(existing.vehicle_id || "") !== String(vehicle_id || "") || String(existing.driver_id || "") !== String(driver_id || "") ? 1 : 0,
-          vehicle_id
-        ]
+        [vehicleChanged, vehicleChanged, vehicleChanged, vehicleChanged, vehicleChanged, vehicleChanged, vehicle_id]
       );
     }
     if (trailer_id) {
@@ -1652,7 +1646,10 @@ exports.updateJob = async (req, res) => {
     );
 
     // Replace stops
-    const [oldStops] = await conn.query(`SELECT id FROM job_stops WHERE trip_id = ?`, [id]);
+    const [oldStops] = await conn.query(
+      `SELECT stop_type, address FROM job_stops WHERE trip_id = ? ORDER BY stop_order`,
+      [id]
+    );
     await conn.query(`DELETE FROM job_stops WHERE trip_id = ?`, [id]);
     const validStops = stops.filter(s => s.address);
     for (let i = 0; i < validStops.length; i++) {
@@ -1681,7 +1678,10 @@ exports.updateJob = async (req, res) => {
     }
 
     // Notify driver if stops changed and driver is assigned
-    const stopsChanged = oldStops.length !== validStops.length || validStops.length > 0;
+    const stopsChanged = oldStops.length !== validStops.length || validStops.some((s, i) => {
+      const old = oldStops[i];
+      return !old || old.address !== s.address || (old.stop_type || "delivery") !== (s.stop_type || "delivery");
+    });
     if (driver_id && stopsChanged && validStops.length > 0) {
       const [[jobRow]] = await conn.query(
         `SELECT t.trip_code, d.full_name as driver_name
@@ -2010,5 +2010,118 @@ exports.addJobNote = async (req, res) => {
     res.status(201).json({ message: "Note added.", id: result.insertId });
   } catch (err) {
     res.status(500).json({ message: "Could not add job note.", error: err.message });
+  }
+};
+
+// PATCH /api/jobs/:id/replace-vehicle
+// Swaps the assigned vehicle on an active job (e.g. after a breakdown), sends the old
+// vehicle to maintenance with a defect + repair job, and logs the reason on the job.
+exports.replaceJobVehicle = async (req, res) => {
+  const conn = await db.getConnection();
+  try {
+    await ensureDriverOpsSchema();
+    await ensureSoftDeleteSchema();
+    await ensureJobNotesSchema();
+    await new Promise((resolve, reject) => {
+      maintenanceController.ensureMaintenanceSchema({}, { status: () => ({ json: (body) => reject(new Error(body?.message || "Maintenance schema sync error")) }) }, resolve);
+    });
+
+    const { id } = req.params;
+    const newVehicleId = req.body.vehicle_id || req.body.vehicleId || null;
+    const reason = String(req.body.reason || "").trim();
+
+    await conn.beginTransaction();
+
+    const [[job]] = await conn.query(
+      `SELECT id, trip_code, vehicle_id, driver_id, dispatch_status FROM trips WHERE id = ? AND deleted_at IS NULL`,
+      [id]
+    );
+    if (!job) {
+      await conn.rollback();
+      return res.status(404).json({ message: "Job not found." });
+    }
+    if (!job.vehicle_id) {
+      await conn.rollback();
+      return res.status(400).json({ message: "This job has no vehicle assigned to replace." });
+    }
+    if (!job.driver_id) {
+      await conn.rollback();
+      return res.status(400).json({ message: "This job has no driver assigned — assign a driver before reporting a breakdown." });
+    }
+    if (["completed", "cancelled"].includes(job.dispatch_status)) {
+      await conn.rollback();
+      return res.status(400).json({ message: "Vehicle cannot be replaced on a completed or cancelled job." });
+    }
+    if (!newVehicleId || String(newVehicleId) === String(job.vehicle_id)) {
+      await conn.rollback();
+      return res.status(400).json({ message: "Select a different vehicle to replace it with." });
+    }
+    if (!reason) {
+      await conn.rollback();
+      return res.status(400).json({ message: "Enter a reason for replacing the vehicle." });
+    }
+
+    const [[newVehicle]] = await conn.query(
+      `SELECT id, registration_number FROM vehicles WHERE id = ? AND status = 'available'`,
+      [newVehicleId]
+    );
+    if (!newVehicle) {
+      await conn.rollback();
+      return res.status(400).json({ message: "Selected truck is not available for assignment." });
+    }
+    const [[busyVehicle]] = await conn.query(
+      `SELECT trip_code FROM trips WHERE vehicle_id = ? AND id != ? AND deleted_at IS NULL AND dispatch_status IN ('planned','loading','active')`,
+      [newVehicleId, id]
+    );
+    if (busyVehicle) {
+      await conn.rollback();
+      return res.status(400).json({ message: `Truck is already assigned to job ${busyVehicle.trip_code} and won't be free until that job is finished.` });
+    }
+
+    const [[oldVehicle]] = await conn.query(`SELECT registration_number FROM vehicles WHERE id = ?`, [job.vehicle_id]);
+
+    await conn.query(`UPDATE trips SET vehicle_id = ? WHERE id = ? AND deleted_at IS NULL`, [newVehicleId, id]);
+    await conn.query(`UPDATE vehicles SET status = 'planned' WHERE id = ?`, [newVehicleId]);
+    await conn.query(`UPDATE vehicles SET status = 'maintenance' WHERE id = ?`, [job.vehicle_id]);
+
+    const reportedBy = req.sessionUser?.name || "Dispatch";
+    const [defectResult] = await conn.query(
+      `INSERT INTO defect_reports (vehicle_id, driver_id, trip_id, asset_type, defect_type, description, severity, reported_by, status, workflow_status)
+       VALUES (?, ?, ?, 'vehicle', 'Breakdown', ?, 'high', ?, 'open', 'booked')`,
+      [job.vehicle_id, job.driver_id, id, reason, reportedBy]
+    );
+
+    const year = new Date().getFullYear();
+    const [[jobNumRow]] = await conn.query(
+      `SELECT COALESCE(MAX(CAST(SUBSTRING_INDEX(job_number, '-', -1) AS UNSIGNED)), 0) AS maxNum
+       FROM maintenance_jobs WHERE job_number LIKE ?`,
+      [`MJ-${year}-%`]
+    );
+    const maintenanceJobNumber = `MJ-${year}-${String(Number(jobNumRow.maxNum || 0) + 1).padStart(4, "0")}`;
+    const dueDate = new Date();
+    dueDate.setDate(dueDate.getDate() + 3);
+
+    await conn.query(
+      `INSERT INTO maintenance_jobs (job_number, asset_type, vehicle_id, defect_id, service_type, due_date, priority, status, notes)
+       VALUES (?, 'vehicle', ?, ?, 'Breakdown', ?, 'high', 'booked', ?)`,
+      [maintenanceJobNumber, job.vehicle_id, defectResult.insertId, dueDate.toISOString().slice(0, 10), reason]
+    );
+
+    const noteText = `Vehicle replaced: ${oldVehicle?.registration_number || "previous truck"} -> ${newVehicle.registration_number}. Reason: ${reason}. ${oldVehicle?.registration_number || "Previous truck"} sent to maintenance (Job ${maintenanceJobNumber}).`;
+    await conn.query(
+      `INSERT INTO job_notes (job_id, note_text, author_name) VALUES (?, ?, ?)`,
+      [id, noteText, "Dispatch"]
+    );
+
+    await conn.commit();
+
+    emitJobUpdate({ jobId: Number(id), source: "vehicle-replacement" });
+
+    res.json({ message: "Vehicle replaced. Old truck sent to maintenance.", maintenanceJobNumber });
+  } catch (err) {
+    await conn.rollback();
+    res.status(500).json({ message: "Could not replace vehicle.", error: err.message });
+  } finally {
+    conn.release();
   }
 };

@@ -12,6 +12,7 @@ router.get("/:id",        j.getJobById);
 router.post("/",          j.createJob);
 router.put("/:id",        j.updateJob);
 router.patch("/:id/assignment", j.updateJobAssignment);
+router.patch("/:id/replace-vehicle", j.replaceJobVehicle);
 router.patch("/:id/status", j.updateJobStatus);
 router.get("/:id/notes",         j.getJobNotes);
 router.post("/:id/notes",        j.addJobNote);

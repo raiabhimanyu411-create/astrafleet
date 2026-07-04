@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { getDriverChats } from "../../../api/adminApi";
 import { getRealtimeSocket } from "../../../api/realtime";
-import { addJobNote, cancelJob, getJobNotes, getJobs, updateJobAssignment, updateJobStatus } from "../../../api/jobApi";
+import { addJobNote, cancelJob, getJobNotes, getJobs, replaceJobVehicle, updateJobAssignment, updateJobStatus } from "../../../api/jobApi";
 import { DeleteReasonModal } from "../../../components/DeleteReasonModal";
 import { StateNotice } from "../../../components/StateNotice";
 import { StatusPill } from "../../../components/StatusPill";
@@ -479,6 +479,10 @@ export function JobsListPage() {
   const [blockTarget, setBlockTarget] = useState(null);
   const [delayTarget, setDelayTarget] = useState(null);
   const [delayReason, setDelayReason] = useState("");
+  const [replaceTarget, setReplaceTarget] = useState(null);
+  const [replaceVehicleId, setReplaceVehicleId] = useState("");
+  const [replaceReason, setReplaceReason] = useState("");
+  const [replaceErr, setReplaceErr] = useState("");
   const [notesModalJob, setNotesModalJob] = useState(null);
   const [chatModalJob, setChatModalJob] = useState(null);
   const [chatDrivers, setChatDrivers] = useState([]);
@@ -567,7 +571,7 @@ export function JobsListPage() {
       const jobDate = toDateInputValue(job.departureRaw || job.loadingDoneTime || job.etaRaw);
       if (selectedDate) {
         if (jobDate !== selectedDate) return false;
-      } else if (jobDate) {
+      } else if (jobDate && tab !== "completed" && tab !== "history") {
         const jobTime = new Date(jobDate).getTime();
         if (jobTime < weekRange.start.getTime() || jobTime > weekRange.end.getTime()) return false;
       }
@@ -661,6 +665,23 @@ export function JobsListPage() {
       await load();
     } catch (err) {
       setError(err?.response?.data?.message || "Delay could not be reported.");
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  async function submitReplaceVehicle() {
+    if (!replaceTarget || !replaceVehicleId || !replaceReason.trim()) return;
+    setReplaceErr("");
+    setBusyId(replaceTarget.id);
+    try {
+      await replaceJobVehicle(replaceTarget.id, { vehicle_id: Number(replaceVehicleId), reason: replaceReason.trim() });
+      setReplaceTarget(null);
+      setReplaceVehicleId("");
+      setReplaceReason("");
+      await load();
+    } catch (err) {
+      setReplaceErr(err?.response?.data?.message || "Vehicle could not be replaced.");
     } finally {
       setBusyId(null);
     }
@@ -1571,6 +1592,15 @@ export function JobsListPage() {
                             <path d="M6 7h8M6 10h5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
                           </svg>
                         </button>
+                        {/* 🔧 breakdown / replace vehicle icon */}
+                        {job.vehicleAssigned && ["planned", "loading", "active"].includes(job.status) && (
+                          <button className="relay-bottom-icon-btn" type="button" title="Report breakdown & replace vehicle"
+                            onClick={() => { setReplaceTarget(job); setReplaceVehicleId(""); setReplaceReason(""); setReplaceErr(""); }}>
+                            <svg viewBox="0 0 20 20" fill="none" width="18" height="18">
+                              <path d="M14.7 3.3a3.5 3.5 0 0 0-4.6 4.2L4 13.6a1.5 1.5 0 0 0 2.1 2.1l6.1-6.1a3.5 3.5 0 0 0 4.2-4.6l-2.2 2.2-1.6-.5-.5-1.6 2.2-2.2z" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round"/>
+                            </svg>
+                          </button>
+                        )}
                         <button className="relay-bottom-link" type="button"
                           onClick={() => navigate(`/admin/jobs/${job.id}`)}>
                           View all shipment details
@@ -1670,6 +1700,62 @@ export function JobsListPage() {
                 onClick={submitDelay}
               >
                 {busyId ? "Saving…" : "Submit Delay Report"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Replace vehicle (breakdown) modal */}
+      {replaceTarget && (
+        <div className="relay-modal-overlay" onClick={() => setReplaceTarget(null)}>
+          <div className="relay-modal" onClick={e => e.stopPropagation()}>
+            <div className="relay-modal-header">
+              <strong>Report Breakdown & Replace Vehicle</strong>
+              <span>{replaceTarget.code} · {replaceTarget.customer}</span>
+            </div>
+            <div className="relay-modal-body">
+              <label className="relay-modal-label">Current Truck</label>
+              <p style={{ margin: "0 0 12px", fontWeight: 700 }}>{replaceTarget.vehicle}</p>
+
+              <label className="relay-modal-label">New Truck</label>
+              <select
+                className="af-select"
+                value={replaceVehicleId}
+                onChange={e => setReplaceVehicleId(e.target.value)}
+              >
+                <option value="">Select an available truck</option>
+                {(data?.vehicles || [])
+                  .filter(v => v.status === "available" && !v.busy_trip_id && Number(v.id) !== Number(replaceTarget.vehicleId))
+                  .map(v => (
+                    <option key={v.id} value={v.id}>
+                      {v.registration_number} · {v.truck_type || v.model_name || "Truck"}
+                    </option>
+                  ))}
+              </select>
+
+              <label className="relay-modal-label" style={{ marginTop: 12 }}>Reason for Replacing</label>
+              <textarea
+                className="af-input"
+                rows={3}
+                placeholder="e.g. Brake failure on M6, truck towed to garage..."
+                value={replaceReason}
+                onChange={e => setReplaceReason(e.target.value)}
+                style={{ resize: "vertical" }}
+              />
+              {replaceErr && <p className="lp-error">{replaceErr}</p>}
+            </div>
+            <div className="relay-modal-footer">
+              <button className="header-action-button" type="button" onClick={() => setReplaceTarget(null)}>
+                Cancel
+              </button>
+              <button
+                className="af-submit-btn"
+                type="button"
+                disabled={!replaceVehicleId || !replaceReason.trim() || Boolean(busyId)}
+                onClick={submitReplaceVehicle}
+              >
+                {busyId ? "Saving…" : "Replace Vehicle"}
               </button>
             </div>
           </div>
