@@ -1806,17 +1806,18 @@
   width: var(--excel-freq-col);
   min-width: var(--excel-freq-col);
   text-align: center;
-  color: var(--muted);
-  font-size: 0.65rem;
-  font-weight: 700;
+  color: var(--text);
+  font-size: 0.68rem;
+  font-weight: 850;
 }
 
 .excel-make-cell {
   left: calc(var(--excel-reg-col) + var(--excel-fleet-code-col) + var(--excel-freq-col));
   width: var(--excel-make-col);
   min-width: var(--excel-make-col);
-  color: var(--muted);
-  font-size: 0.65rem;
+  color: var(--text);
+  font-size: 0.68rem;
+  font-weight: 750;
 }
 
 .excel-reg-cell strong {
