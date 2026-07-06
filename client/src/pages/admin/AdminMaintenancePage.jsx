@@ -945,29 +945,20 @@ function uniqueWeekEvents(events) {
 }
 
 function groupCompletedByDate(events) {
-  const byDate = new Map();
-  const others = [];
-  for (const event of events) {
-    if (event.kind !== "completed") {
-      others.push(event);
-      continue;
-    }
-    const key = event.dueDateRaw;
-    if (!byDate.has(key)) byDate.set(key, []);
-    byDate.get(key).push(event);
-  }
-  const merged = [...byDate.values()].map((items) => (
-    items.length > 1
-      ? {
-          id: `group-${items.map((item) => item.id).join("-")}`,
-          kind: "completed-group",
-          dueDateRaw: items[0].dueDateRaw,
-          dueDate: items[0].dueDate,
-          items
-        }
-      : items[0]
-  ));
-  return [...merged, ...others];
+  const completed = events.filter((event) => event.kind === "completed");
+  const others = events.filter((event) => event.kind !== "completed");
+  if (completed.length <= 1) return events;
+  const items = [...completed].sort((a, b) => String(a.dueDateRaw || "").localeCompare(String(b.dueDateRaw || "")));
+  const sameDate = items.every((event) => event.dueDateRaw === items[0].dueDateRaw);
+  const group = {
+    id: `group-${items.map((item) => item.id).join("-")}`,
+    kind: "completed-group",
+    dueDateRaw: items[0].dueDateRaw,
+    dueDate: items[0].dueDate,
+    sameDate,
+    items
+  };
+  return [group, ...others];
 }
 
 function isGeneratedMaintenanceNote(note) {
@@ -1262,6 +1253,8 @@ function ExcelScheduleView({ data, onOpenVehicle }) {
                           if (ev.kind === "completed-group") {
                             const day = ev.dueDateRaw?.slice(8, 10);
                             const mon = ev.dueDateRaw?.slice(5, 7);
+                            const codes = ev.items.map((item) => item.code).join("+");
+                            const label = ev.sameDate ? `✓ ${codes} ${day}/${mon}` : `✓ ${codes}`;
                             return (
                               <button
                                 key={ev.id}
@@ -1280,7 +1273,7 @@ function ExcelScheduleView({ data, onOpenVehicle }) {
                                   onOpenVehicle(row, assetType, ev.items[0].type);
                                 }}
                               >
-                                {`✓ ${ev.items.map((item) => item.code).join("+")} ${day}/${mon}`}
+                                {label}
                               </button>
                             );
                           }
@@ -1341,7 +1334,7 @@ function ExcelScheduleView({ data, onOpenVehicle }) {
         {popover.group ? (
           <>
             <div className="ccp-header">
-              <strong className="ccp-title">{popover.group.length} items completed · {popover.group[0].dueDate}</strong>
+              <strong className="ccp-title">{popover.group.length} items completed this week</strong>
             </div>
             {popover.group.map((ev) => (
               <div className="ccp-group-item" key={ev.id}>
@@ -1350,6 +1343,10 @@ function ExcelScheduleView({ data, onOpenVehicle }) {
                     {ev.code}
                   </span>
                   <span className="ccp-value">{ev.type}</span>
+                </div>
+                <div className="ccp-row">
+                  <span className="ccp-label">Completed</span>
+                  <span className="ccp-value">{ev.dueDate}</span>
                 </div>
                 {ev.completionNotes && !isGeneratedMaintenanceNote(ev.completionNotes) && (
                   <p className="ccp-notes-text">{ev.completionNotes}</p>
