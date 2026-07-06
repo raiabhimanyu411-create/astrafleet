@@ -4,18 +4,18 @@
 
 .maintenance-command-bar {
   display: grid;
-  grid-template-columns: minmax(220px, 0.7fr) minmax(0, 1.3fr);
+  grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
-  gap: 16px;
+  gap: 14px;
   margin-bottom: 18px;
-  padding: 16px;
+  padding: 12px 14px;
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
   background: var(--surface);
   box-shadow: var(--shadow-xs);
 }
 
-.maintenance-command-bar > div:first-child {
+.maintenance-command-bar > :first-child {
   min-width: 0;
 }
 
@@ -94,16 +94,51 @@
 
 .maintenance-summary-grid {
   display: grid;
-  grid-template-columns: repeat(3, minmax(220px, 320px));
+  grid-template-columns: repeat(3, minmax(170px, 260px));
   gap: 10px;
   margin-bottom: 12px;
+}
+
+.maintenance-command-bar .maintenance-summary-grid {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 0;
+}
+
+.maintenance-command-bar .maintenance-summary-card {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: auto;
+  min-width: 148px;
+  min-height: 38px;
+  height: 38px;
+  padding: 0 12px;
+}
+
+.maintenance-command-bar .maintenance-summary-card span {
+  font-size: 0.68rem;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.maintenance-command-bar .maintenance-summary-card strong {
+  margin-top: 0;
+  font-size: 1.05rem;
+  line-height: 1;
+}
+
+.maintenance-command-bar .maintenance-summary-card p {
+  display: none;
 }
 
 .maintenance-summary-card {
   display: grid;
   align-content: start;
-  min-height: 86px;
-  padding: 10px 12px;
+  min-height: 74px;
+  padding: 8px 10px;
   border: 1px solid var(--border);
   border-left: 4px solid var(--border-strong);
   border-radius: var(--radius-sm);
@@ -126,18 +161,18 @@
 
 .maintenance-summary-card strong {
   display: block;
-  margin-top: 6px;
+  margin-top: 5px;
   color: var(--text);
-  font-size: 1.45rem;
+  font-size: 1.28rem;
   font-weight: 800;
   line-height: 1;
 }
 
 .maintenance-summary-card p {
-  margin: 6px 0 0;
+  margin: 5px 0 0;
   color: var(--muted);
-  font-size: 0.74rem;
-  line-height: 1.35;
+  font-size: 0.7rem;
+  line-height: 1.3;
 }
 
 .maintenance-automation-panel {

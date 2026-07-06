@@ -1314,9 +1314,15 @@ export function AdminMaintenancePage() {
       highlights={[]}
     >
       <div className="maintenance-command-bar">
-        <div>
-          <span className="card-label">Maintenance Desk</span>
-        </div>
+        <section className="maintenance-summary-grid" aria-label="Maintenance summary">
+          {primaryCards.map((card) => (
+            <article className={`maintenance-summary-card ${card.tone}`} key={card.label}>
+              <span>{card.label}</span>
+              <strong>{card.value}</strong>
+              <p>{card.note}</p>
+            </article>
+          ))}
+        </section>
         <div className="maintenance-command-actions">
           <button className="header-action-button danger" type="button" onClick={() => setShowBreakdownModal(true)}>Report Breakdown</button>
           <button className="header-action-button" type="button" onClick={load}>Refresh</button>
@@ -1325,16 +1331,6 @@ export function AdminMaintenancePage() {
       </div>
 
       <StateNotice loading={loading} error={error} />
-
-      <section className="maintenance-summary-grid">
-        {primaryCards.map((card) => (
-          <article className={`maintenance-summary-card ${card.tone}`} key={card.label}>
-            <span>{card.label}</span>
-            <strong>{card.value}</strong>
-            <p>{card.note}</p>
-          </article>
-        ))}
-      </section>
 
       <nav className="maintenance-view-tabs" aria-label="Maintenance views">
         {maintenanceViews.map((view) => (
