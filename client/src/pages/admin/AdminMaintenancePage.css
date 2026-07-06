@@ -1596,10 +1596,11 @@
 
 .excel-schedule-table {
   --excel-reg-col: 150px;
+  --excel-fleet-code-col: 90px;
   --excel-freq-col: 150px;
   --excel-make-col: 120px;
   --excel-week-col: 64px;
-  --excel-left-cols: calc(var(--excel-reg-col) + var(--excel-freq-col) + var(--excel-make-col));
+  --excel-left-cols: calc(var(--excel-reg-col) + var(--excel-fleet-code-col) + var(--excel-freq-col) + var(--excel-make-col));
   --excel-month-row-h: 24px;
   --excel-date-row-h: 20px;
   --excel-week-row-h: 20px;
@@ -1611,6 +1612,7 @@
 }
 
 .excel-reg-col { width: var(--excel-reg-col); }
+.excel-fleet-code-col { width: var(--excel-fleet-code-col); }
 .excel-freq-col { width: var(--excel-freq-col); }
 .excel-make-col { width: var(--excel-make-col); }
 .excel-week-col { width: var(--excel-week-col); }
@@ -1708,12 +1710,18 @@
 
 .excel-fixed-head:nth-child(2) {
   left: var(--excel-reg-col);
+  width: var(--excel-fleet-code-col);
+  min-width: var(--excel-fleet-code-col);
+}
+
+.excel-fixed-head:nth-child(3) {
+  left: calc(var(--excel-reg-col) + var(--excel-fleet-code-col));
   width: var(--excel-freq-col);
   min-width: var(--excel-freq-col);
 }
 
-.excel-fixed-head:nth-child(3) {
-  left: calc(var(--excel-reg-col) + var(--excel-freq-col));
+.excel-fixed-head:nth-child(4) {
+  left: calc(var(--excel-reg-col) + var(--excel-fleet-code-col) + var(--excel-freq-col));
   width: var(--excel-make-col);
   min-width: var(--excel-make-col);
 }
@@ -1766,6 +1774,7 @@
 
 /* Sticky left cells in vehicle rows */
 .excel-reg-cell,
+.excel-fleet-code-cell,
 .excel-freq-cell,
 .excel-make-cell {
   position: sticky;
@@ -1783,8 +1792,17 @@
   min-width: var(--excel-reg-col);
 }
 
-.excel-freq-cell {
+.excel-fleet-code-cell {
   left: var(--excel-reg-col);
+  width: var(--excel-fleet-code-col);
+  min-width: var(--excel-fleet-code-col);
+  color: var(--muted);
+  font-size: 0.65rem;
+  font-weight: 700;
+}
+
+.excel-freq-cell {
+  left: calc(var(--excel-reg-col) + var(--excel-fleet-code-col));
   width: var(--excel-freq-col);
   min-width: var(--excel-freq-col);
   text-align: center;
@@ -1794,7 +1812,7 @@
 }
 
 .excel-make-cell {
-  left: calc(var(--excel-reg-col) + var(--excel-freq-col));
+  left: calc(var(--excel-reg-col) + var(--excel-fleet-code-col) + var(--excel-freq-col));
   width: var(--excel-make-col);
   min-width: var(--excel-make-col);
   color: var(--muted);
@@ -1867,8 +1885,8 @@
     max-height: 60vh;
   }
 
-  .excel-fixed-head:nth-child(2),
   .excel-fixed-head:nth-child(3),
+  .excel-fixed-head:nth-child(4),
   .excel-freq-cell,
   .excel-make-cell {
     display: none;
@@ -1876,6 +1894,8 @@
 
   .excel-fixed-head:nth-child(1) { min-width: 100px; }
   .excel-reg-cell { left: 0; min-width: 100px; }
+  .excel-fixed-head:nth-child(2),
+  .excel-fleet-code-cell { left: 100px; }
 }
 
 /* ── Excel chip done state ── */

@@ -991,7 +991,7 @@ function ExcelScheduleView({ data, onOpenVehicle }) {
     return [...map.entries()];
   }, [filteredRows]);
 
-  const totalCols = 3 + weeks.length;
+  const totalCols = 4 + weeks.length;
 
   if (!weeks.length) {
     return <p className="finance-empty">No annual schedule data available.</p>;
@@ -1025,6 +1025,7 @@ function ExcelScheduleView({ data, onOpenVehicle }) {
       <table className="excel-schedule-table">
         <colgroup>
           <col className="excel-reg-col" />
+          <col className="excel-fleet-code-col" />
           <col className="excel-freq-col" />
           <col className="excel-make-col" />
           {weeks.map((week) => (
@@ -1034,6 +1035,7 @@ function ExcelScheduleView({ data, onOpenVehicle }) {
         <thead>
           <tr className="excel-month-row">
             <th className="excel-fixed-head">REG</th>
+            <th className="excel-fixed-head">Fleet Code</th>
             <th className="excel-fixed-head">Inspection Frequency</th>
             <th className="excel-fixed-head">Make</th>
             {monthGroups.map((group) => (
@@ -1046,6 +1048,7 @@ function ExcelScheduleView({ data, onOpenVehicle }) {
             <th className="excel-fixed-head excel-fixed-head-spacer" aria-hidden="true" />
             <th className="excel-fixed-head excel-fixed-head-spacer" aria-hidden="true" />
             <th className="excel-fixed-head excel-fixed-head-spacer" aria-hidden="true" />
+            <th className="excel-fixed-head excel-fixed-head-spacer" aria-hidden="true" />
             {weeks.map((week) => (
               <th key={week.key} className="excel-date-head" title="Week commencing (Monday)">
                 {formatWeekStart(week.startRaw)}
@@ -1053,6 +1056,7 @@ function ExcelScheduleView({ data, onOpenVehicle }) {
             ))}
           </tr>
           <tr className="excel-week-row">
+            <th className="excel-fixed-head excel-fixed-head-spacer" aria-hidden="true" />
             <th className="excel-fixed-head excel-fixed-head-spacer" aria-hidden="true" />
             <th className="excel-fixed-head excel-fixed-head-spacer" aria-hidden="true" />
             <th className="excel-fixed-head excel-fixed-head-spacer" aria-hidden="true" />
@@ -1068,7 +1072,7 @@ function ExcelScheduleView({ data, onOpenVehicle }) {
             <React.Fragment key={`co-${company}`}>
               <tr className="excel-company-row">
                 <td
-                  colSpan={3}
+                  colSpan={4}
                   className="excel-company-cell excel-company-label-cell"
                   style={{ background: COMPANY_COLORS[coIndex % COMPANY_COLORS.length] }}
                 >
@@ -1087,8 +1091,8 @@ function ExcelScheduleView({ data, onOpenVehicle }) {
                 <tr key={`${assetType}-${row.vehicleId}`} className="excel-vehicle-row">
                   <td className="excel-reg-cell" onClick={() => onOpenVehicle(row, assetType)} title="Click to open vehicle details">
                     <strong>{row.vehicle}</strong>
-                    {row.fleetCode && <span>{row.fleetCode}</span>}
                   </td>
+                  <td className="excel-fleet-code-cell" onClick={() => onOpenVehicle(row, assetType)}>{row.fleetCode}</td>
                   <td className="excel-freq-cell" onClick={() => onOpenVehicle(row, assetType)}>{row.inspectionFrequency}</td>
                   <td className="excel-make-cell" onClick={() => onOpenVehicle(row, assetType)}>{row.make}</td>
                   {weeks.map((week) => {
