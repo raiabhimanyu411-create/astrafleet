@@ -1312,6 +1312,7 @@ export function AdminMaintenancePage() {
       title={data?.header?.title || "Fleet maintenance portal"}
       description={data?.header?.description || "Plan services, inspections, defects, and workshop work from live fleet data."}
       highlights={[]}
+      hideHeaderIntro
     >
       <div className="maintenance-command-bar">
         <section className="maintenance-summary-grid" aria-label="Maintenance summary">

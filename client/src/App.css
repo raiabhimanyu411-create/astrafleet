@@ -1021,6 +1021,14 @@ p.lp-success {
   margin-bottom: 24px;
 }
 
+.panel-header-compact {
+  margin-bottom: 12px;
+}
+
+.panel-header-actions-only {
+  justify-content: flex-end;
+}
+
 .panel-header h1 {
   margin: 8px 0 5px;
   font-size: 1.5rem;

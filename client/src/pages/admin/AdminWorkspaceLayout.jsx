@@ -34,7 +34,7 @@ const menuAccessKey = {
   "/admin/alerts": "alerts"
 };
 
-export function AdminWorkspaceLayout({ badge, title, description, highlights, children }) {
+export function AdminWorkspaceLayout({ badge, title, description, highlights, hideHeaderIntro = false, children }) {
   const navigate = useNavigate();
   const session = getAuthSession();
   const isEmployee = session?.role === "employee";
@@ -58,6 +58,7 @@ export function AdminWorkspaceLayout({ badge, title, description, highlights, ch
       title={title}
       description={description}
       highlights={highlights}
+      hideHeaderIntro={hideHeaderIntro}
       menu={visibleMenu}
       roleLabel={isEmployee ? "Employee Workspace" : "Admin Workspace"}
       scopeNote={{

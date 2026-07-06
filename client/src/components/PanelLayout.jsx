@@ -41,6 +41,7 @@ export function PanelLayout({
   menu,
   roleLabel,
   headerContent,
+  hideHeaderIntro = false,
   scopeNote = defaultScopeNote,
   className = "",
   children
@@ -140,17 +141,32 @@ export function PanelLayout({
 
       {/* Main content */}
       <main className="panel-main">
-        <header className="panel-header" id="overview">
-          <div>
-            <span className="section-chip">{badge}</span>
-            <h1>{title}</h1>
-            {description && <p>{description}</p>}
-          </div>
+        {(!hideHeaderIntro || badge || headerContent) && (
+          <header
+            className={[
+              "panel-header",
+              hideHeaderIntro ? "panel-header-compact" : "",
+              hideHeaderIntro && !badge ? "panel-header-actions-only" : ""
+            ].filter(Boolean).join(" ")}
+            id="overview"
+          >
+            {(!hideHeaderIntro || badge) && (
+              <div>
+                {badge && <span className="section-chip">{badge}</span>}
+                {!hideHeaderIntro && (
+                  <>
+                    <h1>{title}</h1>
+                    {description && <p>{description}</p>}
+                  </>
+                )}
+              </div>
+            )}
 
-          {headerContent && (
-            <div className="header-actions">{headerContent}</div>
-          )}
-        </header>
+            {headerContent && (
+              <div className="header-actions">{headerContent}</div>
+            )}
+          </header>
+        )}
 
         {highlights && highlights.length > 0 && (
           <section className="highlight-row">
