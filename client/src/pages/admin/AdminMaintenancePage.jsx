@@ -863,11 +863,11 @@ function JobDrawer({ job, history, onClose, onEdit, onComplete, onBillStatus, sa
 
 const EVENT_COLORS = {
   TAX: { bg: "#f97316", text: "#fff", label: "Road Tax" },
-  IB:  { bg: "#3b82f6", text: "#fff", label: "Safety Inspection" },
-  MOT: { bg: "#eab308", text: "#1a1a1a", label: "MOT" },
-  RBT: { bg: "#14b8a6", text: "#fff", label: "Roller Brake Test" },
+  IB:  { bg: "#3b82f6", text: "#fff", label: "Inspection & Brake test" },
+  MOT: { bg: "#eab308", text: "#1a1a1a", label: "Ministry of Transport" },
+  VOR: { bg: "#14b8a6", text: "#fff", label: "Vechile Off Road" },
   INS: { bg: "#22c55e", text: "#fff", label: "Insurance" },
-  T:   { bg: "#a855f7", text: "#fff", label: "Tacho Calibration" },
+  T:   { bg: "#a855f7", text: "#fff", label: "Tacho" },
   SRV: { bg: "#64748b", text: "#fff", label: "Full Service" }
 };
 
@@ -879,7 +879,7 @@ const TYPE_TO_CODE = {
   "Road Tax": "TAX",
   "Safety inspection": "IB",
   MOT: "MOT",
-  "Roller brake test": "RBT",
+  "Roller brake test": "IB",
   Insurance: "INS",
   "Tacho Calibration": "T",
   "Full Service": "SRV"
@@ -1349,14 +1349,9 @@ export function AdminMaintenancePage() {
       {activeView === "annual" && (
       <section className="content-card excel-schedule-card">
         <div className="section-head">
-          <div>
-            <span className="card-label">Vehicle Maintenance Programme</span>
-            <h2>Annual Schedule — Excel View</h2>
-            <p className="finance-empty">
-              Colour-Coded week-by-week schedule for all vehicles. TAX&nbsp;= Road Tax, IB&nbsp;= Safety Inspection, MOT&nbsp;= MOT, RBT&nbsp;= Roller Brake Test, INS&nbsp;= Insurance, T&nbsp;= Tacho, SRV&nbsp;= Full Service.
-              Set company names on each vehicle from the vehicle register.
-            </p>
-          </div>
+          <p className="finance-empty">
+            TAX = Road Tax, IB = inspection &amp; Brake test, MOT = Ministry of Transport, INS = Insurance, VOR = Vechile Off Road, T = Tacho, SRV = Full Service
+          </p>
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
             {Object.entries(EVENT_COLORS).map(([code, { bg, text, label }]) => (
               <span key={code} className="excel-legend-chip" style={{ background: bg, color: text }} title={label}>{code}</span>
