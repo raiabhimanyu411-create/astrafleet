@@ -948,6 +948,21 @@ function isGeneratedMaintenanceNote(note) {
   return /^auto-created/i.test(String(note || "").trim());
 }
 
+const fleetCodeSorter = new Intl.Collator("en-GB", {
+  numeric: true,
+  sensitivity: "base"
+});
+
+function compareScheduleRows(a, b) {
+  const aCode = String(a.fleetCode || "").trim();
+  const bCode = String(b.fleetCode || "").trim();
+  if (!aCode && bCode) return 1;
+  if (aCode && !bCode) return -1;
+  const byFleetCode = fleetCodeSorter.compare(aCode, bCode);
+  if (byFleetCode !== 0) return byFleetCode;
+  return fleetCodeSorter.compare(String(a.vehicle || ""), String(b.vehicle || ""));
+}
+
 function ExcelScheduleView({ data, onOpenVehicle }) {
   const [search, setSearch] = useState("");
   const [popover, setPopover] = useState(null); // { ev, x, y }
@@ -971,14 +986,16 @@ function ExcelScheduleView({ data, onOpenVehicle }) {
   }, [weeks]);
 
   const filteredRows = useMemo(() => {
-    if (!search.trim()) return allRows;
     const q = search.toLowerCase();
-    return allRows.filter(row =>
-      row.vehicle?.toLowerCase().includes(q) ||
-      row.fleetCode?.toLowerCase().includes(q) ||
-      row.make?.toLowerCase().includes(q) ||
-      row.companyName?.toLowerCase().includes(q)
-    );
+    const rows = search.trim()
+      ? allRows.filter(row =>
+          row.vehicle?.toLowerCase().includes(q) ||
+          row.fleetCode?.toLowerCase().includes(q) ||
+          row.make?.toLowerCase().includes(q) ||
+          row.companyName?.toLowerCase().includes(q)
+        )
+      : allRows;
+    return [...rows].sort(compareScheduleRows);
   }, [allRows, search]);
 
   const companies = useMemo(() => {
