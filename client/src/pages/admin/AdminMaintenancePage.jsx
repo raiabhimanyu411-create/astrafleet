@@ -1311,7 +1311,7 @@ export function AdminMaintenancePage() {
       badge={data?.header?.badge || "Maintenance planner"}
       title={data?.header?.title || "Fleet maintenance portal"}
       description={data?.header?.description || "Plan services, inspections, defects, and workshop work from live fleet data."}
-      highlights={data?.highlights || []}
+      highlights={[]}
     >
       <div className="maintenance-command-bar">
         <div>
