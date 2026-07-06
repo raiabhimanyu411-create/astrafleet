@@ -1033,7 +1033,7 @@ function ExcelScheduleView({ data, onOpenVehicle }) {
         </colgroup>
         <thead>
           <tr className="excel-month-row">
-            <th className="excel-fixed-head">Registration / Fleet No</th>
+            <th className="excel-fixed-head">REG</th>
             <th className="excel-fixed-head">Inspection Frequency</th>
             <th className="excel-fixed-head">Make</th>
             {monthGroups.map((group) => (
