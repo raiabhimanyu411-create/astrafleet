@@ -1654,33 +1654,36 @@
 
 .excel-month-head {
   top: 0;
-  background: #0f172a;
-  color: #fff;
+  background: #bfdbfe;
+  color: #0f172a;
   padding: 6px 4px;
   font-size: 0.65rem;
+  font-weight: 900;
   letter-spacing: 0.04em;
-  border-color: #334155;
+  border-color: #93c5fd;
 }
 
 .excel-date-head {
   top: var(--excel-month-row-h);
-  background: #334155;
-  color: #cbd5e1;
+  background: #dbeafe;
+  color: #1e3a8a;
   padding: 3px 2px;
-  font-size: 0.56rem;
+  font-size: 0.58rem;
+  font-weight: 900;
   min-width: 60px;
   letter-spacing: 0.02em;
-  border-color: #334155;
+  border-color: #93c5fd;
 }
 
 .excel-week-head {
   top: calc(var(--excel-month-row-h) + var(--excel-date-row-h));
-  background: #1e293b;
-  color: #94a3b8;
+  background: #eff6ff;
+  color: #1d4ed8;
   padding: 4px 2px;
-  font-size: 0.58rem;
+  font-size: 0.6rem;
+  font-weight: 900;
   min-width: 60px;
-  border-color: #334155;
+  border-color: #93c5fd;
 }
 
 /* Fixed left columns */
@@ -1689,15 +1692,15 @@
   top: 0;
   left: 0;
   z-index: 8 !important;
-  background: #0f172a;
-  color: #fff;
+  background: #bfdbfe;
+  color: #0f172a;
   padding: 6px 8px;
   text-align: left;
   font-size: 0.65rem;
-  font-weight: 800;
+  font-weight: 900;
   text-transform: uppercase;
   letter-spacing: 0.03em;
-  border-color: #334155;
+  border-color: #93c5fd;
   overflow: hidden;
   text-overflow: clip;
 }
