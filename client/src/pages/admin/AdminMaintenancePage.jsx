@@ -944,6 +944,32 @@ function uniqueWeekEvents(events) {
   ];
 }
 
+function groupCompletedByDate(events) {
+  const byDate = new Map();
+  const others = [];
+  for (const event of events) {
+    if (event.kind !== "completed") {
+      others.push(event);
+      continue;
+    }
+    const key = event.dueDateRaw;
+    if (!byDate.has(key)) byDate.set(key, []);
+    byDate.get(key).push(event);
+  }
+  const merged = [...byDate.values()].map((items) => (
+    items.length > 1
+      ? {
+          id: `group-${items.map((item) => item.id).join("-")}`,
+          kind: "completed-group",
+          dueDateRaw: items[0].dueDateRaw,
+          dueDate: items[0].dueDate,
+          items
+        }
+      : items[0]
+  ));
+  return [...merged, ...others];
+}
+
 function isGeneratedMaintenanceNote(note) {
   return /^auto-created/i.test(String(note || "").trim());
 }
@@ -1224,7 +1250,7 @@ function ExcelScheduleView({ data, onOpenVehicle }) {
                   <td className="excel-freq-cell" onClick={() => onOpenVehicle(row, assetType)}>{row.inspectionFrequency}</td>
                   <td className="excel-make-cell" onClick={() => onOpenVehicle(row, assetType)}>{row.make}</td>
                   {weeks.map((week) => {
-                    const events = uniqueWeekEvents((row.events || []).filter((ev) => eventBelongsToWeek(ev, week)));
+                    const events = groupCompletedByDate(uniqueWeekEvents((row.events || []).filter((ev) => eventBelongsToWeek(ev, week))));
                     return (
                       <td
                         key={`${row.vehicleId}-${week.key}`}
@@ -1233,6 +1259,31 @@ function ExcelScheduleView({ data, onOpenVehicle }) {
                         title="Click to open vehicle details"
                       >
                         {events.map((ev) => {
+                          if (ev.kind === "completed-group") {
+                            const day = ev.dueDateRaw?.slice(8, 10);
+                            const mon = ev.dueDateRaw?.slice(5, 7);
+                            return (
+                              <button
+                                key={ev.id}
+                                className="excel-event-chip completed"
+                                style={{ background: "#16a34a", color: "#fff" }}
+                                onMouseEnter={(e) => {
+                                  clearTimeout(popoverTimer.current);
+                                  const rect = e.currentTarget.getBoundingClientRect();
+                                  setPopover({ group: ev.items, x: rect.left + rect.width / 2, y: rect.top - 8 });
+                                }}
+                                onMouseLeave={() => {
+                                  popoverTimer.current = setTimeout(() => setPopover(null), 150);
+                                }}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  onOpenVehicle(row, assetType, ev.items[0].type);
+                                }}
+                              >
+                                {`✓ ${ev.items.map((item) => item.code).join("+")} ${day}/${mon}`}
+                              </button>
+                            );
+                          }
                           const isCompleted = ev.kind === "completed";
                           const color = isCompleted
                             ? { bg: "#16a34a", text: "#fff" }
@@ -1287,21 +1338,44 @@ function ExcelScheduleView({ data, onOpenVehicle }) {
         onMouseEnter={() => clearTimeout(popoverTimer.current)}
         onMouseLeave={() => { popoverTimer.current = setTimeout(() => setPopover(null), 150); }}
       >
-        <div className="ccp-header">
-          <span className="ccp-badge" style={{ background: EVENT_COLORS[popover.ev.code]?.bg || "#16a34a" }}>
-            {popover.ev.code}
-          </span>
-          <strong className="ccp-title">{popover.ev.type}</strong>
-        </div>
-        <div className="ccp-row">
-          <span className="ccp-label">Completed</span>
-          <span className="ccp-value">{popover.ev.dueDate}</span>
-        </div>
-        {popover.ev.completionNotes && !isGeneratedMaintenanceNote(popover.ev.completionNotes) && (
-          <div className="ccp-notes">
-            <span className="ccp-label">Notes</span>
-            <p className="ccp-notes-text">{popover.ev.completionNotes}</p>
-          </div>
+        {popover.group ? (
+          <>
+            <div className="ccp-header">
+              <strong className="ccp-title">{popover.group.length} items completed · {popover.group[0].dueDate}</strong>
+            </div>
+            {popover.group.map((ev) => (
+              <div className="ccp-group-item" key={ev.id}>
+                <div className="ccp-row">
+                  <span className="ccp-badge" style={{ background: EVENT_COLORS[ev.code]?.bg || "#16a34a" }}>
+                    {ev.code}
+                  </span>
+                  <span className="ccp-value">{ev.type}</span>
+                </div>
+                {ev.completionNotes && !isGeneratedMaintenanceNote(ev.completionNotes) && (
+                  <p className="ccp-notes-text">{ev.completionNotes}</p>
+                )}
+              </div>
+            ))}
+          </>
+        ) : (
+          <>
+            <div className="ccp-header">
+              <span className="ccp-badge" style={{ background: EVENT_COLORS[popover.ev.code]?.bg || "#16a34a" }}>
+                {popover.ev.code}
+              </span>
+              <strong className="ccp-title">{popover.ev.type}</strong>
+            </div>
+            <div className="ccp-row">
+              <span className="ccp-label">Completed</span>
+              <span className="ccp-value">{popover.ev.dueDate}</span>
+            </div>
+            {popover.ev.completionNotes && !isGeneratedMaintenanceNote(popover.ev.completionNotes) && (
+              <div className="ccp-notes">
+                <span className="ccp-label">Notes</span>
+                <p className="ccp-notes-text">{popover.ev.completionNotes}</p>
+              </div>
+            )}
+          </>
         )}
         <div className="ccp-arrow" />
       </div>

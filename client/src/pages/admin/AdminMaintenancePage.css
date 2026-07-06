@@ -2077,6 +2077,23 @@
   font-weight: 700;
   color: #16a34a;
 }
+.ccp-group-item {
+  margin-bottom: 6px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid #f1f5f9;
+}
+.ccp-group-item:last-child {
+  margin-bottom: 0;
+  padding-bottom: 0;
+  border-bottom: none;
+}
+.ccp-group-item .ccp-row {
+  justify-content: flex-start;
+  gap: 7px;
+}
+.ccp-group-item .ccp-value {
+  color: #1e293b;
+}
 .ccp-notes {
   margin-top: 7px;
   border-top: 1px solid #f1f5f9;
