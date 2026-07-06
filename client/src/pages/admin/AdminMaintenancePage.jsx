@@ -1023,6 +1023,14 @@ function ExcelScheduleView({ data, onOpenVehicle }) {
       </div>
     <div className="excel-schedule-wrap">
       <table className="excel-schedule-table">
+        <colgroup>
+          <col className="excel-reg-col" />
+          <col className="excel-freq-col" />
+          <col className="excel-make-col" />
+          {weeks.map((week) => (
+            <col className="excel-week-col" key={`col-${week.key}`} />
+          ))}
+        </colgroup>
         <thead>
           <tr className="excel-month-row">
             <th className="excel-fixed-head">Registration / Fleet No</th>

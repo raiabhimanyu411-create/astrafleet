@@ -1595,6 +1595,14 @@
 }
 
 .excel-schedule-table {
+  --excel-reg-col: 150px;
+  --excel-freq-col: 150px;
+  --excel-make-col: 120px;
+  --excel-week-col: 64px;
+  --excel-left-cols: calc(var(--excel-reg-col) + var(--excel-freq-col) + var(--excel-make-col));
+  --excel-month-row-h: 24px;
+  --excel-date-row-h: 20px;
+  --excel-week-row-h: 20px;
   border-collapse: separate;
   border-spacing: 0;
   min-width: 100%;
@@ -1602,9 +1610,15 @@
   font-family: inherit;
 }
 
+.excel-reg-col { width: var(--excel-reg-col); }
+.excel-freq-col { width: var(--excel-freq-col); }
+.excel-make-col { width: var(--excel-make-col); }
+.excel-week-col { width: var(--excel-week-col); }
+
 .excel-schedule-table th,
 .excel-schedule-table td {
   border: 1px solid #cbd5e1;
+  box-sizing: border-box;
   padding: 0;
   white-space: nowrap;
 }
@@ -1621,8 +1635,20 @@
 }
 
 .excel-month-row { top: 0; }
-.excel-date-row { top: 26px; }
-.excel-week-row { top: 44px; }
+.excel-date-row { top: var(--excel-month-row-h); }
+.excel-week-row { top: calc(var(--excel-month-row-h) + var(--excel-date-row-h)); }
+
+.excel-month-row th {
+  height: var(--excel-month-row-h);
+}
+
+.excel-date-row th {
+  height: var(--excel-date-row-h);
+}
+
+.excel-week-row th {
+  height: var(--excel-week-row-h);
+}
 
 .excel-month-head {
   top: 0;
@@ -1635,7 +1661,7 @@
 }
 
 .excel-date-head {
-  top: 26px;
+  top: var(--excel-month-row-h);
   background: #334155;
   color: #cbd5e1;
   padding: 3px 2px;
@@ -1646,7 +1672,7 @@
 }
 
 .excel-week-head {
-  top: 44px;
+  top: calc(var(--excel-month-row-h) + var(--excel-date-row-h));
   background: #1e293b;
   color: #94a3b8;
   padding: 4px 2px;
@@ -1669,20 +1695,35 @@
   font-weight: 800;
   text-transform: uppercase;
   letter-spacing: 0.03em;
-  min-width: 120px;
   border-color: #334155;
+  overflow: hidden;
+  text-overflow: clip;
 }
 
-.excel-fixed-head:nth-child(1) { left: 0; min-width: 140px; }
-.excel-fixed-head:nth-child(2) { left: 140px; min-width: 100px; }
-.excel-fixed-head:nth-child(3) { left: 240px; min-width: 90px; }
+.excel-fixed-head:nth-child(1) {
+  left: 0;
+  width: var(--excel-reg-col);
+  min-width: var(--excel-reg-col);
+}
+
+.excel-fixed-head:nth-child(2) {
+  left: var(--excel-reg-col);
+  width: var(--excel-freq-col);
+  min-width: var(--excel-freq-col);
+}
+
+.excel-fixed-head:nth-child(3) {
+  left: calc(var(--excel-reg-col) + var(--excel-freq-col));
+  width: var(--excel-make-col);
+  min-width: var(--excel-make-col);
+}
 
 .excel-date-row .excel-fixed-head {
-  top: 26px;
+  top: var(--excel-month-row-h);
 }
 
 .excel-week-row .excel-fixed-head {
-  top: 44px;
+  top: calc(var(--excel-month-row-h) + var(--excel-date-row-h));
 }
 
 .excel-fixed-head-spacer {
@@ -1691,19 +1732,23 @@
 
 /* ── Company header row ── */
 .excel-company-row td {
+  height: 24px;
   padding: 5px 10px;
   color: #fff;
   font-weight: 900;
   font-size: 0.72rem;
+  line-height: 1.2;
   letter-spacing: 0.06em;
   text-transform: uppercase;
+  vertical-align: middle;
 }
 
 .excel-company-label-cell {
   position: sticky;
   left: 0;
   z-index: 3;
-  min-width: 330px;
+  width: var(--excel-left-cols);
+  min-width: var(--excel-left-cols);
 }
 
 /* ── Vehicle rows ── */
@@ -1732,9 +1777,29 @@
   cursor: pointer;
 }
 
-.excel-reg-cell { left: 0; min-width: 140px; }
-.excel-freq-cell { left: 140px; min-width: 100px; text-align: center; color: var(--muted); font-size: 0.65rem; font-weight: 700; }
-.excel-make-cell { left: 240px; min-width: 90px; color: var(--muted); font-size: 0.65rem; }
+.excel-reg-cell {
+  left: 0;
+  width: var(--excel-reg-col);
+  min-width: var(--excel-reg-col);
+}
+
+.excel-freq-cell {
+  left: var(--excel-reg-col);
+  width: var(--excel-freq-col);
+  min-width: var(--excel-freq-col);
+  text-align: center;
+  color: var(--muted);
+  font-size: 0.65rem;
+  font-weight: 700;
+}
+
+.excel-make-cell {
+  left: calc(var(--excel-reg-col) + var(--excel-freq-col));
+  width: var(--excel-make-col);
+  min-width: var(--excel-make-col);
+  color: var(--muted);
+  font-size: 0.65rem;
+}
 
 .excel-reg-cell strong {
   display: block;
@@ -1755,7 +1820,8 @@
   padding: 2px 2px;
   vertical-align: middle;
   text-align: center;
-  min-width: 60px;
+  width: var(--excel-week-col);
+  min-width: var(--excel-week-col);
   border-color: #e2e8f0;
   cursor: pointer;
 }
