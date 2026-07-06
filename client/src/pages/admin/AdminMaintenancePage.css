@@ -1796,9 +1796,9 @@
   left: var(--excel-reg-col);
   width: var(--excel-fleet-code-col);
   min-width: var(--excel-fleet-code-col);
-  color: var(--muted);
-  font-size: 0.65rem;
-  font-weight: 700;
+  color: var(--text);
+  font-size: 0.68rem;
+  font-weight: 800;
 }
 
 .excel-freq-cell {
@@ -1822,8 +1822,8 @@
 .excel-reg-cell strong {
   display: block;
   color: var(--text);
-  font-size: 0.72rem;
-  font-weight: 800;
+  font-size: 0.76rem;
+  font-weight: 900;
 }
 
 .excel-reg-cell span {
