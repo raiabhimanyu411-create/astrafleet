@@ -610,7 +610,7 @@ async function applyCompletedMaintenance(job, completion = {}) {
     : job.completion_notes || (isGeneratedMaintenanceNote(job.notes) ? null : job.notes);
   const completionNotes = completion.completionNotes ?? fallbackNotes ?? null;
   const serviceDate = completion.serviceDate || job.service_date || rawDate(new Date());
-  const nextDueDate = completion.nextDueDate || calculateNextDueDate(job.service_type, serviceDate, job.road_tax_interval_months) || job.due_date || null;
+  const nextDueDate = completion.nextDueDate || calculateNextDueDate(job.service_type, serviceDate, job.road_tax_interval_months) || null;
   const completedMileageKm = completion.completedMileageKm || job.completed_mileage_km || null;
   const nextDueMileageKm = completion.nextDueMileageKm || job.next_due_mileage_km || null;
   const billAmountGbp = completion.billAmountGbp || job.bill_amount_gbp || null;
@@ -644,16 +644,18 @@ async function applyCompletedMaintenance(job, completion = {}) {
     await db.query(`UPDATE vehicles SET road_tax_expiry=? WHERE id=?`, [nextDueDate, job.vehicle_id]);
   } else if (nextDueDate && job.service_type === "Insurance") {
     await db.query(`UPDATE vehicles SET insurance_expiry=? WHERE id=?`, [nextDueDate, job.vehicle_id]);
-  } else if (nextDueDate && job.service_type === "Full Service") {
-    await db.query(`UPDATE vehicles SET next_service_due=? WHERE id=?`, [nextDueDate, job.vehicle_id]);
+  } else if (job.service_type === "Full Service") {
+    // Full Service is mileage-governed; only set a calendar due date when one was actually computed,
+    // and clear any stale date left over from before this completion.
+    await db.query(`UPDATE vehicles SET next_service_due=? WHERE id=?`, [nextDueDate || null, job.vehicle_id]);
   }
   if (job.trailer_id || job.asset_type === "trailer") {
     if (nextDueDate && job.service_type === "MOT") {
       await db.query(`UPDATE trailers SET mot_expiry=? WHERE id=?`, [nextDueDate, job.trailer_id]);
     } else if (nextDueDate && job.service_type === "Insurance") {
       await db.query(`UPDATE trailers SET insurance_expiry=? WHERE id=?`, [nextDueDate, job.trailer_id]);
-    } else if (nextDueDate && job.service_type === "Full Service") {
-      await db.query(`UPDATE trailers SET next_service_due=? WHERE id=?`, [nextDueDate, job.trailer_id]);
+    } else if (job.service_type === "Full Service") {
+      await db.query(`UPDATE trailers SET next_service_due=? WHERE id=?`, [nextDueDate || null, job.trailer_id]);
     } else if (nextDueDate && ["Safety inspection", "Roller brake test"].includes(job.service_type)) {
       await db.query(`UPDATE trailers SET next_inspection_due=? WHERE id=?`, [nextDueDate, job.trailer_id]);
     }
@@ -1095,7 +1097,7 @@ exports.getMaintenancePortal = async (_req, res) => {
                   ? latest?.dueDateRaw || ""
                   : type === "Full Service"
                     ? rawDate(v.next_service_due)
-                    : latest?.dueDateRaw || rawDate(v.next_inspection_due);
+                    : rawDate(v.next_inspection_due) || latest?.dueDateRaw || "";
           const daysLeft = daysUntil(dueDateRaw);
           const serviceStatus = statusFromDays(daysLeft);
           const kmRemaining = type === "Full Service" && latest?.nextDueMileageKm && currentKm
