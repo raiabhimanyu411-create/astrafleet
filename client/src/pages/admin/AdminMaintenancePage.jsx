@@ -997,20 +997,29 @@ function ExcelScheduleView({ data, onOpenVehicle }) {
     return <p className="finance-empty">No annual schedule data available.</p>;
   }
 
+  const legendChips = Object.entries(EVENT_COLORS).map(([code, { bg, text, label }]) => (
+    <span key={code} className="excel-legend-chip" style={{ background: bg, color: text }} title={label}>{code}</span>
+  ));
+
   return (
     <>
       <div className="schedule-search-bar">
-        <input
-          className="af-input"
-          placeholder="Search reg number, trailer, make/model, fleet code, or company..."
-          value={search}
-          onChange={e => setSearch(e.target.value)}
-        />
-        {search && (
-          <span className="schedule-search-count">
-            {filteredRows.length} of {allRows.length} vehicles
-          </span>
-        )}
+        <div className="schedule-search-field">
+          <input
+            className="af-input"
+            placeholder="Search reg number, trailer, make/model, fleet code, or company..."
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+          />
+          {search && (
+            <span className="schedule-search-count">
+              {filteredRows.length} of {allRows.length} vehicles
+            </span>
+          )}
+        </div>
+        <div className="schedule-legend-chips" aria-label="Maintenance schedule legend">
+          {legendChips}
+        </div>
       </div>
     <div className="excel-schedule-wrap">
       <table className="excel-schedule-table">
@@ -1348,16 +1357,6 @@ export function AdminMaintenancePage() {
 
       {activeView === "annual" && (
       <section className="content-card excel-schedule-card">
-        <div className="section-head">
-          <p className="finance-empty">
-            TAX = Road Tax, IB = inspection &amp; Brake test, MOT = Ministry of Transport, INS = Insurance, VOR = Vechile Off Road, T = Tacho, SRV = Full Service
-          </p>
-          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
-            {Object.entries(EVENT_COLORS).map(([code, { bg, text, label }]) => (
-              <span key={code} className="excel-legend-chip" style={{ background: bg, color: text }} title={label}>{code}</span>
-            ))}
-          </div>
-        </div>
         <ExcelScheduleView data={data} onOpenVehicle={openVehicleDetail} />
       </section>
       )}

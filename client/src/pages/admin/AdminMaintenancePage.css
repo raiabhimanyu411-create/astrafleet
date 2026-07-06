@@ -1426,6 +1426,24 @@
     min-width: 0;
   }
 
+  .schedule-search-bar {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .schedule-search-field {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .schedule-search-field .af-input {
+    max-width: none;
+  }
+
+  .schedule-legend-chips {
+    justify-content: flex-start;
+  }
+
   .maintenance-more-tools > summary {
     align-items: flex-start;
   }
@@ -1535,13 +1553,30 @@
 .schedule-search-bar {
   display: flex;
   align-items: center;
+  justify-content: space-between;
   gap: 12px;
-  margin-top: 14px;
+  margin-bottom: 14px;
 }
 
-.schedule-search-bar .af-input {
+.schedule-search-field {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+  flex: 1;
+}
+
+.schedule-search-field .af-input {
   margin: 0;
   max-width: 420px;
+}
+
+.schedule-legend-chips {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  flex-wrap: wrap;
 }
 
 .schedule-search-count {
