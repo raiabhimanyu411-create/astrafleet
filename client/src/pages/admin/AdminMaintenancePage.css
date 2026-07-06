@@ -1797,7 +1797,7 @@
   width: var(--excel-fleet-code-col);
   min-width: var(--excel-fleet-code-col);
   color: var(--text);
-  font-size: 0.68rem;
+  font-size: 0.74rem;
   font-weight: 800;
 }
 
@@ -1807,7 +1807,7 @@
   min-width: var(--excel-freq-col);
   text-align: center;
   color: var(--text);
-  font-size: 0.68rem;
+  font-size: 0.74rem;
   font-weight: 850;
 }
 
@@ -1816,14 +1816,14 @@
   width: var(--excel-make-col);
   min-width: var(--excel-make-col);
   color: var(--text);
-  font-size: 0.68rem;
+  font-size: 0.74rem;
   font-weight: 750;
 }
 
 .excel-reg-cell strong {
   display: block;
   color: var(--text);
-  font-size: 0.76rem;
+  font-size: 0.82rem;
   font-weight: 900;
 }
 
