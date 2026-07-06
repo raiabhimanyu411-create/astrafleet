@@ -376,6 +376,22 @@ function startOfWeek(date) {
   return next;
 }
 
+function firstPlanMondayForYear(year) {
+  const jan1 = new Date(year, 0, 1);
+  const firstWeekStart = startOfWeek(jan1);
+  return firstWeekStart.getFullYear() < year ? addDays(firstWeekStart, 7) : firstWeekStart;
+}
+
+function maintenanceWeekNumber(date) {
+  const weekStart = startOfWeek(date);
+  const firstMonday = firstPlanMondayForYear(weekStart.getFullYear());
+  if (weekStart < firstMonday) {
+    const previousFirstMonday = firstPlanMondayForYear(weekStart.getFullYear() - 1);
+    return Math.floor((weekStart - previousFirstMonday) / (7 * 24 * 60 * 60 * 1000)) + 1;
+  }
+  return Math.floor((weekStart - firstMonday) / (7 * 24 * 60 * 60 * 1000)) + 1;
+}
+
 function planCodeForType(type) {
   return {
     "Safety inspection": "IB",
@@ -1137,22 +1153,23 @@ exports.getMaintenancePortal = async (_req, res) => {
     }));
     const allVehicleProfiles = [...vehicleProfiles, ...trailerProfiles];
 
-    const planStart = startOfWeek(new Date());
-    const planWeeks = Array.from({ length: 52 }, (_, index) => {
+    const planStart = addDays(startOfWeek(new Date()), -7);
+    const planWeeks = Array.from({ length: 53 }, (_, index) => {
       const start = addDays(planStart, index * 7);
       const end = addDays(start, 6);
+      const weekNumber = maintenanceWeekNumber(start);
       const month = start.toLocaleDateString("en-GB", { month: "short" });
       return {
         key: rawDate(start),
-        weekNumber: index + 1,
-        label: `WK${index + 1}`,
+        weekNumber,
+        label: `WK${weekNumber}`,
         month,
         startRaw: rawDate(start),
         endRaw: rawDate(end),
         range: `${fmtDate(start)} - ${fmtDate(end)}`
       };
     });
-    const planEnd = addDays(planStart, (52 * 7) - 1);
+    const planEnd = addDays(planStart, (53 * 7) - 1);
     const yearPlanRows = rows.map((v) => {
       const profile = vehicleProfiles.find((item) => Number(item.vehicleId) === Number(v.id));
       const events = [];

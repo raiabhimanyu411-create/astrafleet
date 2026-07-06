@@ -1571,6 +1571,12 @@
   max-width: 420px;
 }
 
+.schedule-week-select {
+  min-width: 150px;
+  max-width: 180px;
+  margin: 0;
+}
+
 .schedule-legend-chips {
   display: flex;
   align-items: center;
@@ -1584,6 +1590,96 @@
   color: var(--muted);
   font-weight: 600;
   white-space: nowrap;
+}
+
+.schedule-week-summary {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 10px 12px;
+  border: 1px solid #93c5fd;
+  border-radius: var(--radius-sm);
+  background: #eff6ff;
+  margin-bottom: 12px;
+}
+
+.schedule-week-summary > div:first-child {
+  display: grid;
+  gap: 2px;
+  min-width: 180px;
+}
+
+.schedule-week-summary strong {
+  color: var(--text);
+  font-size: 0.82rem;
+  font-weight: 900;
+}
+
+.schedule-week-summary span {
+  color: #1d4ed8;
+  font-size: 0.74rem;
+  font-weight: 800;
+}
+
+.schedule-week-summary-list {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 6px;
+  min-width: 0;
+}
+
+.schedule-week-summary-item {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  align-items: center;
+  gap: 2px 6px;
+  min-width: 150px;
+  max-width: 220px;
+  padding: 6px 8px;
+  border: 1px solid #bfdbfe;
+  border-radius: 6px;
+  background: #fff;
+  color: var(--text);
+  cursor: pointer;
+  text-align: left;
+}
+
+.schedule-week-summary-item:hover {
+  border-color: #3b82f6;
+  box-shadow: 0 6px 16px rgba(59, 130, 246, 0.14);
+}
+
+.schedule-week-summary-code {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 30px;
+  height: 20px;
+  border-radius: 4px;
+  background: #1d4ed8;
+  color: #fff !important;
+  font-size: 0.62rem !important;
+  font-weight: 900 !important;
+}
+
+.schedule-week-summary-item small {
+  grid-column: 1 / -1;
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 0.68rem;
+  font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.schedule-week-empty,
+.schedule-week-more {
+  align-self: center;
+  color: var(--muted) !important;
+  font-size: 0.74rem !important;
+  font-weight: 800 !important;
 }
 
 .excel-schedule-wrap {
@@ -1684,6 +1780,12 @@
   font-weight: 1000;
   min-width: 60px;
   border-color: #111827;
+}
+
+.excel-date-head.selected-week,
+.excel-week-head.selected-week {
+  background: #fef3c7;
+  color: #92400e;
 }
 
 /* Fixed left columns */
@@ -1850,6 +1952,10 @@
 
 .excel-event-cell:hover {
   background: #eff6ff;
+}
+
+.excel-event-cell.selected-week {
+  background: #fffbeb;
 }
 
 .excel-event-chip {

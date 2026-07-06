@@ -983,7 +983,10 @@ function compareScheduleRows(a, b) {
 
 function ExcelScheduleView({ data, onOpenVehicle }) {
   const [search, setSearch] = useState("");
+  const [selectedWeekKey, setSelectedWeekKey] = useState("");
   const [popover, setPopover] = useState(null); // { ev, x, y }
+  const scheduleWrapRef = useRef(null);
+  const weekHeaderRefs = useRef({});
   const popoverTimer = useRef(null);
   const weeks = useMemo(() => data?.yearPlan?.weeks || [], [data]);
   const allRows = useMemo(() => data?.yearPlan?.rows || [], [data]);
@@ -1026,6 +1029,47 @@ function ExcelScheduleView({ data, onOpenVehicle }) {
     return [...map.entries()];
   }, [filteredRows]);
 
+  const currentWeekKey = useMemo(() => {
+    const today = new Date().toISOString().slice(0, 10);
+    return weeks.find((week) => today >= week.startRaw && today <= week.endRaw)?.key || weeks[0]?.key || "";
+  }, [weeks]);
+
+  const selectedWeek = weeks.find((week) => week.key === selectedWeekKey) || null;
+
+  const selectedWeekItems = useMemo(() => {
+    if (!selectedWeek) return [];
+    return filteredRows.flatMap((row) => {
+      const events = uniqueWeekEvents((row.events || []).filter((ev) => eventBelongsToWeek(ev, selectedWeek)));
+      return events.map((event) => ({
+        ...event,
+        rowVehicle: row.vehicle,
+        rowFleetCode: row.fleetCode,
+        rowMake: row.make,
+        rowAssetType: row.assetType === "trailer" ? "Trailer" : "Vehicle"
+      }));
+    }).sort((a, b) => {
+      const byDate = String(a.dueDateRaw || "").localeCompare(String(b.dueDateRaw || ""));
+      if (byDate !== 0) return byDate;
+      return fleetCodeSorter.compare(String(a.rowFleetCode || ""), String(b.rowFleetCode || ""));
+    });
+  }, [filteredRows, selectedWeek]);
+
+  useEffect(() => {
+    if (!weeks.length || selectedWeekKey) return;
+    setSelectedWeekKey(currentWeekKey);
+  }, [currentWeekKey, selectedWeekKey, weeks]);
+
+  useEffect(() => {
+    if (!selectedWeekKey || !scheduleWrapRef.current) return;
+    const header = weekHeaderRefs.current[selectedWeekKey];
+    if (!header) return;
+    const leftColumnsWidth = 510;
+    scheduleWrapRef.current.scrollTo({
+      left: Math.max(header.offsetLeft - leftColumnsWidth, 0),
+      behavior: "smooth"
+    });
+  }, [selectedWeekKey]);
+
   const totalCols = 4 + weeks.length;
 
   if (!weeks.length) {
@@ -1051,12 +1095,51 @@ function ExcelScheduleView({ data, onOpenVehicle }) {
               {filteredRows.length} of {allRows.length} vehicles
             </span>
           )}
+          <select
+            className="af-select schedule-week-select"
+            value={selectedWeekKey}
+            onChange={(event) => setSelectedWeekKey(event.target.value)}
+            aria-label="Jump to week"
+          >
+            {weeks.map((week) => (
+              <option key={week.key} value={week.key}>
+                {week.label} · {formatWeekStart(week.startRaw)}
+              </option>
+            ))}
+          </select>
         </div>
         <div className="schedule-legend-chips" aria-label="Maintenance schedule legend">
           {legendChips}
         </div>
       </div>
-    <div className="excel-schedule-wrap">
+      {selectedWeek && (
+        <div className="schedule-week-summary">
+          <div>
+            <strong>{selectedWeek.label} · {selectedWeek.range}</strong>
+            <span>{selectedWeekItems.length} maintenance item{selectedWeekItems.length === 1 ? "" : "s"}</span>
+          </div>
+          <div className="schedule-week-summary-list">
+            {selectedWeekItems.slice(0, 10).map((item) => (
+              <button
+                key={`${item.id}-${item.rowAssetType}`}
+                className="schedule-week-summary-item"
+                type="button"
+                onClick={() => onOpenVehicle({
+                  vehicleId: item.vehicleId,
+                  assetType: item.rowAssetType === "Trailer" ? "trailer" : "vehicle"
+                }, item.rowAssetType === "Trailer" ? "trailer" : "vehicle", item.type)}
+              >
+                <span className="schedule-week-summary-code">{item.code}</span>
+                <strong>{item.rowFleetCode || item.rowVehicle}</strong>
+                <small>{item.rowVehicle} · {item.type} · {item.dueDate}</small>
+              </button>
+            ))}
+            {selectedWeekItems.length === 0 && <span className="schedule-week-empty">No maintenance items in this week.</span>}
+            {selectedWeekItems.length > 10 && <span className="schedule-week-more">+{selectedWeekItems.length - 10} more in table</span>}
+          </div>
+        </div>
+      )}
+    <div className="excel-schedule-wrap" ref={scheduleWrapRef}>
       <table className="excel-schedule-table">
         <colgroup>
           <col className="excel-reg-col" />
@@ -1085,7 +1168,11 @@ function ExcelScheduleView({ data, onOpenVehicle }) {
             <th className="excel-fixed-head excel-fixed-head-spacer" aria-hidden="true" />
             <th className="excel-fixed-head excel-fixed-head-spacer" aria-hidden="true" />
             {weeks.map((week) => (
-              <th key={week.key} className="excel-date-head" title="Week commencing (Monday)">
+              <th
+                key={week.key}
+                className={`excel-date-head${week.key === selectedWeekKey ? " selected-week" : ""}`}
+                title="Week commencing (Monday)"
+              >
                 {formatWeekStart(week.startRaw)}
               </th>
             ))}
@@ -1096,8 +1183,14 @@ function ExcelScheduleView({ data, onOpenVehicle }) {
             <th className="excel-fixed-head excel-fixed-head-spacer" aria-hidden="true" />
             <th className="excel-fixed-head excel-fixed-head-spacer" aria-hidden="true" />
             {weeks.map((week) => (
-              <th key={week.key} className="excel-week-head">
-                WK{isoWeekNumber(week.startRaw || week.key)}
+              <th
+                key={week.key}
+                className={`excel-week-head${week.key === selectedWeekKey ? " selected-week" : ""}`}
+                ref={(node) => {
+                  if (node) weekHeaderRefs.current[week.key] = node;
+                }}
+              >
+                {week.label || `WK${isoWeekNumber(week.startRaw || week.key)}`}
               </th>
             ))}
           </tr>
@@ -1135,7 +1228,7 @@ function ExcelScheduleView({ data, onOpenVehicle }) {
                     return (
                       <td
                         key={`${row.vehicleId}-${week.key}`}
-                        className="excel-event-cell"
+                        className={`excel-event-cell${week.key === selectedWeekKey ? " selected-week" : ""}`}
                         onClick={() => onOpenVehicle(row, assetType)}
                         title="Click to open vehicle details"
                       >
