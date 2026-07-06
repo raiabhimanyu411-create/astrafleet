@@ -417,6 +417,7 @@ function VehicleDetailModal({ target, profiles, onClose, onSaved }) {
     service_date: dateKey(new Date()),
     garage_name: "",
     final_cost_gbp: "",
+    completed_mileage_km: "",
     bill_number: "",
     bill_amount_gbp: "",
     bill_notes: "",
@@ -433,6 +434,7 @@ function VehicleDetailModal({ target, profiles, onClose, onSaved }) {
       service_date: dateKey(new Date()),
       garage_name: "",
       final_cost_gbp: "",
+      completed_mileage_km: "",
       bill_number: "",
       bill_amount_gbp: "",
       bill_notes: "",
@@ -471,6 +473,7 @@ function VehicleDetailModal({ target, profiles, onClose, onSaved }) {
         service_date: form.service_date,
         garage_name: form.garage_name,
         final_cost_gbp: form.final_cost_gbp,
+        completed_mileage_km: form.completed_mileage_km,
         bill_number: form.bill_number,
         bill_amount_gbp: form.bill_amount_gbp,
         bill_notes: form.bill_notes,
@@ -524,18 +527,36 @@ function VehicleDetailModal({ target, profiles, onClose, onSaved }) {
             const code = TYPE_TO_CODE[item.type] || item.type;
             const color = EVENT_COLORS[code] || { bg: "#94a3b8", text: "#fff" };
             return (
-              <button
+              <div
                 className={`maintenance-profile-item${activeType === item.type ? " active" : ""}`}
                 key={item.type}
-                type="button"
+                role="button"
+                tabIndex={0}
                 onClick={() => openItem(item.type)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault();
+                    openItem(item.type);
+                  }
+                }}
               >
                 <span className="vehicle-detail-item-code" style={{ background: color.bg, color: color.text }}>{code}</span>
                 <strong>{item.type}</strong>
-                <p>Last done: {item.lastDone}</p>
+                <p>Last done: {item.lastDone}{item.lastDoneKm ? ` · ${Number(item.lastDoneKm).toLocaleString("en-GB")} km` : ""}</p>
                 <p>Next due: {item.nextDue}</p>
                 <StatusPill tone={item.tone}>{item.status}</StatusPill>
-              </button>
+                {item.hasAttachment && (
+                  <a
+                    className="vehicle-detail-item-doc-link"
+                    href={item.attachmentData}
+                    target="_blank"
+                    rel="noreferrer"
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    View document
+                  </a>
+                )}
+              </div>
             );
           })}
         </div>
@@ -573,6 +594,11 @@ function VehicleDetailModal({ target, profiles, onClose, onSaved }) {
               <Field label="Cost (£)">
                 <input className="af-input" type="number" min="0" step="0.01" value={form.final_cost_gbp} onChange={(e) => set("final_cost_gbp", e.target.value)} />
               </Field>
+              {target.assetType !== "trailer" && (
+                <Field label="Odometer Reading (KM)">
+                  <input className="af-input" type="number" min="0" step="1" value={form.completed_mileage_km} onChange={(e) => set("completed_mileage_km", e.target.value)} placeholder="e.g. 45230" />
+                </Field>
+              )}
               <Field label="Bill / Invoice Number">
                 <input className="af-input" value={form.bill_number} onChange={(e) => set("bill_number", e.target.value)} placeholder="e.g. INV-9821" />
               </Field>

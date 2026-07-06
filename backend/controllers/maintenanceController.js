@@ -1048,11 +1048,19 @@ exports.getMaintenancePortal = async (_req, res) => {
       reminder: item.daysLeft <= 30 ? "Reminder due" : "Scheduled"
     })).sort((a, b) => (a.daysLeft ?? 9999) - (b.daysLeft ?? 9999));
 
+    const fullServiceDueRaw = (v) => {
+      const lastFullService = latestServiceByVehicleAndType.get(`${v.id}:Full Service`);
+      const raw = rawDate(v.next_service_due);
+      if (!raw) return "";
+      if (lastFullService?.serviceDateRaw && raw <= lastFullService.serviceDateRaw) return "";
+      return raw;
+    };
+
     const complianceItems = rows.flatMap((v) => [
       { vehicleId: v.id, vehicle: v.registration_number, itemType: "MOT", dueDateRaw: rawDate(v.mot_expiry), dueDate: fmtDate(v.mot_expiry), daysLeft: daysUntil(v.mot_expiry) },
       { vehicleId: v.id, vehicle: v.registration_number, itemType: "Insurance", dueDateRaw: rawDate(v.insurance_expiry), dueDate: fmtDate(v.insurance_expiry), daysLeft: daysUntil(v.insurance_expiry) },
       { vehicleId: v.id, vehicle: v.registration_number, itemType: "Road Tax", dueDateRaw: rawDate(v.road_tax_expiry), dueDate: fmtDate(v.road_tax_expiry), daysLeft: daysUntil(v.road_tax_expiry) },
-      { vehicleId: v.id, vehicle: v.registration_number, itemType: "Full Service", dueDateRaw: rawDate(v.next_service_due), dueDate: fmtDate(v.next_service_due), daysLeft: daysUntil(v.next_service_due) },
+      { vehicleId: v.id, vehicle: v.registration_number, itemType: "Full Service", dueDateRaw: fullServiceDueRaw(v), dueDate: fmtDate(fullServiceDueRaw(v)), daysLeft: daysUntil(fullServiceDueRaw(v)) },
       { vehicleId: v.id, vehicle: v.registration_number, itemType: "Roller brake test", dueDateRaw: rawDate(v.next_inspection_due), dueDate: fmtDate(v.next_inspection_due), daysLeft: daysUntil(v.next_inspection_due) },
       { vehicleId: v.id, vehicle: v.registration_number, itemType: "Safety inspection", dueDateRaw: rawDate(v.next_inspection_due), dueDate: fmtDate(v.next_inspection_due), daysLeft: daysUntil(v.next_inspection_due) },
       {
@@ -1096,7 +1104,7 @@ exports.getMaintenancePortal = async (_req, res) => {
                 : type === "Tacho Calibration"
                   ? latest?.dueDateRaw || ""
                   : type === "Full Service"
-                    ? rawDate(v.next_service_due)
+                    ? fullServiceDueRaw(v)
                     : rawDate(v.next_inspection_due) || latest?.dueDateRaw || "";
           const daysLeft = daysUntil(dueDateRaw);
           const serviceStatus = statusFromDays(daysLeft);
@@ -1106,6 +1114,7 @@ exports.getMaintenancePortal = async (_req, res) => {
           return {
             type,
             lastDone: latest?.serviceDateRaw ? latest.serviceDate : "-",
+            lastDoneKm: latest?.completedMileageKm || null,
             nextDue: fmtDate(dueDateRaw),
             nextDueRaw: dueDateRaw,
             daysLeft,
@@ -1118,7 +1127,9 @@ exports.getMaintenancePortal = async (_req, res) => {
                 : serviceStatus.tone,
             nextDueMileageKm: latest?.nextDueMileageKm || "",
             kmRemaining,
-            kmRemainingLabel: kmRemaining === null ? "-" : `${Number(kmRemaining).toLocaleString("en-GB")} km`
+            kmRemainingLabel: kmRemaining === null ? "-" : `${Number(kmRemaining).toLocaleString("en-GB")} km`,
+            hasAttachment: Boolean(latest?.billAttachmentData),
+            attachmentData: latest?.billAttachmentData || ""
           };
         })
       };
@@ -1141,6 +1152,7 @@ exports.getMaintenancePortal = async (_req, res) => {
         return {
           type,
           lastDone: latest?.serviceDateRaw ? latest.serviceDate : "-",
+          lastDoneKm: null,
           nextDue: fmtDate(dueDateRaw),
           nextDueRaw: dueDateRaw,
           daysLeft,
@@ -1149,7 +1161,9 @@ exports.getMaintenancePortal = async (_req, res) => {
           tone: serviceStatus.tone,
           nextDueMileageKm: "",
           kmRemaining: null,
-          kmRemainingLabel: "-"
+          kmRemainingLabel: "-",
+          hasAttachment: Boolean(latest?.billAttachmentData),
+          attachmentData: latest?.billAttachmentData || ""
         };
       })
     }));
@@ -2357,9 +2371,10 @@ exports.completeEventFromSchedule = async (req, res) => {
     await applyCompletedMaintenance(job, {
       finalCost: finalCostGbp,
       serviceDate,
-      nextDueDate: nextDueDate || job.due_date,
+      nextDueDate: nextDueDate || null,
       completionNotes,
-      billAmountGbp
+      billAmountGbp,
+      completedMileageKm: req.body.completed_mileage_km || req.body.completedMileageKm || null
     });
 
     res.json({ message: "Event marked as done.", jobId, nextDueDate });

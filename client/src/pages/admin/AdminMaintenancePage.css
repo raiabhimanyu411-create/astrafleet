@@ -816,6 +816,15 @@
   letter-spacing: 0.03em;
 }
 
+.vehicle-detail-item-doc-link {
+  display: inline-block;
+  margin-top: 8px;
+  font-size: 0.68rem;
+  font-weight: 800;
+  color: var(--primary, #2563eb);
+  text-decoration: underline;
+}
+
 .vehicle-detail-done-form {
   margin-top: 18px;
   padding-top: 16px;
