@@ -1025,9 +1025,9 @@ function ExcelScheduleView({ data, onOpenVehicle }) {
       <table className="excel-schedule-table">
         <thead>
           <tr className="excel-month-row">
-            <th className="excel-fixed-head" rowSpan={3}>Registration / Fleet No</th>
-            <th className="excel-fixed-head" rowSpan={3}>Inspection Frequency</th>
-            <th className="excel-fixed-head" rowSpan={3}>Make</th>
+            <th className="excel-fixed-head">Registration / Fleet No</th>
+            <th className="excel-fixed-head">Inspection Frequency</th>
+            <th className="excel-fixed-head">Make</th>
             {monthGroups.map((group) => (
               <th key={group.key} colSpan={group.count} className="excel-month-head">
                 {group.month.toUpperCase()}
@@ -1035,6 +1035,9 @@ function ExcelScheduleView({ data, onOpenVehicle }) {
             ))}
           </tr>
           <tr className="excel-date-row">
+            <th className="excel-fixed-head excel-fixed-head-spacer" aria-hidden="true" />
+            <th className="excel-fixed-head excel-fixed-head-spacer" aria-hidden="true" />
+            <th className="excel-fixed-head excel-fixed-head-spacer" aria-hidden="true" />
             {weeks.map((week) => (
               <th key={week.key} className="excel-date-head" title="Week commencing (Monday)">
                 {formatWeekStart(week.startRaw)}
@@ -1042,6 +1045,9 @@ function ExcelScheduleView({ data, onOpenVehicle }) {
             ))}
           </tr>
           <tr className="excel-week-row">
+            <th className="excel-fixed-head excel-fixed-head-spacer" aria-hidden="true" />
+            <th className="excel-fixed-head excel-fixed-head-spacer" aria-hidden="true" />
+            <th className="excel-fixed-head excel-fixed-head-spacer" aria-hidden="true" />
             {weeks.map((week) => (
               <th key={week.key} className="excel-week-head">
                 WK{isoWeekNumber(week.startRaw || week.key)}
@@ -1054,12 +1060,18 @@ function ExcelScheduleView({ data, onOpenVehicle }) {
             <React.Fragment key={`co-${company}`}>
               <tr className="excel-company-row">
                 <td
-                  colSpan={totalCols}
-                  className="excel-company-cell"
+                  colSpan={3}
+                  className="excel-company-cell excel-company-label-cell"
                   style={{ background: COMPANY_COLORS[coIndex % COMPANY_COLORS.length] }}
                 >
                   {company.toUpperCase()}
                 </td>
+                <td
+                  colSpan={weeks.length}
+                  className="excel-company-cell"
+                  style={{ background: COMPANY_COLORS[coIndex % COMPANY_COLORS.length] }}
+                  aria-hidden="true"
+                />
               </tr>
               {rows.map((row) => {
                 const assetType = row.assetType === "trailer" ? "trailer" : "vehicle";
