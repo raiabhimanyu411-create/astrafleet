@@ -953,12 +953,30 @@ const fleetCodeSorter = new Intl.Collator("en-GB", {
   sensitivity: "base"
 });
 
+function parseFleetCodeForSort(code) {
+  const raw = String(code || "").trim();
+  const compact = raw.replace(/[\s-]+/g, "");
+  const match = compact.match(/^([A-Za-z]*)(\d+)$/);
+  if (!match) return { raw, prefix: compact.toUpperCase(), number: null };
+  return {
+    raw,
+    prefix: match[1].toUpperCase(),
+    number: Number(match[2])
+  };
+}
+
 function compareScheduleRows(a, b) {
   const aCode = String(a.fleetCode || "").trim();
   const bCode = String(b.fleetCode || "").trim();
   if (!aCode && bCode) return 1;
   if (aCode && !bCode) return -1;
-  const byFleetCode = fleetCodeSorter.compare(aCode, bCode);
+  const aSort = parseFleetCodeForSort(aCode);
+  const bSort = parseFleetCodeForSort(bCode);
+  const byPrefix = fleetCodeSorter.compare(aSort.prefix, bSort.prefix);
+  if (byPrefix !== 0) return byPrefix;
+  const byFleetCode = aSort.number != null && bSort.number != null
+    ? aSort.number - bSort.number
+    : fleetCodeSorter.compare(aSort.raw, bSort.raw);
   if (byFleetCode !== 0) return byFleetCode;
   return fleetCodeSorter.compare(String(a.vehicle || ""), String(b.vehicle || ""));
 }
