@@ -559,6 +559,16 @@ export function JobsListPage() {
 
   const hasActiveFilters = Boolean(search || statusFilter || priorityFilter || attentionFilter || showUnassignedOnly || selectedDate);
 
+  function jobMatchesDateRange(job, tabId) {
+    const jobDate = toDateInputValue(job.departureRaw || job.loadingDoneTime || job.etaRaw);
+    if (selectedDate) return jobDate === selectedDate;
+    if (jobDate && tabId !== "completed" && tabId !== "history") {
+      const jobTime = new Date(jobDate).getTime();
+      return jobTime >= weekRange.start.getTime() && jobTime <= weekRange.end.getTime();
+    }
+    return true;
+  }
+
   const filteredJobs = useMemo(() => {
     const statusSet = new Set(TAB_STATUSES[tab] || []);
     const query = search.trim().toLowerCase();
@@ -568,13 +578,7 @@ export function JobsListPage() {
       if (priorityFilter && job.priority !== priorityFilter) return false;
       if (showUnassignedOnly && job.driverAssigned && job.vehicleAssigned) return false;
 
-      const jobDate = toDateInputValue(job.departureRaw || job.loadingDoneTime || job.etaRaw);
-      if (selectedDate) {
-        if (jobDate !== selectedDate) return false;
-      } else if (jobDate && tab !== "completed" && tab !== "history") {
-        const jobTime = new Date(jobDate).getTime();
-        if (jobTime < weekRange.start.getTime() || jobTime > weekRange.end.getTime()) return false;
-      }
+      if (!jobMatchesDateRange(job, tab)) return false;
 
       if (attentionFilter === "eta_risk" && !job.etaRisk) return false;
       if (attentionFilter === "unassigned" && (job.driverAssigned && job.vehicleAssigned)) return false;
@@ -595,12 +599,12 @@ export function JobsListPage() {
   const tabCounts = useMemo(() => {
     const all = data?.jobs || [];
     return {
-      upcoming: all.filter(j => TAB_STATUSES.upcoming.includes(j.status)).length,
-      intransit: all.filter(j => TAB_STATUSES.intransit.includes(j.status)).length,
-      completed: all.filter(j => TAB_STATUSES.completed.includes(j.status)).length,
-      history: all.filter(j => TAB_STATUSES.history.includes(j.status)).length
+      upcoming: all.filter(j => TAB_STATUSES.upcoming.includes(j.status) && jobMatchesDateRange(j, "upcoming")).length,
+      intransit: all.filter(j => TAB_STATUSES.intransit.includes(j.status) && jobMatchesDateRange(j, "intransit")).length,
+      completed: all.filter(j => TAB_STATUSES.completed.includes(j.status) && jobMatchesDateRange(j, "completed")).length,
+      history: all.filter(j => TAB_STATUSES.history.includes(j.status) && jobMatchesDateRange(j, "history")).length
     };
-  }, [data]);
+  }, [data, weekRange, selectedDate]);
 
   const attentionCounts = useMemo(() => {
     const base = (data?.jobs || []).filter(j => (TAB_STATUSES[tab] || []).includes(j.status));
