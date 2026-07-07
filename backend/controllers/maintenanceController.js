@@ -1792,7 +1792,7 @@ exports.autoPlanDueWork = async (_req, res) => {
       { vehicleId: vehicle.id, vehicle: vehicle.registration_number, serviceType: "MOT", dueDate: rawDate(vehicle.mot_expiry) },
       { vehicleId: vehicle.id, vehicle: vehicle.registration_number, serviceType: "Insurance", dueDate: rawDate(vehicle.insurance_expiry) },
       { vehicleId: vehicle.id, vehicle: vehicle.registration_number, serviceType: "Road Tax", dueDate: rawDate(vehicle.road_tax_expiry) },
-      { vehicleId: vehicle.id, vehicle: vehicle.registration_number, serviceType: "Full Service", dueDate: rawDate(vehicle.next_service_due) },
+      // Full Service is mileage-governed (see MAINTENANCE_RULES), not date-recurring — excluded from date-based auto-planning.
       { vehicleId: vehicle.id, vehicle: vehicle.registration_number, serviceType: "Safety inspection", dueDate: rawDate(vehicle.next_inspection_due) },
       { vehicleId: vehicle.id, vehicle: vehicle.registration_number, serviceType: "Roller brake test", dueDate: rawDate(vehicle.next_inspection_due) }
     ]).filter((item) => item.dueDate && daysUntil(item.dueDate) <= 30);
@@ -1959,7 +1959,7 @@ exports.createBulkJobs = async (req, res) => {
         next_due_mileage_km: nextDueMileageKm
       };
       if (status === "completed") {
-        await applyCompletedMaintenance(job, { nextDueDate: dueDate });
+        await applyCompletedMaintenance(job);
       }
       created.push({ id: result.insertId, jobNumber, serviceType, dueDate, status });
     }
@@ -2078,7 +2078,7 @@ exports.completeJob = async (req, res) => {
       finalCost: Number(req.body.final_cost_gbp || req.body.finalCostGbp || job.final_cost_gbp || job.estimated_cost_gbp || 0),
       completionNotes: String(req.body.completion_notes || req.body.completionNotes || job.completion_notes || "").trim() || null,
       serviceDate: req.body.service_date || req.body.serviceDate || job.service_date || rawDate(new Date()),
-      nextDueDate: req.body.next_due_date || req.body.nextDueDate || job.due_date || null,
+      nextDueDate: req.body.next_due_date || req.body.nextDueDate || null,
       completedMileageKm: req.body.completed_mileage_km || req.body.completedMileageKm || job.completed_mileage_km || null,
       nextDueMileageKm: req.body.next_due_mileage_km || req.body.nextDueMileageKm || job.next_due_mileage_km || null,
       billAmountGbp: req.body.bill_amount_gbp || req.body.billAmountGbp || job.bill_amount_gbp || null
