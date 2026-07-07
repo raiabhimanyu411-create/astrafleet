@@ -58,7 +58,7 @@ const allMaintenanceItems = [
   { value: "Tacho Calibration", label: "Tacho Calibration", interval: "Every 2 years", months: 24, trailerOk: false },
   { value: "Road Tax", label: "Road Tax", interval: "Every 6 or 12 months", roadTax: true, trailerOk: false },
   { value: "Insurance", label: "Insurance", interval: "Every 12 months", months: 12, trailerOk: false },
-  { value: "Full Service", label: "Full Service", interval: "Every 85,000 km", mileageKm: 85000, trailerOk: false }
+  { value: "Full Service", label: "Full Service", interval: "Every 6 months / 85,000 km", months: 6, mileageKm: 85000, trailerOk: false }
 ];
 function getMaintenanceItems(assetType) {
   return assetType === "trailer"
@@ -108,6 +108,36 @@ function readFileAsDataUrl(file, onDone) {
   reader.readAsDataURL(file);
 }
 
+function writeAttachmentPreview(blobUrl, mime) {
+  const preview = window.open("", "_blank");
+  if (!preview) return false;
+  preview.opener = null;
+  const isPdf = mime === "application/pdf";
+  const isImage = (mime || "").startsWith("image/");
+  const body = isImage
+    ? `<img src="${blobUrl}" alt="Document attachment" />`
+    : `<iframe title="Document attachment" src="${blobUrl}"></iframe>`;
+  preview.document.write(`
+    <!doctype html>
+    <title>Document attachment</title>
+    <style>
+      html, body { height: 100%; margin: 0; background: #0f172a; font-family: system-ui, sans-serif; }
+      header { height: 48px; display: flex; align-items: center; justify-content: space-between; padding: 0 14px; background: #fff; color: #0f172a; border-bottom: 1px solid #cbd5e1; box-sizing: border-box; }
+      strong { font-size: 14px; }
+      a { display: inline-flex; padding: 8px 10px; border-radius: 6px; background: #2563eb; color: #fff; font-size: 13px; font-weight: 800; text-decoration: none; }
+      iframe { width: 100%; height: calc(100% - 48px); border: 0; background: #fff; }
+      img { display: block; max-width: 100%; max-height: calc(100% - 48px); margin: 0 auto; object-fit: contain; background: #fff; }
+    </style>
+    <header>
+      <strong>${isPdf ? "PDF document" : "Document attachment"}</strong>
+      <a href="${blobUrl}" target="_blank" rel="noreferrer">Open / download</a>
+    </header>
+    ${body}
+  `);
+  preview.document.close();
+  return true;
+}
+
 // Browsers block top-level navigation to data: URLs (shows a blank tab) and some
 // mime types force a silent download instead of opening. Converting to a blob: URL
 // first makes "open in new tab" behave the same way as a normal uploaded file link.
@@ -125,7 +155,36 @@ function openAttachment(dataUrl) {
     for (let i = 0; i < binary.length; i += 1) bytes[i] = binary.charCodeAt(i);
     const blob = new Blob([bytes], { type: mime || "application/octet-stream" });
     const blobUrl = URL.createObjectURL(blob);
-    window.open(blobUrl, "_blank", "noopener,noreferrer");
+    const previewable = (mime || "").startsWith("image/") || mime === "application/pdf" || (mime || "").startsWith("text/");
+    if (previewable) {
+      if (!writeAttachmentPreview(blobUrl, mime)) {
+        window.open(blobUrl, "_blank", "noopener,noreferrer");
+      }
+    } else {
+      const preview = window.open("", "_blank");
+      if (!preview) {
+        window.open(blobUrl, "_blank", "noopener,noreferrer");
+      } else {
+        preview.opener = null;
+        preview.document.write(`
+          <!doctype html>
+          <title>Document attachment</title>
+          <style>
+            body { font-family: system-ui, sans-serif; margin: 0; display: grid; min-height: 100vh; place-items: center; background: #f8fafc; color: #0f172a; }
+            main { max-width: 520px; padding: 28px; border: 1px solid #cbd5e1; border-radius: 8px; background: #fff; box-shadow: 0 18px 50px rgba(15,23,42,.12); }
+            h1 { margin: 0 0 8px; font-size: 22px; }
+            p { margin: 0 0 18px; color: #475569; line-height: 1.5; }
+            a { display: inline-flex; padding: 10px 14px; border-radius: 6px; background: #2563eb; color: #fff; font-weight: 800; text-decoration: none; }
+          </style>
+          <main>
+            <h1>Document ready</h1>
+            <p>This file type cannot be previewed directly by the browser. Open or download it from here.</p>
+            <a href="${blobUrl}" target="_blank" rel="noreferrer">Open document</a>
+          </main>
+        `);
+        preview.document.close();
+      }
+    }
     setTimeout(() => URL.revokeObjectURL(blobUrl), 60000);
   } catch (_err) {
     window.open(dataUrl, "_blank", "noopener,noreferrer");
@@ -204,7 +263,7 @@ function JobModal({ vehicles, defects, editingJob, initialForm, onClose, onSaved
 
   const selectedItem = availableItems.find((item) => item.value === form.service_type);
   const bulkRows = availableItems.map((item) => {
-    const nextDue = item.value === "Full Service" ? (form.due_date || form.service_date || dateKey(new Date())) : nextDueForItem(item.value, form.service_date, form.road_tax_interval_months, selectedAssetType);
+    const nextDue = nextDueForItem(item.value, form.service_date, form.road_tax_interval_months, selectedAssetType);
     const nextMileage = item.value === "Full Service" ? nextMileageForItem(item.value, form.completed_mileage_km) : "";
     return { ...item, nextDue, nextMileage, selected: selectedServices.includes(item.value) };
   });
@@ -439,6 +498,7 @@ function VehicleDetailModal({ target, profiles, onClose, onSaved }) {
   const [activeType, setActiveType] = useState(target?.preselectType || null);
   const [form, setForm] = useState({
     service_date: dateKey(new Date()),
+    due_date: "",
     garage_name: "",
     final_cost_gbp: "",
     completed_mileage_km: "",
@@ -453,21 +513,23 @@ function VehicleDetailModal({ target, profiles, onClose, onSaved }) {
   const [successMessage, setSuccessMessage] = useState("");
 
   useEffect(() => {
+    const selectedItem = profile?.items?.find((item) => item.type === target?.preselectType);
     setActiveType(target?.preselectType || null);
     setForm({
-      service_date: dateKey(new Date()),
+      service_date: selectedItem?.lastDoneRaw || target?.scheduledDueDate || dateKey(new Date()),
+      due_date: target?.scheduledDueDate || "",
       garage_name: "",
       final_cost_gbp: "",
       completed_mileage_km: "",
-      bill_number: "",
-      bill_amount_gbp: "",
-      bill_notes: "",
-      bill_attachment_data: "",
+      bill_number: selectedItem?.billNumber || "",
+      bill_amount_gbp: selectedItem?.billAmountGbp || "",
+      bill_notes: selectedItem?.billNotes || "",
+      bill_attachment_data: selectedItem?.attachmentData || "",
       road_tax_interval_months: "12"
     });
     setError("");
     setSuccessMessage("");
-  }, [target?.vehicleId, target?.assetType]);
+  }, [profile, target?.vehicleId, target?.assetType, target?.preselectType, target?.scheduledDueDate]);
 
   function set(name, value) {
     setForm((c) => ({ ...c, [name]: value }));
@@ -477,7 +539,16 @@ function VehicleDetailModal({ target, profiles, onClose, onSaved }) {
     setActiveType(type);
     setError("");
     setSuccessMessage("");
-    setForm((c) => ({ ...c, service_date: dateKey(new Date()) }));
+    const item = profile?.items?.find((entry) => entry.type === type);
+    setForm((c) => ({
+      ...c,
+      service_date: item?.lastDoneRaw || target?.scheduledDueDate || dateKey(new Date()),
+      due_date: target?.scheduledDueDate || item?.nextDueRaw || c.due_date || "",
+      bill_number: item?.billNumber || "",
+      bill_amount_gbp: item?.billAmountGbp || "",
+      bill_notes: item?.billNotes || "",
+      bill_attachment_data: item?.attachmentData || ""
+    }));
   }
 
   const nextDue = useMemo(() => {
@@ -495,6 +566,7 @@ function VehicleDetailModal({ target, profiles, onClose, onSaved }) {
         asset_id: `${target.assetType === "trailer" ? "trailer" : "vehicle"}:${profile.vehicleId}`,
         service_type: activeType,
         service_date: form.service_date,
+        due_date: form.due_date,
         garage_name: form.garage_name,
         final_cost_gbp: form.final_cost_gbp,
         completed_mileage_km: form.completed_mileage_km,
@@ -591,7 +663,7 @@ function VehicleDetailModal({ target, profiles, onClose, onSaved }) {
             <div className="section-head">
               <div>
                 <h3>Mark {activeType} As Done</h3>
-                <p className="finance-empty">Select date done, then attach the certificate or bill below — all in this same panel.</p>
+                <p className="finance-empty">Keep the actual test date here. You can attach the certificate later without changing when the work was done.</p>
               </div>
               <button className="header-action-button" type="button" onClick={() => setActiveType(null)}>Cancel</button>
             </div>
@@ -640,6 +712,15 @@ function VehicleDetailModal({ target, profiles, onClose, onSaved }) {
               <div className="maintenance-rule-note">
                 <span>Document</span>
                 <strong>{form.bill_attachment_data ? "Document attached" : "No document"}</strong>
+                {form.bill_attachment_data && (
+                  <button
+                    className="vehicle-detail-item-doc-link"
+                    type="button"
+                    onClick={() => openAttachment(form.bill_attachment_data)}
+                  >
+                    View document
+                  </button>
+                )}
               </div>
             </div>
             {error && <p className="lp-error">{error}</p>}
@@ -983,12 +1064,17 @@ function uniqueWeekEvents(events) {
     }
   }
   const completedEvents = [...completed.values()];
+  const completedScheduleKeys = new Set(completedEvents.map((event) =>
+    `${event.vehicleId}-${event.assetType || "vehicle"}-${event.type}-${event.dueDateRaw}`
+  ));
   const seen = new Set(completedEvents.map((event) =>
     `${event.kind}-${event.vehicleId}-${event.assetType || "vehicle"}-${event.type}`
   ));
   return [
     ...completedEvents,
     ...scheduled.filter((event) => {
+      const scheduleKey = `${event.vehicleId}-${event.assetType || "vehicle"}-${event.type}-${event.dueDateRaw}`;
+      if (completedScheduleKeys.has(scheduleKey)) return false;
       const key = event.kind === "completed"
       ? `${event.kind}-${event.vehicleId}-${event.assetType || "vehicle"}-${event.type}-${event.dueDateRaw}`
       : event.id;
@@ -1199,7 +1285,7 @@ function ExcelScheduleView({ data, onOpenVehicle }) {
                 onClick={() => onOpenVehicle({
                   vehicleId: item.vehicleId,
                   assetType: item.rowAssetType === "Trailer" ? "trailer" : "vehicle"
-                }, item.rowAssetType === "Trailer" ? "trailer" : "vehicle", item.type)}
+                }, item.rowAssetType === "Trailer" ? "trailer" : "vehicle", item.type, item.dueDateRaw)}
               >
                 <span className="schedule-week-summary-code">{item.code}</span>
                 <strong>{item.rowFleetCode || item.rowVehicle}</strong>
@@ -1325,7 +1411,7 @@ function ExcelScheduleView({ data, onOpenVehicle }) {
                                 }}
                                 onClick={(e) => {
                                   e.stopPropagation();
-                                  onOpenVehicle(row, assetType, ev.items[0].type);
+                                  onOpenVehicle(row, assetType, ev.items[0].type, ev.dueDateRaw);
                                 }}
                               >
                                 {label}
@@ -1354,7 +1440,7 @@ function ExcelScheduleView({ data, onOpenVehicle }) {
                               } : undefined}
                               onClick={(e) => {
                                 e.stopPropagation();
-                                onOpenVehicle(row, assetType, ev.type);
+                                onOpenVehicle(row, assetType, ev.type, ev.dueDateRaw);
                               }}
                             >
                               {isCompleted ? `✓ ${ev.code} ${day}/${mon}` : `${ev.code} ${day}/${mon}`}
@@ -1400,8 +1486,12 @@ function ExcelScheduleView({ data, onOpenVehicle }) {
                   <span className="ccp-value">{ev.type}</span>
                 </div>
                 <div className="ccp-row">
-                  <span className="ccp-label">Completed</span>
+                  <span className="ccp-label">Scheduled</span>
                   <span className="ccp-value">{ev.dueDate}</span>
+                </div>
+                <div className="ccp-row">
+                  <span className="ccp-label">Done</span>
+                  <span className="ccp-value">{ev.completedDate || ev.dueDate}</span>
                 </div>
                 {ev.completionNotes && !isGeneratedMaintenanceNote(ev.completionNotes) && (
                   <p className="ccp-notes-text">{ev.completionNotes}</p>
@@ -1418,8 +1508,12 @@ function ExcelScheduleView({ data, onOpenVehicle }) {
               <strong className="ccp-title">{popover.ev.type}</strong>
             </div>
             <div className="ccp-row">
-              <span className="ccp-label">Completed</span>
+              <span className="ccp-label">Scheduled</span>
               <span className="ccp-value">{popover.ev.dueDate}</span>
+            </div>
+            <div className="ccp-row">
+              <span className="ccp-label">Done</span>
+              <span className="ccp-value">{popover.ev.completedDate || popover.ev.dueDate}</span>
             </div>
             {popover.ev.completionNotes && !isGeneratedMaintenanceNote(popover.ev.completionNotes) && (
               <div className="ccp-notes">
@@ -1469,8 +1563,8 @@ export function AdminMaintenancePage() {
     load();
   }, []);
 
-  function openVehicleDetail(row, assetType = "vehicle", preselectType = null) {
-    setVehicleDetailTarget({ vehicleId: row.vehicleId, assetType, preselectType });
+  function openVehicleDetail(row, assetType = "vehicle", preselectType = null, scheduledDueDate = "") {
+    setVehicleDetailTarget({ vehicleId: row.vehicleId, assetType, preselectType, scheduledDueDate });
   }
 
   function openEditJob(job) {
