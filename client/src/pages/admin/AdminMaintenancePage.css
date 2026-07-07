@@ -146,6 +146,17 @@
   box-shadow: var(--shadow-xs);
 }
 
+.maintenance-summary-card.clickable {
+  cursor: pointer;
+  transition: box-shadow 0.12s, transform 0.12s;
+}
+
+.maintenance-summary-card.clickable:hover,
+.maintenance-summary-card.clickable:focus-visible {
+  box-shadow: var(--shadow-sm, 0 4px 12px rgba(0,0,0,0.12));
+  transform: translateY(-1px);
+}
+
 .maintenance-summary-card.danger { border-left-color: var(--danger); }
 .maintenance-summary-card.warning { border-left-color: var(--warning); }
 .maintenance-summary-card.success { border-left-color: var(--success); }

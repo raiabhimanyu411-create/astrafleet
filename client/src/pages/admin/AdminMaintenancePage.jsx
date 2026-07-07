@@ -1665,21 +1665,42 @@ export function AdminMaintenancePage() {
       label: "Needs attention",
       value: findStat(data?.stats, "Overdue")?.value ?? 0,
       note: "Overdue service, inspection or repair work",
-      tone: Number(findStat(data?.stats, "Overdue")?.value || 0) > 0 ? "danger" : "success"
+      tone: Number(findStat(data?.stats, "Overdue")?.value || 0) > 0 ? "danger" : "success",
+      onClick: () => setActiveView("fleet")
     },
     {
       label: "Off road",
       value: findStat(data?.stats, "Vehicles off road")?.value ?? 0,
       note: "Vehicles unavailable because of maintenance or stopped status",
-      tone: Number(findStat(data?.stats, "Vehicles off road")?.value || 0) > 0 ? "danger" : "success"
+      tone: Number(findStat(data?.stats, "Vehicles off road")?.value || 0) > 0 ? "danger" : "success",
+      onClick: () => navigate("/admin/vehicles")
     },
     {
       label: "Bills to check",
       value: findStat(data?.health, "Bills pending approval")?.value ?? 0,
       note: "Workshop bills waiting for approval",
-      tone: Number(findStat(data?.health, "Bills pending approval")?.value || 0) > 0 ? "warning" : "success"
+      tone: Number(findStat(data?.health, "Bills pending approval")?.value || 0) > 0 ? "warning" : "success",
+      onClick: () => setActiveView("records")
     }
   ];
+
+  function exportJobsToExcel() {
+    const rows = (data?.jobs || []).map((job) => [
+      job.jobNumber, job.vehicle, job.fleetCode, job.serviceType, job.dueDate, job.statusLabel,
+      job.priority, job.garageName, job.assignedMechanic, job.costLabel,
+      job.billNumber, job.billAmountLabel, job.billStatus
+    ]);
+    const header = ["Job Number", "Vehicle", "Fleet Code", "Service Type", "Due Date", "Status", "Priority", "Garage", "Mechanic", "Cost", "Bill Number", "Bill Amount", "Bill Status"];
+    const csv = [header, ...rows]
+      .map((row) => row.map((value) => `"${String(value ?? "").replaceAll('"', '""')}"`).join(","))
+      .join("\n");
+    const url = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `maintenance-jobs-${dateKey(new Date())}.csv`;
+    link.click();
+    URL.revokeObjectURL(url);
+  }
   const maintenanceViews = [
     { id: "annual", label: "Annual Schedule" },
     { id: "fleet", label: "Fleet Checks" },
@@ -1698,7 +1719,19 @@ export function AdminMaintenancePage() {
       <div className="maintenance-command-bar">
         <section className="maintenance-summary-grid" aria-label="Maintenance summary">
           {primaryCards.map((card) => (
-            <article className={`maintenance-summary-card ${card.tone}`} key={card.label}>
+            <article
+              className={`maintenance-summary-card clickable ${card.tone}`}
+              key={card.label}
+              role="button"
+              tabIndex={0}
+              onClick={card.onClick}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" || e.key === " ") {
+                  e.preventDefault();
+                  card.onClick();
+                }
+              }}
+            >
               <span>{card.label}</span>
               <strong>{card.value}</strong>
               <p>{card.note}</p>
@@ -1708,6 +1741,7 @@ export function AdminMaintenancePage() {
         <div className="maintenance-command-actions">
           <button className="header-action-button danger" type="button" onClick={() => setShowBreakdownModal(true)}>Report Breakdown</button>
           <button className="header-action-button" type="button" onClick={load}>Refresh</button>
+          <button className="header-action-button" type="button" onClick={exportJobsToExcel}>Export to Excel</button>
           <button className="header-action-button" type="button" onClick={() => navigate("/admin/vehicles")}>Vehicle Register</button>
         </div>
       </div>
