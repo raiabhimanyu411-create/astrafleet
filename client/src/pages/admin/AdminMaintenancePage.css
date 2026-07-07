@@ -819,10 +819,15 @@
 .vehicle-detail-item-doc-link {
   display: inline-block;
   margin-top: 8px;
+  padding: 0;
+  border: none;
+  background: none;
   font-size: 0.68rem;
   font-weight: 800;
+  font-family: inherit;
   color: var(--primary, #2563eb);
   text-decoration: underline;
+  cursor: pointer;
 }
 
 .vehicle-detail-done-form {

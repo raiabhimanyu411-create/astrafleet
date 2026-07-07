@@ -108,6 +108,30 @@ function readFileAsDataUrl(file, onDone) {
   reader.readAsDataURL(file);
 }
 
+// Browsers block top-level navigation to data: URLs (shows a blank tab) and some
+// mime types force a silent download instead of opening. Converting to a blob: URL
+// first makes "open in new tab" behave the same way as a normal uploaded file link.
+function openAttachment(dataUrl) {
+  if (!dataUrl) return;
+  const match = /^data:([^;,]*)(;base64)?,(.*)$/s.exec(dataUrl);
+  if (!match) {
+    window.open(dataUrl, "_blank", "noopener,noreferrer");
+    return;
+  }
+  const [, mime, isBase64, payload] = match;
+  try {
+    const binary = isBase64 ? atob(payload) : decodeURIComponent(payload);
+    const bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i += 1) bytes[i] = binary.charCodeAt(i);
+    const blob = new Blob([bytes], { type: mime || "application/octet-stream" });
+    const blobUrl = URL.createObjectURL(blob);
+    window.open(blobUrl, "_blank", "noopener,noreferrer");
+    setTimeout(() => URL.revokeObjectURL(blobUrl), 60000);
+  } catch (_err) {
+    window.open(dataUrl, "_blank", "noopener,noreferrer");
+  }
+}
+
 function toJobForm(job) {
   if (!job) return emptyJob;
   return {
@@ -546,15 +570,16 @@ function VehicleDetailModal({ target, profiles, onClose, onSaved }) {
                 <p>Next due: {item.nextDue}</p>
                 <StatusPill tone={item.tone}>{item.status}</StatusPill>
                 {item.hasAttachment && (
-                  <a
+                  <button
+                    type="button"
                     className="vehicle-detail-item-doc-link"
-                    href={item.attachmentData}
-                    target="_blank"
-                    rel="noreferrer"
-                    onClick={(e) => e.stopPropagation()}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      openAttachment(item.attachmentData);
+                    }}
                   >
                     View document
-                  </a>
+                  </button>
                 )}
               </div>
             );
@@ -804,9 +829,13 @@ function JobDrawer({ job, history, onClose, onEdit, onComplete, onBillStatus, sa
           <p><strong>Bill date:</strong> {job.billDateRaw ? job.billDate : "-"}</p>
           <p><strong>Document notes:</strong> {job.billNotes}</p>
           {job.billAttachmentData && (
-            <a className="header-action-button maintenance-bill-link" href={job.billAttachmentData} target="_blank" rel="noreferrer">
+            <button
+              type="button"
+              className="header-action-button maintenance-bill-link"
+              onClick={() => openAttachment(job.billAttachmentData)}
+            >
               Open attached document
-            </a>
+            </button>
           )}
         </section>
       )}
