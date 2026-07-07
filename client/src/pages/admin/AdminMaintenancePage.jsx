@@ -11,6 +11,7 @@ import {
   markTrailerInspectionDone,
   markVehicleInspectionDone,
   reportBreakdown,
+  setVorStatus,
   updateDefectWorkflow,
   updateMaintenanceBill,
   updateMaintenanceJob
@@ -844,6 +845,207 @@ function BreakdownModal({ vehicles, onClose, onSaved }) {
   );
 }
 
+function VorModal({ vehicles, profiles, onClose, onSaved }) {
+  const [assetId, setAssetId] = useState("");
+  const [reason, setReason] = useState("");
+  const [since, setSince] = useState(() => dateKey(new Date()));
+  const [till, setTill] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+
+  const selectedProfile = useMemo(() => {
+    if (!assetId) return null;
+    const [type, id] = assetId.split(":");
+    const wantsTrailer = type === "trailer";
+    return profiles.find((p) => Number(p.vehicleId) === Number(id) && Boolean(p.assetType === "trailer") === wantsTrailer) || null;
+  }, [assetId, profiles]);
+
+  const isCurrentlyVor = selectedProfile?.status === "maintenance" && Boolean(selectedProfile?.vorReason);
+
+  async function markOffRoad(e) {
+    e.preventDefault();
+    if (!assetId) { setError("Select a vehicle or trailer."); return; }
+    if (!reason.trim()) { setError("Reason is required."); return; }
+    if (till && since && till < since) { setError("Expected back date cannot be before the off road since date."); return; }
+    setSaving(true);
+    setError("");
+    try {
+      await setVorStatus({ asset_id: assetId, reason: reason.trim(), since: since || null, till: till || null });
+      await onSaved();
+      onClose();
+    } catch (err) {
+      setError(err.response?.data?.message || "Could not mark vehicle off road.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function markBackOnRoad() {
+    setSaving(true);
+    setError("");
+    try {
+      await setVorStatus({ asset_id: assetId, on_road: true });
+      await onSaved();
+      onClose();
+    } catch (err) {
+      setError(err.response?.data?.message || "Could not mark vehicle back on road.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="maintenance-modal-backdrop">
+      <form className="maintenance-modal compact" onSubmit={markOffRoad}>
+        <div className="section-head">
+          <div>
+            <span className="card-label">VOR</span>
+            <h2>Vehicle Off Road</h2>
+          </div>
+          <button className="header-action-button" type="button" onClick={onClose}>Close</button>
+        </div>
+        <div className="maintenance-form-grid">
+          <Field label="Vehicle / Trailer">
+            <select className="af-select" value={assetId} onChange={(e) => { setAssetId(e.target.value); setError(""); }} required>
+              <option value="">Select Vehicle or Trailer</option>
+              {vehicles.filter((v) => v.assetType !== "trailer").map((v) => <option key={v.assetId} value={v.assetId}>{v.label}</option>)}
+              <optgroup label="── Trailers ──">
+                {vehicles.filter((v) => v.assetType === "trailer").map((v) => <option key={v.assetId} value={v.assetId}>{v.label}</option>)}
+              </optgroup>
+            </select>
+          </Field>
+        </div>
+
+        {isCurrentlyVor ? (
+          <>
+            <div className="maintenance-rule-note">
+              <span>Off road: {selectedProfile.vorMarkedAt} → {selectedProfile.vorTill || "Ongoing (no return date set)"}</span>
+              <strong>{selectedProfile.vorReason}</strong>
+            </div>
+            {error && <p className="lp-error">{error}</p>}
+            <div className="finance-command-bar">
+              <button className="header-action-button" type="button" onClick={onClose}>Cancel</button>
+              <button className="af-submit-btn" disabled={saving} type="button" onClick={markBackOnRoad}>
+                {saving ? "Saving..." : "Mark Back On Road"}
+              </button>
+            </div>
+          </>
+        ) : (
+          <>
+            <div className="maintenance-form-grid">
+              <Field label="Off Road Since">
+                <input className="af-input" type="date" value={since} onChange={(e) => { setSince(e.target.value); setError(""); }} required />
+              </Field>
+              <Field label="Expected Back On Road (optional)">
+                <input className="af-input" type="date" value={till} min={since || undefined} onChange={(e) => { setTill(e.target.value); setError(""); }} />
+              </Field>
+            </div>
+            <div className="maintenance-form-grid single">
+              <Field label="Reason">
+                <textarea className="af-textarea" value={reason} onChange={(e) => setReason(e.target.value)} rows={3} placeholder="e.g. Awaiting parts, MOT failure, accident damage..." required />
+              </Field>
+            </div>
+            {error && <p className="lp-error">{error}</p>}
+            <div className="finance-command-bar">
+              <button className="header-action-button" type="button" onClick={onClose}>Cancel</button>
+              <button className="af-submit-btn" disabled={saving || !assetId} type="submit">
+                {saving ? "Saving..." : "Mark Off Road"}
+              </button>
+            </div>
+          </>
+        )}
+      </form>
+    </div>
+  );
+}
+
+function ExportJobsModal({ vehicles, weeks, jobs, onClose }) {
+  const [assetId, setAssetId] = useState("");
+  const [fromWeekKey, setFromWeekKey] = useState("");
+  const [toWeekKey, setToWeekKey] = useState("");
+
+  function runExport() {
+    const [assetType, assetNumericId] = assetId ? assetId.split(":") : [null, null];
+    const fromWeek = weeks.find((w) => w.key === fromWeekKey);
+    const toWeek = weeks.find((w) => w.key === toWeekKey);
+    const startRaw = fromWeek?.startRaw || null;
+    const endRaw = toWeek?.endRaw || null;
+
+    const filtered = jobs.filter((job) => {
+      if (assetType) {
+        const jobAssetType = job.assetType === "trailer" ? "trailer" : "vehicle";
+        if (jobAssetType !== assetType) return false;
+        const jobAssetId = assetType === "trailer" ? job.trailerId : job.vehicleId;
+        if (Number(jobAssetId) !== Number(assetNumericId)) return false;
+      }
+      if (startRaw && (!job.dueDateRaw || job.dueDateRaw < startRaw)) return false;
+      if (endRaw && (!job.dueDateRaw || job.dueDateRaw > endRaw)) return false;
+      return true;
+    });
+
+    const header = ["Job Number", "Vehicle", "Fleet Code", "Service Type", "Due Date", "Status", "Priority", "Garage", "Mechanic", "Cost", "Bill Number", "Bill Amount", "Bill Status"];
+    const rows = filtered.map((job) => [
+      job.jobNumber, job.vehicle, job.fleetCode, job.serviceType, job.dueDate, job.statusLabel,
+      job.priority, job.garageName, job.assignedMechanic, job.costLabel,
+      job.billNumber, job.billAmountLabel, job.billStatus
+    ]);
+    const csv = [header, ...rows]
+      .map((row) => row.map((value) => `"${String(value ?? "").replaceAll('"', '""')}"`).join(","))
+      .join("\n");
+    const url = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
+    const link = document.createElement("a");
+    link.href = url;
+    const vehicleSlug = assetId ? (vehicles.find((v) => v.assetId === assetId)?.label || "vehicle").split(" ")[0] : "all-vehicles";
+    const weekSlug = (fromWeek || toWeek) ? `${fromWeek?.label || "start"}-${toWeek?.label || "end"}` : "all-weeks";
+    link.download = `maintenance-jobs-${vehicleSlug}-${weekSlug}-${dateKey(new Date())}.csv`;
+    link.click();
+    URL.revokeObjectURL(url);
+    onClose();
+  }
+
+  return (
+    <div className="maintenance-modal-backdrop">
+      <div className="maintenance-modal compact">
+        <div className="section-head">
+          <div>
+            <span className="card-label">Export</span>
+            <h2>Export Maintenance Jobs To Excel</h2>
+          </div>
+          <button className="header-action-button" type="button" onClick={onClose}>Close</button>
+        </div>
+        <p className="finance-empty">Leave a filter on "All" to include everything for that filter.</p>
+        <div className="maintenance-form-grid">
+          <Field label="Vehicle / Trailer">
+            <select className="af-select" value={assetId} onChange={(e) => setAssetId(e.target.value)}>
+              <option value="">All vehicles &amp; trailers</option>
+              {vehicles.filter((v) => v.assetType !== "trailer").map((v) => <option key={v.assetId} value={v.assetId}>{v.label}</option>)}
+              <optgroup label="── Trailers ──">
+                {vehicles.filter((v) => v.assetType === "trailer").map((v) => <option key={v.assetId} value={v.assetId}>{v.label}</option>)}
+              </optgroup>
+            </select>
+          </Field>
+          <Field label="From Week">
+            <select className="af-select" value={fromWeekKey} onChange={(e) => setFromWeekKey(e.target.value)}>
+              <option value="">Start of year</option>
+              {weeks.map((w) => <option key={w.key} value={w.key}>{w.label} · {w.range}</option>)}
+            </select>
+          </Field>
+          <Field label="To Week">
+            <select className="af-select" value={toWeekKey} onChange={(e) => setToWeekKey(e.target.value)}>
+              <option value="">End of year</option>
+              {weeks.map((w) => <option key={w.key} value={w.key}>{w.label} · {w.range}</option>)}
+            </select>
+          </Field>
+        </div>
+        <div className="finance-command-bar">
+          <button className="header-action-button" type="button" onClick={onClose}>Cancel</button>
+          <button className="af-submit-btn" type="button" onClick={runExport}>Export CSV</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function JobDrawer({ job, history, onClose, onEdit, onComplete, onBillStatus, savingAction }) {
   const [notes, setNotes] = useState([]);
   const [noteText, setNoteText] = useState("");
@@ -1418,6 +1620,29 @@ function ExcelScheduleView({ data, onOpenVehicle }) {
                               </button>
                             );
                           }
+                          if (ev.kind === "vor") {
+                            return (
+                              <button
+                                key={ev.id}
+                                className="excel-event-chip vor"
+                                style={{ background: EVENT_COLORS.VOR.bg, color: EVENT_COLORS.VOR.text }}
+                                onMouseEnter={(e) => {
+                                  clearTimeout(popoverTimer.current);
+                                  const rect = e.currentTarget.getBoundingClientRect();
+                                  setPopover({ vor: ev, x: rect.left + rect.width / 2, y: rect.top - 8 });
+                                }}
+                                onMouseLeave={() => {
+                                  popoverTimer.current = setTimeout(() => setPopover(null), 150);
+                                }}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setPopover((current) => current?.vor?.id === ev.id ? null : { vor: ev, x: e.currentTarget.getBoundingClientRect().left + e.currentTarget.getBoundingClientRect().width / 2, y: e.currentTarget.getBoundingClientRect().top - 8 });
+                                }}
+                              >
+                                VOR
+                              </button>
+                            );
+                          }
                           const isCompleted = ev.kind === "completed";
                           const color = isCompleted
                             ? { bg: "#16a34a", text: "#fff" }
@@ -1499,6 +1724,27 @@ function ExcelScheduleView({ data, onOpenVehicle }) {
               </div>
             ))}
           </>
+        ) : popover.vor ? (
+          <>
+            <div className="ccp-header">
+              <span className="ccp-badge" style={{ background: EVENT_COLORS.VOR.bg, color: EVENT_COLORS.VOR.text }}>
+                VOR
+              </span>
+              <strong className="ccp-title">{popover.vor.vehicle} · Off Road</strong>
+            </div>
+            <div className="ccp-row">
+              <span className="ccp-label">Since</span>
+              <span className="ccp-value">{popover.vor.vorSince}</span>
+            </div>
+            <div className="ccp-row">
+              <span className="ccp-label">Expected back</span>
+              <span className="ccp-value">{popover.vor.vorTill}</span>
+            </div>
+            <div className="ccp-notes">
+              <span className="ccp-label">Reason</span>
+              <p className="ccp-notes-text">{popover.vor.reason}</p>
+            </div>
+          </>
         ) : (
           <>
             <div className="ccp-header">
@@ -1543,6 +1789,9 @@ export function AdminMaintenancePage() {
   const [savingAction, setSavingAction] = useState("");
   const [vehicleDetailTarget, setVehicleDetailTarget] = useState(null);
   const [showBreakdownModal, setShowBreakdownModal] = useState(false);
+  const [showExportModal, setShowExportModal] = useState(false);
+  const [showVorModal, setShowVorModal] = useState(false);
+  const [statPanel, setStatPanel] = useState(null);
 
   function load() {
     setLoading(true);
@@ -1662,45 +1911,33 @@ export function AdminMaintenancePage() {
   const findStat = (items, label) => (items || []).find((item) => item.label === label);
   const primaryCards = [
     {
+      key: "attention",
       label: "Needs attention",
       value: findStat(data?.stats, "Overdue")?.value ?? 0,
       note: "Overdue service, inspection or repair work",
-      tone: Number(findStat(data?.stats, "Overdue")?.value || 0) > 0 ? "danger" : "success",
-      onClick: () => setActiveView("fleet")
+      tone: Number(findStat(data?.stats, "Overdue")?.value || 0) > 0 ? "danger" : "success"
     },
     {
+      key: "offroad",
       label: "Off road",
       value: findStat(data?.stats, "Vehicles off road")?.value ?? 0,
       note: "Vehicles unavailable because of maintenance or stopped status",
-      tone: Number(findStat(data?.stats, "Vehicles off road")?.value || 0) > 0 ? "danger" : "success",
-      onClick: () => navigate("/admin/vehicles")
+      tone: Number(findStat(data?.stats, "Vehicles off road")?.value || 0) > 0 ? "danger" : "success"
     },
     {
+      key: "bills",
       label: "Bills to check",
       value: findStat(data?.health, "Bills pending approval")?.value ?? 0,
       note: "Workshop bills waiting for approval",
-      tone: Number(findStat(data?.health, "Bills pending approval")?.value || 0) > 0 ? "warning" : "success",
-      onClick: () => setActiveView("records")
+      tone: Number(findStat(data?.health, "Bills pending approval")?.value || 0) > 0 ? "warning" : "success"
     }
   ];
 
-  function exportJobsToExcel() {
-    const rows = (data?.jobs || []).map((job) => [
-      job.jobNumber, job.vehicle, job.fleetCode, job.serviceType, job.dueDate, job.statusLabel,
-      job.priority, job.garageName, job.assignedMechanic, job.costLabel,
-      job.billNumber, job.billAmountLabel, job.billStatus
-    ]);
-    const header = ["Job Number", "Vehicle", "Fleet Code", "Service Type", "Due Date", "Status", "Priority", "Garage", "Mechanic", "Cost", "Bill Number", "Bill Amount", "Bill Status"];
-    const csv = [header, ...rows]
-      .map((row) => row.map((value) => `"${String(value ?? "").replaceAll('"', '""')}"`).join(","))
-      .join("\n");
-    const url = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = `maintenance-jobs-${dateKey(new Date())}.csv`;
-    link.click();
-    URL.revokeObjectURL(url);
-  }
+  const attentionItems = (data?.plannerRows || []).filter((row) => row.priorityDays !== null && row.priorityDays < 0);
+  const overdueJobs = (data?.jobs || []).filter((job) => job.daysLeft < 0 && !["completed", "cancelled"].includes(job.status));
+  const offRoadItems = (data?.plannerRows || []).filter((row) => row.status === "maintenance");
+  const billsItems = (data?.jobs || []).filter((job) => job.billStatus === "pending" && (job.billAmountGbp || job.billAttachmentData));
+
   const maintenanceViews = [
     { id: "annual", label: "Annual Schedule" },
     { id: "fleet", label: "Fleet Checks" },
@@ -1720,15 +1957,15 @@ export function AdminMaintenancePage() {
         <section className="maintenance-summary-grid" aria-label="Maintenance summary">
           {primaryCards.map((card) => (
             <article
-              className={`maintenance-summary-card clickable ${card.tone}`}
+              className={`maintenance-summary-card clickable ${card.tone}${statPanel === card.key ? " active" : ""}`}
               key={card.label}
               role="button"
               tabIndex={0}
-              onClick={card.onClick}
+              onClick={() => setStatPanel((current) => current === card.key ? null : card.key)}
               onKeyDown={(e) => {
                 if (e.key === "Enter" || e.key === " ") {
                   e.preventDefault();
-                  card.onClick();
+                  setStatPanel((current) => current === card.key ? null : card.key);
                 }
               }}
             >
@@ -1740,11 +1977,84 @@ export function AdminMaintenancePage() {
         </section>
         <div className="maintenance-command-actions">
           <button className="header-action-button danger" type="button" onClick={() => setShowBreakdownModal(true)}>Report Breakdown</button>
+          <button className="header-action-button" type="button" onClick={() => setShowVorModal(true)}>Mark Off Road</button>
           <button className="header-action-button" type="button" onClick={load}>Refresh</button>
-          <button className="header-action-button" type="button" onClick={exportJobsToExcel}>Export to Excel</button>
+          <button className="header-action-button" type="button" onClick={() => setShowExportModal(true)}>Export to Excel</button>
           <button className="header-action-button" type="button" onClick={() => navigate("/admin/vehicles")}>Vehicle Register</button>
         </div>
       </div>
+
+      {statPanel && (
+        <div className="maintenance-stat-panel">
+          <div className="section-head">
+            <h3>
+              {statPanel === "attention" && "Needs Attention"}
+              {statPanel === "offroad" && "Off Road Vehicles"}
+              {statPanel === "bills" && "Bills To Check"}
+            </h3>
+            <button className="header-action-button" type="button" onClick={() => setStatPanel(null)}>Close</button>
+          </div>
+          <div className="maintenance-stat-panel-list">
+            {statPanel === "attention" && (
+              <>
+                {attentionItems.map((row) => (
+                  <button
+                    key={`att-${row.assetType || "vehicle"}-${row.id}`}
+                    className="maintenance-stat-panel-item"
+                    type="button"
+                    onClick={() => openVehicleDetail({ vehicleId: row.id }, row.assetType === "trailer" ? "trailer" : "vehicle")}
+                  >
+                    <strong>{row.registrationNumber}</strong>
+                    <span>{row.fleetCode}</span>
+                    <p>{row.action} · {Math.abs(row.priorityDays)}d overdue</p>
+                  </button>
+                ))}
+                {overdueJobs.map((job) => (
+                  <button key={`att-job-${job.id}`} className="maintenance-stat-panel-item" type="button" onClick={() => setDrawerJob(job)}>
+                    <strong>{job.vehicle}</strong>
+                    <span>{job.jobNumber}</span>
+                    <p>{job.serviceType} · {Math.abs(job.daysLeft)}d overdue</p>
+                  </button>
+                ))}
+                {attentionItems.length === 0 && overdueJobs.length === 0 && <p className="finance-empty">Nothing overdue right now.</p>}
+              </>
+            )}
+            {statPanel === "offroad" && (
+              <>
+                {offRoadItems.map((row) => (
+                  <button
+                    key={`vor-${row.assetType || "vehicle"}-${row.id}`}
+                    className="maintenance-stat-panel-item"
+                    type="button"
+                    onClick={() => openVehicleDetail({ vehicleId: row.id }, row.assetType === "trailer" ? "trailer" : "vehicle")}
+                  >
+                    <strong>{row.registrationNumber}</strong>
+                    <span>{row.fleetCode}</span>
+                    <p>
+                      {row.vorReason || "No VOR reason on file"}
+                      {row.vorSince ? ` · since ${row.vorSince}` : ""}
+                      {row.vorTill ? ` → ${row.vorTill}` : ""}
+                    </p>
+                  </button>
+                ))}
+                {offRoadItems.length === 0 && <p className="finance-empty">No vehicles off road.</p>}
+              </>
+            )}
+            {statPanel === "bills" && (
+              <>
+                {billsItems.map((job) => (
+                  <button key={`bill-${job.id}`} className="maintenance-stat-panel-item" type="button" onClick={() => setDrawerJob(job)}>
+                    <strong>{job.vehicle}</strong>
+                    <span>{job.billNumber || job.jobNumber}</span>
+                    <p>{job.billAmountLabel} · {job.serviceType}</p>
+                  </button>
+                ))}
+                {billsItems.length === 0 && <p className="finance-empty">No bills waiting for approval.</p>}
+              </>
+            )}
+          </div>
+        </div>
+      )}
 
       <StateNotice loading={loading} error={error} />
 
@@ -2066,6 +2376,22 @@ export function AdminMaintenancePage() {
         <BreakdownModal
           vehicles={data?.vehicles || []}
           onClose={() => setShowBreakdownModal(false)}
+          onSaved={load}
+        />
+      )}
+      {showExportModal && (
+        <ExportJobsModal
+          vehicles={data?.vehicles || []}
+          weeks={data?.yearPlan?.weeks || []}
+          jobs={data?.jobs || []}
+          onClose={() => setShowExportModal(false)}
+        />
+      )}
+      {showVorModal && (
+        <VorModal
+          vehicles={data?.vehicles || []}
+          profiles={data?.vehicleProfiles || []}
+          onClose={() => setShowVorModal(false)}
           onSaved={load}
         />
       )}

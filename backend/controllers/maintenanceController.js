@@ -91,6 +91,9 @@ async function syncMaintenanceSchema() {
 
   await addColumnIfMissing("vehicles", "company_name", "VARCHAR(160) DEFAULT NULL");
   await addColumnIfMissing("vehicles", "inspection_frequency_weeks", "INT DEFAULT 6");
+  await addColumnIfMissing("vehicles", "vor_reason", "VARCHAR(255) DEFAULT NULL");
+  await addColumnIfMissing("vehicles", "vor_marked_at", "DATETIME DEFAULT NULL");
+  await addColumnIfMissing("vehicles", "vor_till", "DATE DEFAULT NULL");
 
   await db.query(`
     CREATE TABLE IF NOT EXISTS defect_reports (
@@ -270,6 +273,9 @@ async function syncMaintenanceSchema() {
   await addColumnIfMissing("trailers", "next_inspection_due", "DATE DEFAULT NULL");
   await addColumnIfMissing("trailers", "inspection_frequency_weeks", "INT DEFAULT 10");
   await addColumnIfMissing("trailers", "company_name", "VARCHAR(160) DEFAULT NULL");
+  await addColumnIfMissing("trailers", "vor_reason", "VARCHAR(255) DEFAULT NULL");
+  await addColumnIfMissing("trailers", "vor_marked_at", "DATETIME DEFAULT NULL");
+  await addColumnIfMissing("trailers", "vor_till", "DATE DEFAULT NULL");
 
   await db.query(`
     CREATE TABLE IF NOT EXISTS trailer_inspections (
@@ -694,6 +700,9 @@ exports.getMaintenancePortal = async (_req, res) => {
         v.road_tax_expiry,
         v.current_location,
         v.company_name,
+        v.vor_reason,
+        v.vor_marked_at,
+        v.vor_till,
         COALESCE(v.inspection_frequency_weeks, 6) AS inspection_frequency_weeks,
         last_m.service_date AS last_service_date,
         last_m.service_type AS last_service_type,
@@ -745,6 +754,9 @@ exports.getMaintenancePortal = async (_req, res) => {
         t.status,
         t.current_location,
         COALESCE(t.company_name, '') AS company_name,
+        t.vor_reason,
+        t.vor_marked_at,
+        t.vor_till,
         t.mot_expiry,
         t.insurance_expiry,
         t.next_service_due,
@@ -804,6 +816,9 @@ exports.getMaintenancePortal = async (_req, res) => {
         criticalDefects: Number(v.critical_defects || 0),
         priorityDays,
         dueTone: tone,
+        vorReason: v.vor_reason || "",
+        vorSince: fmtDate(v.vor_marked_at),
+        vorTill: v.vor_till ? fmtDate(v.vor_till) : "",
         action: Number(v.open_defects || 0) > 0
           ? "Defect review"
           : priorityDays === null
@@ -854,6 +869,9 @@ exports.getMaintenancePortal = async (_req, res) => {
         criticalDefects: Number(t.critical_defects || 0),
         priorityDays,
         dueTone: tone,
+        vorReason: t.vor_reason || "",
+        vorSince: fmtDate(t.vor_marked_at),
+        vorTill: t.vor_till ? fmtDate(t.vor_till) : "",
         action: Number(t.open_defects || 0) > 0
           ? "Defect review"
           : priorityDays === null ? "Plan service"
@@ -1093,6 +1111,10 @@ exports.getMaintenancePortal = async (_req, res) => {
         make: v.model_name,
         currentKm,
         currentKmLabel: currentKm ? `${currentKm.toLocaleString("en-GB")} km` : "-",
+        status: v.status,
+        vorReason: v.vor_reason || "",
+        vorMarkedAt: fmtDate(v.vor_marked_at),
+        vorTill: v.vor_till ? fmtDate(v.vor_till) : "",
         items: profileItemTypes.map((type) => {
           const latest = latestServiceByVehicleAndType.get(`${v.id}:${type}`);
           const dueDateRaw = type === "MOT"
@@ -1147,6 +1169,10 @@ exports.getMaintenancePortal = async (_req, res) => {
       make: t.trailer_type,
       currentKm: null,
       currentKmLabel: "-",
+      status: t.status,
+      vorReason: t.vor_reason || "",
+      vorMarkedAt: fmtDate(t.vor_marked_at),
+      vorTill: t.vor_till ? fmtDate(t.vor_till) : "",
       items: trailerProfileItemTypes.map((type) => {
         const latest = latestServiceByVehicleAndType.get(`trailer:${t.id}:${type}`);
         const dueDateRaw = type === "MOT" ? rawDate(t.mot_expiry)
@@ -1232,6 +1258,33 @@ exports.getMaintenancePortal = async (_req, res) => {
           });
         }
       }
+      // Add VOR (vehicle off road) badge across every week it spans
+      if (v.status === "maintenance" && v.vor_reason) {
+        const vorStartRaw = rawDate(v.vor_marked_at) || rawDate(planStart);
+        const vorEndRaw = v.vor_till ? rawDate(v.vor_till) : rawDate(planEnd);
+        for (const week of planWeeks) {
+          if (week.endRaw < vorStartRaw || week.startRaw > vorEndRaw) continue;
+          events.push({
+            id: `vor-${v.id}-${week.key}`,
+            vehicleId: v.id,
+            vehicle: v.registration_number,
+            fleetCode: v.fleet_code,
+            make: v.model_name,
+            type: "Vehicle Off Road",
+            code: "VOR",
+            kind: "vor",
+            reason: v.vor_reason,
+            vorSince: fmtDate(v.vor_marked_at),
+            vorTill: v.vor_till ? fmtDate(v.vor_till) : "Ongoing",
+            dueDateRaw: week.startRaw,
+            dueDate: fmtDate(week.startRaw),
+            tone: "danger",
+            weekKey: week.key,
+            weekLabel: week.label
+          });
+        }
+      }
+
       // Add completed events within the plan window (RBT excluded — IB covers both)
       for (const job of jobs) {
         if (job.trailerId || Number(job.vehicleId) !== Number(v.id)) continue;
@@ -1320,6 +1373,34 @@ exports.getMaintenancePortal = async (_req, res) => {
           });
         }
       }
+      // Add VOR (vehicle off road) badge across every week it spans
+      if (t.status === "maintenance" && t.vor_reason) {
+        const vorStartRaw = rawDate(t.vor_marked_at) || rawDate(planStart);
+        const vorEndRaw = t.vor_till ? rawDate(t.vor_till) : rawDate(planEnd);
+        for (const week of planWeeks) {
+          if (week.endRaw < vorStartRaw || week.startRaw > vorEndRaw) continue;
+          events.push({
+            id: `vor-trailer-${t.id}-${week.key}`,
+            vehicleId: t.id,
+            assetType: "trailer",
+            vehicle: t.registration_number,
+            fleetCode: t.fleet_code,
+            make: t.trailer_type,
+            type: "Vehicle Off Road",
+            code: "VOR",
+            kind: "vor",
+            reason: t.vor_reason,
+            vorSince: fmtDate(t.vor_marked_at),
+            vorTill: t.vor_till ? fmtDate(t.vor_till) : "Ongoing",
+            dueDateRaw: week.startRaw,
+            dueDate: fmtDate(week.startRaw),
+            tone: "danger",
+            weekKey: week.key,
+            weekLabel: week.label
+          });
+        }
+      }
+
       // Add completed trailer events within the plan window (RBT excluded — IB covers both)
       for (const job of jobs) {
         if (!job.trailerId || Number(job.trailerId) !== Number(t.id)) continue;
@@ -2283,6 +2364,43 @@ exports.reportBreakdown = async (req, res) => {
     res.status(201).json({ message: "Breakdown reported and repair job created.", defectId, jobId: jobResult.insertId, jobNumber });
   } catch (err) {
     res.status(500).json({ message: "Breakdown report error", error: err.message });
+  }
+};
+
+// Mark or clear a vehicle/trailer's Vehicle Off Road (VOR) status
+exports.setVorStatus = async (req, res) => {
+  try {
+    const encodedAsset = String(req.body.asset_id || req.body.assetId || "");
+    const [encodedType, encodedId] = encodedAsset.includes(":") ? encodedAsset.split(":") : ["vehicle", encodedAsset];
+    const assetType = encodedType === "trailer" ? "trailer" : "vehicle";
+    const assetNumericId = Number(encodedId || 0);
+    const onRoad = Boolean(req.body.on_road || req.body.onRoad);
+    const reason = String(req.body.reason || "").trim();
+    const since = req.body.since || req.body.vor_since || req.body.vorSince || null;
+    const till = req.body.till || req.body.vor_till || req.body.vorTill || null;
+
+    if (!assetNumericId) return res.status(400).json({ message: "Asset is required." });
+    if (!onRoad && !reason) return res.status(400).json({ message: "A reason is required to mark a vehicle off road." });
+    if (!onRoad && since && till && till < since) {
+      return res.status(400).json({ message: "Expected back date cannot be before the off road since date." });
+    }
+
+    const table = assetType === "trailer" ? "trailers" : "vehicles";
+    if (onRoad) {
+      await db.query(
+        `UPDATE ${table} SET status='available', vor_reason=NULL, vor_marked_at=NULL, vor_till=NULL WHERE id=? AND status='maintenance'`,
+        [assetNumericId]
+      );
+      return res.json({ message: "Vehicle marked back on road." });
+    }
+
+    await db.query(
+      `UPDATE ${table} SET status='maintenance', vor_reason=?, vor_marked_at=?, vor_till=? WHERE id=?`,
+      [reason, since || rawDate(new Date()), till || null, assetNumericId]
+    );
+    res.json({ message: "Vehicle marked off road (VOR)." });
+  } catch (err) {
+    res.status(500).json({ message: "VOR status update error", error: err.message });
   }
 };
 

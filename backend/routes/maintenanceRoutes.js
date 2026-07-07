@@ -20,6 +20,7 @@ router.patch("/defects/:defectId/workflow", maintenance.updateDefectWorkflow);
 router.post("/vehicles/:vehicleId/inspection-done", maintenance.markVehicleInspectionDone);
 router.post("/trailers/:trailerId/inspection-done", maintenance.markTrailerInspectionDone);
 router.post("/breakdown", maintenance.reportBreakdown);
+router.post("/vor", maintenance.setVorStatus);
 router.post("/events/done", maintenance.completeEventFromSchedule);
 
 module.exports = router;

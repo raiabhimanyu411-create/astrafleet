@@ -12,6 +12,7 @@ export const updateDefectWorkflow = (defectId, data = {}) => api.patch(`/api/mai
 export const markVehicleInspectionDone = (vehicleId, data = {}) => api.post(`/api/maintenance/vehicles/${vehicleId}/inspection-done`, data);
 export const markTrailerInspectionDone = (trailerId, data = {}) => api.post(`/api/maintenance/trailers/${trailerId}/inspection-done`, data);
 export const reportBreakdown = (data) => api.post("/api/maintenance/breakdown", data);
+export const setVorStatus = (data) => api.post("/api/maintenance/vor", data);
 export const completeEventFromSchedule = (data) => api.post("/api/maintenance/events/done", data);
 export const getJobNotes = (jobId) => api.get(`/api/maintenance/jobs/${jobId}/notes`);
 export const addJobNote = (jobId, data) => api.post(`/api/maintenance/jobs/${jobId}/notes`, data);
