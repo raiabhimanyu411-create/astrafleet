@@ -1954,6 +1954,10 @@
 }
 
 /* ── Event cells ── */
+.excel-schedule-table td.excel-event-cell {
+  white-space: normal;
+}
+
 .excel-event-cell {
   padding: 2px 2px;
   vertical-align: middle;
