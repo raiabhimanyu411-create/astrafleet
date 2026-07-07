@@ -181,6 +181,7 @@ export function DriverChatWidget({ compact = false, initialDriverId = null, hide
                 type="button"
                 onClick={() => setSelectedDriver(driver)}
               >
+                <span className="chat-avatar" aria-hidden="true">{driver.fullName?.trim()?.[0]?.toUpperCase() || "?"}</span>
                 <div>
                   <strong>{driver.fullName}</strong>
                   <p>{driver.employeeCode} · {driver.phone}</p>

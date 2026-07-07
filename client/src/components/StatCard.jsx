@@ -5,14 +5,16 @@ export function StatCard({ item, active = false, onClick }) {
 
   return (
     <Element
-      className={`stat-card${onClick ? " clickable" : ""}${active ? " active" : ""}`}
+      className={`stat-card tone-${item.tone || "neutral"}${onClick ? " clickable" : ""}${active ? " active" : ""}`}
       type={onClick ? "button" : undefined}
       onClick={onClick}
     >
-      <span className="card-label">{item.label}</span>
+      <div className="stat-card-head">
+        <span className="card-label">{item.label}</span>
+        <StatusPill tone={item.tone}>{item.change}</StatusPill>
+      </div>
       <strong>{item.value}</strong>
       <p>{item.description}</p>
-      <StatusPill tone={item.tone}>{item.change}</StatusPill>
     </Element>
   );
 }
