@@ -1305,6 +1305,34 @@ p.lp-success {
   box-shadow: var(--shadow-xs);
 }
 
+.overview-content-grid { align-items: stretch; }
+
+.content-card-link {
+  display: flex;
+  flex-direction: column;
+  text-decoration: none;
+  color: inherit;
+  cursor: pointer;
+  border-top: 3px solid var(--border-strong);
+  transition: border-color 160ms, box-shadow 160ms, transform 160ms;
+}
+
+.content-card-link.tone-success { border-top-color: var(--success); }
+.content-card-link.tone-warning { border-top-color: var(--warning); }
+.content-card-link.tone-danger  { border-top-color: var(--danger); }
+.content-card-link.tone-neutral { border-top-color: var(--primary); }
+
+.content-card-link:hover {
+  border-left-color: var(--primary-ring);
+  border-right-color: var(--primary-ring);
+  border-bottom-color: var(--primary-ring);
+  box-shadow: var(--shadow-sm);
+  transform: translateY(-3px);
+}
+
+.content-card-link .section-head h2 { transition: color 140ms; }
+.content-card-link:hover .section-head h2 { color: var(--primary); }
+
 .section-head {
   display: flex;
   align-items: flex-start;
@@ -1322,60 +1350,148 @@ p.lp-success {
   letter-spacing: -0.01em;
 }
 
-/* ── Module List ─────────────────────────────────────── */
+/* ── Overview Group Labels ──────────────────────────────── */
 
-.module-list { display: flex; flex-direction: column; gap: 7px; }
-
-.module-row {
-  display: grid;
-  grid-template-columns: 36px minmax(0, 1fr);
-  gap: 13px;
-  align-items: start;
-  padding: 12px 13px;
-  border-radius: var(--radius-sm);
-  background: var(--surface-2);
-  border: 1px solid var(--border);
-  transition: border-color 140ms, background 140ms, transform 140ms;
-}
-
-.module-row:hover {
-  border-color: var(--primary-ring);
-  background: var(--primary-soft);
-  transform: translateX(2px);
-}
-
-.module-row h3 { font-size: 0.875rem; font-weight: 600; margin: 0 0 3px; }
-.module-row p  { font-size: 0.79rem; color: var(--muted); margin: 0; }
-
-.module-row-head {
+.overview-group-label {
   display: flex;
   align-items: center;
+  gap: 10px;
+  margin: 32px 0 14px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.13em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.overview-group-label::before {
+  content: "";
+  flex-shrink: 0;
+  width: 20px;
+  height: 3px;
+  border-radius: 2px;
+  background: linear-gradient(90deg, var(--primary), var(--primary-hover));
+}
+
+.overview-group-label::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: var(--border);
+}
+
+.overview-standalone-card { margin-bottom: 16px; }
+
+/* ── Overview Collapsible Tools (chat + profile) ────────── */
+
+.overview-tools-summary {
+  display: flex;
+  align-items: flex-start;
   justify-content: space-between;
   gap: 12px;
-  margin-bottom: 3px;
+  cursor: pointer;
+  list-style: none;
 }
 
-.module-row-link {
-  font-size: 0.78rem;
+.overview-tools-summary::-webkit-details-marker { display: none; }
+
+.overview-tools-summary h2 {
+  font-size: 0.98rem;
   font-weight: 700;
-  color: var(--primary);
-  text-decoration: none;
+  margin: 4px 0 0;
+  letter-spacing: -0.01em;
+  transition: color 140ms;
 }
 
-.module-row-link:hover { text-decoration: underline; }
+.overview-tools-summary:hover h2 { color: var(--primary); }
 
-.module-index {
-  display: flex;
+.overview-tools-chevron {
+  flex-shrink: 0;
+  display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 36px;
-  height: 36px;
+  width: 32px;
+  height: 32px;
   border-radius: 50%;
-  background: linear-gradient(160deg, var(--primary-soft), #dbeafe);
-  color: var(--primary-hover);
-  font-size: 0.79rem;
-  font-weight: 800;
-  border: 1px solid var(--primary-ring);
+  border: 1px solid var(--border);
+  color: var(--text-soft);
+  font-size: 0;
+  transition: transform 240ms cubic-bezier(0.34, 1.4, 0.64, 1), background 160ms, border-color 160ms, color 160ms;
+}
+
+.overview-tools-chevron::before { content: "▾"; font-size: 0.85rem; }
+
+.overview-tools:hover .overview-tools-chevron {
+  border-color: var(--primary-ring);
+  color: var(--primary);
+}
+
+.overview-tools[open] .overview-tools-chevron {
+  transform: rotate(180deg);
+  background: var(--primary-soft);
+  border-color: var(--primary-ring);
+  color: var(--primary);
+}
+
+.overview-tools[open] .overview-tools-summary {
+  margin-bottom: 18px;
+  padding-bottom: 14px;
+  border-bottom: 1px solid var(--border);
+}
+
+.overview-tools-body {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.overview-tools[open] > .overview-tools-body {
+  animation: overview-fade-up 320ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.overview-tools-body .content-card {
+  border: none;
+  padding: 0;
+  box-shadow: none;
+}
+
+/* ── Overview Entrance Motion ────────────────────────── */
+
+@keyframes overview-fade-up {
+  from { opacity: 0; transform: translateY(14px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.overview-group-label,
+.overview-content-grid > *,
+.overview-standalone-card {
+  animation: overview-fade-up 480ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.overview-content-grid > *:nth-child(1) { animation-delay: 0ms; }
+.overview-content-grid > *:nth-child(2) { animation-delay: 90ms; }
+
+.admin-overview .stats-grid > * {
+  animation: overview-fade-up 480ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.admin-overview .stats-grid > *:nth-child(1) { animation-delay: 0ms; }
+.admin-overview .stats-grid > *:nth-child(2) { animation-delay: 50ms; }
+.admin-overview .stats-grid > *:nth-child(3) { animation-delay: 100ms; }
+.admin-overview .stats-grid > *:nth-child(4) { animation-delay: 150ms; }
+.admin-overview .stats-grid > *:nth-child(5) { animation-delay: 200ms; }
+.admin-overview .stats-grid > *:nth-child(6) { animation-delay: 250ms; }
+.admin-overview .stats-grid > *:nth-child(7) { animation-delay: 300ms; }
+.admin-overview .stats-grid > *:nth-child(8) { animation-delay: 350ms; }
+
+@media (prefers-reduced-motion: reduce) {
+  .overview-group-label,
+  .overview-content-grid > *,
+  .overview-standalone-card,
+  .admin-overview .stats-grid > *,
+  .overview-tools[open] > .overview-tools-body {
+    animation: none;
+  }
 }
 
 /* ── Data Rows ───────────────────────────────────────── */

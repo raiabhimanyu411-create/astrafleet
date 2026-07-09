@@ -10,17 +10,6 @@ import { AdminWorkspaceLayout } from "./AdminWorkspaceLayout";
 import { DriverChatWidget } from "./DriverChatWidget";
 import { getAuthSession, saveAuthSession } from "../../utils/authSession";
 
-const moduleLinks = {
-  "Employee Access Control": "/admin/employees",
-  "Driver Management": "/admin/drivers",
-  "Finance Management": "/admin/finance",
-  "Trip / Route Planning": "/admin/trips",
-  "Vehicle Management": "/admin/vehicles",
-  "Invoicing & Billing": "/admin/billing",
-  "GPS / Live Tracking": "/admin/tracking",
-  "Control Room Alerts": "/admin/alerts"
-};
-
 function AdminProfileSettings() {
   const [profile, setProfile] = useState({ name: "", email: "" });
   const [passwords, setPasswords] = useState({ currentPassword: "", newPassword: "", confirmPassword: "" });
@@ -148,11 +137,8 @@ export function AdminPanel() {
         ]
       }
     >
+      <div className="admin-overview">
       <StateNotice loading={loading} error={error} />
-
-      <DriverChatWidget />
-
-      <AdminProfileSettings />
 
       <section className="stats-grid">
         {(data?.stats || []).map((item) => (
@@ -160,8 +146,60 @@ export function AdminPanel() {
         ))}
       </section>
 
-      <section className="content-grid">
-        <article className="content-card">
+      <h3 className="overview-group-label">Alerts &amp; Live Ops</h3>
+      <section className="content-grid overview-content-grid">
+        <Link className="content-card content-card-link tone-danger" to="/admin/alerts">
+          <div className="section-head">
+            <div>
+              <span className="card-label">Control room alerts</span>
+              <h2>Priority Watchlist</h2>
+            </div>
+            <StatusPill tone="danger">Take action</StatusPill>
+          </div>
+
+          <div className="alert-stack">
+            {(data?.alerts || []).map((alert) => (
+              <div className="alert-card" key={alert.title}>
+                <div className={`alert-bar ${alert.tone}`} />
+                <div>
+                  <strong>{alert.title}</strong>
+                  <p>{alert.description}</p>
+                </div>
+              </div>
+            ))}
+          </div>
+        </Link>
+
+        <Link className="content-card content-card-link tone-success" to="/admin/tracking">
+          <div className="section-head">
+            <div>
+              <span className="card-label">GPS / live tracking</span>
+              <h2>Where Every Truck Is Right Now</h2>
+            </div>
+            <StatusPill tone="success">Live feed</StatusPill>
+          </div>
+
+          <div className="data-rows">
+            {(data?.trackingBoard || []).map((truck) => (
+              <div className="data-row" key={truck.truck}>
+                <div>
+                  <strong>{truck.truck}</strong>
+                  <p>{truck.driver} · {truck.location}</p>
+                </div>
+                <div>
+                  <span>{truck.status}</span>
+                  <p>{truck.note} · ETA {truck.eta}</p>
+                </div>
+                <StatusPill tone={truck.tone}>{truck.status}</StatusPill>
+              </div>
+            ))}
+          </div>
+        </Link>
+      </section>
+
+      <h3 className="overview-group-label">Approvals</h3>
+      <section className="content-grid overview-content-grid">
+        <Link className="content-card content-card-link tone-warning" to="/admin/employees">
           <div className="section-head">
             <div>
               <span className="card-label">Employee access</span>
@@ -198,36 +236,9 @@ export function AdminPanel() {
               </div>
             )}
           </div>
-        </article>
+        </Link>
 
-        <article className="content-card">
-          <div className="section-head">
-            <div>
-              <span className="card-label">Admin modules</span>
-              <h2>Core Transport Workflows</h2>
-            </div>
-            <StatusPill tone="success">Pages ready</StatusPill>
-          </div>
-
-          <div className="module-list">
-            {(data?.modules || []).map((module, index) => (
-              <div className="module-row" key={module.title}>
-                <span className="module-index">{index + 1}</span>
-                <div>
-                  <div className="module-row-head">
-                    <h3>{module.title}</h3>
-                    <Link className="module-row-link" to={module.path || moduleLinks[module.title] || "/admin"}>
-                      Open Page
-                    </Link>
-                  </div>
-                  <p>{module.description}</p>
-                </div>
-              </div>
-            ))}
-          </div>
-        </article>
-
-        <article className="content-card">
+        <Link className="content-card content-card-link tone-warning" to="/admin/drivers">
           <div className="section-head">
             <div>
               <span className="card-label">Driver management</span>
@@ -251,11 +262,12 @@ export function AdminPanel() {
               </div>
             ))}
           </div>
-        </article>
+        </Link>
       </section>
 
-      <section className="content-grid">
-        <article className="content-card">
+      <h3 className="overview-group-label">Dispatch &amp; Finance</h3>
+      <section className="content-grid overview-content-grid">
+        <Link className="content-card content-card-link tone-neutral" to="/admin/trips">
           <div className="section-head">
             <div>
               <span className="card-label">Trip / route planning</span>
@@ -279,9 +291,9 @@ export function AdminPanel() {
               </div>
             ))}
           </div>
-        </article>
+        </Link>
 
-        <article className="content-card">
+        <Link className="content-card content-card-link tone-warning" to="/admin/finance">
           <div className="section-head">
             <div>
               <span className="card-label">Finance snapshot</span>
@@ -305,58 +317,24 @@ export function AdminPanel() {
               </div>
             ))}
           </div>
-        </article>
+        </Link>
       </section>
 
-      <section className="content-grid">
-        <article className="content-card">
-          <div className="section-head">
-            <div>
-              <span className="card-label">GPS / live tracking</span>
-              <h2>Where Every Truck Is Right Now</h2>
-            </div>
-            <StatusPill tone="success">Live feed</StatusPill>
+      <h3 className="overview-group-label">Support &amp; Account Tools</h3>
+      <details className="content-card overview-tools overview-standalone-card">
+        <summary className="overview-tools-summary">
+          <div>
+            <span className="card-label">Driver support &amp; profile</span>
+            <h2>Chat With Drivers, Manage Your Admin Account</h2>
           </div>
-
-          <div className="data-rows">
-            {(data?.trackingBoard || []).map((truck) => (
-              <div className="data-row" key={truck.truck}>
-                <div>
-                  <strong>{truck.truck}</strong>
-                  <p>{truck.driver} · {truck.location}</p>
-                </div>
-                <div>
-                  <span>{truck.status}</span>
-                  <p>{truck.note} · ETA {truck.eta}</p>
-                </div>
-                <StatusPill tone={truck.tone}>{truck.status}</StatusPill>
-              </div>
-            ))}
-          </div>
-        </article>
-
-        <article className="content-card">
-          <div className="section-head">
-            <div>
-              <span className="card-label">Control room alerts</span>
-              <h2>Priority Watchlist</h2>
-            </div>
-            <StatusPill tone="danger">Take action</StatusPill>
-          </div>
-
-          <div className="alert-stack">
-            {(data?.alerts || []).map((alert) => (
-              <div className="alert-card" key={alert.title}>
-                <div className={`alert-bar ${alert.tone}`} />
-                <div>
-                  <strong>{alert.title}</strong>
-                  <p>{alert.description}</p>
-                </div>
-              </div>
-            ))}
-          </div>
-        </article>
-      </section>
+          <span className="overview-tools-chevron" aria-hidden="true" />
+        </summary>
+        <div className="overview-tools-body">
+          <DriverChatWidget />
+          <AdminProfileSettings />
+        </div>
+      </details>
+      </div>
     </AdminWorkspaceLayout>
   );
 }
