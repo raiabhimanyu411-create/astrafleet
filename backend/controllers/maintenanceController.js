@@ -1225,7 +1225,7 @@ exports.getMaintenancePortal = async (_req, res) => {
     const allVehicleProfiles = [...vehicleProfiles, ...trailerProfiles];
 
     const planStart = addDays(startOfWeek(new Date()), -14);
-    const planWeeks = Array.from({ length: 54 }, (_, index) => {
+    const planWeeks = Array.from({ length: 58 }, (_, index) => {
       const start = addDays(planStart, index * 7);
       const end = addDays(start, 6);
       const weekNumber = maintenanceWeekNumber(start);
@@ -1240,7 +1240,7 @@ exports.getMaintenancePortal = async (_req, res) => {
         range: `${fmtDate(start)} - ${fmtDate(end)}`
       };
     });
-    const planEnd = addDays(planStart, (54 * 7) - 1);
+    const planEnd = addDays(planStart, (58 * 7) - 1);
     const yearPlanRows = rows.map((v) => {
       const profile = vehicleProfiles.find((item) => Number(item.vehicleId) === Number(v.id));
       const events = [];
@@ -1311,7 +1311,9 @@ exports.getMaintenancePortal = async (_req, res) => {
         if (job.trailerId || Number(job.vehicleId) !== Number(v.id)) continue;
         if (job.status !== "completed" || !job.serviceDateRaw) continue;
         if (job.serviceType === "Roller brake test") continue;
-        const displayDateRaw = job.dueDateRaw || job.serviceDateRaw;
+        const displayDateRaw = job.serviceType === "Tacho Calibration"
+          ? job.serviceDateRaw
+          : (job.dueDateRaw || job.serviceDateRaw);
         if (displayDateRaw < rawDate(planStart) || displayDateRaw > rawDate(planEnd)) continue;
         const week = planWeeks.find((w) => displayDateRaw >= w.startRaw && displayDateRaw <= w.endRaw);
         if (!week) continue;
