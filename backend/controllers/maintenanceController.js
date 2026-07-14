@@ -95,6 +95,23 @@ async function syncMaintenanceSchema() {
   await addColumnIfMissing("vehicles", "vor_marked_at", "DATETIME DEFAULT NULL");
   await addColumnIfMissing("vehicles", "vor_till", "DATE DEFAULT NULL");
   await addColumnIfMissing("vehicles", "tacho_calibration_expiry", "DATE DEFAULT NULL");
+  await db.query(`
+    UPDATE vehicles v
+    JOIN (
+      SELECT mr.vehicle_id, mr.next_due_date
+      FROM maintenance_records mr
+      WHERE mr.service_type = 'Tacho Calibration'
+        AND mr.next_due_date IS NOT NULL
+        AND mr.id = (
+          SELECT mr2.id FROM maintenance_records mr2
+          WHERE mr2.vehicle_id = mr.vehicle_id AND mr2.service_type = 'Tacho Calibration'
+          ORDER BY mr2.service_date DESC, mr2.id DESC
+          LIMIT 1
+        )
+    ) latest_tacho ON latest_tacho.vehicle_id = v.id
+    SET v.tacho_calibration_expiry = latest_tacho.next_due_date
+    WHERE v.tacho_calibration_expiry IS NULL
+  `);
 
   await db.query(`
     CREATE TABLE IF NOT EXISTS defect_reports (
