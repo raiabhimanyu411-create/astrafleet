@@ -569,7 +569,7 @@ export function JobsListPage() {
     return true;
   }
 
-  const filteredJobs = useMemo(() => {
+  const baseFilteredJobs = useMemo(() => {
     const statusSet = new Set(TAB_STATUSES[tab] || []);
     const query = search.trim().toLowerCase();
     return (data?.jobs || []).filter(job => {
@@ -580,19 +580,24 @@ export function JobsListPage() {
 
       if (!jobMatchesDateRange(job, tab)) return false;
 
-      if (attentionFilter === "eta_risk" && !job.etaRisk) return false;
-      if (attentionFilter === "unassigned" && (job.driverAssigned && job.vehicleAssigned)) return false;
-      if (attentionFilter === "pod_pending" && !isPodPending(job)) return false;
-      if (attentionFilter === "blocked" && job.status !== "blocked") return false;
-      if (attentionFilter === "critical" && job.priority !== "critical") return false;
-
       if (!query) return true;
       return [job.code, job.customer, job.driver, job.vehicle, job.trailer,
               job.pickupAddress, job.dropAddress, job.lane, job.routeCode, job.loadType,
               job.reference, job.loadId]
         .some(v => String(v || "").toLowerCase().includes(query));
     });
-  }, [data, tab, weekRange, selectedDate, search, showUnassignedOnly, statusFilter, priorityFilter, attentionFilter]);
+  }, [data, tab, weekRange, selectedDate, search, showUnassignedOnly, statusFilter, priorityFilter]);
+
+  const filteredJobs = useMemo(() => {
+    return baseFilteredJobs.filter(job => {
+      if (attentionFilter === "eta_risk" && !job.etaRisk) return false;
+      if (attentionFilter === "unassigned" && (job.driverAssigned && job.vehicleAssigned)) return false;
+      if (attentionFilter === "pod_pending" && !isPodPending(job)) return false;
+      if (attentionFilter === "blocked" && job.status !== "blocked") return false;
+      if (attentionFilter === "critical" && job.priority !== "critical") return false;
+      return true;
+    });
+  }, [baseFilteredJobs, attentionFilter]);
 
   const jobs = useMemo(() => sortJobs(filteredJobs, sortBy), [filteredJobs, sortBy]);
 
@@ -606,16 +611,13 @@ export function JobsListPage() {
     };
   }, [data, weekRange, selectedDate]);
 
-  const attentionCounts = useMemo(() => {
-    const base = (data?.jobs || []).filter(j => (TAB_STATUSES[tab] || []).includes(j.status));
-    return {
-      eta_risk:    base.filter(j => j.etaRisk).length,
-      unassigned:  base.filter(j => !j.driverAssigned || !j.vehicleAssigned).length,
-      pod_pending: base.filter(isPodPending).length,
-      blocked:     base.filter(j => j.status === "blocked").length,
-      critical:    base.filter(j => j.priority === "critical").length
-    };
-  }, [data, tab]);
+  const attentionCounts = useMemo(() => ({
+    eta_risk:    baseFilteredJobs.filter(j => j.etaRisk).length,
+    unassigned:  baseFilteredJobs.filter(j => !j.driverAssigned || !j.vehicleAssigned).length,
+    pod_pending: baseFilteredJobs.filter(isPodPending).length,
+    blocked:     baseFilteredJobs.filter(j => j.status === "blocked").length,
+    critical:    baseFilteredJobs.filter(j => j.priority === "critical").length
+  }), [baseFilteredJobs]);
 
   async function updatePlannerField(job, payload, busyKey, fallbackMessage = "Job could not be updated.") {
     setError("");

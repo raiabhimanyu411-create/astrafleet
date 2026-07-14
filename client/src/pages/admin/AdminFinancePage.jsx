@@ -8,7 +8,6 @@ import {
   updatePayoutStatus
 } from "../../api/adminApi";
 import { DeleteReasonModal } from "../../components/DeleteReasonModal";
-import { StatCard } from "../../components/StatCard";
 import { StateNotice } from "../../components/StateNotice";
 import { StatusPill } from "../../components/StatusPill";
 import { usePanelData } from "../../hooks/usePanelData";
@@ -188,16 +187,44 @@ export function AdminFinancePage() {
         </div>
       )}
 
-      <section className="stats-grid">
-        {(data?.stats || []).map((item) => (
-          <StatCard item={item} key={item.label} />
-        ))}
-      </section>
+      <section className="content-card">
+        <div className="section-head">
+          <div>
+            <span className="card-label">Finance Overview</span>
+            <h2>Key Metrics</h2>
+          </div>
+        </div>
 
-      <section className="stats-grid inline finance-position-grid">
-        {(data?.cashPosition || []).map((item) => (
-          <StatCard item={{ ...item, change: "Calculated live" }} key={item.label} />
-        ))}
+        <div className="finance-table-shell">
+          <table className="finance-table finance-summary-table">
+            <thead>
+              <tr>
+                <th>Metric</th>
+                <th>Value</th>
+                <th>Detail</th>
+                <th>Source</th>
+              </tr>
+            </thead>
+            <tbody>
+              {(data?.stats || []).map((item) => (
+                <tr key={item.label}>
+                  <td>{item.label}</td>
+                  <td><strong>{item.value}</strong></td>
+                  <td>{item.description}</td>
+                  <td><StatusPill tone={item.tone}>{item.change}</StatusPill></td>
+                </tr>
+              ))}
+              {(data?.cashPosition || []).map((item) => (
+                <tr key={item.label}>
+                  <td>{item.label}</td>
+                  <td><strong>{item.value}</strong></td>
+                  <td>{item.description}</td>
+                  <td><StatusPill tone={item.tone}>Calculated live</StatusPill></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       </section>
 
       <section className="content-card finance-filter-card">
@@ -237,33 +264,49 @@ export function AdminFinancePage() {
             <StatusPill tone="warning">Pound collections</StatusPill>
           </div>
 
-          <div className="data-rows compact finance-list">
-            {collections.map((item) => (
-              <div className="data-row finance-row" key={item.reference}>
-                <button className="finance-row-main" type="button" onClick={() => navigate(`/admin/billing/${item.id}`)}>
-                  <div>
-                    <strong>{item.reference}</strong>
-                    <p>{item.counterparty}</p>
-                  </div>
-                  <div>
-                    <span>{item.amount}</span>
-                    <p>{item.due}</p>
-                  </div>
-                </button>
-                <div className="finance-row-actions">
-                  <StatusPill tone={item.tone}>{item.status}</StatusPill>
-                  {item.status !== "paid" && (
-                    <button className="header-action-button" type="button" onClick={() => handleInvoiceStatus(item.id, "paid")}>Mark Paid</button>
-                  )}
-                  {item.status !== "hold" && (
-                    <button className="header-action-button" type="button" onClick={() => handleInvoiceStatus(item.id, "hold")}>Hold</button>
-                  )}
-                </div>
-              </div>
-            ))}
-            {!loading && collections.length === 0 && (
-              <p className="finance-empty">{search || invoiceStatus || dateFrom || dateTo ? "No receivables match your filters." : "No open receivables. Customer collections are clear."}</p>
-            )}
+          <div className="finance-table-shell">
+            <table className="finance-table">
+              <thead>
+                <tr>
+                  <th>Invoice</th>
+                  <th>Customer</th>
+                  <th>Amount</th>
+                  <th>Due</th>
+                  <th>Status</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {collections.map((item) => (
+                  <tr key={item.reference}>
+                    <td>
+                      <button className="finance-table-link" type="button" onClick={() => navigate(`/admin/billing/${item.id}`)}>
+                        {item.reference}
+                      </button>
+                    </td>
+                    <td>{item.counterparty}</td>
+                    <td><strong>{item.amount}</strong></td>
+                    <td>{item.due}</td>
+                    <td><StatusPill tone={item.tone}>{item.status}</StatusPill></td>
+                    <td>
+                      <div className="finance-table-actions">
+                        {item.status !== "paid" && (
+                          <button className="header-action-button" type="button" onClick={() => handleInvoiceStatus(item.id, "paid")}>Mark Paid</button>
+                        )}
+                        {item.status !== "hold" && (
+                          <button className="header-action-button" type="button" onClick={() => handleInvoiceStatus(item.id, "hold")}>Hold</button>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+                {!loading && collections.length === 0 && (
+                  <tr>
+                    <td colSpan={6} className="finance-empty">{search || invoiceStatus || dateFrom || dateTo ? "No receivables match your filters." : "No open receivables. Customer collections are clear."}</td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
           </div>
         </article>
 
@@ -276,33 +319,49 @@ export function AdminFinancePage() {
             <StatusPill tone="neutral">Treasury desk</StatusPill>
           </div>
 
-          <div className="data-rows compact finance-list">
-            {payouts.map((item) => (
-              <div className="data-row finance-row" key={item.reference}>
-                <button className="finance-row-main" type="button" onClick={() => startEdit(item)}>
-                  <div>
-                    <strong>{item.reference}</strong>
-                    <p>{item.counterparty}</p>
-                  </div>
-                  <div>
-                    <span>{item.amount}</span>
-                    <p>{item.due}</p>
-                  </div>
-                </button>
-                <div className="finance-row-actions">
-                  <StatusPill tone={item.tone}>{item.status}</StatusPill>
-                  {item.status !== "processing" && (
-                    <button className="header-action-button" type="button" onClick={() => handlePayoutStatus(item.id, "processing")}>Process</button>
-                  )}
-                  {item.status !== "paid" && (
-                    <button className="header-action-button" type="button" onClick={() => handlePayoutStatus(item.id, "paid")}>Mark Paid</button>
-                  )}
-                </div>
-              </div>
-            ))}
-            {!loading && payouts.length === 0 && (
-              <p className="finance-empty">{search || payoutStatus || dateFrom || dateTo ? "No payouts match your filters." : "No vendor payouts yet. Add a settlement to start the queue."}</p>
-            )}
+          <div className="finance-table-shell">
+            <table className="finance-table">
+              <thead>
+                <tr>
+                  <th>Payout</th>
+                  <th>Vendor / Lane</th>
+                  <th>Amount</th>
+                  <th>Due</th>
+                  <th>Status</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {payouts.map((item) => (
+                  <tr key={item.reference}>
+                    <td>
+                      <button className="finance-table-link" type="button" onClick={() => startEdit(item)}>
+                        {item.reference}
+                      </button>
+                    </td>
+                    <td>{item.counterparty}</td>
+                    <td><strong>{item.amount}</strong></td>
+                    <td>{item.due}</td>
+                    <td><StatusPill tone={item.tone}>{item.status}</StatusPill></td>
+                    <td>
+                      <div className="finance-table-actions">
+                        {item.status !== "processing" && (
+                          <button className="header-action-button" type="button" onClick={() => handlePayoutStatus(item.id, "processing")}>Process</button>
+                        )}
+                        {item.status !== "paid" && (
+                          <button className="header-action-button" type="button" onClick={() => handlePayoutStatus(item.id, "paid")}>Mark Paid</button>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+                {!loading && payouts.length === 0 && (
+                  <tr>
+                    <td colSpan={6} className="finance-empty">{search || payoutStatus || dateFrom || dateTo ? "No payouts match your filters." : "No vendor payouts yet. Add a settlement to start the queue."}</td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
           </div>
         </article>
       </section>
