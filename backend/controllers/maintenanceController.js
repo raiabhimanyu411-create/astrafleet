@@ -94,6 +94,7 @@ async function syncMaintenanceSchema() {
   await addColumnIfMissing("vehicles", "vor_reason", "VARCHAR(255) DEFAULT NULL");
   await addColumnIfMissing("vehicles", "vor_marked_at", "DATETIME DEFAULT NULL");
   await addColumnIfMissing("vehicles", "vor_till", "DATE DEFAULT NULL");
+  await addColumnIfMissing("vehicles", "tacho_calibration_expiry", "DATE DEFAULT NULL");
 
   await db.query(`
     CREATE TABLE IF NOT EXISTS defect_reports (
@@ -651,6 +652,8 @@ async function applyCompletedMaintenance(job, completion = {}) {
     await db.query(`UPDATE vehicles SET road_tax_expiry=? WHERE id=?`, [nextDueDate, job.vehicle_id]);
   } else if (nextDueDate && job.service_type === "Insurance") {
     await db.query(`UPDATE vehicles SET insurance_expiry=? WHERE id=?`, [nextDueDate, job.vehicle_id]);
+  } else if (nextDueDate && job.service_type === "Tacho Calibration") {
+    await db.query(`UPDATE vehicles SET tacho_calibration_expiry=? WHERE id=?`, [nextDueDate, job.vehicle_id]);
   } else if (job.service_type === "Full Service") {
     await db.query(`UPDATE vehicles SET next_service_due=? WHERE id=?`, [nextDueDate || null, job.vehicle_id]);
   }
@@ -698,6 +701,7 @@ exports.getMaintenancePortal = async (_req, res) => {
         v.mot_expiry,
         v.insurance_expiry,
         v.road_tax_expiry,
+        v.tacho_calibration_expiry,
         v.current_location,
         v.company_name,
         v.vor_reason,
@@ -1085,9 +1089,9 @@ exports.getMaintenancePortal = async (_req, res) => {
         vehicleId: v.id,
         vehicle: v.registration_number,
         itemType: "Tacho Calibration",
-        dueDateRaw: latestServiceByVehicleAndType.get(`${v.id}:Tacho Calibration`)?.dueDateRaw || "",
-        dueDate: fmtDate(latestServiceByVehicleAndType.get(`${v.id}:Tacho Calibration`)?.dueDateRaw),
-        daysLeft: daysUntil(latestServiceByVehicleAndType.get(`${v.id}:Tacho Calibration`)?.dueDateRaw)
+        dueDateRaw: rawDate(v.tacho_calibration_expiry),
+        dueDate: fmtDate(v.tacho_calibration_expiry),
+        daysLeft: daysUntil(v.tacho_calibration_expiry)
       }
     ]).filter((item) => item.dueDateRaw).map((item) => ({
       ...item,
@@ -1124,7 +1128,7 @@ exports.getMaintenancePortal = async (_req, res) => {
               : type === "Insurance"
                 ? rawDate(v.insurance_expiry)
                 : type === "Tacho Calibration"
-                  ? latest?.dueDateRaw || ""
+                  ? rawDate(v.tacho_calibration_expiry)
                   : type === "Full Service"
                     ? fullServiceDueRaw(v)
                     : rawDate(v.next_inspection_due) || latest?.dueDateRaw || "";
@@ -1203,8 +1207,8 @@ exports.getMaintenancePortal = async (_req, res) => {
     }));
     const allVehicleProfiles = [...vehicleProfiles, ...trailerProfiles];
 
-    const planStart = addDays(startOfWeek(new Date()), -7);
-    const planWeeks = Array.from({ length: 53 }, (_, index) => {
+    const planStart = addDays(startOfWeek(new Date()), -14);
+    const planWeeks = Array.from({ length: 54 }, (_, index) => {
       const start = addDays(planStart, index * 7);
       const end = addDays(start, 6);
       const weekNumber = maintenanceWeekNumber(start);
@@ -1219,7 +1223,7 @@ exports.getMaintenancePortal = async (_req, res) => {
         range: `${fmtDate(start)} - ${fmtDate(end)}`
       };
     });
-    const planEnd = addDays(planStart, (53 * 7) - 1);
+    const planEnd = addDays(planStart, (54 * 7) - 1);
     const yearPlanRows = rows.map((v) => {
       const profile = vehicleProfiles.find((item) => Number(item.vehicleId) === Number(v.id));
       const events = [];
@@ -1228,7 +1232,7 @@ exports.getMaintenancePortal = async (_req, res) => {
         { type: "MOT", dueDateRaw: rawDate(v.mot_expiry), roadTaxIntervalMonths: 12 },
         { type: "Road Tax", dueDateRaw: rawDate(v.road_tax_expiry), roadTaxIntervalMonths: latestServiceByVehicleAndType.get(`${v.id}:Road Tax`)?.roadTaxIntervalMonths || 12 },
         { type: "Insurance", dueDateRaw: rawDate(v.insurance_expiry), roadTaxIntervalMonths: 12 },
-        { type: "Tacho Calibration", dueDateRaw: latestServiceByVehicleAndType.get(`${v.id}:Tacho Calibration`)?.dueDateRaw || "", roadTaxIntervalMonths: 12 },
+        { type: "Tacho Calibration", dueDateRaw: rawDate(v.tacho_calibration_expiry), roadTaxIntervalMonths: 12 },
         { type: "Full Service", dueDateRaw: fullServiceDueRaw(v), roadTaxIntervalMonths: 12 }
       ];
       for (const seed of seeds) {
