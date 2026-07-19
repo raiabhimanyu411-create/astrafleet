@@ -111,6 +111,7 @@ export function VehicleFormPage() {
       title={isEdit ? "Edit Vehicle" : "Add New Vehicle"}
       description={isEdit ? "Update vehicle details." : "Add a vehicle quickly. Compliance details can be completed later."}
       highlights={[]}
+      className="vehicles-page-shell"
     >
       <div className="af-page" style={{ maxWidth: 920 }}>
         <div className="af-back-row">

@@ -9,17 +9,9 @@ const defaultScopeNote = {
 
 function AstraLogo() {
   return (
-    <svg width="30" height="30" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
-      <rect width="48" height="48" rx="13" fill="#2563eb" />
-      <path
-        d="M24 11L37 33H11L24 11Z"
-        stroke="white"
-        strokeWidth="2.4"
-        strokeLinejoin="round"
-        fill="none"
-      />
-      <path d="M17 27H31" stroke="white" strokeWidth="2.4" strokeLinecap="round" />
-    </svg>
+    <span className="astra-brand-mark" aria-hidden="true">
+      <img src="/favicon.png" alt="" />
+    </span>
   );
 }
 
@@ -98,9 +90,9 @@ export function PanelLayout({
         className={`panel-sidebar${sidebarOpen ? " open" : ""}`}
       >
         <div className="brand-stack">
-          <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+          <div className="sidebar-brand">
             <AstraLogo />
-            <span style={{ fontWeight: 800, fontSize: "1rem", letterSpacing: "-0.015em" }}>AstraFleet</span>
+            <span>AstraFleet</span>
           </div>
           <h2>{roleLabel}</h2>
           <p>Role-specific workspace for focused fleet operations.</p>
@@ -132,11 +124,22 @@ export function PanelLayout({
           ))}
         </nav>
 
-        <div className="sidebar-note">
-          <span className="card-label">{scopeNote.eyebrow}</span>
-          <strong>{scopeNote.title}</strong>
-          <p>{scopeNote.description}</p>
-        </div>
+        {scopeNote && (
+          <div className="sidebar-note">
+            <span className="card-label">{scopeNote.eyebrow}</span>
+            <strong>{scopeNote.title}</strong>
+            <p>{scopeNote.description}</p>
+          </div>
+        )}
+
+        <footer className="sidebar-footer">
+          <p>© AstraFleet 2026</p>
+          <span>All rights reserved</span>
+          <small>
+            Designed &amp; Developed by
+            <strong>Devmora Technology</strong>
+          </small>
+        </footer>
       </aside>
 
       {/* Main content */}

@@ -56,7 +56,10 @@ CREATE TABLE IF NOT EXISTS notification_acknowledgements (
   id              INT AUTO_INCREMENT PRIMARY KEY,
   notification_id VARCHAR(120) NOT NULL,
   user_id          INT DEFAULT NULL,
-  acknowledged_at  DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  acknowledged_at  DATETIME DEFAULT NULL,
+  read_at          DATETIME DEFAULT NULL,
+  is_priority      TINYINT(1) NOT NULL DEFAULT 0,
+  dismissed_at     DATETIME DEFAULT NULL,
   UNIQUE KEY uniq_notification_user (notification_id, user_id)
 ) ENGINE=InnoDB;
 

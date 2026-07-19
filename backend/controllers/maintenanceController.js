@@ -2090,6 +2090,8 @@ exports.createBulkJobs = async (req, res) => {
 exports.updateJob = async (req, res) => {
   try {
     const id = Number(req.params.id);
+    const [[existingJob]] = await db.query(`SELECT * FROM maintenance_jobs WHERE id=?`, [id]);
+    if (!existingJob) return res.status(404).json({ message: "Maintenance job not found." });
     const job = cleanJobPayload(req.body);
     if (!job.due_date && job.service_date) {
       job.due_date = calculateNextDueDate(
@@ -2124,6 +2126,25 @@ exports.updateJob = async (req, res) => {
         job.priority, job.status, job.notes, job.parts_required, job.completion_notes, id
       ]
     );
+    if (job.status === "completed" && existingJob.status !== "completed") {
+      await applyCompletedMaintenance({ ...existingJob, ...job, id });
+      if (job.defect_id) {
+        await db.query(
+          `UPDATE defect_reports SET status='resolved', workflow_status='verified', resolved_at=NOW() WHERE id=?`,
+          [job.defect_id]
+        );
+      }
+      const idField = job.asset_type === "trailer" ? "trailer_id" : "vehicle_id";
+      const [[open]] = await db.query(
+        `SELECT COUNT(*) AS count FROM maintenance_jobs
+         WHERE ${idField}=? AND id!=? AND status IN ('booked','in_progress')`,
+        [assetId, id]
+      );
+      if (Number(open.count || 0) === 0) {
+        const table = job.asset_type === "trailer" ? "trailers" : "vehicles";
+        await db.query(`UPDATE ${table} SET status='available' WHERE id=? AND status='maintenance'`, [assetId]);
+      }
+    }
     await setAssetWorkshopStatus(job.asset_type, assetId, job.status);
     res.json({ message: "Maintenance job updated." });
   } catch (err) {

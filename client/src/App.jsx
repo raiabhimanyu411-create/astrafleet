@@ -1,5 +1,6 @@
 import { Navigate, Route, Routes, useLocation } from "react-router-dom";
 import "./App.css";
+import { GlobalAdminNotifier } from "./components/GlobalAdminNotifier";
 import { AdminAlertsPage } from "./pages/admin/AdminAlertsPage";
 import { AdminActivityPage } from "./pages/admin/AdminActivityPage";
 import { AdminBillingPage } from "./pages/admin/AdminBillingPage";
@@ -87,7 +88,9 @@ function AdminOrEmployeeRoute({ children }) {
 
 function App() {
   return (
-    <Routes>
+    <>
+      <GlobalAdminNotifier />
+      <Routes>
       <Route path="/" element={<HomePage />} />
       <Route
         path="/admin"
@@ -364,7 +367,8 @@ function App() {
         )}
       />
       <Route path="*" element={<Navigate replace to="/" />} />
-    </Routes>
+      </Routes>
+    </>
   );
 }
 

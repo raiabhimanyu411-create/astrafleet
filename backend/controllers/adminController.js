@@ -223,6 +223,12 @@ async function ensureNotificationAckSchema() {
       UNIQUE KEY uniq_notification_user (notification_id, user_id)
     ) ENGINE=InnoDB`
   );
+  await addColumnIfMissing("notification_acknowledgements", "read_at", "DATETIME DEFAULT NULL");
+  await addColumnIfMissing("notification_acknowledgements", "is_priority", "TINYINT(1) NOT NULL DEFAULT 0");
+  await addColumnIfMissing("notification_acknowledgements", "dismissed_at", "DATETIME DEFAULT NULL");
+  await db.query(
+    "ALTER TABLE notification_acknowledgements MODIFY acknowledged_at DATETIME DEFAULT NULL"
+  );
   notificationAckSchemaReady = true;
 }
 
@@ -2175,13 +2181,13 @@ exports.getNotifications = async (req, res) => {
     await ensureNotificationAckSchema();
 
     const [employeeRows] = await db.query(
-      `SELECT id, name, department, job_title
+      `SELECT id, name, department, job_title, created_at
        FROM users
        WHERE role='employee' AND approval_status='pending'
        ORDER BY created_at DESC LIMIT 5`
     );
     const [failedRows] = await db.query(
-      `SELECT t.id, t.trip_code, t.failed_delivery_reason, d.full_name
+      `SELECT t.id, t.trip_code, t.failed_delivery_reason, t.created_at, d.full_name
        FROM trips t
        LEFT JOIN drivers d ON d.id = t.driver_id
        WHERE t.driver_job_status = 'failed_delivery'
@@ -2189,7 +2195,7 @@ exports.getNotifications = async (req, res) => {
        ORDER BY t.created_at DESC LIMIT 5`
     );
     const [defectRows] = await db.query(
-      `SELECT dr.id, dr.defect_type, dr.severity, dr.reported_by,
+      `SELECT dr.id, dr.defect_type, dr.severity, dr.reported_by, dr.reported_at,
               v.registration_number
        FROM defect_reports dr
        LEFT JOIN vehicles v ON v.id = dr.vehicle_id
@@ -2197,12 +2203,12 @@ exports.getNotifications = async (req, res) => {
        ORDER BY FIELD(dr.severity,'critical','high','medium','low'), dr.reported_at DESC LIMIT 5`
     );
     const [overdueRows] = await db.query(
-      `SELECT id, invoice_no, client_name, amount_gbp
+      `SELECT id, invoice_no, client_name, amount_gbp, due_date
        FROM invoices WHERE payment_status = 'overdue' AND deleted_at IS NULL
        ORDER BY due_date ASC LIMIT 4`
     );
     const [staleRows] = await db.query(
-      `SELECT v.id, v.registration_number
+      `SELECT v.id, v.registration_number, v.last_ping_at
        FROM vehicles v
        WHERE v.status = 'in_transit'
          AND (v.last_ping_at IS NULL OR v.last_ping_at < NOW() - INTERVAL 15 MINUTE)
@@ -2230,66 +2236,92 @@ exports.getNotifications = async (req, res) => {
         type: "info",
         title: `Employee access request: ${r.name}`,
         body: `${r.job_title || "Employee"} requested ${r.department || "TMS"} access.`,
-        link: "/admin/employees"
+        link: "/admin/employees",
+        source: "Employee access",
+        createdAt: isoDateTime(r.created_at)
       })),
       ...failedRows.map(r => ({
         id: `failed-${r.id}`,
         type: "danger",
         title: `Failed delivery: ${r.trip_code}`,
         body: r.failed_delivery_reason || `Driver ${r.full_name || ""} reported a failed delivery.`,
-        link: `/admin/trips/${r.id}`
+        link: `/admin/trips/${r.id}`,
+        source: "Delivery exception",
+        createdAt: isoDateTime(r.created_at)
       })),
       ...defectRows.map(r => ({
         id: `defect-${r.id}`,
         type: r.severity === "critical" || r.severity === "high" ? "danger" : "warning",
         title: `Defect report: ${r.registration_number || "Vehicle"}`,
         body: `${r.defect_type} — ${r.severity} severity. Reported by ${r.reported_by || "driver"}.`,
-        link: `/admin/tracking`
+        link: `/admin/tracking`,
+        source: "Fleet defect",
+        createdAt: isoDateTime(r.reported_at)
       })),
       ...overdueRows.map(r => ({
         id: `inv-${r.id}`,
         type: "warning",
         title: `Overdue invoice: ${r.invoice_no}`,
         body: `${r.client_name} owes £${Number(r.amount_gbp).toLocaleString("en-GB", { minimumFractionDigits: 2 })}`,
-        link: `/admin/billing/${r.id}`
+        link: `/admin/billing/${r.id}`,
+        source: "Billing",
+        createdAt: isoDateTime(r.due_date)
       })),
       ...staleRows.map(r => ({
         id: `stale-${r.id}`,
         type: "warning",
         title: `Stale GPS: ${r.registration_number}`,
         body: "No GPS ping for over 15 minutes while in transit.",
-        link: `/admin/tracking/vehicles/${r.id}`
+        link: `/admin/tracking/vehicles/${r.id}`,
+        source: "Live tracking",
+        createdAt: isoDateTime(r.last_ping_at)
       })),
       ...etaRows.map(r => ({
         id: `eta-${r.id}-${rawDateTime(r.eta_updated_at)}`,
         type: "info",
         title: `Driver ETA updated: ${r.trip_code}`,
         body: `${r.full_name || "Driver"} set ETA ${fmtTime(r.eta)}.`,
-        link: `/admin/jobs/${r.id}`
+        link: `/admin/jobs/${r.id}`,
+        source: "Driver ETA",
+        createdAt: isoDateTime(r.eta_updated_at)
       })),
       ...auditRows.map(r => ({
         id: `audit-${r.id}`,
         type: "danger",
         title: `${r.actor_name || "Employee"} deleted ${r.entity_type || "record"}`,
         body: `${r.entity_label || r.module_key} removed from ${r.module_key}. Reason: ${r.reason || "No reason recorded"}.`,
-        link: "/admin/activity"
+        link: "/admin/activity",
+        source: "Audit log",
+        createdAt: isoDateTime(r.created_at)
       }))
     ];
 
     const actor = await getActor(req);
     const ids = notifications.map(item => item.id);
-    let acknowledged = new Set();
+    const stateById = new Map();
     if (ids.length) {
       const [ackRows] = await db.query(
-        `SELECT notification_id FROM notification_acknowledgements
+        `SELECT notification_id, acknowledged_at, read_at, is_priority, dismissed_at
+         FROM notification_acknowledgements
          WHERE user_id <=> ? AND notification_id IN (${ids.map(() => "?").join(",")})`,
         [actor.id, ...ids]
       );
-      acknowledged = new Set(ackRows.map(row => row.notification_id));
+      ackRows.forEach(row => stateById.set(row.notification_id, row));
     }
-    const enriched = notifications.map(item => ({ ...item, acknowledged: acknowledged.has(item.id) }));
+    const enriched = notifications
+      .filter(item => !stateById.get(item.id)?.dismissed_at)
+      .map(item => {
+        const state = stateById.get(item.id);
+        return {
+          ...item,
+          acknowledged: Boolean(state?.acknowledged_at),
+          isRead: Boolean(state?.read_at || state?.acknowledged_at),
+          isPriority: Boolean(state?.is_priority)
+        };
+      })
+      .sort((a, b) => Number(b.isPriority) - Number(a.isPriority));
 
-    res.json({ count: enriched.filter(item => !item.acknowledged).length, notifications: enriched });
+    res.json({ count: enriched.filter(item => !item.isRead).length, notifications: enriched });
   } catch (error) {
     res.status(500).json({ message: "Notifications error", error: error.message });
   }
@@ -2302,12 +2334,81 @@ exports.acknowledgeNotification = async (req, res) => {
     if (!notificationId) return res.status(400).json({ message: "Notification id is required." });
     const actor = await getActor(req);
     await db.query(
-      `INSERT IGNORE INTO notification_acknowledgements (notification_id, user_id) VALUES (?, ?)`,
+      `INSERT INTO notification_acknowledgements (notification_id, user_id, acknowledged_at, read_at)
+       VALUES (?, ?, NOW(), NOW())
+       ON DUPLICATE KEY UPDATE acknowledged_at=NOW(), read_at=NOW(), dismissed_at=NULL`,
       [notificationId, actor.id]
     );
     res.json({ message: "Notification acknowledged." });
   } catch (error) {
     res.status(500).json({ message: "Notification acknowledge error", error: error.message });
+  }
+};
+
+async function updateNotificationState(req, res, updates, message) {
+  try {
+    await ensureNotificationAckSchema();
+    const notificationId = String(req.params.id || "").trim();
+    if (!notificationId) return res.status(400).json({ message: "Notification id is required." });
+    const actor = await getActor(req);
+    await db.query(
+      `INSERT IGNORE INTO notification_acknowledgements (notification_id, user_id) VALUES (?, ?)`,
+      [notificationId, actor.id]
+    );
+    const fields = [];
+    const values = [];
+    if (typeof updates.readState === "boolean") {
+      fields.push(updates.readState ? "read_at=NOW()" : "read_at=NULL");
+    }
+    if (typeof updates.priority === "boolean") {
+      fields.push("is_priority=?");
+      values.push(updates.priority ? 1 : 0);
+    }
+    if (updates.dismiss) fields.push("dismissed_at=NOW()");
+    if (fields.length) {
+      await db.query(
+        `UPDATE notification_acknowledgements SET ${fields.join(", ")}
+         WHERE notification_id=? AND user_id <=> ?`,
+        [...values, notificationId, actor.id]
+      );
+    }
+    res.json({ message });
+  } catch (error) {
+    res.status(500).json({ message: "Notification state update error", error: error.message });
+  }
+}
+
+exports.markNotificationRead = (req, res) =>
+  updateNotificationState(
+    req,
+    res,
+    { readState: req.body?.isRead !== false },
+    req.body?.isRead === false ? "Notification marked as unread." : "Notification marked as read."
+  );
+
+exports.setNotificationPriority = (req, res) =>
+  updateNotificationState(req, res, { priority: Boolean(req.body?.isPriority) }, "Notification priority updated.");
+
+exports.deleteNotification = (req, res) =>
+  updateNotificationState(req, res, { dismiss: true }, "Notification removed.");
+
+exports.markAllNotificationsRead = async (req, res) => {
+  try {
+    await ensureNotificationAckSchema();
+    const ids = Array.isArray(req.body?.ids) ? req.body.ids.map(String).filter(Boolean).slice(0, 100) : [];
+    if (!ids.length) return res.json({ message: "No notifications to update." });
+    const actor = await getActor(req);
+    for (const notificationId of ids) {
+      await db.query(
+        `INSERT INTO notification_acknowledgements (notification_id, user_id, read_at)
+         VALUES (?, ?, NOW())
+         ON DUPLICATE KEY UPDATE read_at=NOW(), dismissed_at=NULL`,
+        [notificationId, actor.id]
+      );
+    }
+    res.json({ message: "All notifications marked as read." });
+  } catch (error) {
+    res.status(500).json({ message: "Notification bulk update error", error: error.message });
   }
 };
 

@@ -17,6 +17,12 @@ function exportCsv(name, rows) {
   URL.revokeObjectURL(url);
 }
 
+function getCompanyInitials(name = "") {
+  const parts = name.trim().split(/\s+/).filter(Boolean);
+  if (!parts.length) return "?";
+  return parts.slice(0, 2).map(part => part[0]).join("").toUpperCase();
+}
+
 export function CustomersListPage() {
   const navigate = useNavigate();
   const [data, setData] = useState(null);
@@ -129,11 +135,7 @@ export function CustomersListPage() {
       badge="Customer accounts"
       title="Customer management"
       description="Manage client companies, contact details, payment terms, account status, and receivable risk."
-      highlights={[
-        "Customer accounts show linked trips, invoices, billed value, and outstanding exposure.",
-        "Use filters to find active, suspended, overdue, or inactive accounts quickly.",
-        "Click a customer to view full details, trip history, and invoices."
-      ]}
+      highlights={[]}
     >
       <div className="finance-command-bar">
         <button className="header-action-button" type="button" onClick={load}>Refresh</button>
@@ -172,101 +174,150 @@ export function CustomersListPage() {
         <div className="section-head">
           <div>
             <span className="card-label">Customer Register</span>
-            <h2>Editable Customer Table</h2>
+            <h2>Customer Account Directory</h2>
           </div>
           <StatusPill tone={customers.length ? "success" : "neutral"}>{customers.length} visible</StatusPill>
         </div>
 
-        <div className="customer-table-shell">
-          <table className="customer-edit-table">
-            <thead>
-              <tr>
-                <th>Company</th>
-                <th>Contact</th>
-                <th>Email</th>
-                <th>Phone</th>
-                <th>Postcode</th>
-                <th>Status</th>
-                <th>Terms</th>
-                <th>Credit limit</th>
-                <th>VAT</th>
-                <th>Tax / ref</th>
-                <th>Address</th>
-                <th>Billing address</th>
-                <th>Pickup notes</th>
-                <th>Drop notes</th>
-                <th>Rate contract</th>
-                <th>Trips</th>
-                <th>Invoices</th>
-                <th>Billed</th>
-                <th>Outstanding</th>
-                <th>Overdue</th>
-                <th>Last activity</th>
-                <th>Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {customers.map(c => (
-                <tr key={c.id}>
-                  <td><input className="customer-table-input strong" defaultValue={c.companyName || ""} onBlur={saveOnBlur(c, "companyName", c.companyName)} /></td>
-                  <td><input className="customer-table-input" defaultValue={c.contactName === "—" ? "" : c.contactName || ""} onBlur={saveOnBlur(c, "contactName", c.contactName === "—" ? "" : c.contactName)} /></td>
-                  <td><input className="customer-table-input" type="email" defaultValue={c.email === "—" ? "" : c.email || ""} onBlur={saveOnBlur(c, "email", c.email === "—" ? "" : c.email)} /></td>
-                  <td><input className="customer-table-input" defaultValue={c.phone === "—" ? "" : c.phone || ""} onBlur={saveOnBlur(c, "phone", c.phone === "—" ? "" : c.phone)} /></td>
-                  <td><input className="customer-table-input code" defaultValue={c.postcode === "—" ? "" : c.postcode || ""} onBlur={saveOnBlur(c, "postcode", c.postcode === "—" ? "" : c.postcode)} /></td>
-                  <td>
+        <div className="customer-account-list">
+          {customers.map(c => (
+            <details className="customer-account-card" key={c.id}>
+              <summary className="customer-account-summary">
+                <span className="customer-company-avatar" aria-hidden="true">{getCompanyInitials(c.companyName)}</span>
+                <div className="customer-company-primary">
+                  <strong>{c.companyName}</strong>
+                  <span>{c.contactName} · {c.email}</span>
+                </div>
+                <div className="customer-summary-stat">
+                  <span>Activity</span>
+                  <strong>{c.totalTrips} trips · {c.totalInvoices} invoices</strong>
+                </div>
+                <div className="customer-summary-stat">
+                  <span>Outstanding</span>
+                  <strong className={c.outstandingValue > 0 ? "warning" : ""}>{c.outstandingAmount}</strong>
+                </div>
+                <StatusPill tone={c.status === "active" ? "success" : c.status === "suspended" ? "warning" : "neutral"}>{c.status}</StatusPill>
+                <span className="customer-expand-control">
+                  <span className="customer-expand-label">Details</span>
+                  <span className="customer-expand-chevron" aria-hidden="true">⌄</span>
+                </span>
+              </summary>
+
+              <div className="customer-account-body">
+                <div className="customer-account-section-head">
+                  <div>
+                    <span className="card-label">Editable account profile</span>
+                    <h3>Contact &amp; company information</h3>
+                  </div>
+                  {savingCell.startsWith(`${c.id}-`) && <span className="customer-saving-state">Saving…</span>}
+                </div>
+
+                <div className="customer-edit-grid">
+                  <label className="customer-edit-field">
+                    <span>Company name</span>
+                    <input className="customer-table-input strong" defaultValue={c.companyName || ""} onBlur={saveOnBlur(c, "companyName", c.companyName)} />
+                  </label>
+                  <label className="customer-edit-field">
+                    <span>Primary contact</span>
+                    <input className="customer-table-input" defaultValue={c.contactName === "—" ? "" : c.contactName || ""} onBlur={saveOnBlur(c, "contactName", c.contactName === "—" ? "" : c.contactName)} />
+                  </label>
+                  <label className="customer-edit-field">
+                    <span>Email address</span>
+                    <input className="customer-table-input" type="email" defaultValue={c.email === "—" ? "" : c.email || ""} onBlur={saveOnBlur(c, "email", c.email === "—" ? "" : c.email)} />
+                  </label>
+                  <label className="customer-edit-field">
+                    <span>Phone</span>
+                    <input className="customer-table-input" defaultValue={c.phone === "—" ? "" : c.phone || ""} onBlur={saveOnBlur(c, "phone", c.phone === "—" ? "" : c.phone)} />
+                  </label>
+                  <label className="customer-edit-field">
+                    <span>Postcode</span>
+                    <input className="customer-table-input code" defaultValue={c.postcode === "—" ? "" : c.postcode || ""} onBlur={saveOnBlur(c, "postcode", c.postcode === "—" ? "" : c.postcode)} />
+                  </label>
+                  <label className="customer-edit-field">
+                    <span>Account status</span>
                     <select className="customer-table-select" value={c.status || "active"} disabled={savingCell === `${c.id}-status`} onChange={e => updateCell(c, "status", e.target.value)}>
                       <option value="active">Active</option>
                       <option value="suspended">Suspended</option>
                       <option value="closed">Closed</option>
                     </select>
-                  </td>
-                  <td>
+                  </label>
+                </div>
+
+                <div className="customer-account-section-head compact">
+                  <div>
+                    <span className="card-label">Commercial setup</span>
+                    <h3>Billing, tax &amp; terms</h3>
+                  </div>
+                </div>
+                <div className="customer-edit-grid commercial">
+                  <label className="customer-edit-field">
+                    <span>Payment terms (days)</span>
                     <input className="customer-table-input number" type="number" min="0" defaultValue={c.paymentTermsDays || 30} onBlur={saveOnBlur(c, "paymentTermsDays", c.paymentTermsDays || 30)} />
-                    <small>days</small>
-                  </td>
-                  <td>
+                  </label>
+                  <label className="customer-edit-field">
+                    <span>Credit limit (£)</span>
                     <input className="customer-table-input money" type="number" step="0.01" defaultValue={c.creditLimitRaw || ""} onBlur={saveOnBlur(c, "creditLimitGbp", c.creditLimitRaw || "")} />
-                    <small>{c.creditLimit}</small>
-                  </td>
-                  <td><input className="customer-table-input code" defaultValue={c.vatNumber === "—" ? "" : c.vatNumber || ""} onBlur={saveOnBlur(c, "vatNumber", c.vatNumber === "—" ? "" : c.vatNumber)} /></td>
-                  <td><input className="customer-table-input" defaultValue={c.taxDetails === "—" ? "" : c.taxDetails || ""} onBlur={saveOnBlur(c, "taxDetails", c.taxDetails === "—" ? "" : c.taxDetails)} /></td>
-                  <td><textarea className="customer-table-textarea" defaultValue={c.address === "—" ? "" : c.address || ""} onBlur={saveOnBlur(c, "address", c.address === "—" ? "" : c.address)} /></td>
-                  <td><textarea className="customer-table-textarea" defaultValue={c.billingAddress === "—" ? "" : c.billingAddress || ""} onBlur={saveOnBlur(c, "billingAddress", c.billingAddress === "—" ? "" : c.billingAddress)} /></td>
-                  <td><textarea className="customer-table-textarea" defaultValue={c.savedPickupAddresses === "—" ? "" : c.savedPickupAddresses || ""} onBlur={saveOnBlur(c, "savedPickupAddresses", c.savedPickupAddresses === "—" ? "" : c.savedPickupAddresses)} /></td>
-                  <td><textarea className="customer-table-textarea" defaultValue={c.savedDropAddresses === "—" ? "" : c.savedDropAddresses || ""} onBlur={saveOnBlur(c, "savedDropAddresses", c.savedDropAddresses === "—" ? "" : c.savedDropAddresses)} /></td>
-                  <td><textarea className="customer-table-textarea" defaultValue={c.rateContract === "—" ? "" : c.rateContract || ""} onBlur={saveOnBlur(c, "rateContract", c.rateContract === "—" ? "" : c.rateContract)} /></td>
-                  <td><strong>{c.totalTrips}</strong><small>bookings</small></td>
-                  <td><strong>{c.totalInvoices}</strong><small>invoices</small></td>
-                  <td><strong>{c.billedAmount}</strong></td>
-                  <td><strong>{c.outstandingAmount}</strong></td>
-                  <td>
-                    <StatusPill tone={c.overdueValue > 0 ? "danger" : "success"}>{c.overdueAmount}</StatusPill>
-                  </td>
-                  <td><strong>{c.lastActivity}</strong></td>
-                  <td>
-                    <div className="customer-table-actions">
-                      <button className="header-action-button" type="button" onClick={() => navigate(`/admin/customers/${c.id}`)}>Open</button>
-                      <button className="header-action-button" type="button" onClick={() => navigate(`/admin/customers/${c.id}/edit`)}>Edit</button>
-                      {c.status !== "closed" && (
-                        <button className="header-action-button danger" disabled={savingCell === `${c.id}-close`} type="button" onClick={() => closeAccount(c)}>
-                          Close
-                        </button>
-                      )}
-                    </div>
-                  </td>
-                </tr>
-              ))}
-              {!loading && customers.length === 0 && (
-                <tr>
-                  <td colSpan="22">
-                    <p className="finance-empty">
-                      {hasFilters ? "No customers match your filters." : "No customers yet. Add your first customer."}
-                    </p>
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
+                  </label>
+                  <label className="customer-edit-field">
+                    <span>VAT number</span>
+                    <input className="customer-table-input code" defaultValue={c.vatNumber === "—" ? "" : c.vatNumber || ""} onBlur={saveOnBlur(c, "vatNumber", c.vatNumber === "—" ? "" : c.vatNumber)} />
+                  </label>
+                  <label className="customer-edit-field">
+                    <span>Tax / reference</span>
+                    <input className="customer-table-input" defaultValue={c.taxDetails === "—" ? "" : c.taxDetails || ""} onBlur={saveOnBlur(c, "taxDetails", c.taxDetails === "—" ? "" : c.taxDetails)} />
+                  </label>
+                </div>
+
+                <div className="customer-edit-grid notes">
+                  <label className="customer-edit-field">
+                    <span>Company address</span>
+                    <textarea className="customer-table-textarea" defaultValue={c.address === "—" ? "" : c.address || ""} onBlur={saveOnBlur(c, "address", c.address === "—" ? "" : c.address)} />
+                  </label>
+                  <label className="customer-edit-field">
+                    <span>Billing address</span>
+                    <textarea className="customer-table-textarea" defaultValue={c.billingAddress === "—" ? "" : c.billingAddress || ""} onBlur={saveOnBlur(c, "billingAddress", c.billingAddress === "—" ? "" : c.billingAddress)} />
+                  </label>
+                  <label className="customer-edit-field">
+                    <span>Saved pickup notes</span>
+                    <textarea className="customer-table-textarea" defaultValue={c.savedPickupAddresses === "—" ? "" : c.savedPickupAddresses || ""} onBlur={saveOnBlur(c, "savedPickupAddresses", c.savedPickupAddresses === "—" ? "" : c.savedPickupAddresses)} />
+                  </label>
+                  <label className="customer-edit-field">
+                    <span>Saved drop notes</span>
+                    <textarea className="customer-table-textarea" defaultValue={c.savedDropAddresses === "—" ? "" : c.savedDropAddresses || ""} onBlur={saveOnBlur(c, "savedDropAddresses", c.savedDropAddresses === "—" ? "" : c.savedDropAddresses)} />
+                  </label>
+                  <label className="customer-edit-field wide">
+                    <span>Rate contract</span>
+                    <textarea className="customer-table-textarea" defaultValue={c.rateContract === "—" ? "" : c.rateContract || ""} onBlur={saveOnBlur(c, "rateContract", c.rateContract === "—" ? "" : c.rateContract)} />
+                  </label>
+                </div>
+
+                <div className="customer-finance-strip">
+                  <div><span>Trips</span><strong>{c.totalTrips}</strong></div>
+                  <div><span>Invoices</span><strong>{c.totalInvoices}</strong></div>
+                  <div><span>Total billed</span><strong>{c.billedAmount}</strong></div>
+                  <div><span>Outstanding</span><strong>{c.outstandingAmount}</strong></div>
+                  <div><span>Overdue</span><strong className={c.overdueValue > 0 ? "danger" : "success"}>{c.overdueAmount}</strong></div>
+                  <div><span>Last activity</span><strong>{c.lastActivity}</strong></div>
+                </div>
+
+                <div className="customer-account-actions">
+                  <button className="af-submit-btn" type="button" onClick={() => navigate(`/admin/customers/${c.id}`)}>Open Full Account</button>
+                  <button className="header-action-button" type="button" onClick={() => navigate(`/admin/customers/${c.id}/edit`)}>Edit Page</button>
+                  {c.status !== "closed" && (
+                    <button className="header-action-button danger" disabled={savingCell === `${c.id}-close`} type="button" onClick={() => closeAccount(c)}>
+                      Close Account
+                    </button>
+                  )}
+                </div>
+              </div>
+            </details>
+          ))}
+          {!loading && customers.length === 0 && (
+            <div className="customer-account-empty">
+              <p>{hasFilters ? "No customers match your filters." : "No customers yet. Add your first customer."}</p>
+              {hasFilters && <button className="header-action-button" type="button" onClick={clearFilters}>Clear Filters</button>}
+            </div>
+          )}
         </div>
       </section>
     </AdminWorkspaceLayout>

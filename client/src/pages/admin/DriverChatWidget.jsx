@@ -1,8 +1,15 @@
 import { useEffect, useRef, useState } from "react";
 import { getDriverChatMessages, getDriverChats, sendDriverChatMessage } from "../../api/adminApi";
-import { getRealtimeSocket } from "../../api/realtime";
+import { getRealtimeSocket, joinAdminChatRoom, leaveAdminChatRoom } from "../../api/realtime";
 import { StatusPill } from "../../components/StatusPill";
 import { getAuthSession } from "../../utils/authSession";
+
+function getInitials(name = "") {
+  const parts = name.trim().split(/\s+/).filter(Boolean);
+  if (!parts.length) return "?";
+  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+  return `${parts[0][0]}${parts.at(-1)[0]}`.toUpperCase();
+}
 
 export function DriverChatWidget({ compact = false, initialDriverId = null, hideDriverList = false, title = "Driver Support Console" }) {
   const [drivers, setDrivers] = useState([]);
@@ -23,6 +30,12 @@ export function DriverChatWidget({ compact = false, initialDriverId = null, hide
     "Can you confirm loading is complete?",
     "Please pause safely and wait for dispatch instructions."
   ];
+
+  function announceActiveChat(driverId) {
+    window.dispatchEvent(new CustomEvent("admin-driver-chat:active", {
+      detail: { driverId: driverId || null }
+    }));
+  }
 
   async function loadChats(showLoading = true) {
     try {
@@ -66,6 +79,7 @@ export function DriverChatWidget({ compact = false, initialDriverId = null, hide
     function handleExternalSelect(event) {
       const driverId = event.detail?.driverId;
       if (!driverId) return;
+      announceActiveChat(driverId);
       setSelectedDriver(current => {
         if (Number(current?.id) === Number(driverId)) return current;
         return drivers.find(driver => Number(driver.id) === Number(driverId)) || current;
@@ -78,6 +92,10 @@ export function DriverChatWidget({ compact = false, initialDriverId = null, hide
     window.addEventListener("admin-driver-chat:select", handleExternalSelect);
     return () => window.removeEventListener("admin-driver-chat:select", handleExternalSelect);
   }, [drivers]);
+
+  useEffect(() => {
+    return () => announceActiveChat(null);
+  }, []);
 
   useEffect(() => {
     selectedRef.current = selectedDriver;
@@ -104,12 +122,12 @@ export function DriverChatWidget({ compact = false, initialDriverId = null, hide
     }
 
     socket.connect();
-    socket.emit("admin-chat:join");
+    joinAdminChatRoom();
     socket.on("driver-chat:message", handleMessage);
 
     return () => {
       socket.off("driver-chat:message", handleMessage);
-      socket.emit("admin-chat:leave");
+      leaveAdminChatRoom();
     };
   }, []);
 
@@ -179,9 +197,12 @@ export function DriverChatWidget({ compact = false, initialDriverId = null, hide
                 className={`admin-chat-driver ${selectedDriver?.id === driver.id ? "active" : ""}`}
                 key={driver.id}
                 type="button"
-                onClick={() => setSelectedDriver(driver)}
+                onClick={() => {
+                  setSelectedDriver(driver);
+                  announceActiveChat(driver.id);
+                }}
               >
-                <span className="chat-avatar" aria-hidden="true">{driver.fullName?.trim()?.[0]?.toUpperCase() || "?"}</span>
+                <span className="chat-avatar" aria-hidden="true">{getInitials(driver.fullName)}</span>
                 <div>
                   <strong>{driver.fullName}</strong>
                   <p>{driver.employeeCode} · {driver.phone}</p>
@@ -246,6 +267,7 @@ export function DriverChatWidget({ compact = false, initialDriverId = null, hide
             <textarea
               className="af-input"
               disabled={!selectedDriver}
+              onFocus={() => announceActiveChat(selectedDriver?.id)}
               onChange={e => setBody(e.target.value)}
               placeholder={selectedDriver ? `Message ${selectedDriver.fullName}...` : "Select a driver first"}
               rows={2}

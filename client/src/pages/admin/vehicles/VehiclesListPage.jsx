@@ -29,6 +29,23 @@ const TYPE_OPTIONS = [
 
 const TROLLEY_TYPES = ["Curtain side", "Box", "Flatbed", "Refrigerated", "Low loader", "Tanker", "Other"];
 
+function ComplianceDateCell({ lastDone, nextDue, tone = "neutral", source = "Maintenance synced" }) {
+  const hasCompletedRecord = Boolean(lastDone && lastDone !== "—");
+  return (
+    <div className="vehicle-compliance-date">
+      <div className={`vehicle-compliance-line done${hasCompletedRecord ? "" : " empty"}`}>
+        <span>Done</span>
+        <strong>{hasCompletedRecord ? lastDone : "No record"}</strong>
+      </div>
+      <div className={`vehicle-compliance-line due ${tone}`}>
+        <span>Next due</span>
+        <strong>{nextDue || "—"}</strong>
+      </div>
+      <small>{source}</small>
+    </div>
+  );
+}
+
 function TrolleyModal({ onClose, onSaved }) {
   const [fields, setFields] = useState({
     registration_number: "",
@@ -288,11 +305,8 @@ export function VehiclesListPage() {
       badge="Fleet management"
       title="Vehicles"
       description="Manage fleet availability, compliance, roadworthiness, maintenance, and dispatch readiness."
-      highlights={[
-        "Fleet health shows compliance expiry, service risk, open defects, and dispatch usage.",
-        "Filter by status, vehicle type, service risk, defects, or open trips to focus attention.",
-        "Quick actions let dispatch move vehicles into availability, maintenance, or stopped states."
-      ]}
+      highlights={[]}
+      className="vehicles-page-shell"
     >
       <div className="finance-command-bar">
         <button className="header-action-button" type="button" onClick={load}>Refresh</button>
@@ -385,7 +399,10 @@ export function VehiclesListPage() {
             <span className="card-label">Fleet Register</span>
             <h2>{view === "fleet" ? "Fleet List" : view === "compliance" ? "Compliance Dates" : "Workshop View"}</h2>
           </div>
-          <StatusPill tone={vehicles.length ? "success" : "neutral"}>{vehicles.length} visible</StatusPill>
+          <div className="vehicle-register-status">
+            {savingCell && <span className="vehicle-inline-saving">Saving changes…</span>}
+            <StatusPill tone={vehicles.length ? "success" : "neutral"}>{vehicles.length} visible</StatusPill>
+          </div>
         </div>
 
         <div className="vehicle-table-shell">
@@ -448,7 +465,10 @@ export function VehiclesListPage() {
                     <input className="vehicle-table-input code" defaultValue={v.fleetCode || ""} onBlur={saveOnBlur(v, "fleetCode", v.fleetCode)} />
                   </td>
                   <td>
-                    <strong>{v.make} {v.model}</strong>
+                    <div className="vehicle-name-edit">
+                      <input className="vehicle-table-input" aria-label="Vehicle make" defaultValue={v.make === "—" ? "" : v.make || ""} placeholder="Make" onBlur={saveOnBlur(v, "make", v.make === "—" ? "" : v.make)} />
+                      <input className="vehicle-table-input" aria-label="Vehicle model" defaultValue={v.model === "—" ? "" : v.model || ""} placeholder="Model" onBlur={saveOnBlur(v, "model", v.model === "—" ? "" : v.model)} />
+                    </div>
                     <small>{v.fuelType === "—" ? "Fuel not set" : v.fuelType} · {v.capacityTonnes === "—" ? "capacity not set" : `${v.capacityTonnes}t`}</small>
                   </td>
                   <td>
@@ -503,16 +523,13 @@ export function VehiclesListPage() {
                     <small>{v.truckType}</small>
                   </td>
                   <td>
-                    <input className={`vehicle-table-input date ${dateClass(v.motExpiryTone)}`} type="date" defaultValue={v.motExpiryRaw || ""} onBlur={saveOnBlur(v, "motExpiry", v.motExpiryRaw || "")} />
-                    <small>{v.motExpiry}</small>
+                    <ComplianceDateCell lastDone={v.motLastDone} nextDue={v.motExpiry} tone={v.motExpiryTone} />
                   </td>
                   <td>
-                    <input className={`vehicle-table-input date ${dateClass(v.insuranceExpiryTone)}`} type="date" defaultValue={v.insuranceExpiryRaw || ""} onBlur={saveOnBlur(v, "insuranceExpiry", v.insuranceExpiryRaw || "")} />
-                    <small>{v.insuranceExpiry}</small>
+                    <ComplianceDateCell lastDone={v.insuranceLastDone} nextDue={v.insuranceExpiry} tone={v.insuranceExpiryTone} />
                   </td>
                   <td>
-                    <input className={`vehicle-table-input date ${dateClass(v.roadTaxExpiryTone)}`} type="date" defaultValue={v.roadTaxExpiryRaw || ""} onBlur={saveOnBlur(v, "roadTaxExpiry", v.roadTaxExpiryRaw || "")} />
-                    <small>{v.roadTaxExpiry}</small>
+                    <ComplianceDateCell lastDone={v.roadTaxLastDone} nextDue={v.roadTaxExpiry} tone={v.roadTaxExpiryTone} />
                   </td>
                   <td>
                     <input className={`vehicle-table-input date ${dateClass(v.permitExpiryTone)}`} type="date" defaultValue={v.permitExpiryRaw || ""} onBlur={saveOnBlur(v, "permitExpiry", v.permitExpiryRaw || "")} />
@@ -550,7 +567,10 @@ export function VehiclesListPage() {
                     <input className="vehicle-table-input code" defaultValue={v.fleetCode || ""} onBlur={saveOnBlur(v, "fleetCode", v.fleetCode)} />
                   </td>
                   <td>
-                    <strong>{v.make} {v.model}</strong>
+                    <div className="vehicle-name-edit">
+                      <input className="vehicle-table-input" aria-label="Vehicle make" defaultValue={v.make === "—" ? "" : v.make || ""} placeholder="Make" onBlur={saveOnBlur(v, "make", v.make === "—" ? "" : v.make)} />
+                      <input className="vehicle-table-input" aria-label="Vehicle model" defaultValue={v.model === "—" ? "" : v.model || ""} placeholder="Model" onBlur={saveOnBlur(v, "model", v.model === "—" ? "" : v.model)} />
+                    </div>
                     <small>{v.truckType}</small>
                   </td>
                   <td>

@@ -34,7 +34,7 @@ const menuAccessKey = {
   "/admin/alerts": "alerts"
 };
 
-export function AdminWorkspaceLayout({ badge, title, description, highlights, hideHeaderIntro = false, children }) {
+export function AdminWorkspaceLayout({ badge, title, description, highlights, hideHeaderIntro = false, className = "", children }) {
   const navigate = useNavigate();
   const session = getAuthSession();
   const isEmployee = session?.role === "employee";
@@ -61,13 +61,7 @@ export function AdminWorkspaceLayout({ badge, title, description, highlights, hi
       hideHeaderIntro={hideHeaderIntro}
       menu={visibleMenu}
       roleLabel={isEmployee ? "Employee Workspace" : "Admin Workspace"}
-      scopeNote={{
-        eyebrow: isEmployee ? "Granted Scope" : "Admin Scope",
-        title: isEmployee ? "Assigned TMS Access" : "Transport Control Tower",
-        description: isEmployee
-          ? "Only admin-approved modules are visible in this workspace."
-          : "Monitor driver operations, route planning, billing, and GPS movement from one workspace."
-      }}
+      scopeNote={null}
       headerContent={(
         <>
           {!isEmployee && <NotificationBell fetchUrl="/api/admin/notifications" viewAllTo="/admin/notifications" />}
@@ -76,6 +70,7 @@ export function AdminWorkspaceLayout({ badge, title, description, highlights, hi
           </button>
         </>
       )}
+      className={className}
     >
       {children}
     </PanelLayout>

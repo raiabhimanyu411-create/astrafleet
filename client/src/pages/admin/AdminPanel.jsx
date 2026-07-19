@@ -10,6 +10,21 @@ import { AdminWorkspaceLayout } from "./AdminWorkspaceLayout";
 import { DriverChatWidget } from "./DriverChatWidget";
 import { getAuthSession, saveAuthSession } from "../../utils/authSession";
 
+const overviewStatRoutes = {
+  "total bookings / jobs": "/admin/jobs",
+  "active trips": "/admin/trips",
+  "pending trips": "/admin/trips",
+  "completed trips": "/admin/trips",
+  "cancelled trips": "/admin/trips",
+  "available drivers": "/admin/drivers",
+  "available vehicles": "/admin/vehicles",
+  "delayed deliveries": "/admin/trips",
+  "today's revenue": "/admin/billing",
+  "pending invoices": "/admin/billing",
+  "fuel expense": "/admin/finance",
+  "profit / loss": "/admin/finance"
+};
+
 function AdminProfileSettings() {
   const [profile, setProfile] = useState({ name: "", email: "" });
   const [passwords, setPasswords] = useState({ currentPassword: "", newPassword: "", confirmPassword: "" });
@@ -140,9 +155,25 @@ export function AdminPanel() {
       <div className="admin-overview">
       <StateNotice loading={loading} error={error} />
 
+      <div className="overview-metrics-head">
+        <div>
+          <span className="card-label">Live business snapshot</span>
+          <h2>Key performance overview</h2>
+          <p>Operational and financial metrics, updated from your workspace data.</p>
+        </div>
+        <span className="overview-live-status">
+          <span aria-hidden="true" />
+          Live data
+        </span>
+      </div>
+
       <section className="stats-grid">
         {(data?.stats || []).map((item) => (
-          <StatCard item={item} key={item.label} />
+          <StatCard
+            item={item}
+            key={item.label}
+            to={overviewStatRoutes[item.label.toLowerCase()] || "/admin/activity"}
+          />
         ))}
       </section>
 

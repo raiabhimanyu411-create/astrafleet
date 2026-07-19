@@ -38,7 +38,11 @@ export function NotificationBell({ fetchUrl, paramKey, paramValue, viewAllTo }) 
   useEffect(() => {
     load();
     const timer = setInterval(load, 30000);
-    return () => clearInterval(timer);
+    window.addEventListener("admin-notification:refresh", load);
+    return () => {
+      clearInterval(timer);
+      window.removeEventListener("admin-notification:refresh", load);
+    };
   }, [load]);
 
   useEffect(() => {
@@ -107,7 +111,7 @@ export function NotificationBell({ fetchUrl, paramKey, paramValue, viewAllTo }) 
                   <div
                     key={n.id}
                     className="notif-item"
-                    style={{ background: n.acknowledged ? "#f8fafc" : style.bg, cursor: n.link ? "pointer" : "default", opacity: n.acknowledged ? 0.74 : 1 }}
+                    style={{ background: n.isRead ? "#f8fafc" : style.bg, cursor: n.link ? "pointer" : "default", opacity: n.isRead ? 0.74 : 1 }}
                     onClick={() => handleNotifClick(n)}
                   >
                     <div className="notif-bar" style={{ background: style.bar }} />

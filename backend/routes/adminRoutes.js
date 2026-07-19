@@ -4,7 +4,11 @@ const adminController = require("../controllers/adminController");
 const { requireAdmin, requireModuleAccess } = require("../middleware/accessControl");
 
 router.get("/notifications", requireAdmin, adminController.getNotifications);
+router.post("/notifications/read-all", requireAdmin, adminController.markAllNotificationsRead);
 router.post("/notifications/:id/ack", requireAdmin, adminController.acknowledgeNotification);
+router.patch("/notifications/:id/read", requireAdmin, adminController.markNotificationRead);
+router.patch("/notifications/:id/priority", requireAdmin, adminController.setNotificationPriority);
+router.delete("/notifications/:id", requireAdmin, adminController.deleteNotification);
 router.get("/overview", requireAdmin, adminController.getOverview);
 router.get("/activity", requireAdmin, adminController.getActivityReport);
 router.post("/activity/:id/restore", requireAdmin, adminController.restoreActivityRecord);

@@ -120,6 +120,7 @@ export function DriversListPage() {
       title="Drivers"
       description="Manage registered drivers and their login access."
       highlights={[]}
+      className="drivers-page-shell"
     >
       <div className="finance-command-bar">
         <button className="header-action-button" type="button" onClick={load}>Refresh</button>

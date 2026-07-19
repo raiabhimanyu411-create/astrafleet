@@ -70,7 +70,11 @@ function getMaintenanceItems(assetType) {
 }
 const maintenanceItems = allMaintenanceItems;
 function dateKey(date) {
-  return date.toISOString().slice(0, 10);
+  const value = date instanceof Date ? date : new Date(date);
+  const year = value.getFullYear();
+  const month = String(value.getMonth() + 1).padStart(2, "0");
+  const day = String(value.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
 }
 
 function addDaysToKey(value, days) {
@@ -333,7 +337,7 @@ function JobModal({ vehicles, defects, editingJob, initialForm, onClose, onSaved
             <Field label="Service type">
               <select className="af-select" value={form.service_type} onChange={(e) => set("service_type", e.target.value)} required>
                 <option value="">Select Maintenance Item</option>
-                {maintenanceItems.map((item) => <option key={item.value} value={item.value}>{item.label} · {item.interval}</option>)}
+                {availableItems.map((item) => <option key={item.value} value={item.value}>{item.label} · {item.interval}</option>)}
               </select>
             </Field>
           )}
@@ -1079,7 +1083,12 @@ function JobDrawer({ job, history, onClose, onEdit, onComplete, onBillStatus, sa
   }
 
   if (!job) return null;
-  const vehicleHistory = history.filter((item) => item.vehicleId === job.vehicleId).slice(0, 10);
+  const vehicleHistory = history.filter((item) => {
+    if (job.assetType === "trailer") {
+      return item.assetType === "trailer" && Number(item.trailerId) === Number(job.trailerId);
+    }
+    return item.assetType !== "trailer" && Number(item.vehicleId) === Number(job.vehicleId);
+  }).slice(0, 10);
   return (
     <aside className="maintenance-drawer">
       <div className="section-head">
@@ -1935,7 +1944,7 @@ export function AdminMaintenancePage() {
 
   const attentionItems = (data?.plannerRows || []).filter((row) => row.priorityDays !== null && row.priorityDays < 0);
   const overdueJobs = (data?.jobs || []).filter((job) => job.daysLeft < 0 && !["completed", "cancelled"].includes(job.status));
-  const offRoadItems = (data?.plannerRows || []).filter((row) => row.status === "maintenance");
+  const offRoadItems = (data?.plannerRows || []).filter((row) => ["maintenance", "stopped"].includes(row.status));
   const billsItems = (data?.jobs || []).filter((job) => job.billStatus === "pending" && (job.billAmountGbp || job.billAttachmentData));
 
   const maintenanceViews = [
@@ -1952,6 +1961,7 @@ export function AdminMaintenancePage() {
       description={data?.header?.description || "Plan services, inspections, defects, and workshop work from live fleet data."}
       highlights={[]}
       hideHeaderIntro
+      className="maintenance-page-shell"
     >
       <div className="maintenance-command-bar">
         <section className="maintenance-summary-grid" aria-label="Maintenance summary">
@@ -1976,10 +1986,21 @@ export function AdminMaintenancePage() {
           ))}
         </section>
         <div className="maintenance-command-actions">
+          <button
+            className="af-submit-btn"
+            type="button"
+            onClick={() => {
+              setEditingJob(null);
+              setModalForm(emptyJob);
+              setShowModal(true);
+            }}
+          >
+            + Add Maintenance
+          </button>
           <button className="header-action-button danger" type="button" onClick={() => setShowBreakdownModal(true)}>Report Breakdown</button>
           <button className="header-action-button" type="button" onClick={() => setShowVorModal(true)}>Mark Off Road</button>
           <button className="header-action-button" type="button" onClick={load}>Refresh</button>
-          <button className="header-action-button" type="button" onClick={() => setShowExportModal(true)}>Export to Excel</button>
+          <button className="header-action-button" type="button" onClick={() => setShowExportModal(true)}>Export Schedule</button>
           <button className="header-action-button" type="button" onClick={() => navigate("/admin/vehicles")}>Vehicle Register</button>
         </div>
       </div>
@@ -2094,7 +2115,15 @@ export function AdminMaintenancePage() {
                   <strong>{profile.vehicle}</strong>
                   <p>{profile.fleetCode} · {profile.currentKmLabel}</p>
                 </div>
-                <button className="header-action-button" type="button" onClick={() => navigate(`/admin/vehicles/${profile.vehicleId}`)}>Open</button>
+                <button
+                  className="header-action-button"
+                  type="button"
+                  onClick={() => profile.assetType === "trailer"
+                    ? openVehicleDetail(profile, "trailer")
+                    : navigate(`/admin/vehicles/${profile.vehicleId}`)}
+                >
+                  Open
+                </button>
               </div>
               <div className="maintenance-profile-items">
                 {profile.items.map((item) => (

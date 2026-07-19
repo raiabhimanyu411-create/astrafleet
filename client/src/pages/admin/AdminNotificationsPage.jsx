@@ -7,11 +7,8 @@ export function AdminNotificationsPage() {
       badge="Admin Notifications"
       title="Operations Notification Centre"
       description="Review active employee approvals, failed deliveries, defects, overdue invoices, and stale GPS pings."
-      highlights={[
-        "Admin-only notification inbox",
-        "Live refresh every 30 seconds",
-        "Open linked records directly from each alert"
-      ]}
+      highlights={[]}
+      className="notifications-page-shell"
     >
       <NotificationCenter
         fetchUrl="/api/admin/notifications"

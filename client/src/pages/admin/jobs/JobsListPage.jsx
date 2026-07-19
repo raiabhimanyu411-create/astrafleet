@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { getDriverChats } from "../../../api/adminApi";
-import { getRealtimeSocket } from "../../../api/realtime";
+import { getRealtimeSocket, joinAdminChatRoom, leaveAdminChatRoom } from "../../../api/realtime";
 import { addJobNote, cancelJob, getJobNotes, getJobs, replaceJobVehicle, updateJobAssignment, updateJobStatus } from "../../../api/jobApi";
 import { DeleteReasonModal } from "../../../components/DeleteReasonModal";
 import { StateNotice } from "../../../components/StateNotice";
@@ -511,14 +511,14 @@ export function JobsListPage() {
     const handleDriverMessage = () => loadChatDrivers();
     socket.connect();
     socket.emit("admin-jobs:join");
-    socket.emit("admin-chat:join");
+    joinAdminChatRoom();
     socket.on("job:updated", handleJobUpdate);
     socket.on("driver-chat:message", handleDriverMessage);
     return () => {
       socket.off("job:updated", handleJobUpdate);
       socket.off("driver-chat:message", handleDriverMessage);
       socket.emit("admin-jobs:leave");
-      socket.emit("admin-chat:leave");
+      leaveAdminChatRoom();
     };
   }, []);
 
@@ -714,9 +714,49 @@ export function JobsListPage() {
   ];
 
   return (
-    <AdminWorkspaceLayout badge="Dispatch" title="Jobs" description="" highlights={[]}>
+    <AdminWorkspaceLayout
+      badge="Jobs control"
+      title="Transport jobs"
+      // description="Create, monitor, and manage every customer transport order from one operational workspace."
+      highlights={[]}
+      className="jobs-page-shell"
+    >
       <div className="relay-page">
 
+        <section className="jobs-command-overview" aria-label="Jobs overview">
+          <div className="jobs-command-intro">
+            <span className="jobs-command-kicker">
+              <span aria-hidden="true" />
+              Live operations
+            </span>
+            <h2>Today’s job control</h2>
+            <p>Keep orders, assignments and delivery exceptions moving without losing context.</p>
+          </div>
+          <div className="jobs-command-metrics">
+            <article className="jobs-command-metric neutral">
+              <span>All jobs</span>
+              <strong>{tabCounts.history}</strong>
+              <small>Complete workload</small>
+            </article>
+            <article className="jobs-command-metric live">
+              <span>In transit</span>
+              <strong>{tabCounts.intransit}</strong>
+              <small>Moving now</small>
+            </article>
+            <article className="jobs-command-metric warning">
+              <span>Unassigned</span>
+              <strong>{attentionCounts.unassigned}</strong>
+              <small>Needs allocation</small>
+            </article>
+            <article className="jobs-command-metric danger">
+              <span>Needs attention</span>
+              <strong>{attentionCounts.eta_risk + attentionCounts.blocked + attentionCounts.critical}</strong>
+              <small>Operational risks</small>
+            </article>
+          </div>
+        </section>
+
+        <section className="jobs-workspace-card">
         {/* ── Top tab bar ── */}
         <div className="relay-tabs">
           <button className={tab === "upcoming" ? "active" : ""} type="button" onClick={() => { setTab("upcoming"); setAttentionFilter(""); }}>
@@ -1639,6 +1679,7 @@ export function JobsListPage() {
             );
           })}
         </div>
+        </section>
       </div>
 
       {/* Block modal */}

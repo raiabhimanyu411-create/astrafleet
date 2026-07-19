@@ -220,6 +220,14 @@ exports.listVehicles = async (req, res) => {
               COALESCE(trip.open_trips, 0) AS open_trips,
               COALESCE(def.open_defects, 0) AS open_defects,
               COALESCE(def.critical_defects, 0) AS critical_defects,
+              maint.mot_last_done,
+              maint.insurance_last_done,
+              maint.road_tax_last_done,
+              maint.service_last_done,
+              COALESCE(maint.mot_next_due, v.mot_expiry) AS mot_effective_due,
+              COALESCE(maint.insurance_next_due, v.insurance_expiry) AS insurance_effective_due,
+              COALESCE(maint.road_tax_next_due, v.road_tax_expiry) AS road_tax_effective_due,
+              COALESCE(maint.service_next_due, v.next_service_due) AS service_effective_due,
               trip.last_trip_at
        FROM vehicles v
        LEFT JOIN (
@@ -239,6 +247,19 @@ exports.listVehicles = async (req, res) => {
           WHERE status != 'resolved'
           GROUP BY vehicle_id
        ) def ON def.vehicle_id = v.id
+       LEFT JOIN (
+          SELECT vehicle_id,
+                 MAX(CASE WHEN LOWER(service_type)='mot' THEN service_date END) AS mot_last_done,
+                 MAX(CASE WHEN LOWER(service_type)='mot' THEN next_due_date END) AS mot_next_due,
+                 MAX(CASE WHEN LOWER(service_type)='insurance' THEN service_date END) AS insurance_last_done,
+                 MAX(CASE WHEN LOWER(service_type)='insurance' THEN next_due_date END) AS insurance_next_due,
+                 MAX(CASE WHEN LOWER(service_type) IN ('road tax','road_tax') THEN service_date END) AS road_tax_last_done,
+                 MAX(CASE WHEN LOWER(service_type) IN ('road tax','road_tax') THEN next_due_date END) AS road_tax_next_due,
+                 MAX(CASE WHEN LOWER(service_type) IN ('full service','service','routine service') THEN service_date END) AS service_last_done,
+                 MAX(CASE WHEN LOWER(service_type) IN ('full service','service','routine service') THEN next_due_date END) AS service_next_due
+          FROM maintenance_records
+          GROUP BY vehicle_id
+       ) maint ON maint.vehicle_id = v.id
        ORDER BY v.created_at DESC`
     );
 
@@ -287,18 +308,24 @@ exports.listVehicles = async (req, res) => {
         yearOfManufacture: v.year_of_manufacture || "—",
         colour: v.colour || "—",
         currentLocation: v.current_location || "—",
-        motExpiry: fmtDate(v.mot_expiry),
-        motExpiryRaw: rawDate(v.mot_expiry),
-        motDaysLeft: daysUntil(v.mot_expiry),
-        motExpiryTone: expiryTone(v.mot_expiry),
-        insuranceExpiry: fmtDate(v.insurance_expiry),
-        insuranceExpiryRaw: rawDate(v.insurance_expiry),
-        insuranceDaysLeft: daysUntil(v.insurance_expiry),
-        insuranceExpiryTone: expiryTone(v.insurance_expiry),
-        roadTaxExpiry: fmtDate(v.road_tax_expiry),
-        roadTaxExpiryRaw: rawDate(v.road_tax_expiry),
-        roadTaxDaysLeft: daysUntil(v.road_tax_expiry),
-        roadTaxExpiryTone: expiryTone(v.road_tax_expiry),
+        motExpiry: fmtDate(v.mot_effective_due),
+        motExpiryRaw: rawDate(v.mot_effective_due),
+        motDaysLeft: daysUntil(v.mot_effective_due),
+        motExpiryTone: expiryTone(v.mot_effective_due),
+        motLastDone: fmtDate(v.mot_last_done),
+        motLastDoneRaw: rawDate(v.mot_last_done),
+        insuranceExpiry: fmtDate(v.insurance_effective_due),
+        insuranceExpiryRaw: rawDate(v.insurance_effective_due),
+        insuranceDaysLeft: daysUntil(v.insurance_effective_due),
+        insuranceExpiryTone: expiryTone(v.insurance_effective_due),
+        insuranceLastDone: fmtDate(v.insurance_last_done),
+        insuranceLastDoneRaw: rawDate(v.insurance_last_done),
+        roadTaxExpiry: fmtDate(v.road_tax_effective_due),
+        roadTaxExpiryRaw: rawDate(v.road_tax_effective_due),
+        roadTaxDaysLeft: daysUntil(v.road_tax_effective_due),
+        roadTaxExpiryTone: expiryTone(v.road_tax_effective_due),
+        roadTaxLastDone: fmtDate(v.road_tax_last_done),
+        roadTaxLastDoneRaw: rawDate(v.road_tax_last_done),
         permitExpiry: fmtDate(v.permit_expiry),
         permitExpiryRaw: rawDate(v.permit_expiry),
         permitExpiryTone: expiryTone(v.permit_expiry),
@@ -310,16 +337,17 @@ exports.listVehicles = async (req, res) => {
         fitnessExpiryTone: expiryTone(v.fitness_expiry),
         odometerReading: v.odometer_reading ? `${Number(v.odometer_reading).toLocaleString("en-GB")} km` : "—",
         odometerReadingRaw: v.odometer_reading ?? "",
-        nextServiceDue: fmtDate(v.next_service_due),
-        nextServiceDueRaw: rawDate(v.next_service_due),
-        nextServiceDaysLeft: daysUntil(v.next_service_due),
-        nextServiceTone: expiryTone(v.next_service_due),
+        nextServiceDue: fmtDate(v.service_effective_due),
+        nextServiceDueRaw: rawDate(v.service_effective_due),
+        nextServiceDaysLeft: daysUntil(v.service_effective_due),
+        nextServiceTone: expiryTone(v.service_effective_due),
+        lastServiceDone: fmtDate(v.service_last_done),
         totalTrips: v.total_trips,
         openTrips: v.open_trips,
         openDefects: Number(v.open_defects || 0),
         criticalDefects: Number(v.critical_defects || 0),
         lastActivity: fmtDate(v.last_trip_at || v.created_at),
-        complianceRisk: [v.mot_expiry, v.insurance_expiry, v.road_tax_expiry, v.permit_expiry, v.pollution_expiry, v.fitness_expiry, v.next_service_due].some(date => {
+        complianceRisk: [v.mot_effective_due, v.insurance_effective_due, v.road_tax_effective_due, v.permit_expiry, v.pollution_expiry, v.fitness_expiry, v.service_effective_due].some(date => {
           const days = daysUntil(date);
           return days !== null && days < 90;
         }) || Number(v.open_defects || 0) > 0,
@@ -378,6 +406,22 @@ exports.getVehicleById = async (req, res) => {
 
     const tones = [expiryTone(v.mot_expiry), expiryTone(v.insurance_expiry), expiryTone(v.road_tax_expiry), expiryTone(v.permit_expiry), expiryTone(v.pollution_expiry), expiryTone(v.fitness_expiry)];
     const complianceTone = tones.includes("danger") ? "danger" : tones.includes("warning") || tones.includes("neutral") ? "warning" : "success";
+    const latestMaintenance = (types) => maintenance.find(record =>
+      types.includes(String(record.service_type || "").trim().toLowerCase())
+    );
+    const complianceRecord = (types, fallbackDue) => {
+      const record = latestMaintenance(types);
+      const nextDue = record?.next_due_date || fallbackDue;
+      return {
+        expiry: fmtDate(nextDue),
+        raw: rawDate(nextDue),
+        tone: expiryTone(nextDue),
+        daysLeft: daysUntil(nextDue),
+        lastDone: fmtDate(record?.service_date),
+        lastDoneRaw: rawDate(record?.service_date),
+        source: record ? "Maintenance history" : "Vehicle record"
+      };
+    };
 
     res.json({
       id: v.id,
@@ -403,9 +447,9 @@ exports.getVehicleById = async (req, res) => {
       since: fmtDate(v.created_at),
       complianceTone,
 
-      mot:       { expiry: fmtDate(v.mot_expiry),       raw: rawDate(v.mot_expiry),       tone: expiryTone(v.mot_expiry),       daysLeft: daysUntil(v.mot_expiry) },
-      insurance: { expiry: fmtDate(v.insurance_expiry), raw: rawDate(v.insurance_expiry), tone: expiryTone(v.insurance_expiry), daysLeft: daysUntil(v.insurance_expiry) },
-      roadTax:   { expiry: fmtDate(v.road_tax_expiry),  raw: rawDate(v.road_tax_expiry),  tone: expiryTone(v.road_tax_expiry),  daysLeft: daysUntil(v.road_tax_expiry) },
+      mot: complianceRecord(["mot"], v.mot_expiry),
+      insurance: complianceRecord(["insurance"], v.insurance_expiry),
+      roadTax: complianceRecord(["road tax", "road_tax"], v.road_tax_expiry),
       permit:    { expiry: fmtDate(v.permit_expiry),    raw: rawDate(v.permit_expiry),    tone: expiryTone(v.permit_expiry),    daysLeft: daysUntil(v.permit_expiry) },
       pollution: { expiry: fmtDate(v.pollution_expiry), raw: rawDate(v.pollution_expiry), tone: expiryTone(v.pollution_expiry), daysLeft: daysUntil(v.pollution_expiry) },
       fitness:   { expiry: fmtDate(v.fitness_expiry),   raw: rawDate(v.fitness_expiry),   tone: expiryTone(v.fitness_expiry),   daysLeft: daysUntil(v.fitness_expiry) },
@@ -583,7 +627,7 @@ exports.updateVehicle = async (req, res) => {
       registration_number, fleet_code, make, model, model_name, truck_type, status,
       fuel_type, capacity_tonnes, year_of_manufacture, colour,
       mot_expiry, insurance_expiry, road_tax_expiry, permit_expiry, pollution_expiry, fitness_expiry,
-      odometer_reading, next_service_due, current_location
+      odometer_reading, next_service_due, current_location, company_name, inspection_frequency_weeks
     } = req.body;
     const finalModelName = combinedModelName(make, model, model_name);
 
@@ -593,7 +637,7 @@ exports.updateVehicle = async (req, res) => {
          fuel_type=?, capacity_tonnes=?, year_of_manufacture=?, colour=?,
          mot_expiry=?, insurance_expiry=?, road_tax_expiry=?,
          permit_expiry=?, pollution_expiry=?, fitness_expiry=?, odometer_reading=?,
-         next_service_due=?, current_location=?
+         next_service_due=?, current_location=?, company_name=?, inspection_frequency_weeks=?
        WHERE id=?`,
       [
         registration_number, fleet_code, make || null, model || null, finalModelName, truck_type,
@@ -602,6 +646,7 @@ exports.updateVehicle = async (req, res) => {
         mot_expiry || null, insurance_expiry || null, road_tax_expiry || null,
         permit_expiry || null, pollution_expiry || null, fitness_expiry || null, odometer_reading || null,
         next_service_due || null, current_location || null,
+        company_name || null, inspection_frequency_weeks ? Number(inspection_frequency_weeks) : 6,
         id
       ]
     );
@@ -613,10 +658,13 @@ exports.updateVehicle = async (req, res) => {
       entityType: "vehicle",
       entityId: id,
       entityLabel: updated.registration_number,
-      details: { changes: buildChangeSet(existing, updated, ["registration_number", "fleet_code", "make", "model", "model_name", "truck_type", "status", "fuel_type", "capacity_tonnes", "mot_expiry", "insurance_expiry", "road_tax_expiry", "permit_expiry", "pollution_expiry", "fitness_expiry", "odometer_reading", "next_service_due", "current_location"]) }
+      details: { changes: buildChangeSet(existing, updated, ["registration_number", "fleet_code", "make", "model", "model_name", "truck_type", "status", "fuel_type", "capacity_tonnes", "mot_expiry", "insurance_expiry", "road_tax_expiry", "permit_expiry", "pollution_expiry", "fitness_expiry", "odometer_reading", "next_service_due", "current_location", "company_name", "inspection_frequency_weeks"]) }
     });
     res.json({ message: "Vehicle updated." });
   } catch (err) {
+    if (err.code === "ER_DUP_ENTRY") {
+      return res.status(409).json({ message: "Registration number or fleet code already exists." });
+    }
     res.status(500).json({ message: "Vehicle update error", error: err.message });
   }
 };
@@ -669,6 +717,14 @@ exports.updateVehicleInline = async (req, res) => {
     }
 
     await db.query(`UPDATE vehicles SET ${updates.join(", ")} WHERE id = ?`, [...values, id]);
+    if (Object.prototype.hasOwnProperty.call(req.body || {}, "make") || Object.prototype.hasOwnProperty.call(req.body || {}, "model")) {
+      await db.query(
+        `UPDATE vehicles
+         SET model_name=TRIM(CONCAT(COALESCE(make,''), ' ', COALESCE(model,'')))
+         WHERE id=?`,
+        [id]
+      );
+    }
     const [[updated]] = await db.query(`SELECT * FROM vehicles WHERE id = ?`, [id]);
 
     await logActivity(req, {
@@ -778,7 +834,12 @@ exports.addMaintenance = async (req, res) => {
       return res.status(400).json({ message: "service_date and service_type are required." });
     }
     if (next_due_date) {
-      await db.query(`UPDATE vehicles SET next_service_due=? WHERE id=?`, [next_due_date, id]);
+      const normalizedType = String(service_type).trim().toLowerCase();
+      const dueColumn = normalizedType === "mot" ? "mot_expiry"
+        : normalizedType === "insurance" ? "insurance_expiry"
+          : ["road tax", "road_tax"].includes(normalizedType) ? "road_tax_expiry"
+            : "next_service_due";
+      await db.query(`UPDATE vehicles SET ${dueColumn}=? WHERE id=?`, [next_due_date, id]);
     }
     const [result] = await db.query(
       `INSERT INTO maintenance_records (vehicle_id, service_date, service_type, description, cost_gbp, mileage, next_due_date, garage_name)
@@ -796,7 +857,33 @@ exports.addMaintenance = async (req, res) => {
 exports.deleteMaintenance = async (req, res) => {
   try {
     const { id, recId } = req.params;
+    const [[record]] = await db.query(
+      `SELECT service_type FROM maintenance_records WHERE id=? AND vehicle_id=?`,
+      [recId, id]
+    );
+    if (!record) return res.status(404).json({ message: "Maintenance record not found." });
     await db.query(`DELETE FROM maintenance_records WHERE id=? AND vehicle_id=?`, [recId, id]);
+    const normalizedType = String(record.service_type || "").trim().toLowerCase();
+    const dueColumn = normalizedType === "mot" ? "mot_expiry"
+      : normalizedType === "insurance" ? "insurance_expiry"
+        : ["road tax", "road_tax"].includes(normalizedType) ? "road_tax_expiry"
+          : ["full service", "service", "routine service"].includes(normalizedType) ? "next_service_due"
+            : null;
+    if (dueColumn) {
+      const matchingTypes = dueColumn === "road_tax_expiry"
+        ? ["road tax", "road_tax"]
+        : dueColumn === "next_service_due"
+          ? ["full service", "service", "routine service"]
+          : [normalizedType];
+      const [[latest]] = await db.query(
+        `SELECT next_due_date
+         FROM maintenance_records
+         WHERE vehicle_id=? AND LOWER(service_type) IN (${matchingTypes.map(() => "?").join(",")})
+         ORDER BY service_date DESC, id DESC LIMIT 1`,
+        [id, ...matchingTypes]
+      );
+      await db.query(`UPDATE vehicles SET ${dueColumn}=? WHERE id=?`, [latest?.next_due_date || null, id]);
+    }
     await logActivity(req, { module: "vehicles", action: "delete", entityType: "maintenance_record", entityId: recId, details: { vehicle_id: id } });
     res.json({ message: "Record removed." });
   } catch (err) {
@@ -867,6 +954,18 @@ exports.deleteVehicle = async (req, res) => {
     const { id } = req.params;
     const [[existing]] = await db.query(`SELECT registration_number FROM vehicles WHERE id = ?`, [id]);
     if (!existing) return res.status(404).json({ message: "Vehicle not found." });
+    const [[usage]] = await db.query(
+      `SELECT COUNT(*) AS trip_count,
+              COALESCE(SUM(dispatch_status IN ('planned','loading','active')), 0) AS open_trip_count
+       FROM trips WHERE vehicle_id=?`,
+      [id]
+    );
+    if (Number(usage.open_trip_count || 0) > 0) {
+      return res.status(409).json({ message: "Vehicle has an open trip. Reassign or close the trip before deleting it." });
+    }
+    if (Number(usage.trip_count || 0) > 0) {
+      return res.status(409).json({ message: "Vehicle has trip history and cannot be permanently deleted. Set its status to Stopped instead." });
+    }
     await db.query(`DELETE FROM vehicles WHERE id = ?`, [id]);
     await logActivity(req, { module: "vehicles", action: "delete", entityType: "vehicle", entityId: id, entityLabel: existing.registration_number, details: { registration_number: existing.registration_number } });
     res.json({ message: "Vehicle deleted." });

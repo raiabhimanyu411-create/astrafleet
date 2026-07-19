@@ -22,18 +22,20 @@ function DetailField({ label, value, tone }) {
   );
 }
 
-function ExpiryField({ label, expiry, tone, daysLeft }) {
+function ExpiryField({ label, expiry, tone, daysLeft, lastDone, source }) {
   const suffix = daysLeft !== null
     ? daysLeft < 0
       ? ` (expired ${Math.abs(daysLeft)}d ago)`
       : ` (${daysLeft}d left)`
     : "";
   return (
-    <div style={{ padding: "11px 14px", background: "#f8fafc", border: `1px solid ${tone === "danger" ? "#fecaca" : tone === "warning" ? "#fde68a" : "#e2e8f0"}`, borderRadius: 8 }}>
+    <div className={`vehicle-detail-expiry ${tone || "neutral"}`}>
       <span style={{ display: "block", fontSize: "0.7rem", fontWeight: 700, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 4 }}>{label}</span>
-      <strong style={{ fontSize: "0.88rem", fontWeight: 600, color: tone === "danger" ? "#b91c1c" : tone === "warning" ? "#b45309" : "#0f172a" }}>
+      {lastDone && lastDone !== "—" && <small className="vehicle-detail-last-done">Done {lastDone}</small>}
+      <strong>
         {expiry}{suffix}
       </strong>
+      {source && <small className="vehicle-detail-expiry-source">{source}</small>}
     </div>
   );
 }
@@ -42,6 +44,7 @@ const DOC_TYPES = ["MOT Certificate", "Insurance Certificate", "Fitness Certific
 const INSPECTION_TYPES = ["Routine", "Pre-trip", "Post-trip", "Annual", "DVSA", "Other"];
 const DEFECT_TYPES = ["Tyre", "Brakes", "Lights", "Engine", "Bodywork", "Windscreen", "Mirrors", "Load Security", "Exhaust", "Other"];
 const SEVERITY_OPTS = ["low", "medium", "high", "critical"];
+const MAINTENANCE_TYPES = ["Full Service", "MOT", "Insurance", "Road Tax", "Safety inspection", "Roller brake test", "Tacho Calibration", "Repair", "Oil change", "Tyres"];
 const emptyDoc   = { document_type: "MOT Certificate", document_number: "", expiry_date: "" };
 const emptyMaint = { service_date: "", service_type: "", description: "", cost_gbp: "", mileage: "", next_due_date: "", garage_name: "" };
 const emptyInsp  = { inspection_date: "", inspection_type: "Routine", inspector_name: "", result: "pass", notes: "", next_due: "" };
@@ -192,6 +195,7 @@ export function VehicleDetailPage() {
       title={data?.registrationNumber || "Vehicle profile"}
       description="Full vehicle profile with UK compliance, documents, maintenance history, and inspections."
       highlights={[]}
+      className="vehicles-page-shell"
     >
       <div style={{ maxWidth: 980 }}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 20, flexWrap: "wrap", gap: 12 }}>
@@ -261,12 +265,12 @@ export function VehicleDetailPage() {
                 </StatusPill>
               </div>
               <div className="detail-grid">
-                <ExpiryField label="MOT Expiry"       expiry={data.mot.expiry}       tone={data.mot.tone}       daysLeft={data.mot.daysLeft} />
+                <ExpiryField label="MOT Expiry"       expiry={data.mot.expiry}       tone={data.mot.tone}       daysLeft={data.mot.daysLeft} lastDone={data.mot.lastDone} source={data.mot.source} />
                 <ExpiryField label="Fitness Expiry"   expiry={data.fitness?.expiry}  tone={data.fitness?.tone}  daysLeft={data.fitness?.daysLeft} />
-                <ExpiryField label="Insurance Expiry" expiry={data.insurance.expiry} tone={data.insurance.tone} daysLeft={data.insurance.daysLeft} />
+                <ExpiryField label="Insurance Expiry" expiry={data.insurance.expiry} tone={data.insurance.tone} daysLeft={data.insurance.daysLeft} lastDone={data.insurance.lastDone} source={data.insurance.source} />
                 <ExpiryField label="Permit Expiry"    expiry={data.permit?.expiry}   tone={data.permit?.tone}   daysLeft={data.permit?.daysLeft} />
                 <ExpiryField label="Pollution Expiry" expiry={data.pollution?.expiry} tone={data.pollution?.tone} daysLeft={data.pollution?.daysLeft} />
-                <ExpiryField label="Road Tax Expiry"  expiry={data.roadTax.expiry}   tone={data.roadTax.tone}   daysLeft={data.roadTax.daysLeft} />
+                <ExpiryField label="Road Tax Expiry"  expiry={data.roadTax.expiry}   tone={data.roadTax.tone}   daysLeft={data.roadTax.daysLeft} lastDone={data.roadTax.lastDone} source={data.roadTax.source} />
                 <ExpiryField label="Next Service Due" expiry={data.nextServiceDue}   tone={data.nextServiceTone} daysLeft={null} />
               </div>
             </div>
@@ -359,7 +363,10 @@ export function VehicleDetailPage() {
                     </div>
                     <div className="af-field">
                       <label className="af-label">Service Type <span style={{ color: "#dc2626" }}>*</span></label>
-                      <input className="af-input" type="text" placeholder="e.g. Full service, Oil change" value={maintForm.service_type} onChange={e => setMaintForm(p => ({ ...p, service_type: e.target.value }))} required />
+                      <select className="af-select" value={maintForm.service_type} onChange={e => setMaintForm(p => ({ ...p, service_type: e.target.value }))} required>
+                        <option value="">Select maintenance type</option>
+                        {MAINTENANCE_TYPES.map(type => <option key={type} value={type}>{type}</option>)}
+                      </select>
                     </div>
                     <div className="af-field">
                       <label className="af-label">Garage / Workshop</label>
