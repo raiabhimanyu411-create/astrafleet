@@ -1224,8 +1224,12 @@ exports.getMaintenancePortal = async (_req, res) => {
     }));
     const allVehicleProfiles = [...vehicleProfiles, ...trailerProfiles];
 
-    const planStart = addDays(startOfWeek(new Date()), -14);
-    const planWeeks = Array.from({ length: 58 }, (_, index) => {
+    // Keep three completed weeks available so operators can review the
+    // immediately preceding maintenance history from the week selector.
+    // Use 59 weeks to retain the existing future-planning horizon.
+    const planStart = addDays(startOfWeek(new Date()), -21);
+    const planWeekCount = 59;
+    const planWeeks = Array.from({ length: planWeekCount }, (_, index) => {
       const start = addDays(planStart, index * 7);
       const end = addDays(start, 6);
       const weekNumber = maintenanceWeekNumber(start);
@@ -1240,7 +1244,7 @@ exports.getMaintenancePortal = async (_req, res) => {
         range: `${fmtDate(start)} - ${fmtDate(end)}`
       };
     });
-    const planEnd = addDays(planStart, (58 * 7) - 1);
+    const planEnd = addDays(planStart, (planWeekCount * 7) - 1);
     const yearPlanRows = rows.map((v) => {
       const profile = vehicleProfiles.find((item) => Number(item.vehicleId) === Number(v.id));
       const events = [];
