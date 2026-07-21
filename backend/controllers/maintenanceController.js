@@ -1,10 +1,12 @@
 const db = require("../db/connection");
 
-const INSPECTION_INTERVAL_DAYS = 42;
-const TRAILER_INSPECTION_INTERVAL_DAYS = 70;
+// The planner counts the completion week as week one. A 6-week vehicle cycle
+// therefore advances five week columns; a 10-week trailer cycle advances nine.
+const INSPECTION_INTERVAL_DAYS = 35;
+const TRAILER_INSPECTION_INTERVAL_DAYS = 63;
 const MAINTENANCE_RULES = {
-  "Roller brake test": { days: 42 },
-  "Safety inspection": { days: 42 },
+  "Roller brake test": { days: INSPECTION_INTERVAL_DAYS },
+  "Safety inspection": { days: INSPECTION_INTERVAL_DAYS },
   MOT: { months: 12 },
   "Tacho Calibration": { months: 24 },
   "Road Tax": { months: 12 },

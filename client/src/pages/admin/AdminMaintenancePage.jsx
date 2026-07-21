@@ -53,8 +53,8 @@ const statusOptions = ["planned", "booked", "in_progress", "completed", "cancell
 const priorityOptions = ["low", "normal", "high", "critical"];
 const severityOptions = ["low", "medium", "high", "critical"];
 const allMaintenanceItems = [
-  { value: "Roller brake test", label: "Roller brake test", interval: "Every 6 weeks", days: 42, trailerOk: false },
-  { value: "Safety inspection", label: "Safety inspection", interval: "Every 6 weeks", days: 42, trailerOk: true },
+  { value: "Roller brake test", label: "Roller brake test", interval: "Every 6 weeks", days: 35, trailerOk: false },
+  { value: "Safety inspection", label: "Safety inspection", interval: "Every 6 weeks", days: 35, trailerOk: true },
   { value: "MOT", label: "MOT", interval: "Every 12 months", months: 12, trailerOk: true },
   { value: "Tacho Calibration", label: "Tacho Calibration", interval: "Every 2 years", months: 24, trailerOk: false },
   { value: "Road Tax", label: "Road Tax", interval: "Every 6 or 12 months", roadTax: true, trailerOk: false },
@@ -65,7 +65,7 @@ function getMaintenanceItems(assetType) {
   return assetType === "trailer"
     ? allMaintenanceItems
         .filter((item) => item.trailerOk)
-        .map((item) => item.value === "Safety inspection" ? { ...item, interval: "Every 10 weeks", days: 70 } : item)
+        .map((item) => item.value === "Safety inspection" ? { ...item, interval: "Every 10 weeks", days: 63 } : item)
     : allMaintenanceItems;
 }
 const maintenanceItems = allMaintenanceItems;
@@ -95,7 +95,7 @@ function nextDueForItem(serviceType, serviceDate, roadTaxIntervalMonths, assetTy
   const item = maintenanceItems.find((option) => option.value === serviceType);
   if (!item || !serviceDate) return "";
   if (item.roadTax) return addMonthsToKey(serviceDate, Number(roadTaxIntervalMonths || 12));
-  if (assetType === "trailer" && serviceType === "Safety inspection") return addDaysToKey(serviceDate, 70);
+  if (assetType === "trailer" && serviceType === "Safety inspection") return addDaysToKey(serviceDate, 63);
   if (item.days) return addDaysToKey(serviceDate, item.days);
   if (item.months) return addMonthsToKey(serviceDate, item.months);
   return "";
