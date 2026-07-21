@@ -905,6 +905,11 @@
   font-size: 0.72rem;
 }
 
+.maintenance-profile-item .maintenance-profile-date {
+  color: var(--text);
+  font-weight: 800;
+}
+
 .maintenance-profile-item.active {
   border-color: var(--primary-ring);
   background: var(--primary-soft);
@@ -1991,12 +1996,14 @@
   left: 0;
   width: var(--excel-reg-col);
   min-width: var(--excel-reg-col);
+  text-align: center;
 }
 
 .excel-fixed-head:nth-child(2) {
   left: var(--excel-reg-col);
   width: var(--excel-fleet-code-col);
   min-width: var(--excel-fleet-code-col);
+  text-align: center;
 }
 
 .excel-fixed-head:nth-child(3) {
@@ -2009,6 +2016,7 @@
   left: calc(var(--excel-reg-col) + var(--excel-fleet-code-col) + var(--excel-freq-col));
   width: var(--excel-make-col);
   min-width: var(--excel-make-col);
+  text-align: center;
 }
 
 .excel-date-row .excel-fixed-head {
@@ -2084,12 +2092,14 @@
   left: 0;
   width: var(--excel-reg-col);
   min-width: var(--excel-reg-col);
+  text-align: center;
 }
 
 .excel-fleet-code-cell {
   left: var(--excel-reg-col);
   width: var(--excel-fleet-code-col);
   min-width: var(--excel-fleet-code-col);
+  text-align: center;
   color: var(--text);
   font-size: 0.74rem;
   font-weight: 800;
@@ -2109,6 +2119,7 @@
   left: calc(var(--excel-reg-col) + var(--excel-fleet-code-col) + var(--excel-freq-col));
   width: var(--excel-make-col);
   min-width: var(--excel-make-col);
+  text-align: center;
   color: var(--text);
   font-size: 0.74rem;
   font-weight: 750;

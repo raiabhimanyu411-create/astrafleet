@@ -685,8 +685,8 @@ function VehicleDetailModal({ target, profiles, onClose, onSaved }) {
               >
                 <span className="vehicle-detail-item-code" style={{ background: color.bg, color: color.text }}>{code}</span>
                 <strong>{item.type}</strong>
-                <p>Last done: {item.lastDone}{item.lastDoneKm ? ` · ${Number(item.lastDoneKm).toLocaleString("en-GB")} km` : ""}</p>
-                <p>Next due: {item.nextDue}</p>
+                <p>Last done: <b className="maintenance-profile-date">{item.lastDone}{item.lastDoneKm ? ` · ${Number(item.lastDoneKm).toLocaleString("en-GB")} km` : ""}</b></p>
+                <p>Next due: <b className="maintenance-profile-date">{item.nextDue}</b></p>
                 <StatusPill tone={isSelectedUpcoming ? "danger" : item.tone}>
                   {isSelectedUpcoming ? "Upcoming" : item.status}
                 </StatusPill>
