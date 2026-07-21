@@ -1242,7 +1242,8 @@ function JobDrawer({ job, history, onClose, onEdit, onComplete, onBillStatus, sa
 
 const EVENT_COLORS = {
   TAX: { bg: "#f97316", text: "#fff", label: "Road Tax" },
-  IB:  { bg: "#3b82f6", text: "#fff", label: "Inspection & Brake test" },
+  IB:  { bg: "#3b82f6", text: "#fff", label: "Safety Inspection" },
+  RBT: { bg: "#0f766e", text: "#fff", label: "Roller Brake Test" },
   MOT: { bg: "#eab308", text: "#1a1a1a", label: "Ministry of Transport" },
   VOR: { bg: "#14b8a6", text: "#fff", label: "Vechile Off Road" },
   INS: { bg: "#22c55e", text: "#fff", label: "Insurance" },
@@ -1285,7 +1286,7 @@ const TYPE_TO_CODE = {
   "Road Tax": "TAX",
   "Safety inspection": "IB",
   MOT: "MOT",
-  "Roller brake test": "IB",
+  "Roller brake test": "RBT",
   Insurance: "INS",
   "Tacho Calibration": "T",
   "Full Service": "SRV"
