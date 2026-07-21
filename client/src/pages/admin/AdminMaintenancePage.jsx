@@ -1335,6 +1335,10 @@ function parseFleetCodeForSort(code) {
 }
 
 function compareScheduleRows(a, b) {
+  const aIsTrailer = a.assetType === "trailer";
+  const bIsTrailer = b.assetType === "trailer";
+  if (aIsTrailer !== bIsTrailer) return aIsTrailer ? 1 : -1;
+
   const aCode = String(a.fleetCode || "").trim();
   const bCode = String(b.fleetCode || "").trim();
   if (!aCode && bCode) return 1;
@@ -1355,7 +1359,6 @@ function ExcelScheduleView({ data, onOpenVehicle }) {
   const [selectedWeekKey, setSelectedWeekKey] = useState("");
   const [popover, setPopover] = useState(null); // { ev, x, y }
   const scheduleWrapRef = useRef(null);
-  const weekHeaderRefs = useRef({});
   const popoverTimer = useRef(null);
   const weeks = useMemo(() => data?.yearPlan?.weeks || [], [data]);
   const allRows = useMemo(() => data?.yearPlan?.rows || [], [data]);
@@ -1430,14 +1433,19 @@ function ExcelScheduleView({ data, onOpenVehicle }) {
 
   useEffect(() => {
     if (!selectedWeekKey || !scheduleWrapRef.current) return;
-    const header = weekHeaderRefs.current[selectedWeekKey];
-    if (!header) return;
-    const leftColumnsWidth = 510;
-    scheduleWrapRef.current.scrollTo({
-      left: Math.max(header.offsetLeft - leftColumnsWidth, 0),
-      behavior: "smooth"
+    const weekIndex = weeks.findIndex((week) => week.key === selectedWeekKey);
+    if (weekIndex < 0) return;
+
+    // Each week column is 64px wide. Since the four asset columns are sticky,
+    // scrolling by the selected week's index places it directly beside them.
+    const frame = window.requestAnimationFrame(() => {
+      scheduleWrapRef.current?.scrollTo({
+        left: weekIndex * 64,
+        behavior: "auto"
+      });
     });
-  }, [selectedWeekKey]);
+    return () => window.cancelAnimationFrame(frame);
+  }, [selectedWeekKey, weeks]);
 
   const totalCols = 4 + weeks.length;
 
@@ -1509,7 +1517,10 @@ function ExcelScheduleView({ data, onOpenVehicle }) {
         </div>
       )}
     <div className="excel-schedule-wrap" ref={scheduleWrapRef}>
-      <table className="excel-schedule-table">
+      <table
+        className="excel-schedule-table"
+        style={{ width: `${510 + (weeks.length * 64)}px` }}
+      >
         <colgroup>
           <col className="excel-reg-col" />
           <col className="excel-fleet-code-col" />
@@ -1555,9 +1566,6 @@ function ExcelScheduleView({ data, onOpenVehicle }) {
               <th
                 key={week.key}
                 className={`excel-week-head${week.key === selectedWeekKey ? " selected-week" : ""}`}
-                ref={(node) => {
-                  if (node) weekHeaderRefs.current[week.key] = node;
-                }}
               >
                 {week.label || `WK${isoWeekNumber(week.startRaw || week.key)}`}
               </th>
@@ -1582,10 +1590,14 @@ function ExcelScheduleView({ data, onOpenVehicle }) {
                   aria-hidden="true"
                 />
               </tr>
-              {rows.map((row) => {
+              {rows.map((row, rowIndex) => {
                 const assetType = row.assetType === "trailer" ? "trailer" : "vehicle";
+                const isFirstTrailer = assetType === "trailer" && rows[rowIndex - 1]?.assetType !== "trailer";
                 return (
-                <tr key={`${assetType}-${row.vehicleId}`} className="excel-vehicle-row">
+                <tr
+                  key={`${assetType}-${row.vehicleId}`}
+                  className={`excel-vehicle-row${isFirstTrailer ? " excel-trailer-start" : ""}`}
+                >
                   <td className="excel-reg-cell" onClick={() => onOpenVehicle(row, assetType)} title="Click to open vehicle details">
                     <strong>{row.vehicle}</strong>
                   </td>

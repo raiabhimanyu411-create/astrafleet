@@ -126,10 +126,11 @@
 }
 
 .maintenance-command-bar .maintenance-summary-grid {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(148px, 1fr));
+  align-items: stretch;
   gap: 8px;
+  width: 100%;
   margin-bottom: 0;
 }
 
@@ -137,8 +138,8 @@
   display: flex;
   align-items: center;
   gap: 10px;
-  width: auto;
-  min-width: 148px;
+  width: 100%;
+  min-width: 0;
   min-height: 38px;
   height: 38px;
   padding: 0 12px;
@@ -1519,6 +1520,10 @@
 }
 
 @media (max-width: 760px) {
+  .maintenance-command-bar .maintenance-summary-grid {
+    grid-template-columns: 1fr;
+  }
+
   .maintenance-summary-grid {
     grid-template-columns: 1fr;
   }
@@ -1834,6 +1839,7 @@
   --excel-week-row-h: 20px;
   border-collapse: separate;
   border-spacing: 0;
+  table-layout: fixed;
   min-width: 100%;
   font-size: 0.7rem;
   font-family: inherit;
@@ -1851,6 +1857,10 @@
   box-sizing: border-box;
   padding: 0;
   white-space: nowrap;
+}
+
+.excel-vehicle-row > td {
+  height: 46px;
 }
 
 /* ── Fixed header rows ── */
@@ -1999,6 +2009,7 @@
 /* ── Vehicle rows ── */
 .excel-vehicle-row {
   background: #fff;
+  height: 46px;
 }
 
 .excel-vehicle-row:nth-child(even) {
@@ -2009,6 +2020,10 @@
   background: #eff6ff;
 }
 
+.excel-trailer-start > td {
+  border-top: 3px solid #64748b;
+}
+
 /* Sticky left cells in vehicle rows */
 .excel-reg-cell,
 .excel-fleet-code-cell,
@@ -2017,10 +2032,14 @@
   position: sticky;
   background: inherit;
   z-index: 2;
-  padding: 5px 8px;
+  height: 46px;
+  padding: 0 8px;
   vertical-align: middle;
   border-color: #e2e8f0;
   cursor: pointer;
+  line-height: 1.2;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .excel-reg-cell {
@@ -2077,13 +2096,15 @@
 }
 
 .excel-event-cell {
-  padding: 2px 2px;
+  height: 46px;
+  padding: 2px;
   vertical-align: middle;
   text-align: center;
   width: var(--excel-week-col);
   min-width: var(--excel-week-col);
   border-color: #e2e8f0;
   cursor: pointer;
+  overflow: hidden;
 }
 
 .excel-event-cell:hover {
