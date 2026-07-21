@@ -1151,7 +1151,9 @@ exports.getMaintenancePortal = async (_req, res) => {
                   ? rawDate(v.tacho_calibration_expiry)
                   : type === "Full Service"
                     ? fullServiceDueRaw(v)
-                    : rawDate(v.next_inspection_due) || latest?.dueDateRaw || "";
+                    : latest?.serviceDateRaw
+                      ? calculateNextDueDate(type, latest.serviceDateRaw, 12, INSPECTION_INTERVAL_DAYS)
+                      : rawDate(v.next_inspection_due) || "";
           const daysLeft = daysUntil(dueDateRaw);
           const serviceStatus = statusFromDays(daysLeft);
           const kmRemaining = type === "Full Service" && latest?.nextDueMileageKm && currentKm
@@ -1203,7 +1205,9 @@ exports.getMaintenancePortal = async (_req, res) => {
       items: trailerProfileItemTypes.map((type) => {
         const latest = latestServiceByVehicleAndType.get(`trailer:${t.id}:${type}`);
         const dueDateRaw = type === "MOT" ? rawDate(t.mot_expiry)
-          : rawDate(t.next_inspection_due);
+          : latest?.serviceDateRaw
+            ? calculateNextDueDate(type, latest.serviceDateRaw, 12, TRAILER_INSPECTION_INTERVAL_DAYS)
+            : rawDate(t.next_inspection_due);
         const daysLeft = daysUntil(dueDateRaw);
         const serviceStatus = statusFromDays(daysLeft);
         return {
@@ -1257,8 +1261,15 @@ exports.getMaintenancePortal = async (_req, res) => {
     const yearPlanRows = rows.map((v) => {
       const profile = vehicleProfiles.find((item) => Number(item.vehicleId) === Number(v.id));
       const events = [];
+      const latestSafetyInspection = latestServiceByVehicleAndType.get(`${v.id}:Safety inspection`);
       const seeds = [
-        { type: "Safety inspection", dueDateRaw: rawDate(v.next_inspection_due), roadTaxIntervalMonths: 12 },
+        {
+          type: "Safety inspection",
+          dueDateRaw: latestSafetyInspection?.serviceDateRaw
+            ? calculateNextDueDate("Safety inspection", latestSafetyInspection.serviceDateRaw, 12, INSPECTION_INTERVAL_DAYS)
+            : rawDate(v.next_inspection_due),
+          roadTaxIntervalMonths: 12
+        },
         { type: "MOT", dueDateRaw: rawDate(v.mot_expiry), roadTaxIntervalMonths: 12 },
         { type: "Road Tax", dueDateRaw: rawDate(v.road_tax_expiry), roadTaxIntervalMonths: latestServiceByVehicleAndType.get(`${v.id}:Road Tax`)?.roadTaxIntervalMonths || 12 },
         { type: "Insurance", dueDateRaw: rawDate(v.insurance_expiry), roadTaxIntervalMonths: 12 },
@@ -1375,8 +1386,15 @@ exports.getMaintenancePortal = async (_req, res) => {
 
     const trailerYearPlanRows = trailerRows.map((t) => {
       const events = [];
+      const latestSafetyInspection = latestServiceByVehicleAndType.get(`trailer:${t.id}:Safety inspection`);
       const seeds = [
-        { type: "Safety inspection", dueDateRaw: rawDate(t.next_inspection_due), roadTaxIntervalMonths: 12 },
+        {
+          type: "Safety inspection",
+          dueDateRaw: latestSafetyInspection?.serviceDateRaw
+            ? calculateNextDueDate("Safety inspection", latestSafetyInspection.serviceDateRaw, 12, TRAILER_INSPECTION_INTERVAL_DAYS)
+            : rawDate(t.next_inspection_due),
+          roadTaxIntervalMonths: 12
+        },
         { type: "MOT", dueDateRaw: rawDate(t.mot_expiry), roadTaxIntervalMonths: 12 }
       ];
       for (const seed of seeds) {
