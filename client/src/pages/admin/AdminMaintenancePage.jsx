@@ -533,11 +533,11 @@ function VehicleDetailModal({ target, profiles, onClose, onSaved }) {
       bill_amount_gbp: isCompletedSelection ? (selectedItem?.billAmountGbp || "") : "",
       bill_notes: isCompletedSelection ? (selectedItem?.billNotes || "") : "",
       bill_attachment_data: isCompletedSelection ? (selectedItem?.attachmentData || "") : "",
-      road_tax_interval_months: "12"
+      road_tax_interval_months: String(selectedItem?.roadTaxIntervalMonths || 12)
     });
     setError("");
     setSuccessMessage("");
-  }, [profile, target?.vehicleId, target?.assetType, target?.preselectType, target?.scheduledDueDate]);
+  }, [profile, target?.vehicleId, target?.assetType, target?.preselectType, target?.scheduledDueDate, target?.selectionKind]);
 
   function set(name, value) {
     setForm((c) => ({ ...c, [name]: value }));
@@ -557,7 +557,8 @@ function VehicleDetailModal({ target, profiles, onClose, onSaved }) {
       bill_number: isSelectedCompletedEvent ? (item?.billNumber || "") : "",
       bill_amount_gbp: isSelectedCompletedEvent ? (item?.billAmountGbp || "") : "",
       bill_notes: isSelectedCompletedEvent ? (item?.billNotes || "") : "",
-      bill_attachment_data: isSelectedCompletedEvent ? (item?.attachmentData || "") : ""
+      bill_attachment_data: isSelectedCompletedEvent ? (item?.attachmentData || "") : "",
+      road_tax_interval_months: String(item?.roadTaxIntervalMonths || 12)
     }));
   }
 
@@ -565,6 +566,7 @@ function VehicleDetailModal({ target, profiles, onClose, onSaved }) {
     if (!activeType || !form.service_date) return "";
     return nextDueForItem(activeType, form.service_date, form.road_tax_interval_months, target?.assetType) || "";
   }, [activeType, form.service_date, form.road_tax_interval_months, target?.assetType]);
+  const isEditingCompleted = target?.selectionKind === "completed";
 
   async function submit(e) {
     e.preventDefault();
@@ -585,10 +587,15 @@ function VehicleDetailModal({ target, profiles, onClose, onSaved }) {
         bill_notes: form.bill_notes,
         completion_notes: form.bill_notes,
         bill_attachment_data: form.bill_attachment_data,
-        road_tax_interval_months: form.road_tax_interval_months
+        road_tax_interval_months: form.road_tax_interval_months,
+        completed_job_id: isEditingCompleted
+          ? (target?.completedJobId || profile.items.find((item) => item.type === activeType)?.latestJobId || null)
+          : null
       });
       await onSaved();
-      setSuccessMessage(`${activeType} marked done${form.bill_attachment_data ? " and document attached." : "."}`);
+      setSuccessMessage(isEditingCompleted
+        ? `${activeType} completion updated.`
+        : `${activeType} marked done${form.bill_attachment_data ? " and document attached." : "."}`);
       setActiveType(null);
     } catch (err) {
       const detail = err.response?.data?.error;
@@ -681,7 +688,7 @@ function VehicleDetailModal({ target, profiles, onClose, onSaved }) {
           <form className="vehicle-detail-done-form" onSubmit={submit}>
             <div className="section-head">
               <div>
-                <h3>Mark {activeType} As Done</h3>
+                <h3>{isEditingCompleted ? "Update" : "Mark"} {activeType} {isEditingCompleted ? "Completion" : "As Done"}</h3>
                 <p className="finance-empty">Keep the actual test date here. You can attach the certificate later without changing when the work was done.</p>
               </div>
               <button className="header-action-button" type="button" onClick={() => setActiveType(null)}>Cancel</button>
@@ -746,7 +753,7 @@ function VehicleDetailModal({ target, profiles, onClose, onSaved }) {
             <div className="finance-command-bar">
               <button className="header-action-button" type="button" onClick={() => setActiveType(null)}>Cancel</button>
               <button className="af-submit-btn" disabled={saving} type="submit">
-                {saving ? "Saving..." : `Mark ${activeType} Done`}
+                {saving ? "Saving..." : isEditingCompleted ? `Update ${activeType}` : `Mark ${activeType} Done`}
               </button>
             </div>
           </form>
@@ -1522,7 +1529,7 @@ function ExcelScheduleView({ data, onOpenVehicle }) {
                 onClick={() => onOpenVehicle({
                   vehicleId: item.vehicleId,
                   assetType: item.rowAssetType === "Trailer" ? "trailer" : "vehicle"
-                }, item.rowAssetType === "Trailer" ? "trailer" : "vehicle", item.type, item.dueDateRaw, item.kind)}
+                }, item.rowAssetType === "Trailer" ? "trailer" : "vehicle", item.type, item.dueDateRaw, item.kind, item.jobId)}
               >
                 <span className="schedule-week-summary-code">{item.code}</span>
                 <strong>{item.rowFleetCode || item.rowVehicle}</strong>
@@ -1652,7 +1659,7 @@ function ExcelScheduleView({ data, onOpenVehicle }) {
                                 }}
                                 onClick={(e) => {
                                   e.stopPropagation();
-                                  onOpenVehicle(row, assetType, ev.items[0].type, ev.dueDateRaw, "completed");
+                                  onOpenVehicle(row, assetType, ev.items[0].type, ev.dueDateRaw, "completed", ev.items[0].jobId);
                                 }}
                               >
                                 {label}
@@ -1704,7 +1711,7 @@ function ExcelScheduleView({ data, onOpenVehicle }) {
                               } : undefined}
                               onClick={(e) => {
                                 e.stopPropagation();
-                                onOpenVehicle(row, assetType, ev.type, ev.dueDateRaw, ev.kind || "upcoming");
+                                onOpenVehicle(row, assetType, ev.type, ev.dueDateRaw, ev.kind || "upcoming", ev.jobId);
                               }}
                             >
                               {isCompleted ? `✓ ${ev.code} ${day}/${mon}` : `${ev.code} ${day}/${mon}`}
@@ -1851,8 +1858,8 @@ export function AdminMaintenancePage() {
     load();
   }, []);
 
-  function openVehicleDetail(row, assetType = "vehicle", preselectType = null, scheduledDueDate = "", selectionKind = "") {
-    setVehicleDetailTarget({ vehicleId: row.vehicleId, assetType, preselectType, scheduledDueDate, selectionKind });
+  function openVehicleDetail(row, assetType = "vehicle", preselectType = null, scheduledDueDate = "", selectionKind = "", completedJobId = null) {
+    setVehicleDetailTarget({ vehicleId: row.vehicleId, assetType, preselectType, scheduledDueDate, selectionKind, completedJobId });
   }
 
   function openEditJob(job) {

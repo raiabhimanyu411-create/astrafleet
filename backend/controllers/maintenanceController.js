@@ -1070,6 +1070,7 @@ exports.getMaintenancePortal = async (_req, res) => {
 
     const latestServiceByVehicleAndType = new Map();
     for (const job of jobs) {
+      if (job.status !== "completed") continue;
       const prefix = job.assetType === "trailer" ? `trailer:${job.trailerId}` : `${job.vehicleId}`;
       const key = `${prefix}:${job.serviceType}`;
       const current = latestServiceByVehicleAndType.get(key);
@@ -1158,6 +1159,7 @@ exports.getMaintenancePortal = async (_req, res) => {
             : null;
           return {
             type,
+            latestJobId: latest?.id || null,
             lastDone: latest?.serviceDateRaw ? latest.serviceDate : "-",
             lastDoneRaw: latest?.serviceDateRaw || "",
             lastDoneKm: latest?.completedMileageKm || null,
@@ -1172,6 +1174,7 @@ exports.getMaintenancePortal = async (_req, res) => {
                 ? "warning"
                 : serviceStatus.tone,
             nextDueMileageKm: latest?.nextDueMileageKm || "",
+            roadTaxIntervalMonths: latest?.roadTaxIntervalMonths || 12,
             kmRemaining,
             kmRemainingLabel: kmRemaining === null ? "-" : `${Number(kmRemaining).toLocaleString("en-GB")} km`,
             hasAttachment: Boolean(latest?.billAttachmentData),
@@ -1205,6 +1208,7 @@ exports.getMaintenancePortal = async (_req, res) => {
         const serviceStatus = statusFromDays(daysLeft);
         return {
           type,
+          latestJobId: latest?.id || null,
           lastDone: latest?.serviceDateRaw ? latest.serviceDate : "-",
           lastDoneRaw: latest?.serviceDateRaw || "",
           lastDoneKm: null,
@@ -1215,6 +1219,7 @@ exports.getMaintenancePortal = async (_req, res) => {
           status: serviceStatus.label,
           tone: serviceStatus.tone,
           nextDueMileageKm: "",
+          roadTaxIntervalMonths: latest?.roadTaxIntervalMonths || 12,
           kmRemaining: null,
           kmRemainingLabel: "-",
           hasAttachment: Boolean(latest?.billAttachmentData),
@@ -1329,6 +1334,7 @@ exports.getMaintenancePortal = async (_req, res) => {
         if (!code) continue;
         events.push({
           id: `done-${job.id}`,
+          jobId: job.id,
           vehicleId: v.id,
           vehicle: v.registration_number,
           fleetCode: v.fleet_code,
@@ -1448,6 +1454,7 @@ exports.getMaintenancePortal = async (_req, res) => {
         if (!code) continue;
         events.push({
           id: `done-trailer-${job.id}`,
+          jobId: job.id,
           vehicleId: t.id,
           assetType: "trailer",
           vehicle: t.registration_number,
@@ -2473,12 +2480,16 @@ exports.completeEventFromSchedule = async (req, res) => {
     const scheduledDueDate = req.body.due_date || req.body.dueDate || serviceDate;
     const garageName = String(req.body.garage_name || req.body.garageName || "").trim() || null;
     const finalCostGbp = Number(req.body.final_cost_gbp || req.body.finalCostGbp || 0);
+    const correctionFinalCost = req.body.final_cost_gbp === "" || req.body.final_cost_gbp == null
+      ? null
+      : Number(req.body.final_cost_gbp);
     const billAttachmentData = req.body.bill_attachment_data || req.body.billAttachmentData || null;
     const billNotes = String(req.body.bill_notes || req.body.billNotes || "").trim() || null;
     const completionNotes = String(req.body.completion_notes || req.body.completionNotes || req.body.notes || "").trim() || billNotes;
     const billNumber = String(req.body.bill_number || req.body.billNumber || "").trim() || null;
     const billAmountGbp = req.body.bill_amount_gbp || req.body.billAmountGbp || null;
     const roadTaxIntervalMonths = req.body.road_tax_interval_months || 12;
+    const completedJobId = Number(req.body.completed_job_id || req.body.completedJobId || 0);
 
     if (!assetNumericId || !serviceType) {
       return res.status(400).json({ message: "Asset and service type are required." });
@@ -2494,6 +2505,70 @@ exports.completeEventFromSchedule = async (req, res) => {
       assetType === "trailer" && serviceType === "Safety inspection" ? TRAILER_INSPECTION_INTERVAL_DAYS : INSPECTION_INTERVAL_DAYS
     );
     const idField = assetType === "trailer" ? "trailer_id" : "vehicle_id";
+
+    // Correct an existing completed event in place. This preserves its document
+    // and history identity instead of creating a second completion on a new date.
+    if (completedJobId) {
+      const [[completedJob]] = await db.query(
+        `SELECT * FROM maintenance_jobs
+         WHERE id=? AND ${idField}=? AND service_type=? AND status='completed'
+         LIMIT 1`,
+        [completedJobId, assetNumericId, serviceType]
+      );
+      if (!completedJob) {
+        return res.status(404).json({ message: "Completed maintenance record was not found." });
+      }
+
+      const previousServiceDate = rawDate(completedJob.service_date);
+      await db.query(
+        `UPDATE maintenance_jobs
+         SET service_date=?, due_date=?, garage_name=COALESCE(?,garage_name), final_cost_gbp=COALESCE(?,final_cost_gbp),
+             bill_attachment_data=COALESCE(?,bill_attachment_data), bill_notes=COALESCE(?,bill_notes),
+             completion_notes=COALESCE(?,completion_notes), bill_number=COALESCE(?,bill_number),
+             bill_amount_gbp=COALESCE(?,bill_amount_gbp), completed_mileage_km=COALESCE(?,completed_mileage_km)
+         WHERE id=?`,
+        [serviceDate, serviceDate, garageName, correctionFinalCost, billAttachmentData, billNotes,
+          completionNotes, billNumber, billAmountGbp,
+          req.body.completed_mileage_km || req.body.completedMileageKm || null, completedJobId]
+      );
+
+      const historyTable = assetType === "trailer" ? "trailer_maintenance_records" : "maintenance_records";
+      const historyIdField = assetType === "trailer" ? "trailer_id" : "vehicle_id";
+      await db.query(
+        `UPDATE ${historyTable}
+         SET service_date=?, next_due_date=?, description=COALESCE(?,description),
+             cost_gbp=COALESCE(?,cost_gbp), garage_name=COALESCE(?,garage_name)
+         WHERE ${historyIdField}=? AND service_type=? AND service_date=?
+         ORDER BY id DESC LIMIT 1`,
+        [serviceDate, nextDueDate || null, completionNotes, correctionFinalCost, garageName,
+          assetNumericId, serviceType, previousServiceDate]
+      );
+
+      const assetTable = assetType === "trailer" ? "trailers" : "vehicles";
+      const dueColumn = serviceType === "MOT" ? "mot_expiry"
+        : serviceType === "Road Tax" && assetType === "vehicle" ? "road_tax_expiry"
+          : serviceType === "Insurance" ? "insurance_expiry"
+            : serviceType === "Tacho Calibration" && assetType === "vehicle" ? "tacho_calibration_expiry"
+              : serviceType === "Full Service" ? "next_service_due"
+                : ["Safety inspection", "Roller brake test"].includes(serviceType) ? "next_inspection_due"
+                  : null;
+      if (dueColumn && nextDueDate) {
+        await db.query(`UPDATE ${assetTable} SET ${dueColumn}=? WHERE id=?`, [nextDueDate, assetNumericId]);
+      }
+
+      if (assetType === "vehicle" && ["Safety inspection", "Roller brake test"].includes(serviceType)) {
+        await db.query(
+          `UPDATE vehicle_inspections
+           SET inspection_date=?, next_due=?, inspector_name=COALESCE(?,inspector_name), notes=COALESCE(?,notes)
+           WHERE vehicle_id=? AND inspection_type=? AND inspection_date=?
+           ORDER BY id DESC LIMIT 1`,
+          [serviceDate, nextDueDate || null, garageName, completionNotes,
+            assetNumericId, serviceType, previousServiceDate]
+        );
+      }
+
+      return res.json({ message: "Completed event updated.", jobId: completedJobId, nextDueDate });
+    }
 
     const [[completedSameDay]] = await db.query(
       `SELECT id FROM maintenance_jobs
