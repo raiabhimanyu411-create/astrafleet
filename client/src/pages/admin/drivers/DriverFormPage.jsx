@@ -74,7 +74,7 @@ export function DriverFormPage() {
         navigate(`/admin/drivers/${res.data.id}`);
       }
     } catch (err) {
-      setSubmitErr(err?.response?.data?.message || "Could not save. Please try again.");
+      setSubmitErr(err?.response?.data?.error || err?.response?.data?.message || "Could not save. Please try again.");
     } finally {
       setSubmitting(false);
     }

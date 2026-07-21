@@ -1926,6 +1926,7 @@ exports.createDriver = async (req, res) => {
     if (err.code === "ER_DUP_ENTRY") {
       return res.status(409).json({ message: "Employee code or email already exists." });
     }
+    console.error("Driver create error:", err);
     res.status(500).json({ message: "Driver create error", error: err.message });
   } finally {
     conn.release();
@@ -2008,6 +2009,7 @@ exports.updateDriver = async (req, res) => {
     });
     res.json({ message: "Driver updated." });
   } catch (err) {
+    console.error("Driver update error:", err);
     res.status(500).json({ message: "Driver update error", error: err.message });
   }
 };

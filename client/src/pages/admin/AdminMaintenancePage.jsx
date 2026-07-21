@@ -99,12 +99,14 @@ function daysFromToday(value) {
   return Math.round((date - today) / (1000 * 60 * 60 * 24));
 }
 
+// Kept in sync with backend calculateNextDueDate: inspection cadence counts the
+// completion week as week 1, so an "N week" interval is N-1 calendar weeks later.
 function nextDueForItem(serviceType, serviceDate, roadTaxIntervalMonths, assetType = "vehicle") {
   const item = maintenanceItems.find((option) => option.value === serviceType);
   if (!item || !serviceDate) return "";
   if (item.roadTax) return addMonthsToKey(serviceDate, Number(roadTaxIntervalMonths || 12));
-  if (assetType === "trailer" && serviceType === "Safety inspection") return addDaysToKey(serviceDate, 70);
-  if (item.days) return addDaysToKey(serviceDate, item.days);
+  if (assetType === "trailer" && serviceType === "Safety inspection") return addDaysToKey(serviceDate, 70 - 7);
+  if (item.days) return addDaysToKey(serviceDate, item.days - 7);
   if (item.months) return addMonthsToKey(serviceDate, item.months);
   return "";
 }
@@ -1247,6 +1249,33 @@ const EVENT_COLORS = {
   SRV: { bg: "#64748b", text: "#fff", label: "Full Service" }
 };
 
+const URGENT_RED = "#dc2626";
+const URGENCY_WINDOW_DAYS = 30;
+
+function hexToRgb(hex) {
+  const value = parseInt(hex.replace("#", ""), 16);
+  return { r: (value >> 16) & 255, g: (value >> 8) & 255, b: value & 255 };
+}
+
+function blendColors(fromHex, toHex, t) {
+  const from = hexToRgb(fromHex);
+  const to = hexToRgb(toHex);
+  const r = Math.round(from.r + (to.r - from.r) * t);
+  const g = Math.round(from.g + (to.g - from.g) * t);
+  const b = Math.round(from.b + (to.b - from.b) * t);
+  return `rgb(${r}, ${g}, ${b})`;
+}
+
+// Upcoming (not-yet-done) chips start in their type color and drift toward red
+// as the due date approaches, so urgency is visible at a glance in the grid.
+function urgencyColor(base, daysUntilDue) {
+  if (daysUntilDue === null || daysUntilDue === undefined || daysUntilDue >= URGENCY_WINDOW_DAYS) {
+    return base;
+  }
+  const t = 1 - Math.max(daysUntilDue, 0) / URGENCY_WINDOW_DAYS;
+  return { bg: blendColors(base.bg, URGENT_RED, t), text: t > 0.35 ? "#fff" : base.text };
+}
+
 const COMPANY_COLORS = [
   "#c0392b", "#1a5276", "#117a65", "#6c3483", "#784212", "#0e6655", "#1f3a5f"
 ];
@@ -1705,7 +1734,7 @@ function ExcelScheduleView({ data, onOpenVehicle }) {
                           const isCompleted = ev.kind === "completed";
                           const color = isCompleted
                             ? { bg: "#16a34a", text: "#fff" }
-                            : { bg: "#dc2626", text: "#fff" };
+                            : urgencyColor(EVENT_COLORS[ev.code] || { bg: "#dc2626", text: "#fff" }, daysFromToday(ev.dueDateRaw));
                           const chipDateRaw = isCompleted ? (ev.completedDateRaw || ev.dueDateRaw) : ev.dueDateRaw;
                           const day = chipDateRaw?.slice(8, 10);
                           const mon = chipDateRaw?.slice(5, 7);
