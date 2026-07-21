@@ -9,7 +9,7 @@ function severityTone(s) {
 
 function fmtDate(d) {
   if (!d) return "—";
-  return new Date(d).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" });
+  return new Date(d).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" });
 }
 
 function fmtDateTime(d) {
@@ -91,6 +91,8 @@ let trailerSchemaReady = false;
 let driverChatSchemaReady = false;
 let softDeleteSchemaReady = false;
 let notificationAckSchemaReady = false;
+let invoiceComplianceSchemaReady = false;
+let alertWorkflowSchemaReady = false;
 
 async function addColumnIfMissing(table, column, definition) {
   const [rows] = await db.query(`SHOW COLUMNS FROM ${table} LIKE ?`, [column]);
@@ -210,6 +212,50 @@ async function ensureSoftDeleteSchema() {
     await addColumnIfMissing(table, "delete_reason", "TEXT DEFAULT NULL");
   }
   softDeleteSchemaReady = true;
+}
+
+async function ensureInvoiceComplianceSchema() {
+  if (invoiceComplianceSchemaReady) return;
+  await ensureSoftDeleteSchema();
+  await addColumnIfMissing("invoices", "customer_address", "TEXT DEFAULT NULL");
+  await addColumnIfMissing("invoices", "customer_vat_number", "VARCHAR(60) DEFAULT NULL");
+  await addColumnIfMissing("invoices", "supplier_name", "VARCHAR(160) DEFAULT 'AstraFleet'");
+  await addColumnIfMissing("invoices", "supplier_address", "TEXT DEFAULT NULL");
+  await addColumnIfMissing("invoices", "supplier_vat_number", "VARCHAR(60) DEFAULT NULL");
+  await addColumnIfMissing("invoices", "service_description", "TEXT DEFAULT NULL");
+  await addColumnIfMissing("invoices", "supply_date", "DATE DEFAULT NULL");
+  await addColumnIfMissing("invoices", "net_amount_gbp", "DECIMAL(12,2) DEFAULT NULL");
+  await addColumnIfMissing("invoices", "vat_rate", "DECIMAL(5,2) NOT NULL DEFAULT 20.00");
+  await addColumnIfMissing("invoices", "vat_amount_gbp", "DECIMAL(12,2) DEFAULT NULL");
+  await addColumnIfMissing("invoices", "purchase_order_ref", "VARCHAR(80) DEFAULT NULL");
+  await addColumnIfMissing("invoices", "payment_terms", "VARCHAR(160) DEFAULT NULL");
+  await addColumnIfMissing("invoices", "bank_details", "TEXT DEFAULT NULL");
+  await addColumnIfMissing("invoices", "sent_at", "DATETIME DEFAULT NULL");
+  await addColumnIfMissing("invoices", "paid_at", "DATETIME DEFAULT NULL");
+  await db.query(
+    `CREATE TABLE IF NOT EXISTS invoice_payments (
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      invoice_id INT NOT NULL,
+      payment_date DATE NOT NULL,
+      amount_gbp DECIMAL(12,2) NOT NULL,
+      payment_method ENUM('bank_transfer','card','cash','cheque','direct_debit','other') NOT NULL DEFAULT 'bank_transfer',
+      payment_reference VARCHAR(120) NOT NULL,
+      notes TEXT DEFAULT NULL,
+      created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      CONSTRAINT fk_invoice_payments_invoice FOREIGN KEY (invoice_id) REFERENCES invoices (id) ON DELETE CASCADE,
+      UNIQUE KEY uniq_invoice_payment_reference (invoice_id, payment_reference)
+    ) ENGINE=InnoDB`
+  );
+  invoiceComplianceSchemaReady = true;
+}
+
+async function ensureAlertWorkflowSchema() {
+  if (alertWorkflowSchemaReady) return;
+  await addColumnIfMissing("control_room_alerts", "resolution_note", "TEXT DEFAULT NULL");
+  await addColumnIfMissing("control_room_alerts", "acknowledged_at", "DATETIME DEFAULT NULL");
+  await addColumnIfMissing("control_room_alerts", "resolved_at", "DATETIME DEFAULT NULL");
+  await addColumnIfMissing("control_room_alerts", "updated_at", "DATETIME DEFAULT NULL");
+  alertWorkflowSchemaReady = true;
 }
 
 async function ensureNotificationAckSchema() {
@@ -687,7 +733,13 @@ exports.deletePayout = async (req, res) => {
 
 exports.getBilling = async (req, res) => {
   try {
-    await ensureSoftDeleteSchema();
+    await ensureInvoiceComplianceSchema();
+    await db.query(
+      `UPDATE invoices
+       SET payment_status='overdue'
+       WHERE deleted_at IS NULL AND due_date < CURDATE()
+         AND payment_status IN ('sent','pending')`
+    );
     const [[counts]] = await db.query(
       `SELECT COUNT(*) as total,
         COALESCE(SUM(pod_verified=1), 0) as pod_ok,
@@ -698,23 +750,34 @@ exports.getBilling = async (req, res) => {
     );
     const [[totals]] = await db.query(
       `SELECT
-        COALESCE(SUM(amount_gbp), 0) as billed,
-        COALESCE(SUM(CASE WHEN payment_status='paid' THEN amount_gbp ELSE 0 END), 0) as collected,
-        COALESCE(SUM(CASE WHEN payment_status!='paid' THEN amount_gbp ELSE 0 END), 0) as outstanding,
-        COALESCE(SUM(CASE WHEN pod_verified=0 THEN amount_gbp ELSE 0 END), 0) as pod_risk
-       FROM invoices
-       WHERE deleted_at IS NULL`
+        COALESCE(SUM(i.amount_gbp), 0) AS billed,
+        COALESCE(SUM(COALESCE(p.paid_amount_gbp, 0)), 0) AS collected,
+        COALESCE(SUM(GREATEST(i.amount_gbp - COALESCE(p.paid_amount_gbp, 0), 0)), 0) AS outstanding,
+        COALESCE(SUM(CASE WHEN i.pod_verified=0 THEN GREATEST(i.amount_gbp - COALESCE(p.paid_amount_gbp, 0), 0) ELSE 0 END), 0) AS pod_risk
+       FROM invoices i
+       LEFT JOIN (
+         SELECT invoice_id, SUM(amount_gbp) AS paid_amount_gbp
+         FROM invoice_payments GROUP BY invoice_id
+       ) p ON p.invoice_id=i.id
+       WHERE i.deleted_at IS NULL`
     );
     const [invoiceRows] = await db.query(
       `SELECT i.id, i.invoice_no, i.client_name, i.amount_gbp, i.issued_at, i.due_date,
               i.payment_status, i.pod_verified, i.notes, i.currency,
+              i.net_amount_gbp, i.vat_amount_gbp, i.vat_rate,
+              COALESCE(p.paid_amount_gbp, 0) AS paid_amount_gbp,
               t.trip_code, t.pod_status,
               r.origin_hub, r.destination_hub
        FROM invoices i
+       LEFT JOIN (
+         SELECT invoice_id, SUM(amount_gbp) AS paid_amount_gbp
+         FROM invoice_payments GROUP BY invoice_id
+       ) p ON p.invoice_id=i.id
        LEFT JOIN trips t ON t.id = i.trip_id
        LEFT JOIN routes r ON r.id = t.route_id
        WHERE i.deleted_at IS NULL
-       ORDER BY i.created_at DESC LIMIT 25`
+       ORDER BY FIELD(i.payment_status,'overdue','hold','pending','sent','draft','paid'),
+                i.due_date ASC, i.created_at DESC`
     );
     const [blockerRows] = await db.query(
       `SELECT title, description, severity FROM control_room_alerts
@@ -752,6 +815,15 @@ exports.getBilling = async (req, res) => {
         client: r.client_name,
         amountValue: Number(r.amount_gbp || 0),
         amount: fmtAmount(r.amount_gbp),
+        netAmountValue: Number(r.net_amount_gbp == null ? r.amount_gbp : r.net_amount_gbp),
+        netAmount: fmtAmount(r.net_amount_gbp == null ? r.amount_gbp : r.net_amount_gbp),
+        vatAmountValue: Number(r.vat_amount_gbp || 0),
+        vatAmount: fmtAmount(r.vat_amount_gbp || 0),
+        vatRate: Number(r.vat_rate || 0),
+        paidAmountValue: Number(r.paid_amount_gbp || 0),
+        paidAmount: fmtAmount(r.paid_amount_gbp),
+        balanceAmountValue: Math.max(Number(r.amount_gbp || 0) - Number(r.paid_amount_gbp || 0), 0),
+        balanceAmount: fmtAmount(Math.max(Number(r.amount_gbp || 0) - Number(r.paid_amount_gbp || 0), 0)),
         issuedAt: rawDate(r.issued_at),
         issued: fmtDate(r.issued_at),
         dueDate: rawDate(r.due_date),
@@ -779,12 +851,14 @@ exports.getBilling = async (req, res) => {
 
 exports.getBillingFormData = async (_req, res) => {
   try {
-    await ensureSoftDeleteSchema();
+    await ensureInvoiceComplianceSchema();
     const [trips] = await db.query(
       `SELECT t.id, t.trip_code, t.client_name, t.freight_amount_gbp, t.pod_status,
-              r.origin_hub, r.destination_hub
+              r.origin_hub, r.destination_hub, c.billing_address, c.address,
+              c.vat_number, c.payment_terms_days
        FROM trips t
        LEFT JOIN routes r ON r.id = t.route_id
+       LEFT JOIN customers c ON c.id = t.customer_id
        WHERE t.deleted_at IS NULL
        ORDER BY t.created_at DESC`
     );
@@ -796,6 +870,9 @@ exports.getBillingFormData = async (_req, res) => {
         clientName: t.client_name,
         freightAmountGbp: t.freight_amount_gbp,
         podStatus: t.pod_status,
+        billingAddress: t.billing_address || t.address || "",
+        vatNumber: t.vat_number || "",
+        paymentTermsDays: Number(t.payment_terms_days || 30),
         lane: t.origin_hub && t.destination_hub ? `${t.origin_hub} → ${t.destination_hub}` : "Custom route"
       }))
     });
@@ -806,7 +883,7 @@ exports.getBillingFormData = async (_req, res) => {
 
 exports.getInvoiceById = async (req, res) => {
   try {
-    await ensureSoftDeleteSchema();
+    await ensureInvoiceComplianceSchema();
     const { id } = req.params;
     const [[invoice]] = await db.query(
       `SELECT i.*, t.trip_code, t.dispatch_status, t.pod_status,
@@ -820,6 +897,13 @@ exports.getInvoiceById = async (req, res) => {
 
     if (!invoice) return res.status(404).json({ message: "Invoice not found." });
 
+    const [payments] = await db.query(
+      `SELECT id, payment_date, amount_gbp, payment_method, payment_reference, notes, created_at
+       FROM invoice_payments WHERE invoice_id=? ORDER BY payment_date DESC, id DESC`,
+      [id]
+    );
+    const paidAmount = payments.reduce((sum, payment) => sum + Number(payment.amount_gbp || 0), 0);
+
     const payTone = { overdue: "danger", pending: "warning", sent: "warning", hold: "danger", draft: "neutral", paid: "success" };
 
     res.json({
@@ -831,6 +915,11 @@ exports.getInvoiceById = async (req, res) => {
       clientName: invoice.client_name,
       amountGbp: invoice.amount_gbp,
       amountFormatted: fmtAmount(invoice.amount_gbp),
+      netAmountFormatted: fmtAmount(invoice.net_amount_gbp == null ? invoice.amount_gbp : invoice.net_amount_gbp),
+      vatAmountFormatted: fmtAmount(invoice.vat_amount_gbp || 0),
+      vatRate: Number(invoice.vat_rate || 0),
+      paidAmountFormatted: fmtAmount(paidAmount),
+      balanceFormatted: fmtAmount(Math.max(Number(invoice.amount_gbp || 0) - paidAmount, 0)),
       issuedAt: fmtDate(invoice.issued_at),
       issuedAtRaw: rawDate(invoice.issued_at),
       dueDate: fmtDate(invoice.due_date),
@@ -841,11 +930,46 @@ exports.getInvoiceById = async (req, res) => {
       tripPodStatus: invoice.pod_status,
       notes: invoice.notes || "",
       currency: invoice.currency || "GBP",
+      customerAddress: invoice.customer_address || "",
+      customerVatNumber: invoice.customer_vat_number || "",
+      supplierName: invoice.supplier_name || "AstraFleet",
+      supplierAddress: invoice.supplier_address || "",
+      supplierVatNumber: invoice.supplier_vat_number || "",
+      serviceDescription: invoice.service_description || "",
+      supplyDate: fmtDate(invoice.supply_date),
+      purchaseOrderRef: invoice.purchase_order_ref || "",
+      paymentTerms: invoice.payment_terms || "",
+      bankDetails: invoice.bank_details || "",
+      sentAt: fmtDateTime(invoice.sent_at),
+      paidAt: fmtDateTime(invoice.paid_at),
+      payments: payments.map(payment => ({
+        id: payment.id,
+        date: fmtDate(payment.payment_date),
+        dateRaw: rawDate(payment.payment_date),
+        amount: fmtAmount(payment.amount_gbp),
+        amountValue: Number(payment.amount_gbp),
+        method: payment.payment_method,
+        reference: payment.payment_reference,
+        notes: payment.notes || ""
+      })),
       form: {
         invoice_no: invoice.invoice_no,
         trip_id: invoice.trip_id || "",
         client_name: invoice.client_name || "",
         amount_gbp: invoice.amount_gbp || "",
+        net_amount_gbp: invoice.net_amount_gbp == null ? invoice.amount_gbp : invoice.net_amount_gbp,
+        vat_rate: invoice.vat_rate == null ? 20 : invoice.vat_rate,
+        vat_amount_gbp: invoice.vat_amount_gbp || 0,
+        customer_address: invoice.customer_address || "",
+        customer_vat_number: invoice.customer_vat_number || "",
+        supplier_name: invoice.supplier_name || "AstraFleet",
+        supplier_address: invoice.supplier_address || "",
+        supplier_vat_number: invoice.supplier_vat_number || "",
+        service_description: invoice.service_description || "",
+        supply_date: rawDate(invoice.supply_date),
+        purchase_order_ref: invoice.purchase_order_ref || "",
+        payment_terms: invoice.payment_terms || "",
+        bank_details: invoice.bank_details || "",
         issued_at: rawDate(invoice.issued_at),
         due_date: rawDate(invoice.due_date),
         payment_status: invoice.payment_status || "draft",
@@ -860,7 +984,7 @@ exports.getInvoiceById = async (req, res) => {
 
 exports.createInvoice = async (req, res) => {
   try {
-    await ensureSoftDeleteSchema();
+    await ensureInvoiceComplianceSchema();
     const {
       invoice_no,
       trip_id,
@@ -870,27 +994,57 @@ exports.createInvoice = async (req, res) => {
       due_date,
       payment_status,
       pod_verified,
-      notes
+      notes, customer_address, customer_vat_number, supplier_name, supplier_address,
+      supplier_vat_number, service_description, supply_date, net_amount_gbp,
+      vat_rate, purchase_order_ref, payment_terms, bank_details
     } = req.body;
 
-    if (!invoice_no || !client_name || !amount_gbp || !issued_at || !due_date) {
-      return res.status(400).json({ message: "invoice_no, client_name, amount_gbp, issued_at, and due_date are required." });
+    const validStatuses = ["draft", "sent", "pending", "overdue", "paid", "hold"];
+    const status = payment_status || "draft";
+    const netAmount = Number(net_amount_gbp ?? amount_gbp);
+    const vatRate = Number(vat_rate ?? 20);
+    const vatAmount = Number((netAmount * vatRate / 100).toFixed(2));
+    const grossAmount = Number((netAmount + vatAmount).toFixed(2));
+    if (!invoice_no?.trim() || !client_name?.trim() || !issued_at || !due_date || !Number.isFinite(netAmount) || netAmount <= 0) {
+      return res.status(400).json({ message: "Invoice number, customer, positive net amount, issue date, and due date are required." });
+    }
+    if (!validStatuses.includes(status) || !Number.isFinite(vatRate) || vatRate < 0 || vatRate > 100) {
+      return res.status(400).json({ message: "Invoice status or VAT rate is invalid." });
+    }
+    if (status === "paid") {
+      return res.status(400).json({ message: "Create the invoice first, then record its payment with a date and reference." });
+    }
+    if (due_date < issued_at || (supply_date && supply_date > issued_at)) {
+      return res.status(400).json({ message: "Due date cannot precede issue date, and supply date cannot be after issue date." });
+    }
+    if (status !== "draft" && (!customer_address?.trim() || !supplier_name?.trim() || !supplier_address?.trim() || !service_description?.trim() || !supply_date)) {
+      return res.status(400).json({ message: "Issued invoices require supplier/customer addresses, service description, and supply date." });
+    }
+    if (status !== "draft" && vatRate > 0 && !supplier_vat_number?.trim()) {
+      return res.status(400).json({ message: "A supplier VAT number is required when VAT is charged." });
     }
 
     const [result] = await db.query(
       `INSERT INTO invoices
-         (invoice_no, trip_id, client_name, amount_gbp, issued_at, due_date, payment_status, pod_verified, notes, currency)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'GBP')`,
+         (invoice_no, trip_id, client_name, amount_gbp, issued_at, due_date, payment_status, pod_verified, notes, currency,
+          customer_address, customer_vat_number, supplier_name, supplier_address, supplier_vat_number,
+          service_description, supply_date, net_amount_gbp, vat_rate, vat_amount_gbp,
+          purchase_order_ref, payment_terms, bank_details, sent_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'GBP', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
-        invoice_no,
+        invoice_no.trim().toUpperCase(),
         trip_id || null,
-        client_name,
-        amount_gbp,
+        client_name.trim(),
+        grossAmount,
         issued_at,
         due_date,
-        payment_status || "draft",
+        status,
         pod_verified ? 1 : 0,
-        notes || null
+        notes || null,
+        customer_address || null, customer_vat_number || null, supplier_name || "AstraFleet",
+        supplier_address || null, supplier_vat_number || null, service_description || null,
+        supply_date || issued_at, netAmount, vatRate, vatAmount, purchase_order_ref || null,
+        payment_terms || null, bank_details || null, status === "sent" ? new Date() : null
       ]
     );
 
@@ -904,7 +1058,7 @@ exports.createInvoice = async (req, res) => {
       entityType: "invoice",
       entityId: result.insertId,
       entityLabel: invoice_no,
-      details: { client_name, amount_gbp, due_date, payment_status: payment_status || "draft" }
+      details: { client_name, net_amount_gbp: netAmount, vat_amount_gbp: vatAmount, amount_gbp: grossAmount, due_date, payment_status: status }
     });
 
     res.status(201).json({ message: "Invoice created.", id: result.insertId });
@@ -918,7 +1072,7 @@ exports.createInvoice = async (req, res) => {
 
 exports.updateInvoice = async (req, res) => {
   try {
-    await ensureSoftDeleteSchema();
+    await ensureInvoiceComplianceSchema();
     const { id } = req.params;
     const {
       invoice_no,
@@ -929,31 +1083,64 @@ exports.updateInvoice = async (req, res) => {
       due_date,
       payment_status,
       pod_verified,
-      notes
+      notes, customer_address, customer_vat_number, supplier_name, supplier_address,
+      supplier_vat_number, service_description, supply_date, net_amount_gbp,
+      vat_rate, purchase_order_ref, payment_terms, bank_details
     } = req.body;
 
     const [[existing]] = await db.query("SELECT * FROM invoices WHERE id = ? AND deleted_at IS NULL", [id]);
     if (!existing) return res.status(404).json({ message: "Invoice not found." });
 
-    if (!invoice_no || !client_name || !amount_gbp || !issued_at || !due_date) {
-      return res.status(400).json({ message: "invoice_no, client_name, amount_gbp, issued_at, and due_date are required." });
+    const validStatuses = ["draft", "sent", "pending", "overdue", "paid", "hold"];
+    const status = payment_status || "draft";
+    const netAmount = Number(net_amount_gbp ?? amount_gbp);
+    const vatRate = Number(vat_rate ?? 20);
+    const vatAmount = Number((netAmount * vatRate / 100).toFixed(2));
+    const grossAmount = Number((netAmount + vatAmount).toFixed(2));
+    if (!invoice_no?.trim() || !client_name?.trim() || !issued_at || !due_date || !Number.isFinite(netAmount) || netAmount <= 0) {
+      return res.status(400).json({ message: "Invoice number, customer, positive net amount, issue date, and due date are required." });
+    }
+    if (!validStatuses.includes(status) || !Number.isFinite(vatRate) || vatRate < 0 || vatRate > 100) {
+      return res.status(400).json({ message: "Invoice status or VAT rate is invalid." });
+    }
+    if (due_date < issued_at || (supply_date && supply_date > issued_at)) {
+      return res.status(400).json({ message: "Due date cannot precede issue date, and supply date cannot be after issue date." });
+    }
+    if (status !== "draft" && (!customer_address?.trim() || !supplier_name?.trim() || !supplier_address?.trim() || !service_description?.trim() || !supply_date)) {
+      return res.status(400).json({ message: "Issued invoices require supplier/customer addresses, service description, and supply date." });
+    }
+    if (status !== "draft" && vatRate > 0 && !supplier_vat_number?.trim()) {
+      return res.status(400).json({ message: "A supplier VAT number is required when VAT is charged." });
+    }
+    if (status === "paid" && existing.payment_status !== "paid") {
+      const [[paymentTotal]] = await db.query("SELECT COALESCE(SUM(amount_gbp),0) AS paid FROM invoice_payments WHERE invoice_id=?", [id]);
+      if (Number(paymentTotal.paid || 0) + 0.009 < grossAmount) {
+        return res.status(400).json({ message: "Record the full payment with its date and reference before marking this invoice paid." });
+      }
     }
 
     await db.query(
       `UPDATE invoices SET
          invoice_no=?, trip_id=?, client_name=?, amount_gbp=?, issued_at=?, due_date=?,
-         payment_status=?, pod_verified=?, notes=?
+         payment_status=?, pod_verified=?, notes=?, customer_address=?, customer_vat_number=?,
+         supplier_name=?, supplier_address=?, supplier_vat_number=?, service_description=?, supply_date=?,
+         net_amount_gbp=?, vat_rate=?, vat_amount_gbp=?, purchase_order_ref=?, payment_terms=?, bank_details=?,
+         sent_at=CASE WHEN ?='sent' AND sent_at IS NULL THEN NOW() ELSE sent_at END
        WHERE id=? AND deleted_at IS NULL`,
       [
-        invoice_no,
+        invoice_no.trim().toUpperCase(),
         trip_id || null,
-        client_name,
-        amount_gbp,
+        client_name.trim(),
+        grossAmount,
         issued_at,
         due_date,
-        payment_status || "draft",
+        status,
         pod_verified ? 1 : 0,
         notes || null,
+        customer_address || null, customer_vat_number || null, supplier_name || "AstraFleet",
+        supplier_address || null, supplier_vat_number || null, service_description || null,
+        supply_date || issued_at, netAmount, vatRate, vatAmount, purchase_order_ref || null,
+        payment_terms || null, bank_details || null, status,
         id
       ]
     );
@@ -967,10 +1154,10 @@ exports.updateInvoice = async (req, res) => {
       invoice_no,
       trip_id: trip_id || null,
       client_name,
-      amount_gbp,
+      amount_gbp: grossAmount,
       issued_at,
       due_date,
-      payment_status: payment_status || "draft",
+      payment_status: status,
       pod_verified: pod_verified ? 1 : 0,
       notes: notes || null
     };
@@ -982,9 +1169,9 @@ exports.updateInvoice = async (req, res) => {
       entityLabel: invoice_no,
       details: {
         client_name,
-        amount_gbp,
+        amount_gbp: grossAmount,
         due_date,
-        payment_status: payment_status || "draft",
+        payment_status: status,
         changes: buildChangeSet(existing, after, ["invoice_no", "trip_id", "client_name", "amount_gbp", "issued_at", "due_date", "payment_status", "pod_verified", "notes"])
       }
     });
@@ -1000,7 +1187,7 @@ exports.updateInvoice = async (req, res) => {
 
 exports.updateInvoiceStatus = async (req, res) => {
   try {
-    await ensureSoftDeleteSchema();
+    await ensureInvoiceComplianceSchema();
     const { id } = req.params;
     const { payment_status, pod_verified } = req.body;
     const valid = ["draft", "sent", "pending", "overdue", "paid", "hold"];
@@ -1008,15 +1195,40 @@ exports.updateInvoiceStatus = async (req, res) => {
       return res.status(400).json({ message: "Invalid payment status." });
     }
 
-    const [[invoice]] = await db.query("SELECT id, trip_id, payment_status, pod_verified FROM invoices WHERE id = ? AND deleted_at IS NULL", [id]);
+    const [[invoice]] = await db.query(
+      `SELECT id, trip_id, payment_status, pod_verified, customer_address, supplier_name,
+              supplier_address, supplier_vat_number, service_description, supply_date, vat_rate
+       FROM invoices WHERE id = ? AND deleted_at IS NULL`,
+      [id]
+    );
     if (!invoice) return res.status(404).json({ message: "Invoice not found." });
 
     const nextStatus = payment_status || invoice.payment_status;
     const nextPod = typeof pod_verified === "boolean" ? pod_verified : Boolean(invoice.pod_verified);
+    if (nextStatus === "sent" && (!invoice.customer_address || !invoice.supplier_name || !invoice.supplier_address || !invoice.service_description || !invoice.supply_date)) {
+      return res.status(400).json({ message: "Complete the UK invoice addresses, service description, and supply date before sending." });
+    }
+    if (nextStatus === "sent" && Number(invoice.vat_rate || 0) > 0 && !invoice.supplier_vat_number) {
+      return res.status(400).json({ message: "Add the supplier VAT number before sending an invoice that charges VAT." });
+    }
+    if (nextStatus === "paid") {
+      const [[balance]] = await db.query(
+        `SELECT i.amount_gbp - COALESCE(SUM(p.amount_gbp), 0) AS balance
+         FROM invoices i LEFT JOIN invoice_payments p ON p.invoice_id=i.id
+         WHERE i.id=? GROUP BY i.id`,
+        [id]
+      );
+      if (Number(balance?.balance || 0) > 0.009) {
+        return res.status(400).json({ message: "Record the full payment with its date and reference before marking this invoice paid." });
+      }
+    }
 
     await db.query(
-      "UPDATE invoices SET payment_status=?, pod_verified=? WHERE id=? AND deleted_at IS NULL",
-      [nextStatus, nextPod ? 1 : 0, id]
+      `UPDATE invoices SET payment_status=?, pod_verified=?,
+         sent_at=CASE WHEN ?='sent' AND sent_at IS NULL THEN NOW() ELSE sent_at END,
+         paid_at=CASE WHEN ?='paid' THEN COALESCE(paid_at, NOW()) ELSE paid_at END
+       WHERE id=? AND deleted_at IS NULL`,
+      [nextStatus, nextPod ? 1 : 0, nextStatus, nextStatus, id]
     );
 
     if (invoice.trip_id && nextPod) {
@@ -1037,9 +1249,63 @@ exports.updateInvoiceStatus = async (req, res) => {
   }
 };
 
+exports.recordInvoicePayment = async (req, res) => {
+  try {
+    await ensureInvoiceComplianceSchema();
+    const { id } = req.params;
+    const { payment_date, amount_gbp, payment_method, payment_reference, notes } = req.body;
+    const amount = Number(amount_gbp);
+    const validMethods = ["bank_transfer", "card", "cash", "cheque", "direct_debit", "other"];
+    if (!payment_date || !Number.isFinite(amount) || amount <= 0 || !String(payment_reference || "").trim()) {
+      return res.status(400).json({ message: "Payment date, positive amount, and payment reference are required." });
+    }
+    if (!validMethods.includes(payment_method || "bank_transfer")) {
+      return res.status(400).json({ message: "Invalid payment method." });
+    }
+    const [[invoice]] = await db.query(
+      `SELECT i.id, i.invoice_no, i.amount_gbp,
+              COALESCE(SUM(p.amount_gbp), 0) AS paid_amount
+       FROM invoices i LEFT JOIN invoice_payments p ON p.invoice_id=i.id
+       WHERE i.id=? AND i.deleted_at IS NULL GROUP BY i.id`,
+      [id]
+    );
+    if (!invoice) return res.status(404).json({ message: "Invoice not found." });
+    const balance = Number(invoice.amount_gbp) - Number(invoice.paid_amount || 0);
+    if (amount - balance > 0.009) {
+      return res.status(400).json({ message: `Payment exceeds the outstanding balance of ${fmtAmount(balance)}.` });
+    }
+    await db.query(
+      `INSERT INTO invoice_payments
+       (invoice_id, payment_date, amount_gbp, payment_method, payment_reference, notes)
+       VALUES (?, ?, ?, ?, ?, ?)`,
+      [id, payment_date, amount, payment_method || "bank_transfer", String(payment_reference).trim(), notes || null]
+    );
+    const paidInFull = Math.abs(balance - amount) < 0.01;
+    await db.query(
+      `UPDATE invoices SET payment_status=?, paid_at=CASE WHEN ? THEN NOW() ELSE NULL END
+       WHERE id=?`,
+      [paidInFull ? "paid" : "pending", paidInFull ? 1 : 0, id]
+    );
+    await logActivity(req, {
+      module: "billing",
+      action: "payment_recorded",
+      entityType: "invoice",
+      entityId: id,
+      entityLabel: invoice.invoice_no,
+      details: { amount_gbp: amount, payment_date, payment_method: payment_method || "bank_transfer", payment_reference, paid_in_full: paidInFull }
+    });
+    res.status(201).json({ message: paidInFull ? "Payment recorded. Invoice is paid." : "Part payment recorded.", paidInFull });
+  } catch (error) {
+    if (error.code === "ER_DUP_ENTRY") {
+      return res.status(409).json({ message: "This payment reference is already recorded for the invoice." });
+    }
+    res.status(500).json({ message: "Invoice payment error", error: error.message });
+  }
+};
+
 exports.deleteInvoice = async (req, res) => {
   try {
-    await ensureSoftDeleteSchema();
+    await ensureInvoiceComplianceSchema();
     const { id } = req.params;
     const reasonCheck = requireDeleteReason(req);
     if (!reasonCheck.ok) return res.status(400).json({ message: reasonCheck.message });
@@ -1076,24 +1342,27 @@ exports.getTracking = async (req, res) => {
     await ensureDriverOpsSchema();
     await ensureVehicleGpsSchema();
 
-    const [[counts]] = await db.query(
-      `SELECT COUNT(*) as total,
-        COALESCE(SUM(status='in_transit'), 0) as in_transit,
-        COALESCE(SUM(status='available'), 0) as available,
-        COALESCE(SUM(status IN ('maintenance','stopped')), 0) as offline
-       FROM vehicles`
-    );
     const [truckRows] = await db.query(
       `SELECT v.id, v.registration_number, v.fleet_code, v.model_name, v.current_location, v.speed_kph, v.status, v.last_ping_at,
               v.gps_latitude, v.gps_longitude, v.gps_accuracy_m,
-              t.id AS trip_id, t.trip_code, t.eta, t.dispatch_status, t.driver_job_status, t.failed_delivery_reason,
+              t.id AS trip_id, t.trip_code, t.eta, t.planned_departure, t.dispatch_status, t.driver_job_status, t.failed_delivery_reason,
               d.full_name as driver_name,
               tr.trailer_code, tr.registration_number AS trailer_reg
        FROM vehicles v
-       LEFT JOIN trips t ON t.vehicle_id = v.id AND t.dispatch_status IN ('planned','loading','active','blocked')
+       LEFT JOIN trips t ON t.id = (
+         SELECT active_trip.id
+         FROM trips active_trip
+         WHERE active_trip.vehicle_id=v.id
+           AND active_trip.deleted_at IS NULL
+           AND active_trip.dispatch_status IN ('active','loading','blocked','planned')
+         ORDER BY FIELD(active_trip.dispatch_status, 'active','loading','blocked','planned'),
+                  active_trip.planned_departure ASC, active_trip.id DESC
+         LIMIT 1
+       )
        LEFT JOIN drivers d ON t.driver_id = d.id
        LEFT JOIN trailers tr ON t.trailer_id = tr.id
-       ORDER BY v.last_ping_at DESC LIMIT 50`
+       ORDER BY FIELD(v.status, 'in_transit','planned','available','stopped','maintenance'),
+                v.last_ping_at DESC, v.registration_number ASC`
     );
     const [exceptionRows] = await db.query(
       `SELECT title, description, severity FROM control_room_alerts
@@ -1109,6 +1378,15 @@ exports.getTracking = async (req, res) => {
         ? new Date(r.eta).getTime() < Date.now()
         : false;
       const hasGps = r.gps_latitude != null && r.gps_longitude != null;
+      const speed = Number(r.speed_kph || 0);
+      const onDuty = Boolean(r.trip_id && ["active", "loading", "blocked"].includes(r.dispatch_status));
+      let movement_state = "Parked";
+      if (["maintenance", "stopped"].includes(r.status)) movement_state = "Off Road";
+      else if (!hasGps || mins == null || mins > 15) movement_state = "Tracking Offline";
+      else if (onDuty && speed >= 5) movement_state = "Moving";
+      else if (onDuty) movement_state = "Stopped On Duty";
+      else if (r.dispatch_status === "planned") movement_state = "Assigned";
+      else if (speed >= 5) movement_state = "Moving Without Duty";
 
       return {
         ...r,
@@ -1116,9 +1394,22 @@ exports.getTracking = async (req, res) => {
         stale_ping: mins == null || mins > 15,
         eta_risk: etaRisk,
         has_gps: hasGps,
-        overspeed: Number(r.speed_kph || 0) > 90
+        overspeed: speed > 90,
+        on_duty: onDuty,
+        movement_state
       };
     });
+    const counts = {
+      total: trackingRows.length,
+      on_duty: trackingRows.filter(r => r.on_duty).length,
+      moving: trackingRows.filter(r => r.movement_state === "Moving").length,
+      moving_without_duty: trackingRows.filter(r => r.movement_state === "Moving Without Duty").length,
+      stopped_on_duty: trackingRows.filter(r => r.movement_state === "Stopped On Duty").length,
+      assigned: trackingRows.filter(r => r.movement_state === "Assigned").length,
+      available: trackingRows.filter(r => r.status === "available" && !r.trip_id).length,
+      off_road: trackingRows.filter(r => ["maintenance", "stopped"].includes(r.status)).length,
+      tracking_offline: trackingRows.filter(r => r.movement_state === "Tracking Offline").length
+    };
 
     res.json({
       header: {
@@ -1131,17 +1422,22 @@ exports.getTracking = async (req, res) => {
         "Stale ping and ETA risk exceptions instantly alert the tracking desk.",
         "Stopped and maintenance trucks are tracked in the offline count."
       ],
-      stats: [
-        { label: "Total fleet", value: counts.total, description: "All registered vehicles.", change: "Live from database", tone: "neutral" },
-        { label: "In transit", value: counts.in_transit, description: "Currently on road.", change: "Live from database", tone: "success" },
-        { label: "Available", value: counts.available, description: "Ready for next dispatch.", change: "Live from database", tone: "neutral" },
-        { label: "Offline", value: counts.offline, description: "Maintenance or stopped.", change: "Live from database", tone: "danger" }
+      operationalSummary: [
+        { key: "all", label: "Total Fleet", value: counts.total, detail: "Registered Trucks", tone: "neutral" },
+        { key: "duty", label: "On Duty", value: counts.on_duty, detail: "Active Or Loading", tone: "primary" },
+        { key: "moving", label: "Moving", value: counts.moving, detail: "Fresh GPS Above 5 Km/H", tone: "success" },
+        { key: "unauthorised", label: "Moving Without Duty", value: counts.moving_without_duty, detail: "Movement Without Active Job", tone: "danger" },
+        { key: "stopped", label: "Stopped On Duty", value: counts.stopped_on_duty, detail: "Active Duty At Low Speed", tone: "warning" },
+        { key: "assigned", label: "Assigned", value: counts.assigned, detail: "Planned Duty", tone: "neutral" },
+        { key: "available", label: "Available", value: counts.available, detail: "Ready For Dispatch", tone: "success" },
+        { key: "offroad", label: "Off Road", value: counts.off_road, detail: "Stopped Or Maintenance", tone: "danger" },
+        { key: "offline", label: "Tracking Offline", value: counts.tracking_offline, detail: "Missing Or Stale GPS", tone: "danger" }
       ],
       gpsHealth: [
-        { label: "GPS online", value: trackingRows.filter(r => r.has_gps && !r.stale_ping).length, description: "Fresh location markers.", change: "15 min window", tone: "success" },
-        { label: "Stale pings", value: trackingRows.filter(r => r.stale_ping).length, description: "No fresh driver update.", change: "Needs check", tone: "warning" },
-        { label: "No GPS marker", value: trackingRows.filter(r => !r.has_gps).length, description: "Location permission or device missing.", change: "GPS gap", tone: "danger" },
-        { label: "ETA / speed risk", value: trackingRows.filter(r => r.eta_risk || r.overspeed).length, description: "Late ETA or speed above 90 km/h.", change: "Ops review", tone: "danger" }
+        { label: "GPS Online", value: trackingRows.filter(r => r.has_gps && !r.stale_ping).length, description: "Fresh Location Markers.", change: "15 Min Window", tone: "success" },
+        { label: "Stale Pings", value: trackingRows.filter(r => r.stale_ping).length, description: "No Fresh Driver Update.", change: "Needs Check", tone: "warning" },
+        { label: "No GPS Marker", value: trackingRows.filter(r => !r.has_gps).length, description: "Location Permission Or Device Missing.", change: "GPS Gap", tone: "danger" },
+        { label: "ETA / Speed Risk", value: trackingRows.filter(r => r.eta_risk || r.overspeed).length, description: "Late ETA Or Speed Above 90 Km/H.", change: "Ops Review", tone: "danger" }
       ],
       trucks: trackingRows.map(r => {
         return {
@@ -1168,7 +1464,10 @@ exports.getTracking = async (req, res) => {
           tripCode: r.trip_code,
           eta: r.eta ? fmtTime(r.eta) : "—",
           etaRaw: rawDateTime(r.eta),
+          plannedDeparture: r.planned_departure ? fmtDateTime(r.planned_departure) : "—",
           etaRisk: r.eta_risk,
+          onDuty: r.on_duty,
+          movementState: r.movement_state,
           driverJobStatus: driverStatusDisplay(r.driver_job_status),
           failedDeliveryReason: r.failed_delivery_reason || "",
           status: r.status.replace("_", " "),
@@ -1177,6 +1476,14 @@ exports.getTracking = async (req, res) => {
         };
       }),
       exceptions: [
+        ...trackingRows
+          .filter(r => r.movement_state === "Moving Without Duty")
+          .map(r => ({
+            title: `${r.registration_number} moving without duty`,
+            description: `Fresh GPS shows ${Number(r.speed_kph || 0).toFixed(1)} km/h, but no active or loading trip is linked. Confirm repositioning, fuel, workshop, or unauthorised movement.`,
+            tone: "danger",
+            vehicleId: r.id
+          })),
         ...trackingRows
           .filter(r => r.driver_job_status === "failed_delivery" || r.driver_job_status === "declined")
           .slice(0, 4)
@@ -1304,8 +1611,27 @@ exports.updateTrackingVehicle = async (req, res) => {
     if (status && !valid.includes(status)) {
       return res.status(400).json({ message: "Invalid vehicle status." });
     }
+    const speed = Number(speed_kph ?? 0);
+    const latitude = gps_latitude !== "" && gps_latitude != null ? Number(gps_latitude) : null;
+    const longitude = gps_longitude !== "" && gps_longitude != null ? Number(gps_longitude) : null;
+    const accuracy = gps_accuracy_m !== "" && gps_accuracy_m != null ? Number(gps_accuracy_m) : null;
+    if (!Number.isFinite(speed) || speed < 0 || speed > 200) {
+      return res.status(400).json({ message: "Speed must be between 0 and 200 km/h." });
+    }
+    if ((latitude != null && (!Number.isFinite(latitude) || latitude < -90 || latitude > 90))
+      || (longitude != null && (!Number.isFinite(longitude) || longitude < -180 || longitude > 180))) {
+      return res.status(400).json({ message: "GPS latitude or longitude is invalid." });
+    }
+    if (accuracy != null && (!Number.isFinite(accuracy) || accuracy < 0)) {
+      return res.status(400).json({ message: "GPS accuracy cannot be negative." });
+    }
 
-    const [[vehicle]] = await db.query("SELECT id, last_ping_at FROM vehicles WHERE id = ?", [id]);
+    const [[vehicle]] = await db.query(
+      `SELECT id, registration_number, current_location, speed_kph, status,
+              gps_latitude, gps_longitude, gps_accuracy_m, last_ping_at
+       FROM vehicles WHERE id = ?`,
+      [id]
+    );
     if (!vehicle) return res.status(404).json({ message: "Vehicle not found." });
 
     await db.query(
@@ -1320,16 +1646,34 @@ exports.updateTrackingVehicle = async (req, res) => {
        WHERE id=?`,
       [
         current_location || null,
-        speed_kph != null ? speed_kph : 0,
-        status || "available",
-        gps_latitude !== "" && gps_latitude != null ? gps_latitude : null,
-        gps_longitude !== "" && gps_longitude != null ? gps_longitude : null,
-        gps_accuracy_m !== "" && gps_accuracy_m != null ? gps_accuracy_m : null,
+        speed,
+        status || vehicle.status,
+        latitude,
+        longitude,
+        accuracy,
         mark_ping_now ? new Date() : vehicle.last_ping_at,
         id
       ]
     );
 
+    await logActivity(req, {
+      module: "tracking",
+      action: "update",
+      entityType: "vehicle_tracking",
+      entityId: id,
+      entityLabel: vehicle.registration_number,
+      details: {
+        changes: buildChangeSet(vehicle, {
+          ...vehicle,
+          current_location: current_location || null,
+          speed_kph: speed,
+          status: status || vehicle.status,
+          gps_latitude: latitude,
+          gps_longitude: longitude,
+          gps_accuracy_m: accuracy
+        }, ["current_location", "speed_kph", "status", "gps_latitude", "gps_longitude", "gps_accuracy_m"])
+      }
+    });
     emitDriverLocationUpdate({ vehicleId: Number(id), source: "admin-manual-update" });
     res.json({ message: "Tracking updated." });
   } catch (error) {
@@ -1340,6 +1684,7 @@ exports.updateTrackingVehicle = async (req, res) => {
 exports.getAlerts = async (req, res) => {
   try {
     await ensureDriverOpsSchema();
+    await ensureAlertWorkflowSchema();
 
     const [[counts]] = await db.query(
       `SELECT COUNT(*) as total,
@@ -1352,7 +1697,8 @@ exports.getAlerts = async (req, res) => {
     );
     const [alertRows] = await db.query(
       `SELECT id, alert_code, module_name, title, description, severity, alert_status,
-              owner_name, trip_id, driver_id, vehicle_id, created_at
+              owner_name, trip_id, driver_id, vehicle_id, resolution_note,
+              acknowledged_at, resolved_at, updated_at, created_at
        FROM control_room_alerts
        ORDER BY alert_status='resolved' ASC,
                 FIELD(severity,'critical','high','medium','low'),
@@ -1389,6 +1735,10 @@ exports.getAlerts = async (req, res) => {
       driverId: r.driver_id,
       vehicleId: r.vehicle_id,
       created: fmtDateTime(r.created_at),
+      updated: fmtDateTime(r.updated_at || r.created_at),
+      acknowledgedAt: fmtDateTime(r.acknowledged_at),
+      resolvedAt: fmtDateTime(r.resolved_at),
+      resolutionNote: r.resolution_note || "",
       source: "Control room"
     }));
     const liveAlerts = [
@@ -1474,22 +1824,50 @@ exports.getAlerts = async (req, res) => {
 
 exports.updateAlertStatus = async (req, res) => {
   try {
+    await ensureAlertWorkflowSchema();
     const { id } = req.params;
-    const { alert_status, owner_name } = req.body;
+    const { alert_status, owner_name, resolution_note } = req.body;
     const validStatuses = ["open", "watch", "resolved"];
     if (!validStatuses.includes(alert_status)) {
       return res.status(400).json({ message: "Invalid alert status." });
     }
 
+    const [[before]] = await db.query("SELECT * FROM control_room_alerts WHERE id=?", [id]);
+    if (!before) return res.status(404).json({ message: "Alert not found." });
+    const nextOwner = String(owner_name ?? before.owner_name ?? "").trim() || null;
+    const nextResolutionNote = String(resolution_note ?? before.resolution_note ?? "").trim() || null;
+    if (alert_status === "watch" && !nextOwner) {
+      return res.status(400).json({ message: "Assign an owner before moving an alert to Watch." });
+    }
+    if (alert_status === "resolved" && (!nextResolutionNote || nextResolutionNote.length < 5)) {
+      return res.status(400).json({ message: "Add a resolution note of at least 5 characters before resolving the alert." });
+    }
+
     const [result] = await db.query(
       `UPDATE control_room_alerts
-       SET alert_status = ?, owner_name = COALESCE(NULLIF(?, ''), owner_name)
+       SET alert_status=?, owner_name=?, resolution_note=?,
+           acknowledged_at=CASE WHEN ?='watch' THEN COALESCE(acknowledged_at, NOW()) ELSE acknowledged_at END,
+           resolved_at=CASE WHEN ?='resolved' THEN NOW() ELSE NULL END,
+           updated_at=NOW()
        WHERE id = ?`,
-      [alert_status, owner_name || null, id]
+      [alert_status, nextOwner, nextResolutionNote, alert_status, alert_status, id]
     );
     if (result.affectedRows === 0) return res.status(404).json({ message: "Alert not found." });
 
-    res.json({ message: "Alert status updated.", alert_status });
+    await logActivity(req, {
+      module: "alerts",
+      action: "status_update",
+      entityType: "control_room_alert",
+      entityId: id,
+      entityLabel: before.alert_code,
+      details: {
+        alert_status,
+        owner_name: nextOwner,
+        resolution_note: nextResolutionNote,
+        changes: buildChangeSet(before, { ...before, alert_status, owner_name: nextOwner, resolution_note: nextResolutionNote }, ["alert_status", "owner_name", "resolution_note"])
+      }
+    });
+    res.json({ message: "Alert workflow updated.", alert_status });
   } catch (error) {
     res.status(500).json({ message: "Alert update error", error: error.message });
   }

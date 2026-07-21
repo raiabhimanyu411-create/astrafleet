@@ -1,8 +1,7 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { deleteInvoice, updateInvoiceStatus } from "../../api/adminApi";
 import { DeleteReasonModal } from "../../components/DeleteReasonModal";
-import { StatCard } from "../../components/StatCard";
 import { StateNotice } from "../../components/StateNotice";
 import { StatusPill } from "../../components/StatusPill";
 import { usePanelData } from "../../hooks/usePanelData";
@@ -34,16 +33,21 @@ export function AdminBillingPage() {
   const [pod, setPod] = useState("");
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
+  const [queue, setQueue] = useState("");
   const [actionError, setActionError] = useState("");
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [deleting, setDeleting] = useState(false);
-  const hasFilters = Boolean(search || status || pod || dateFrom || dateTo);
+  const [selectedInvoiceId, setSelectedInvoiceId] = useState(null);
+  const hasFilters = Boolean(search || status || pod || dateFrom || dateTo || queue);
 
   const invoices = useMemo(() => {
     const query = search.trim().toLowerCase();
     return (data?.invoices || []).filter(inv => {
       if (status && inv.status !== status) return false;
       if (pod && inv.podVerified !== (pod === "verified")) return false;
+      if (queue === "ready" && !(inv.podVerified && ["draft", "pending"].includes(inv.status))) return false;
+      if (queue === "pod" && inv.podVerified) return false;
+      if (queue === "risk" && !["overdue", "hold"].includes(inv.status)) return false;
       if (!matchesDate(inv.dueDate, dateFrom, dateTo)) return false;
       if (!query) return true;
       return (
@@ -53,7 +57,7 @@ export function AdminBillingPage() {
         inv.lane.toLowerCase().includes(query)
       );
     });
-  }, [data, dateFrom, dateTo, pod, search, status]);
+  }, [data, dateFrom, dateTo, pod, queue, search, status]);
 
   const workflow = useMemo(() => {
     const rows = data?.invoices || [];
@@ -64,6 +68,11 @@ export function AdminBillingPage() {
       { label: "Payment risk", value: rows.filter(inv => ["overdue", "hold"].includes(inv.status)).length, tone: "danger" }
     ];
   }, [data]);
+  const selectedInvoice = invoices.find(item => item.id === selectedInvoiceId) || invoices[0] || null;
+
+  useEffect(() => {
+    if (selectedInvoice && selectedInvoice.id !== selectedInvoiceId) setSelectedInvoiceId(selectedInvoice.id);
+  }, [selectedInvoice?.id, selectedInvoiceId]);
 
   async function updateStatus(id, payment_status) {
     setActionError("");
@@ -102,11 +111,16 @@ export function AdminBillingPage() {
 
   function exportInvoices() {
     exportCsv("billing-register.csv", [
-      ["Invoice", "Client", "Amount GBP", "Issued", "Due", "Status", "POD verified", "Trip", "Lane", "Notes"],
+      ["Invoice", "Client", "Net GBP", "VAT Rate", "VAT GBP", "Gross GBP", "Paid GBP", "Balance GBP", "Issued", "Due", "Status", "POD verified", "Trip", "Lane", "Notes"],
       ...invoices.map(inv => [
         inv.invoice,
         inv.client,
+        inv.netAmountValue,
+        inv.vatRate,
+        inv.vatAmountValue,
         inv.amountValue,
+        inv.paidAmountValue,
+        inv.balanceAmountValue,
         inv.issuedAt,
         inv.dueDate,
         inv.status,
@@ -124,17 +138,19 @@ export function AdminBillingPage() {
     setPod("");
     setDateFrom("");
     setDateTo("");
+    setQueue("");
   }
 
   return (
     <AdminWorkspaceLayout
-      badge={data?.header?.badge || "Invoicing & billing"}
-      title={data?.header?.title || "Freight invoices and POD billing"}
+      badge={data?.header?.badge || "Invoicing & Billing"}
+      title={data?.header?.title || "Freight Invoices And POD Billing"}
       description={
         data?.header?.description ||
         "Manage invoice generation, POD-linked billing, and payment status tracking in pound sterling."
       }
-      highlights={data?.highlights || []}
+      highlights={[]}
+      className="billing-page-shell"
     >
       <div className="finance-command-bar">
         <button className="header-action-button" type="button" onClick={() => refetch(false)}>Refresh</button>
@@ -153,68 +169,27 @@ export function AdminBillingPage() {
         </div>
       )}
 
-      <section className="stats-grid">
-        {(data?.stats || []).map((item) => (
-          <StatCard item={item} key={item.label} />
+      <section className="billing-command-strip" aria-label="Billing Summary">
+        {[...(data?.amountSummary || []), ...workflow].map(item => (
+          <button className={`billing-command-item ${item.tone}`} key={item.label} type="button" onClick={() => {
+            setQueue("");
+            if (item.label === "Draft") setStatus("draft");
+            if (item.label === "Ready to send") { setStatus(""); setPod(""); setQueue("ready"); }
+            if (item.label === "POD needed") { setStatus(""); setPod(""); setQueue("pod"); }
+            if (item.label === "Payment risk") { setStatus(""); setPod(""); setQueue("risk"); }
+          }}>
+            <span>{item.label}</span><strong>{item.value}</strong><small>{item.description || "Invoice Workflow"}</small>
+          </button>
         ))}
       </section>
 
-      <section className="stats-grid inline finance-position-grid">
-        {(data?.amountSummary || []).map((item) => (
-          <StatCard item={item} key={item.label} />
-        ))}
-      </section>
-
-      <section className="content-grid">
-        <article className="content-card">
-          <div className="section-head">
-            <div>
-              <span className="card-label">Billing Workflow</span>
-              <h2>Invoice Control Board</h2>
-            </div>
-            <StatusPill tone="neutral">Live queue</StatusPill>
-          </div>
-
-          <div className="billing-workflow-grid">
-            {workflow.map(item => (
-              <button className="billing-workflow-tile" key={item.label} type="button" onClick={() => {
-                if (item.label === "Draft") setStatus("draft");
-                if (item.label === "POD needed") setPod("pending");
-                if (item.label === "Payment risk") setStatus("overdue");
-              }}>
-                <span>{item.label}</span>
-                <strong>{item.value}</strong>
-                <StatusPill tone={item.tone}>Review</StatusPill>
-              </button>
-            ))}
-          </div>
-        </article>
-
-        <article className="content-card">
-          <div className="section-head">
-            <div>
-              <span className="card-label">Billing Blockers</span>
-              <h2>POD And Payment Exceptions</h2>
-            </div>
-            <StatusPill tone="danger">Clear before send</StatusPill>
-          </div>
-
-          <div className="alert-stack">
-            {(data?.blockers || []).map((item) => (
-              <div className="alert-card" key={item.title}>
-                <div className={`alert-bar ${item.tone}`} />
-                <div>
-                  <strong>{item.title}</strong>
-                  <p>{item.description}</p>
-                </div>
-              </div>
-            ))}
-            {!loading && (data?.blockers || []).length === 0 && (
-              <p className="finance-empty">No billing blockers right now. POD and payment exceptions will appear here.</p>
-            )}
-          </div>
-        </article>
-      </section>
+      {(data?.blockers || []).length > 0 && (
+        <section className="billing-exception-bar">
+          <div><span className="card-label">Billing Exceptions</span><strong>{data.blockers.length} Items Need Review</strong></div>
+          <div className="billing-exception-list">{data.blockers.map(item => <span key={item.title}>{item.title}</span>)}</div>
+          <button className="header-action-button" type="button" onClick={() => setStatus("hold")}>Review Exceptions</button>
+        </section>
+      )}
 
       <section className="content-card finance-filter-card billing-filter-card">
         <input
@@ -223,7 +198,7 @@ export function AdminBillingPage() {
           value={search}
           onChange={e => setSearch(e.target.value)}
         />
-        <select className="af-select" value={status} onChange={e => setStatus(e.target.value)}>
+        <select className="af-select" value={status} onChange={e => { setStatus(e.target.value); setQueue(""); }}>
           <option value="">All Statuses</option>
           <option value="draft">Draft</option>
           <option value="sent">Sent</option>
@@ -232,7 +207,7 @@ export function AdminBillingPage() {
           <option value="paid">Paid</option>
           <option value="hold">Hold</option>
         </select>
-        <select className="af-select" value={pod} onChange={e => setPod(e.target.value)}>
+        <select className="af-select" value={pod} onChange={e => { setPod(e.target.value); setQueue(""); }}>
           <option value="">All POD States</option>
           <option value="verified">POD Verified</option>
           <option value="pending">POD Pending</option>
@@ -242,57 +217,42 @@ export function AdminBillingPage() {
         <button className="header-action-button" type="button" onClick={clearFilters} disabled={!hasFilters}>Clear Filters</button>
       </section>
 
-      <section className="content-card">
-        <div className="section-head">
-          <div>
-            <span className="card-label">Invoice Register</span>
-            <h2>Customer Billing Records</h2>
-          </div>
-          <StatusPill tone="warning">{invoices.length} visible</StatusPill>
-        </div>
-
-        <div className="data-rows compact finance-list">
-          {invoices.map((item) => (
-            <div className="data-row finance-row billing-row" key={item.id}>
-              <button className="finance-row-main billing-row-main" type="button" onClick={() => navigate(`/admin/billing/${item.id}`)}>
-                <div>
-                  <strong>{item.invoice}</strong>
-                  <p>{item.client} · {item.tripCode || "No Trip Link"}</p>
-                </div>
-                <div>
-                  <span>{item.amount}</span>
-                  <p>Issued {item.issued} · Due {item.dueLabel}</p>
-                </div>
-                <div>
-                  <span>{item.podVerified ? "POD Verified" : "POD Pending"}</span>
-                  <p>{item.lane}</p>
-                </div>
+      <section className="billing-workbench">
+        <article className="content-card billing-register-panel">
+          <div className="section-head"><div><span className="card-label">Invoice Register</span><h2>Customer Receivables</h2></div><StatusPill tone="neutral">{invoices.length} Visible</StatusPill></div>
+          <div className="billing-register-head"><span>Invoice And Customer</span><span>Gross / Balance</span><span>Due And POD</span><span>Status</span></div>
+          <div className="billing-register-list">
+            {invoices.map(item => (
+              <button className={`billing-register-item${item.id === selectedInvoice?.id ? " active" : ""}`} key={item.id} type="button" onClick={() => setSelectedInvoiceId(item.id)}>
+                <span><strong>{item.invoice}</strong><small>{item.client} · {item.tripCode || "No Trip Link"}</small></span>
+                <span><strong>{item.amount}</strong><small>{item.balanceAmount} Outstanding</small></span>
+                <span><strong>{item.dueLabel}</strong><small>{item.podVerified ? "POD Verified" : "POD Pending"}</small></span>
+                <span><StatusPill tone={item.tone}>{item.status}</StatusPill><small>{item.lane}</small></span>
               </button>
-              <div className="finance-row-actions">
-                <StatusPill tone={item.tone}>{item.status}</StatusPill>
-                <button className="header-action-button" type="button" onClick={() => togglePod(item)}>
-                  {item.podVerified ? "POD Pending" : "Verify POD"}
-                </button>
-                {item.status !== "sent" && item.status !== "paid" && (
-                  <button className="header-action-button" type="button" onClick={() => updateStatus(item.id, "sent")}>Send</button>
-                )}
-                {item.status !== "hold" && item.status !== "paid" && (
-                  <button className="header-action-button" type="button" onClick={() => updateStatus(item.id, "hold")}>Hold</button>
-                )}
-                {item.status !== "paid" && (
-                  <button className="header-action-button" type="button" onClick={() => updateStatus(item.id, "paid")}>Mark Paid</button>
-                )}
-                <button className="header-action-button" type="button" onClick={() => navigate(`/admin/billing/${item.id}/edit`)}>Edit</button>
-                <button className="header-action-button danger" type="button" onClick={() => setDeleteTarget(item)}>Delete</button>
-              </div>
+            ))}
+            {!loading && invoices.length === 0 && <p className="finance-empty">{hasFilters ? "No Invoices Match Your Filters." : "No Invoices Yet. Create Your First Invoice."}</p>}
+          </div>
+        </article>
+
+        <aside className="content-card billing-inspector">
+          {selectedInvoice ? <>
+            <div className="section-head"><div><span className="card-label">Invoice Inspector</span><h2>{selectedInvoice.invoice}</h2></div><StatusPill tone={selectedInvoice.tone}>{selectedInvoice.status}</StatusPill></div>
+            <div className="billing-inspector-client"><strong>{selectedInvoice.client}</strong><p>{selectedInvoice.tripCode || "No Trip Link"} · {selectedInvoice.lane}</p></div>
+            <dl className="billing-inspector-facts">
+              <div><dt>Net</dt><dd>{selectedInvoice.netAmount}</dd></div><div><dt>VAT ({selectedInvoice.vatRate}%)</dt><dd>{selectedInvoice.vatAmount}</dd></div>
+              <div><dt>Gross</dt><dd>{selectedInvoice.amount}</dd></div><div><dt>Paid</dt><dd>{selectedInvoice.paidAmount}</dd></div>
+              <div><dt>Balance</dt><dd>{selectedInvoice.balanceAmount}</dd></div><div><dt>Due</dt><dd>{selectedInvoice.dueLabel}</dd></div>
+            </dl>
+            <div className={`billing-pod-state ${selectedInvoice.podVerified ? "verified" : "pending"}`}><span>{selectedInvoice.podVerified ? "POD Verified" : "POD Pending"}</span><button type="button" onClick={() => togglePod(selectedInvoice)}>{selectedInvoice.podVerified ? "Mark Pending" : "Verify POD"}</button></div>
+            <div className="billing-inspector-actions">
+              <button className="af-submit-btn" type="button" onClick={() => navigate(`/admin/billing/${selectedInvoice.id}`)}>{selectedInvoice.status === "paid" ? "Open Invoice" : "Open And Record Payment"}</button>
+              {selectedInvoice.status !== "sent" && selectedInvoice.status !== "paid" && <button className="header-action-button" type="button" onClick={() => updateStatus(selectedInvoice.id, "sent")}>Send Invoice</button>}
+              {selectedInvoice.status !== "hold" && selectedInvoice.status !== "paid" && <button className="header-action-button" type="button" onClick={() => updateStatus(selectedInvoice.id, "hold")}>Place On Hold</button>}
+              <button className="header-action-button" type="button" onClick={() => navigate(`/admin/billing/${selectedInvoice.id}/edit`)}>Edit Invoice</button>
+              <button className="header-action-button danger" type="button" onClick={() => setDeleteTarget(selectedInvoice)}>Delete Invoice</button>
             </div>
-          ))}
-          {!loading && invoices.length === 0 && (
-            <p className="finance-empty">
-              {hasFilters ? "No invoices match your filters." : "No invoices yet. Create your first invoice."}
-            </p>
-          )}
-        </div>
+          </> : <p className="finance-empty">Select An Invoice To Review.</p>}
+        </aside>
       </section>
       <DeleteReasonModal
         open={Boolean(deleteTarget)}

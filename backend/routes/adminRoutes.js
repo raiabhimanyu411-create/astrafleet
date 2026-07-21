@@ -29,6 +29,7 @@ router.get("/billing/:id", requireModuleAccess("billing"), adminController.getIn
 router.post("/billing", requireModuleAccess("billing"), adminController.createInvoice);
 router.put("/billing/:id", requireModuleAccess("billing"), adminController.updateInvoice);
 router.patch("/billing/:id/status", requireModuleAccess("billing"), adminController.updateInvoiceStatus);
+router.post("/billing/:id/payments", requireModuleAccess("billing"), adminController.recordInvoicePayment);
 router.delete("/billing/:id", requireModuleAccess("billing"), adminController.deleteInvoice);
 router.get("/tracking", requireModuleAccess("tracking"), adminController.getTracking);
 router.get("/tracking/vehicles/:id", requireModuleAccess("tracking"), adminController.getTrackingVehicleById);

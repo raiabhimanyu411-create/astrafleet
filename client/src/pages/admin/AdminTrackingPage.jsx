@@ -2,7 +2,6 @@ import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { updateTrackingVehicle } from "../../api/adminApi";
 import { getRealtimeSocket } from "../../api/realtime";
-import { StatCard } from "../../components/StatCard";
 import { StateNotice } from "../../components/StateNotice";
 import { StatusPill } from "../../components/StatusPill";
 import { usePanelData } from "../../hooks/usePanelData";
@@ -41,9 +40,12 @@ export function AdminTrackingPage() {
   const [status, setStatus] = useState("");
   const [gpsFilter, setGpsFilter] = useState("");
   const [riskFilter, setRiskFilter] = useState("");
+  const [operationalFilter, setOperationalFilter] = useState("all");
   const [selectedTruckId, setSelectedTruckId] = useState(null);
   const [actionError, setActionError] = useState("");
-  const hasFilters = Boolean(search || status || gpsFilter || riskFilter);
+  const [autoRefresh, setAutoRefresh] = useState(true);
+  const [lastUpdatedAt, setLastUpdatedAt] = useState(new Date());
+  const hasFilters = Boolean(search || status || gpsFilter || riskFilter || operationalFilter !== "all");
 
   const trucks = useMemo(() => {
     return (data?.trucks || []).filter(truck => {
@@ -55,6 +57,14 @@ export function AdminTrackingPage() {
       if (riskFilter === "eta" && !truck.etaRisk) return false;
       if (riskFilter === "speed" && !truck.overspeed) return false;
       if (riskFilter === "driver" && truck.driver !== "Unassigned") return false;
+      if (operationalFilter === "duty" && !truck.onDuty) return false;
+      if (operationalFilter === "moving" && truck.movementState !== "Moving") return false;
+      if (operationalFilter === "unauthorised" && truck.movementState !== "Moving Without Duty") return false;
+      if (operationalFilter === "stopped" && truck.movementState !== "Stopped On Duty") return false;
+      if (operationalFilter === "assigned" && truck.movementState !== "Assigned") return false;
+      if (operationalFilter === "available" && (truck.rawStatus !== "available" || truck.tripId)) return false;
+      if (operationalFilter === "offroad" && !["maintenance", "stopped"].includes(truck.rawStatus)) return false;
+      if (operationalFilter === "offline" && truck.movementState !== "Tracking Offline") return false;
       if (!query) return true;
       return (
         truck.truck.toLowerCase().includes(query) ||
@@ -66,7 +76,7 @@ export function AdminTrackingPage() {
         truck.trailerReg?.toLowerCase().includes(query)
       );
     });
-  }, [data, gpsFilter, riskFilter, search, status]);
+  }, [data, gpsFilter, operationalFilter, riskFilter, search, status]);
 
   const mapTrucks = useMemo(() => trucks.filter(truck => truck.latitude != null && truck.longitude != null), [trucks]);
   const selectedTruck = mapTrucks.find(truck => truck.id === selectedTruckId) || mapTrucks[0] || null;
@@ -94,11 +104,30 @@ export function AdminTrackingPage() {
     };
   }, [refetch]);
 
+  useEffect(() => {
+    if (data) setLastUpdatedAt(new Date());
+  }, [data]);
+
+  useEffect(() => {
+    if (!autoRefresh) return undefined;
+    const timer = window.setInterval(() => refetch(false), 30000);
+    return () => window.clearInterval(timer);
+  }, [autoRefresh, refetch]);
+
+  const gpsFreshCount = useMemo(
+    () => (data?.trucks || []).filter(truck => truck.hasGps && !truck.stale).length,
+    [data]
+  );
+  const gpsCoverage = data?.trucks?.length
+    ? Math.round((gpsFreshCount / data.trucks.length) * 100)
+    : 0;
+
   function clearFilters() {
     setSearch("");
     setStatus("");
     setGpsFilter("");
     setRiskFilter("");
+    setOperationalFilter("all");
   }
 
   async function quickStatus(truck, nextStatus) {
@@ -111,7 +140,7 @@ export function AdminTrackingPage() {
         gps_latitude: truck.latitude ?? "",
         gps_longitude: truck.longitude ?? "",
         gps_accuracy_m: truck.accuracy ?? "",
-        mark_ping_now: true
+        mark_ping_now: false
       });
       refetch(false);
     } catch (err) {
@@ -147,10 +176,21 @@ export function AdminTrackingPage() {
         data?.header?.description ||
         "Give admins visibility into every active truck's location, speed, ETA, and last ping."
       }
-      highlights={data?.highlights || []}
+      highlights={[]}
+      className="tracking-page-shell"
     >
       <div className="finance-command-bar">
-        <button className="header-action-button" type="button" onClick={() => refetch(false)}>Refresh</button>
+        <span className="tracking-live-indicator">
+          <span className={autoRefresh ? "pulse" : ""} />
+          {autoRefresh ? "Live · Refreshes Every 30 Seconds" : "Auto Refresh Paused"}
+        </span>
+        <span className="tracking-last-updated">
+          Last Updated {lastUpdatedAt.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit", second: "2-digit" })}
+        </span>
+        <button className="header-action-button" type="button" onClick={() => setAutoRefresh(value => !value)}>
+          {autoRefresh ? "Pause Live Updates" : "Resume Live Updates"}
+        </button>
+        <button className="header-action-button" type="button" onClick={() => refetch(false)}>Refresh Now</button>
         <button className="header-action-button" type="button" onClick={exportTracking}>Export CSV</button>
       </div>
 
@@ -163,79 +203,56 @@ export function AdminTrackingPage() {
         </div>
       )}
 
-      <section className="stats-grid">
-        {(data?.stats || []).map((item) => (
-          <StatCard item={item} key={item.label} />
+      <section className="tracking-operations-strip" aria-label="Fleet Operational Summary">
+        {(data?.operationalSummary || []).map(item => (
+          <button
+            className={`tracking-operation-item ${item.tone}${operationalFilter === item.key ? " active" : ""}`}
+            key={item.key}
+            onClick={() => setOperationalFilter(item.key)}
+            type="button"
+          >
+            <span>{item.label}</span>
+            <strong>{item.value}</strong>
+            <small>{item.detail}</small>
+          </button>
         ))}
       </section>
 
-      <section className="stats-grid inline finance-position-grid">
-        {(data?.gpsHealth || []).map((item) => (
-          <StatCard item={item} key={item.label} />
-        ))}
-      </section>
-
-      <section className="content-card tracking-map-card">
-        <div className="section-head">
-          <div>
-            <span className="card-label">Live GPS Map</span>
-            <h2>{selectedTruck ? `${selectedTruck.truck} · ${selectedTruck.driver}` : "Waiting for driver GPS"}</h2>
-          </div>
-          <StatusPill tone={selectedTruck?.stale ? "warning" : selectedTruck ? "success" : "neutral"}>
-            {selectedTruck ? (selectedTruck.stale ? "Stale Ping" : "Live Marker") : "No GPS Yet"}
-          </StatusPill>
+      <section className="tracking-health-bar" aria-label="GPS Network Health">
+        <div>
+          <span className="card-label">GPS Network Health</span>
+          <strong>{gpsCoverage}% Fresh Coverage</strong>
         </div>
-
-        {selectedTruck ? (
-          <>
-            <div className="tracking-map-shell">
-              <iframe
-                title={`Live map for ${selectedTruck.truck}`}
-                src={buildMapUrl(selectedTruck)}
-                loading="lazy"
-              />
-              <div className="tracking-map-overlay">
-                <strong>{selectedTruck.truck}</strong>
-                <span>{selectedTruck.location}</span>
-                <span>{selectedTruck.speed} · {selectedTruck.note} · {selectedTruck.accuracyLabel}</span>
-              </div>
-            </div>
-            <div className="tracking-map-actions">
-              <a className="af-submit-btn driver-nav-link" href={openMapUrl(selectedTruck)} rel="noreferrer" target="_blank">
-                Open In Google Maps
-              </a>
-              <button className="header-action-button" type="button" onClick={() => navigate(`/admin/tracking/vehicles/${selectedTruck.id}`)}>
-                Open Vehicle Detail
-              </button>
-            </div>
-            <div className="tracking-marker-list">
-              {mapTrucks.map(truck => (
-                <button
-                  className={truck.id === selectedTruck.id ? "active" : ""}
-                  key={truck.id}
-                  onClick={() => setSelectedTruckId(truck.id)}
-                  type="button"
-                >
-                  <strong>{truck.truck}</strong>
-                  <span>{truck.driver}</span>
-                </button>
-              ))}
-            </div>
-          </>
-        ) : (
-          <p className="driver-empty">No live GPS markers available yet. Once a driver allows location permission from the driver panel, their position will appear here.</p>
-        )}
+        <div className="tracking-health-meter" aria-label={`${gpsCoverage}% Fresh GPS Coverage`}>
+          <span style={{ width: `${gpsCoverage}%` }} />
+        </div>
+        {(data?.gpsHealth || []).map(item => (
+          <button
+            key={item.label}
+            type="button"
+            onClick={() => {
+              const label = item.label.toLowerCase();
+              if (label === "gps online") setGpsFilter("fresh");
+              if (label === "stale pings") setGpsFilter("stale");
+              if (label === "no gps marker") setGpsFilter("missing");
+              if (label === "eta / speed risk") setRiskFilter("eta");
+            }}
+          >
+            <strong>{item.value}</strong>
+            <span>{item.label}</span>
+          </button>
+        ))}
       </section>
 
-      <section className="content-card tracking-command-card">
+      <section className="tracking-command-card">
         <input
           className="af-input"
-          placeholder="Search reg no., fleet code, make/model, trailer, driver, or location..."
+          placeholder="Search Reg No., Fleet Code, Make/Model, Trailer, Driver, Or Location..."
           value={search}
           onChange={e => setSearch(e.target.value)}
         />
         <select className="af-select" value={status} onChange={e => setStatus(e.target.value)}>
-          <option value="">All Statuses</option>
+          <option value="">All Vehicle Statuses</option>
           <option value="available">Available</option>
           <option value="planned">Planned</option>
           <option value="in_transit">In Transit</option>
@@ -257,14 +274,94 @@ export function AdminTrackingPage() {
         <button className="header-action-button" disabled={!hasFilters} type="button" onClick={clearFilters}>Clear Filters</button>
       </section>
 
-      <section className="content-grid">
+      <section className="tracking-control-layout">
+        <article className="content-card tracking-map-card">
+        <div className="section-head">
+          <div>
+            <span className="card-label">Fleet Locator</span>
+            <h2>{selectedTruck ? `${selectedTruck.truck} · ${selectedTruck.movementState}` : "Waiting For Driver GPS"}</h2>
+          </div>
+          <StatusPill tone={selectedTruck?.stale ? "warning" : selectedTruck ? "success" : "neutral"}>
+            {selectedTruck ? (selectedTruck.stale ? "Stale Ping" : "Live Marker") : "No GPS Yet"}
+          </StatusPill>
+        </div>
+
+        {selectedTruck ? (
+          <>
+            <div className="tracking-map-shell">
+              <iframe
+                title={`Live map for ${selectedTruck.truck}`}
+                src={buildMapUrl(selectedTruck)}
+                loading="lazy"
+              />
+              <div className="tracking-map-overlay">
+                <strong>{selectedTruck.truck}</strong>
+                <span>{selectedTruck.location}</span>
+                <span>{selectedTruck.driver} · {selectedTruck.speed} · {selectedTruck.note}</span>
+                <span>{selectedTruck.tripCode || "No Active Duty"} · {selectedTruck.accuracyLabel}</span>
+              </div>
+            </div>
+            <div className="tracking-map-actions">
+              <a className="af-submit-btn driver-nav-link" href={openMapUrl(selectedTruck)} rel="noreferrer" target="_blank">
+                Open In Google Maps
+              </a>
+              <button className="header-action-button" type="button" onClick={() => navigate(`/admin/tracking/vehicles/${selectedTruck.id}`)}>
+                Open Vehicle Detail
+              </button>
+            </div>
+            <div className="tracking-selected-inspector">
+              <div><span>Movement</span><strong>{selectedTruck.movementState}</strong></div>
+              <div><span>Driver</span><strong>{selectedTruck.driver}</strong></div>
+              <div><span>Duty</span><strong>{selectedTruck.tripCode || "No Active Duty"}</strong></div>
+              <div><span>Speed</span><strong>{selectedTruck.speed}</strong></div>
+              <div><span>ETA</span><strong>{selectedTruck.tripCode ? selectedTruck.eta : "Not Applicable"}</strong></div>
+              <div><span>GPS</span><strong>{selectedTruck.stale ? selectedTruck.note : `Fresh · ${selectedTruck.accuracyLabel}`}</strong></div>
+            </div>
+          </>
+        ) : (
+          <p className="driver-empty">No live GPS markers available yet. Once a driver allows location permission from the driver panel, their position will appear here.</p>
+        )}
+        </article>
+
+        <aside className="content-card tracking-fleet-sidebar">
+          <div className="section-head">
+            <div>
+              <span className="card-label">All Visible Trucks</span>
+              <h2>Fleet Position Index</h2>
+            </div>
+            <StatusPill tone="neutral">{trucks.length} Trucks</StatusPill>
+          </div>
+          <div className="tracking-fleet-index">
+            {trucks.map(truck => (
+              <button
+                className={`${truck.id === selectedTruck?.id ? "active" : ""} ${truck.movementState.toLowerCase().replaceAll(" ", "-")}`}
+                key={truck.id}
+                onClick={() => truck.hasGps ? setSelectedTruckId(truck.id) : navigate(`/admin/tracking/vehicles/${truck.id}`)}
+                type="button"
+              >
+                <span className={`tracking-state-dot ${truck.stale || !truck.hasGps ? "offline" : truck.speedValue >= 5 ? "moving" : "stationary"}`} />
+                <span>
+                  <strong>{truck.truck}</strong>
+                  <small>{truck.driver} · {truck.location}</small>
+                </span>
+                <span>
+                  <strong>{truck.movementState}</strong>
+                  <small>{truck.hasGps ? truck.note : "No GPS Marker"}</small>
+                </span>
+              </button>
+            ))}
+          </div>
+        </aside>
+      </section>
+
+      <section className="tracking-lower-layout">
         <article className="content-card">
           <div className="section-head">
             <div>
-              <span className="card-label">Live Trucks</span>
-              <h2>Current Road Visibility</h2>
+              <span className="card-label">Fleet Operations</span>
+              <h2>Every Truck, Duty, And Movement State</h2>
             </div>
-            <StatusPill tone="success">GPS active</StatusPill>
+            <StatusPill tone="success">{trucks.length} Visible</StatusPill>
           </div>
 
           <div className="data-rows compact finance-list">
@@ -286,14 +383,14 @@ export function AdminTrackingPage() {
                 >
                   <div>
                     <strong>{item.truck}</strong>
-                    <p>{item.driver} · {item.location}</p>
+                    <p>{item.fleetCode || "No Fleet Code"} · {item.model || "Model Unknown"} · {item.driver}</p>
                   </div>
                   <div>
-                    <span>{item.speed}</span>
-                    <p>{item.tripCode ? `${item.tripCode} · ${item.driverJobStatus} · ETA ${item.eta}` : item.note}</p>
+                    <span>{item.movementState} · {item.speed}</span>
+                    <p>{item.location} · {item.note}</p>
                   </div>
                   <div>
-                    <span>{item.hasGps ? item.accuracyLabel : "No GPS marker"}</span>
+                    <span>{item.tripCode ? `${item.tripCode} · ETA ${item.eta}` : "No Active Duty"}</span>
                     {(item.stale || item.etaRisk || item.overspeed) ? (
                       <div className="tracking-risk-pills">
                         {item.stale && <span className="tracking-risk-pill stale">{item.note}</span>}
@@ -301,7 +398,7 @@ export function AdminTrackingPage() {
                         {item.overspeed && <span className="tracking-risk-pill speed">Overspeed</span>}
                       </div>
                     ) : (
-                      <p>Fresh tracking</p>
+                      <p>{item.hasGps ? `${item.accuracyLabel} · Fresh Tracking` : "No GPS Marker"}</p>
                     )}
                   </div>
                 </button>
@@ -309,6 +406,9 @@ export function AdminTrackingPage() {
                   <StatusPill tone={item.tone}>{item.status}</StatusPill>
                   {item.rawStatus !== "in_transit" && (
                     <button className="header-action-button" type="button" onClick={() => quickStatus(item, "in_transit")}>In Transit</button>
+                  )}
+                  {item.rawStatus !== "available" && (
+                    <button className="header-action-button" type="button" onClick={() => quickStatus(item, "available")}>Available</button>
                   )}
                   {item.rawStatus !== "stopped" && (
                     <button className="header-action-button" type="button" onClick={() => quickStatus(item, "stopped")}>Stop</button>
@@ -331,7 +431,7 @@ export function AdminTrackingPage() {
               <span className="card-label">Tracking Exceptions</span>
               <h2>Stale Pings And ETA Risks</h2>
             </div>
-            <StatusPill tone="warning">Watch closely</StatusPill>
+            <StatusPill tone="warning">Watch Closely</StatusPill>
           </div>
 
           <div className="alert-stack">
@@ -350,7 +450,7 @@ export function AdminTrackingPage() {
               </div>
             ))}
             {!loading && (data?.exceptions || []).length === 0 && (
-              <p className="finance-empty">No tracking exceptions right now. Stale pings, ETA risk, and failed deliveries will appear here.</p>
+              <p className="finance-empty">No Tracking Exceptions Right Now. Stale Pings, ETA Risk, And Failed Deliveries Will Appear Here.</p>
             )}
           </div>
         </article>

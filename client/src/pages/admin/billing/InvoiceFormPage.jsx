@@ -7,12 +7,25 @@ const empty = {
   invoice_no: "",
   trip_id: "",
   client_name: "",
+  customer_address: "",
+  customer_vat_number: "",
+  supplier_name: "AstraFleet",
+  supplier_address: "",
+  supplier_vat_number: "",
+  service_description: "Road freight transport service",
+  supply_date: new Date().toISOString().slice(0, 10),
+  purchase_order_ref: "",
+  net_amount_gbp: "",
+  vat_rate: "20",
+  vat_amount_gbp: "0.00",
   amount_gbp: "",
   issued_at: new Date().toISOString().slice(0, 10),
   due_date: "",
   payment_status: "draft",
   pod_verified: false,
-  notes: ""
+  notes: "",
+  payment_terms: "Payment due by the stated due date",
+  bank_details: ""
 };
 
 function Field({ label, children, hint }) {
@@ -63,14 +76,26 @@ export function InvoiceFormPage() {
 
   function handleTripChange(value) {
     const trip = formData.trips.find(item => String(item.id) === value);
+    const issuedDate = new Date(`${fields.issued_at}T12:00:00`);
+    issuedDate.setDate(issuedDate.getDate() + Number(trip?.paymentTermsDays || 30));
     setFields(prev => ({
       ...prev,
       trip_id: value,
       client_name: trip?.clientName || prev.client_name,
-      amount_gbp: trip?.freightAmountGbp || prev.amount_gbp,
+      customer_address: trip?.billingAddress || prev.customer_address,
+      customer_vat_number: trip?.vatNumber || prev.customer_vat_number,
+      net_amount_gbp: trip?.freightAmountGbp || prev.net_amount_gbp,
+      service_description: trip ? `Road freight transport · ${trip.tripCode} · ${trip.lane}` : prev.service_description,
+      due_date: trip ? issuedDate.toISOString().slice(0, 10) : prev.due_date,
+      payment_terms: trip ? `Net ${trip.paymentTermsDays || 30} days` : prev.payment_terms,
       pod_verified: trip?.podStatus === "verified" ? true : prev.pod_verified
     }));
   }
+
+  const netAmount = Number(fields.net_amount_gbp || 0);
+  const vatRate = Number(fields.vat_rate || 0);
+  const vatAmount = Number.isFinite(netAmount * vatRate) ? Number((netAmount * vatRate / 100).toFixed(2)) : 0;
+  const grossAmount = Number((netAmount + vatAmount).toFixed(2));
 
   async function handleSubmit(e) {
     e.preventDefault();
@@ -80,7 +105,10 @@ export function InvoiceFormPage() {
       const payload = {
         ...fields,
         trip_id: fields.trip_id || null,
-        amount_gbp: Number(fields.amount_gbp),
+        net_amount_gbp: netAmount,
+        vat_rate: vatRate,
+        vat_amount_gbp: vatAmount,
+        amount_gbp: grossAmount,
         pod_verified: Boolean(fields.pod_verified)
       };
       if (isEdit) {
@@ -144,8 +172,45 @@ export function InvoiceFormPage() {
                 <Field label="Client Name">
                   <input className="af-input" value={fields.client_name} onChange={e => set("client_name", e.target.value)} placeholder="Customer or billing entity" required />
                 </Field>
-                <Field label="Amount (£)">
-                  <input className="af-input" type="number" min="0" step="0.01" value={fields.amount_gbp} onChange={e => set("amount_gbp", e.target.value)} required />
+                <Field label="Customer Billing Address">
+                  <textarea className="af-input" value={fields.customer_address || ""} onChange={e => set("customer_address", e.target.value)} placeholder="Registered or billing address" required={fields.payment_status !== "draft"} />
+                </Field>
+                <Field label="Customer VAT Number" hint="Required where applicable">
+                  <input className="af-input" value={fields.customer_vat_number || ""} onChange={e => set("customer_vat_number", e.target.value.toUpperCase())} placeholder="GB 123 4567 89" />
+                </Field>
+                <Field label="Supplier Legal Name">
+                  <input className="af-input" value={fields.supplier_name || ""} onChange={e => set("supplier_name", e.target.value)} required={fields.payment_status !== "draft"} />
+                </Field>
+                <Field label="Supplier Address">
+                  <textarea className="af-input" value={fields.supplier_address || ""} onChange={e => set("supplier_address", e.target.value)} placeholder="Registered business address" required={fields.payment_status !== "draft"} />
+                </Field>
+                <Field label="Supplier VAT Number">
+                  <input className="af-input" value={fields.supplier_vat_number || ""} onChange={e => set("supplier_vat_number", e.target.value.toUpperCase())} placeholder="GB 123 4567 89" />
+                </Field>
+                <Field label="Service Description">
+                  <textarea className="af-input" value={fields.service_description || ""} onChange={e => set("service_description", e.target.value)} required={fields.payment_status !== "draft"} />
+                </Field>
+                <Field label="Supply / Tax Point Date">
+                  <input className="af-input" type="date" value={fields.supply_date || ""} onChange={e => set("supply_date", e.target.value)} required={fields.payment_status !== "draft"} />
+                </Field>
+                <Field label="Customer PO Reference">
+                  <input className="af-input" value={fields.purchase_order_ref || ""} onChange={e => set("purchase_order_ref", e.target.value)} placeholder="Optional PO / booking reference" />
+                </Field>
+                <Field label="Net Amount (£)">
+                  <input className="af-input" type="number" min="0.01" step="0.01" value={fields.net_amount_gbp} onChange={e => set("net_amount_gbp", e.target.value)} required />
+                </Field>
+                <Field label="VAT Rate">
+                  <select className="af-select" value={fields.vat_rate} onChange={e => set("vat_rate", e.target.value)}>
+                    <option value="20">20% Standard</option>
+                    <option value="5">5% Reduced</option>
+                    <option value="0">0% Zero rated / exempt</option>
+                  </select>
+                </Field>
+                <Field label="VAT Amount">
+                  <input className="af-input" value={`£${vatAmount.toFixed(2)}`} readOnly />
+                </Field>
+                <Field label="Total Due">
+                  <input className="af-input" value={`£${grossAmount.toFixed(2)}`} readOnly />
                 </Field>
                 <Field label="Issued Date">
                   <input className="af-input" type="date" value={fields.issued_at} onChange={e => set("issued_at", e.target.value)} required />
@@ -159,7 +224,7 @@ export function InvoiceFormPage() {
                     <option value="sent">Sent</option>
                     <option value="pending">Pending</option>
                     <option value="overdue">Overdue</option>
-                    <option value="paid">Paid</option>
+                    {isEdit && fields.payment_status === "paid" && <option value="paid">Paid</option>}
                     <option value="hold">Hold</option>
                   </select>
                 </Field>
@@ -168,6 +233,14 @@ export function InvoiceFormPage() {
                     <input type="checkbox" checked={fields.pod_verified} onChange={e => set("pod_verified", e.target.checked)} />
                     Verified
                   </label>
+                </Field>
+              </div>
+              <div className="af-grid-3">
+                <Field label="Payment Terms">
+                  <input className="af-input" value={fields.payment_terms || ""} onChange={e => set("payment_terms", e.target.value)} />
+                </Field>
+                <Field label="Bank / Remittance Details">
+                  <textarea className="af-input" value={fields.bank_details || ""} onChange={e => set("bank_details", e.target.value)} placeholder="Account name, sort code and account number" />
                 </Field>
               </div>
               <Field label="Notes">

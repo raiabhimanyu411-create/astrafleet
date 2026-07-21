@@ -1,7 +1,6 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { updateAlertStatus } from "../../api/adminApi";
-import { StatCard } from "../../components/StatCard";
 import { StateNotice } from "../../components/StateNotice";
 import { StatusPill } from "../../components/StatusPill";
 import { usePanelData } from "../../hooks/usePanelData";
@@ -33,6 +32,10 @@ export function AdminAlertsPage() {
   const [status, setStatus] = useState("");
   const [module, setModule] = useState("");
   const [actionError, setActionError] = useState("");
+  const [selectedAlertKey, setSelectedAlertKey] = useState("");
+  const [ownerName, setOwnerName] = useState("");
+  const [resolutionNote, setResolutionNote] = useState("");
+  const [saving, setSaving] = useState(false);
 
   const allAlerts = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -48,15 +51,30 @@ export function AdminAlertsPage() {
   }, [data, module, search, severity, status]);
 
   const hasFilters = Boolean(search || severity || status || module);
+  const selectedAlert = allAlerts.find(item => `${item.code}-${item.status}` === selectedAlertKey) || allAlerts[0] || null;
 
-  async function handleStatus(item, nextStatus) {
+  useEffect(() => {
+    if (!selectedAlert) return;
+    setSelectedAlertKey(`${selectedAlert.code}-${selectedAlert.status}`);
+    setOwnerName(selectedAlert.owner === "Unassigned" ? "" : selectedAlert.owner || "");
+    setResolutionNote(selectedAlert.resolutionNote || "");
+  }, [selectedAlert?.code, selectedAlert?.status]);
+
+  async function handleStatus(item, nextStatus, workflow = {}) {
     if (!item.id) return;
     setActionError("");
+    setSaving(true);
     try {
-      await updateAlertStatus(item.id, { alert_status: nextStatus });
+      await updateAlertStatus(item.id, {
+        alert_status: nextStatus,
+        owner_name: workflow.owner_name,
+        resolution_note: workflow.resolution_note
+      });
       refetch(false);
     } catch (err) {
       setActionError(err?.response?.data?.message || "Alert status could not be updated.");
+    } finally {
+      setSaving(false);
     }
   }
 
@@ -85,13 +103,14 @@ export function AdminAlertsPage() {
 
   return (
     <AdminWorkspaceLayout
-      badge={data?.header?.badge || "Control room alerts"}
-      title={data?.header?.title || "Delay, breakdown and compliance escalations"}
+      badge={data?.header?.badge || "Control Room Alerts"}
+      title={data?.header?.title || "Delay, Breakdown And Compliance Escalations"}
       description={
         data?.header?.description ||
         "A dedicated admin view for delay, breakdown, compliance breach, and reassignment escalations."
       }
-      highlights={data?.highlights || []}
+      highlights={[]}
+      className="alerts-page-shell"
     >
       <div className="finance-command-bar">
         <button className="header-action-button" type="button" onClick={() => refetch(false)}>Refresh</button>
@@ -107,15 +126,24 @@ export function AdminAlertsPage() {
         </div>
       )}
 
-      <section className="stats-grid">
-        {(data?.stats || []).map((item) => (
-          <StatCard item={item} key={item.label} />
-        ))}
-      </section>
-
-      <section className="stats-grid inline finance-position-grid">
-        {(data?.operations || []).map((item) => (
-          <StatCard item={item} key={item.label} />
+      <section className="alerts-command-strip" aria-label="Alert Operations Summary">
+        {[...(data?.stats || []), ...(data?.operations || [])].map(item => (
+          <button
+            className={`alerts-command-item ${item.tone}`}
+            key={item.label}
+            type="button"
+            onClick={() => {
+              if (item.label === "Critical open") setSeverity("critical");
+              if (["Watch queue"].includes(item.label)) setStatus("watch");
+              if (item.label === "Resolved") setStatus("resolved");
+              if (item.label === "Open queue") setStatus("open");
+              if (item.label === "High severity") setSeverity("high");
+            }}
+          >
+            <span>{item.label}</span>
+            <strong>{item.value}</strong>
+            <small>{item.description}</small>
+          </button>
         ))}
       </section>
 
@@ -152,133 +180,66 @@ export function AdminAlertsPage() {
         <button className="header-action-button" disabled={!hasFilters} type="button" onClick={clearFilters}>Clear Filters</button>
       </section>
 
-      <section className="content-grid">
-        <article className="content-card">
+      <section className="alerts-workbench">
+        <article className="content-card alerts-register-panel">
           <div className="section-head">
             <div>
-              <span className="card-label">Live Escalations</span>
-              <h2>Open Alert Register</h2>
+              <span className="card-label">Unified Alert Queue</span>
+              <h2>Operational Incidents And Exceptions</h2>
             </div>
-            <StatusPill tone="danger">Critical feed</StatusPill>
+            <StatusPill tone="neutral">{allAlerts.length} Visible</StatusPill>
           </div>
-
-          <div className="alert-stack">
-            {(data?.alerts || []).map((item) => (
-              <div
-                className="alert-card"
-                key={item.code || item.title}
-                onClick={() => alertTarget(item) && navigate(alertTarget(item))}
-                style={alertTarget(item) ? { cursor: "pointer" } : undefined}
-              >
-                <div className={`alert-bar ${item.tone}`} />
-                <div>
-                  <strong>{item.title}</strong>
-                  <p>{item.description}</p>
-                  <div className="alert-meta-strip">
-                    <span>{item.code}</span>
-                    <span>{item.owner}</span>
-                    <span>{item.created}</span>
-                  </div>
-                </div>
-              </div>
-            ))}
-            {!loading && (data?.alerts || []).length === 0 && (
-              <p className="finance-empty">No open alerts right now. Critical driver, vehicle, billing, and tracking issues will appear here.</p>
-            )}
+          <div className="alerts-register-list">
+            {allAlerts.map(item => {
+              const key = `${item.code}-${item.status}`;
+              return (
+                <button className={`alerts-register-item ${key === selectedAlertKey ? "active" : ""}`} key={key} type="button" onClick={() => setSelectedAlertKey(key)}>
+                  <span className={`alerts-severity-marker ${item.tone}`} />
+                  <span className="alerts-register-copy">
+                    <span><strong>{item.title}</strong><StatusPill tone={item.tone}>{item.severity}</StatusPill></span>
+                    <small>{item.description}</small>
+                    <span className="alert-meta-strip"><span>{item.code}</span><span>{item.module}</span><span>{item.owner}</span></span>
+                  </span>
+                  <span className="alerts-register-state"><StatusPill tone={item.status === "resolved" ? "success" : item.status === "watch" ? "warning" : "danger"}>{item.status}</StatusPill><small>{item.created}</small></span>
+                </button>
+              );
+            })}
+            {!loading && allAlerts.length === 0 && <p className="finance-empty">{hasFilters ? "No Alerts Match Your Filters." : "No Alert Workload Is Available Yet."}</p>}
           </div>
         </article>
 
-        <article className="content-card">
-          <div className="section-head">
-            <div>
-              <span className="card-label">Resolution Queue</span>
-              <h2>Next Actions For The Desk</h2>
-            </div>
-            <StatusPill tone="warning">Pending closure</StatusPill>
-          </div>
-
-          <div className="data-rows">
-            {(data?.resolutions || []).map((item) => (
-              <div className="data-row alert-resolution-row" key={item.reference}>
-                <div>
-                  <strong>{item.reference}</strong>
-                  <p>{item.owner} · {item.module}</p>
-                </div>
-                <div>
-                  <span>{item.action}</span>
-                  <p>{item.note}</p>
-                </div>
-                <div className="finance-row-actions">
-                  <StatusPill tone={item.tone}>{item.status}</StatusPill>
-                  {item.tripId && (
-                    <button className="header-action-button" type="button" onClick={() => navigate(`/admin/jobs/${item.tripId}`)}>Open</button>
-                  )}
-                  {item.vehicleId && !item.tripId && (
-                    <button className="header-action-button" type="button" onClick={() => navigate(`/admin/tracking/vehicles/${item.vehicleId}`)}>Open</button>
-                  )}
-                  {item.id && (
-                    <button className="header-action-button" type="button" onClick={() => handleStatus(item, "resolved")}>Resolve</button>
-                  )}
-                </div>
+        <aside className="content-card alerts-inspector">
+          {selectedAlert ? (
+            <>
+              <div className="section-head">
+                <div><span className="card-label">Incident Inspector</span><h2>{selectedAlert.code}</h2></div>
+                <StatusPill tone={selectedAlert.tone}>{selectedAlert.severity}</StatusPill>
               </div>
-            ))}
-            {!loading && (data?.resolutions || []).length === 0 && (
-              <p className="finance-empty">No watch items assigned. Move open database alerts to watch when ownership is confirmed.</p>
-            )}
-          </div>
-        </article>
-      </section>
-
-      <section className="content-card">
-        <div className="section-head">
-          <div>
-            <span className="card-label">Alert Register</span>
-            <h2>Filtered Control-Room Workload</h2>
-          </div>
-          <StatusPill tone="neutral">{allAlerts.length} visible</StatusPill>
-        </div>
-
-        <div className="data-rows compact finance-list">
-          {allAlerts.map(item => (
-            <div className="data-row finance-row alert-register-row" key={`${item.code}-${item.status}`}>
-              <button
-                className="finance-row-main alert-row-main"
-                type="button"
-                onClick={() => alertTarget(item) && navigate(alertTarget(item))}
-                disabled={!alertTarget(item)}
-              >
-                <div>
-                  <strong>{item.title}</strong>
-                  <p>{item.description}</p>
-                  <div className="alert-meta-strip">
-                    <span>{item.code}</span>
-                    <span>{item.module}</span>
-                    <span>{item.owner}</span>
+              <div className="alerts-inspector-heading"><h3>{selectedAlert.title}</h3><p>{selectedAlert.description}</p></div>
+              <dl className="alerts-inspector-facts">
+                <div><dt>Status</dt><dd>{selectedAlert.status}</dd></div>
+                <div><dt>Module</dt><dd>{selectedAlert.module}</dd></div>
+                <div><dt>Source</dt><dd>{selectedAlert.source}</dd></div>
+                <div><dt>Created</dt><dd>{selectedAlert.created}</dd></div>
+                <div><dt>Owner</dt><dd>{selectedAlert.owner}</dd></div>
+                <div><dt>Updated</dt><dd>{selectedAlert.updated || selectedAlert.created}</dd></div>
+              </dl>
+              {alertTarget(selectedAlert) && <button className="header-action-button alerts-context-button" type="button" onClick={() => navigate(alertTarget(selectedAlert))}>Open Affected Record</button>}
+              {selectedAlert.id ? (
+                <div className="alerts-workflow-form">
+                  <label><span>Assigned Owner</span><input className="af-input" value={ownerName} onChange={event => setOwnerName(event.target.value)} placeholder="e.g. Dispatch Desk Or Team Member" /></label>
+                  <label><span>Resolution Note</span><textarea className="af-input" value={resolutionNote} onChange={event => setResolutionNote(event.target.value)} placeholder="Action Taken, Outcome, And Closure Evidence..." rows={4} /></label>
+                  <div className="alerts-workflow-actions">
+                    {selectedAlert.status !== "open" && <button className="header-action-button" disabled={saving} type="button" onClick={() => handleStatus(selectedAlert, "open", { owner_name: ownerName, resolution_note: resolutionNote })}>Reopen</button>}
+                    {selectedAlert.status !== "watch" && selectedAlert.status !== "resolved" && <button className="header-action-button" disabled={saving} type="button" onClick={() => handleStatus(selectedAlert, "watch", { owner_name: ownerName, resolution_note: resolutionNote })}>Assign And Watch</button>}
+                    {selectedAlert.status !== "resolved" && <button className="af-submit-btn" disabled={saving} type="button" onClick={() => handleStatus(selectedAlert, "resolved", { owner_name: ownerName, resolution_note: resolutionNote })}>{saving ? "Saving..." : "Resolve Alert"}</button>}
                   </div>
+                  <p className="af-hint">Watch Requires An Owner. Resolve Requires A Closure Note.</p>
                 </div>
-                <div>
-                  <span>{item.severity}</span>
-                  <p>{item.created}</p>
-                </div>
-              </button>
-              <div className="finance-row-actions">
-                <StatusPill tone={item.tone}>{item.status}</StatusPill>
-                {item.id && item.status !== "open" && (
-                  <button className="header-action-button" type="button" onClick={() => handleStatus(item, "open")}>Reopen</button>
-                )}
-                {item.id && item.status !== "watch" && item.status !== "resolved" && (
-                  <button className="header-action-button" type="button" onClick={() => handleStatus(item, "watch")}>Watch</button>
-                )}
-                {item.id && item.status !== "resolved" && (
-                  <button className="header-action-button" type="button" onClick={() => handleStatus(item, "resolved")}>Resolve</button>
-                )}
-              </div>
-            </div>
-          ))}
-          {!loading && allAlerts.length === 0 && (
-            <p className="finance-empty">{hasFilters ? "No alerts match your filters." : "No alert workload is available yet."}</p>
-          )}
-        </div>
+              ) : <div className="alerts-live-source-note"><strong>Live Source Alert</strong><p>Resolve The Failed Delivery Or Vehicle Defect In Its Source Record. The Alert Will Clear When The Source Workflow Is Completed.</p></div>}
+            </>
+          ) : <p className="finance-empty">Select An Alert To Review Its Workflow.</p>}
+        </aside>
       </section>
     </AdminWorkspaceLayout>
   );

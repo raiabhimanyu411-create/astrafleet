@@ -20,6 +20,7 @@ export const getInvoiceById = (id) => api.get(`/api/admin/billing/${id}`);
 export const createInvoice = (data) => api.post("/api/admin/billing", data);
 export const updateInvoice = (id, data) => api.put(`/api/admin/billing/${id}`, data);
 export const updateInvoiceStatus = (id, data) => api.patch(`/api/admin/billing/${id}/status`, data);
+export const recordInvoicePayment = (id, data) => api.post(`/api/admin/billing/${id}/payments`, data);
 export const deleteInvoice = (id, data) => api.delete(`/api/admin/billing/${id}`, { data });
 export const getTrackingVehicleById = (id) => api.get(`/api/admin/tracking/vehicles/${id}`);
 export const updateTrackingVehicle = (id, data) => api.patch(`/api/admin/tracking/vehicles/${id}`, data);

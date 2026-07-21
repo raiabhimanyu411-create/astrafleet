@@ -291,7 +291,7 @@ export function AdminFinancePage() {
                     <td>
                       <div className="finance-table-actions">
                         {item.status !== "paid" && (
-                          <button className="header-action-button" type="button" onClick={() => handleInvoiceStatus(item.id, "paid")}>Mark Paid</button>
+                          <button className="header-action-button" type="button" onClick={() => navigate(`/admin/billing/${item.id}`)}>Record Payment</button>
                         )}
                         {item.status !== "hold" && (
                           <button className="header-action-button" type="button" onClick={() => handleInvoiceStatus(item.id, "hold")}>Hold</button>
