@@ -434,7 +434,7 @@ function maintenanceWeekNumber(date) {
 function planCodeForType(type) {
   return {
     "Safety inspection": "IB",
-    "Roller brake test": "RBT",
+    "Roller brake test": "IB",
     MOT: "MOT",
     "Road Tax": "TAX",
     Insurance: "INS",
@@ -1392,11 +1392,17 @@ exports.getMaintenancePortal = async (_req, res) => {
         }
       }
 
-      // Add completed events within the plan window (RBT excluded — IB covers both)
+      // Add completed events within the plan window. Roller brake test is only
+      // skipped when it was done the same day as a Safety inspection (the IB
+      // chip already covers both) — if done on its own day, it needs its own chip.
       for (const job of jobs) {
         if (job.trailerId || Number(job.vehicleId) !== Number(v.id)) continue;
         if (job.status !== "completed" || !job.serviceDateRaw) continue;
-        if (job.serviceType === "Roller brake test") continue;
+        if (job.serviceType === "Roller brake test" && jobs.some((other) =>
+          !other.trailerId && Number(other.vehicleId) === Number(v.id) &&
+          other.status === "completed" && other.serviceType === "Safety inspection" &&
+          other.serviceDateRaw === job.serviceDateRaw
+        )) continue;
         // A completed marker belongs to the day the work was actually done.
         // The job's due date may now represent the next scheduled occurrence.
         const completedDateRaw = job.serviceDateRaw;
