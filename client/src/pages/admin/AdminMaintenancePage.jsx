@@ -54,7 +54,7 @@ const statusOptions = ["planned", "booked", "in_progress", "completed", "cancell
 const priorityOptions = ["low", "normal", "high", "critical"];
 const severityOptions = ["low", "medium", "high", "critical"];
 const allMaintenanceItems = [
-  { value: "Roller brake test", label: "Roller brake test", interval: "Every 6 weeks", days: 42, trailerOk: false },
+  { value: "Brake test", label: "Brake test", interval: "Every 6 weeks", days: 42, trailerOk: false },
   { value: "Safety inspection", label: "Safety inspection", interval: "Every 6 weeks", days: 42, trailerOk: true },
   { value: "MOT", label: "MOT", interval: "Every 12 months", months: 12, trailerOk: true },
   { value: "Tacho Calibration", label: "Tacho Calibration", interval: "Every 2 years", months: 24, trailerOk: false },
@@ -1258,7 +1258,7 @@ function JobDrawer({ job, history, onClose, onEdit, onComplete, onBillStatus, sa
 const EVENT_COLORS = {
   TAX: { bg: "#f97316", text: "#fff", label: "Road Tax" },
   IB:  { bg: "#3b82f6", text: "#fff", label: "Safety Inspection" },
-  RBT: { bg: "#0f766e", text: "#fff", label: "Roller Brake Test" },
+  BT:  { bg: "#0f766e", text: "#fff", label: "Brake Test" },
   MOT: { bg: "#eab308", text: "#1a1a1a", label: "Ministry of Transport" },
   VOR: { bg: "#14b8a6", text: "#fff", label: "Vechile Off Road" },
   INS: { bg: "#22c55e", text: "#fff", label: "Insurance" },
@@ -1301,7 +1301,7 @@ const TYPE_TO_CODE = {
   "Road Tax": "TAX",
   "Safety inspection": "IB",
   MOT: "MOT",
-  "Roller brake test": "RBT",
+  "Brake test": "BT",
   Insurance: "INS",
   "Tacho Calibration": "T",
   "Full Service": "SRV"

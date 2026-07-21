@@ -3,7 +3,7 @@ const db = require("../db/connection");
 const INSPECTION_INTERVAL_DAYS = 42;
 const TRAILER_INSPECTION_INTERVAL_DAYS = 70;
 const MAINTENANCE_RULES = {
-  "Roller brake test": { days: INSPECTION_INTERVAL_DAYS },
+  "Brake test": { days: INSPECTION_INTERVAL_DAYS },
   "Safety inspection": { days: INSPECTION_INTERVAL_DAYS },
   MOT: { months: 12 },
   "Tacho Calibration": { months: 24 },
@@ -329,6 +329,15 @@ async function syncMaintenanceSchema() {
       created_at         TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     ) ENGINE=InnoDB
   `);
+
+  // One-time-compatible rename. These statements are intentionally idempotent,
+  // so existing installations migrate saved history/jobs on the first request
+  // after deployment while fresh installations remain unchanged.
+  await db.query(`UPDATE maintenance_jobs SET service_type='Brake test' WHERE service_type IN ('Roller brake test','Roller Brake Test')`);
+  await db.query(`UPDATE maintenance_records SET service_type='Brake test' WHERE service_type IN ('Roller brake test','Roller Brake Test')`);
+  await db.query(`UPDATE trailer_maintenance_records SET service_type='Brake test' WHERE service_type IN ('Roller brake test','Roller Brake Test')`);
+  await db.query(`UPDATE vehicle_inspections SET inspection_type='Brake test' WHERE inspection_type IN ('Roller brake test','Roller Brake Test')`);
+  await db.query(`UPDATE trailer_inspections SET inspection_type='Brake test' WHERE inspection_type IN ('Roller brake test','Roller Brake Test')`);
 }
 
 exports.ensureMaintenanceSchema = async (_req, res, next) => {
@@ -428,7 +437,7 @@ function maintenanceWeekNumber(date) {
 function planCodeForType(type) {
   return {
     "Safety inspection": "IB",
-    "Roller brake test": "RBT",
+    "Brake test": "BT",
     MOT: "MOT",
     "Road Tax": "TAX",
     Insurance: "INS",
@@ -440,7 +449,7 @@ function planCodeForType(type) {
 // Inspection intervals are elapsed calendar periods from the date the work was
 // completed: 6 weeks = 42 days and 10 weeks = 70 days.
 function addIntervalForPlan(date, type, roadTaxIntervalMonths = 12, inspectionIntervalDays = INSPECTION_INTERVAL_DAYS) {
-  if (["Safety inspection", "Roller brake test"].includes(type)) return addDays(date, inspectionIntervalDays);
+  if (["Safety inspection", "Brake test"].includes(type)) return addDays(date, inspectionIntervalDays);
   if (type === "Road Tax") return addMonths(date, Number(roadTaxIntervalMonths || 12));
   if (type === "Tacho Calibration") return addMonths(date, 24);
   if (["MOT", "Insurance"].includes(type)) return addMonths(date, 12);
@@ -518,7 +527,7 @@ function cleanJobPayload(body) {
     vehicle_id: assetType === "vehicle" ? numericAssetId : null,
     trailer_id: assetType === "trailer" ? numericAssetId : null,
     defect_id: body.defect_id || body.defectId || null,
-    service_type: String(body.service_type || body.serviceType || "").trim(),
+    service_type: String(body.service_type || body.serviceType || "").trim().replace(/^Roller brake test$/i, "Brake test"),
     due_date: body.due_date || body.dueDate || "",
     garage_name: String(body.garage_name || body.garageName || "").trim() || null,
     assigned_mechanic: String(body.assigned_mechanic || body.assignedMechanic || "").trim() || null,
@@ -712,14 +721,14 @@ async function applyCompletedMaintenance(job, completion = {}) {
       await db.query(`UPDATE trailers SET insurance_expiry=? WHERE id=?`, [nextDueDate, job.trailer_id]);
     } else if (job.service_type === "Full Service") {
       await db.query(`UPDATE trailers SET next_service_due=? WHERE id=?`, [nextDueDate || null, job.trailer_id]);
-    } else if (nextDueDate && ["Safety inspection", "Roller brake test"].includes(job.service_type)) {
+    } else if (nextDueDate && ["Safety inspection", "Brake test"].includes(job.service_type)) {
       await db.query(`UPDATE trailers SET next_inspection_due=? WHERE id=?`, [nextDueDate, job.trailer_id]);
     }
   }
   if (!job.trailer_id && job.asset_type !== "trailer") {
     await ensureRecurringJob(job.vehicle_id, job.service_type, nextDueDate, job.id);
   }
-  if (!job.trailer_id && job.asset_type !== "trailer" && ["Safety inspection", "Roller brake test"].includes(job.service_type)) {
+  if (!job.trailer_id && job.asset_type !== "trailer" && ["Safety inspection", "Brake test"].includes(job.service_type)) {
     const [[existingInspection]] = await db.query(
       `SELECT id FROM vehicle_inspections
        WHERE vehicle_id=? AND inspection_type=? AND inspection_date=?
@@ -1144,7 +1153,7 @@ exports.getMaintenancePortal = async (_req, res) => {
       );
     };
 
-    const profileItemTypes = ["MOT", "Road Tax", "Insurance", "Tacho Calibration", "Safety inspection", "Roller brake test", "Full Service"];
+    const profileItemTypes = ["MOT", "Road Tax", "Insurance", "Tacho Calibration", "Safety inspection", "Brake test", "Full Service"];
     const trailerProfileItemTypes = ["MOT", "Safety inspection"];
 
     const trailerComplianceItems = trailerRows.flatMap((t) =>
@@ -1409,7 +1418,7 @@ exports.getMaintenancePortal = async (_req, res) => {
       }
 
       // Add completed events within the plan window. Safety inspections and
-      // roller brake tests remain separate records with distinct schedule codes.
+      // brake tests remain separate records with distinct schedule codes.
       for (const job of jobs) {
         if (job.trailerId || Number(job.vehicleId) !== Number(v.id)) continue;
         if (job.status !== "completed" || !job.serviceDateRaw) continue;
@@ -1921,7 +1930,7 @@ exports.getMaintenancePortal = async (_req, res) => {
       highlights: [
         "Planner rows are generated from vehicles, maintenance logs, inspections, and defects.",
         "Use due filters to separate overdue work, upcoming workshop bookings, and healthy assets.",
-        "UK intervals are supported for roller brake tests, 6-week inspections, MOT, tacho calibration, road tax, and 85,000 km full service."
+        "UK intervals are supported for brake tests, 6-week inspections, MOT, tacho calibration, road tax, and 85,000 km full service."
       ],
       stats: [
         { label: "Overdue", value: overdue + jobs.filter((job) => job.daysLeft < 0 && !["completed", "cancelled"].includes(job.status)).length, description: "Service, inspection, or job past due.", change: "Immediate action", tone: overdue ? "danger" : "success" },
@@ -2046,7 +2055,7 @@ exports.autoPlanDueWork = async (_req, res) => {
         ON j.vehicle_id = v.id
        AND j.status = 'completed'
        AND j.service_date IS NOT NULL
-       AND j.service_type IN ('MOT','Insurance','Road Tax','Safety inspection','Roller brake test')
+       AND j.service_type IN ('MOT','Insurance','Road Tax','Safety inspection','Brake test')
       WHERE NOT EXISTS (
         SELECT 1
         FROM maintenance_jobs newer
@@ -2621,7 +2630,7 @@ exports.completeEventFromSchedule = async (req, res) => {
     const [encodedType, encodedId] = encodedAsset.includes(":") ? encodedAsset.split(":") : ["vehicle", encodedAsset];
     const assetType = encodedType === "trailer" ? "trailer" : "vehicle";
     const assetNumericId = Number(encodedId || 0);
-    const serviceType = String(req.body.service_type || req.body.serviceType || "").trim();
+    const serviceType = String(req.body.service_type || req.body.serviceType || "").trim().replace(/^Roller brake test$/i, "Brake test");
     const serviceDate = req.body.service_date || req.body.serviceDate || rawDate(new Date());
     const scheduledDueDate = req.body.due_date || req.body.dueDate || serviceDate;
     const garageName = String(req.body.garage_name || req.body.garageName || "").trim() || null;
@@ -2696,13 +2705,13 @@ exports.completeEventFromSchedule = async (req, res) => {
           : serviceType === "Insurance" ? "insurance_expiry"
             : serviceType === "Tacho Calibration" && assetType === "vehicle" ? "tacho_calibration_expiry"
               : serviceType === "Full Service" ? "next_service_due"
-                : assetType === "trailer" && ["Safety inspection", "Roller brake test"].includes(serviceType) ? "next_inspection_due"
+                : assetType === "trailer" && ["Safety inspection", "Brake test"].includes(serviceType) ? "next_inspection_due"
                   : null;
       if (dueColumn && nextDueDate) {
         await db.query(`UPDATE ${assetTable} SET ${dueColumn}=? WHERE id=?`, [nextDueDate, assetNumericId]);
       }
 
-      if (assetType === "vehicle" && ["Safety inspection", "Roller brake test"].includes(serviceType)) {
+      if (assetType === "vehicle" && ["Safety inspection", "Brake test"].includes(serviceType)) {
         await db.query(
           `UPDATE vehicle_inspections
            SET inspection_date=?, next_due=?, inspector_name=COALESCE(?,inspector_name), notes=COALESCE(?,notes)
