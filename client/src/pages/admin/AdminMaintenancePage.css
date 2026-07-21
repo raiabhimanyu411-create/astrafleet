@@ -246,6 +246,15 @@
   color: var(--muted);
 }
 
+.maintenance-vor-overdue {
+  color: var(--danger);
+  font-weight: 700;
+}
+
+.maintenance-stat-panel-item .vehicle-detail-item-doc-link {
+  margin-top: 6px;
+}
+
 .maintenance-summary-card.danger { border-left-color: var(--danger); }
 .maintenance-summary-card.warning { border-left-color: var(--warning); }
 .maintenance-summary-card.success { border-left-color: var(--success); }

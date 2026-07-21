@@ -842,6 +842,7 @@ exports.getMaintenancePortal = async (_req, res) => {
         vorReason: v.vor_reason || "",
         vorSince: fmtDate(v.vor_marked_at),
         vorTill: v.vor_till ? fmtDate(v.vor_till) : "",
+        vorTillRaw: rawDate(v.vor_till),
         action: Number(v.open_defects || 0) > 0
           ? "Defect review"
           : priorityDays === null
@@ -895,6 +896,7 @@ exports.getMaintenancePortal = async (_req, res) => {
         vorReason: t.vor_reason || "",
         vorSince: fmtDate(t.vor_marked_at),
         vorTill: t.vor_till ? fmtDate(t.vor_till) : "",
+        vorTillRaw: rawDate(t.vor_till),
         action: Number(t.open_defects || 0) > 0
           ? "Defect review"
           : priorityDays === null ? "Plan service"
@@ -2476,7 +2478,7 @@ exports.setVorStatus = async (req, res) => {
     const table = assetType === "trailer" ? "trailers" : "vehicles";
     if (onRoad) {
       await db.query(
-        `UPDATE ${table} SET status='available', vor_reason=NULL, vor_marked_at=NULL, vor_till=NULL WHERE id=? AND status='maintenance'`,
+        `UPDATE ${table} SET status='available', vor_reason=NULL, vor_marked_at=NULL, vor_till=NULL WHERE id=? AND status IN ('maintenance','stopped')`,
         [assetNumericId]
       );
       return res.json({ message: "Vehicle marked back on road." });

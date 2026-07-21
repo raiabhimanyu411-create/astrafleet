@@ -91,6 +91,14 @@ function addMonthsToKey(value, months) {
   return dateKey(date);
 }
 
+function daysFromToday(value) {
+  if (!value) return null;
+  const date = new Date(`${value}T00:00:00`);
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  return Math.round((date - today) / (1000 * 60 * 60 * 24));
+}
+
 function nextDueForItem(serviceType, serviceDate, roadTaxIntervalMonths, assetType = "vehicle") {
   const item = maintenanceItems.find((option) => option.value === serviceType);
   if (!item || !serviceDate) return "";
@@ -1960,6 +1968,20 @@ export function AdminMaintenancePage() {
     }
   }
 
+  async function handleMarkBackOnRoad(row) {
+    if (!window.confirm(`Mark ${row.registrationNumber} back on road?`)) return;
+    const assetType = row.assetType === "trailer" ? "trailer" : "vehicle";
+    setSavingAction(`vor-${row.id}`);
+    try {
+      await setVorStatus({ asset_id: `${assetType}:${row.id}`, on_road: true });
+      await load();
+    } catch (err) {
+      setError(err.response?.data?.message || "Could not mark vehicle back on road.");
+    } finally {
+      setSavingAction("");
+    }
+  }
+
   const findStat = (items, label) => (items || []).find((item) => item.label === label);
   const primaryCards = [
     {
@@ -2085,22 +2107,49 @@ export function AdminMaintenancePage() {
             )}
             {statPanel === "offroad" && (
               <>
-                {offRoadItems.map((row) => (
-                  <button
-                    key={`vor-${row.assetType || "vehicle"}-${row.id}`}
-                    className="maintenance-stat-panel-item"
-                    type="button"
-                    onClick={() => openVehicleDetail({ vehicleId: row.id }, row.assetType === "trailer" ? "trailer" : "vehicle")}
-                  >
-                    <strong>{row.registrationNumber}</strong>
-                    <span>{row.fleetCode}</span>
-                    <p>
-                      {row.vorReason || "No VOR reason on file"}
-                      {row.vorSince ? ` · since ${row.vorSince}` : ""}
-                      {row.vorTill ? ` → ${row.vorTill}` : ""}
-                    </p>
-                  </button>
-                ))}
+                {offRoadItems.map((row) => {
+                  const overdueDays = row.vorTillRaw ? -daysFromToday(row.vorTillRaw) : null;
+                  const isOverdue = overdueDays !== null && overdueDays > 0;
+                  return (
+                    <div
+                      key={`vor-${row.assetType || "vehicle"}-${row.id}`}
+                      className="maintenance-stat-panel-item"
+                      role="button"
+                      tabIndex={0}
+                      onClick={() => openVehicleDetail({ vehicleId: row.id }, row.assetType === "trailer" ? "trailer" : "vehicle")}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" || e.key === " ") {
+                          e.preventDefault();
+                          openVehicleDetail({ vehicleId: row.id }, row.assetType === "trailer" ? "trailer" : "vehicle");
+                        }
+                      }}
+                    >
+                      <strong>{row.registrationNumber}</strong>
+                      <span>{row.fleetCode}</span>
+                      <p>
+                        {row.vorReason || "No VOR reason on file"}
+                        {row.vorSince ? ` · since ${row.vorSince}` : ""}
+                        {row.vorTill ? ` → ${row.vorTill}` : ""}
+                      </p>
+                      {isOverdue && (
+                        <p className="maintenance-vor-overdue">
+                          Overdue by {overdueDays} day{overdueDays === 1 ? "" : "s"} — expected back {row.vorTill}
+                        </p>
+                      )}
+                      <button
+                        type="button"
+                        className="vehicle-detail-item-doc-link"
+                        disabled={savingAction === `vor-${row.id}`}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleMarkBackOnRoad(row);
+                        }}
+                      >
+                        {savingAction === `vor-${row.id}` ? "Saving..." : "Mark back on road"}
+                      </button>
+                    </div>
+                  );
+                })}
                 {offRoadItems.length === 0 && <p className="finance-empty">No vehicles off road.</p>}
               </>
             )}
