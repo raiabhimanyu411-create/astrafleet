@@ -930,6 +930,18 @@
   cursor: pointer;
 }
 
+.vehicle-detail-item-document {
+  display: grid;
+  justify-items: center;
+  gap: 3px;
+}
+
+.vehicle-detail-item-document small {
+  color: var(--muted);
+  font-size: 0.62rem;
+  font-weight: 700;
+}
+
 .vehicle-detail-done-form {
   margin-top: 18px;
   padding-top: 16px;

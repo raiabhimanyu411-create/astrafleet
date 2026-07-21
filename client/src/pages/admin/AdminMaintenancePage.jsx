@@ -519,17 +519,20 @@ function VehicleDetailModal({ target, profiles, onClose, onSaved }) {
 
   useEffect(() => {
     const selectedItem = profile?.items?.find((item) => item.type === target?.preselectType);
+    const isCompletedSelection = target?.selectionKind === "completed";
     setActiveType(target?.preselectType || null);
     setForm({
-      service_date: selectedItem?.lastDoneRaw || target?.scheduledDueDate || dateKey(new Date()),
+      service_date: isCompletedSelection
+        ? (selectedItem?.lastDoneRaw || target?.scheduledDueDate || dateKey(new Date()))
+        : dateKey(new Date()),
       due_date: target?.scheduledDueDate || "",
       garage_name: "",
       final_cost_gbp: "",
       completed_mileage_km: "",
-      bill_number: selectedItem?.billNumber || "",
-      bill_amount_gbp: selectedItem?.billAmountGbp || "",
-      bill_notes: selectedItem?.billNotes || "",
-      bill_attachment_data: selectedItem?.attachmentData || "",
+      bill_number: isCompletedSelection ? (selectedItem?.billNumber || "") : "",
+      bill_amount_gbp: isCompletedSelection ? (selectedItem?.billAmountGbp || "") : "",
+      bill_notes: isCompletedSelection ? (selectedItem?.billNotes || "") : "",
+      bill_attachment_data: isCompletedSelection ? (selectedItem?.attachmentData || "") : "",
       road_tax_interval_months: "12"
     });
     setError("");
@@ -545,14 +548,16 @@ function VehicleDetailModal({ target, profiles, onClose, onSaved }) {
     setError("");
     setSuccessMessage("");
     const item = profile?.items?.find((entry) => entry.type === type);
+    const isSelectedCompletedEvent = type === target?.preselectType && target?.selectionKind === "completed";
+    const isSelectedUpcomingEvent = type === target?.preselectType && Boolean(target?.scheduledDueDate) && !isSelectedCompletedEvent;
     setForm((c) => ({
       ...c,
-      service_date: item?.lastDoneRaw || target?.scheduledDueDate || dateKey(new Date()),
-      due_date: target?.scheduledDueDate || item?.nextDueRaw || c.due_date || "",
-      bill_number: item?.billNumber || "",
-      bill_amount_gbp: item?.billAmountGbp || "",
-      bill_notes: item?.billNotes || "",
-      bill_attachment_data: item?.attachmentData || ""
+      service_date: isSelectedCompletedEvent ? (item?.lastDoneRaw || dateKey(new Date())) : dateKey(new Date()),
+      due_date: isSelectedUpcomingEvent ? target.scheduledDueDate : (item?.nextDueRaw || ""),
+      bill_number: isSelectedCompletedEvent ? (item?.billNumber || "") : "",
+      bill_amount_gbp: isSelectedCompletedEvent ? (item?.billAmountGbp || "") : "",
+      bill_notes: isSelectedCompletedEvent ? (item?.billNotes || "") : "",
+      bill_attachment_data: isSelectedCompletedEvent ? (item?.attachmentData || "") : ""
     }));
   }
 
@@ -627,6 +632,10 @@ function VehicleDetailModal({ target, profiles, onClose, onSaved }) {
           {profile.items.map((item) => {
             const code = TYPE_TO_CODE[item.type] || item.type;
             const color = EVENT_COLORS[code] || { bg: "#94a3b8", text: "#fff" };
+            const isSelectedUpcoming = activeType === item.type
+              && target?.preselectType === item.type
+              && Boolean(target?.scheduledDueDate)
+              && target?.selectionKind !== "completed";
             return (
               <div
                 className={`maintenance-profile-item${activeType === item.type ? " active" : ""}`}
@@ -645,18 +654,23 @@ function VehicleDetailModal({ target, profiles, onClose, onSaved }) {
                 <strong>{item.type}</strong>
                 <p>Last done: {item.lastDone}{item.lastDoneKm ? ` · ${Number(item.lastDoneKm).toLocaleString("en-GB")} km` : ""}</p>
                 <p>Next due: {item.nextDue}</p>
-                <StatusPill tone={item.tone}>{item.status}</StatusPill>
-                {item.hasAttachment && (
-                  <button
-                    type="button"
-                    className="vehicle-detail-item-doc-link"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      openAttachment(item.attachmentData);
-                    }}
-                  >
-                    View document
-                  </button>
+                <StatusPill tone={isSelectedUpcoming ? "danger" : item.tone}>
+                  {isSelectedUpcoming ? "Upcoming" : item.status}
+                </StatusPill>
+                {item.hasAttachment && !isSelectedUpcoming && (
+                  <div className="vehicle-detail-item-document">
+                    <button
+                      type="button"
+                      className="vehicle-detail-item-doc-link"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        openAttachment(item.attachmentData);
+                      }}
+                    >
+                      View last document
+                    </button>
+                    {item.documentSubmittedAt && <small>Submitted: {item.documentSubmittedAt}</small>}
+                  </div>
                 )}
               </div>
             );
@@ -1453,9 +1467,13 @@ function ExcelScheduleView({ data, onOpenVehicle }) {
     return <p className="finance-empty">No annual schedule data available.</p>;
   }
 
-  const legendChips = Object.entries(EVENT_COLORS).map(([code, { bg, text, label }]) => (
-    <span key={code} className="excel-legend-chip" style={{ background: bg, color: text }} title={label}>{code}</span>
-  ));
+  const legendChips = [
+    <span key="upcoming" className="excel-legend-chip" style={{ background: "#dc2626", color: "#fff" }}>UPCOMING</span>,
+    <span key="completed" className="excel-legend-chip" style={{ background: "#16a34a", color: "#fff" }}>DONE</span>,
+    ...Object.entries(EVENT_COLORS).map(([code, { bg, text, label }]) => (
+      <span key={code} className="excel-legend-chip" style={{ background: bg, color: text }} title={label}>{code}</span>
+    ))
+  ];
 
   return (
     <>
@@ -1504,7 +1522,7 @@ function ExcelScheduleView({ data, onOpenVehicle }) {
                 onClick={() => onOpenVehicle({
                   vehicleId: item.vehicleId,
                   assetType: item.rowAssetType === "Trailer" ? "trailer" : "vehicle"
-                }, item.rowAssetType === "Trailer" ? "trailer" : "vehicle", item.type, item.dueDateRaw)}
+                }, item.rowAssetType === "Trailer" ? "trailer" : "vehicle", item.type, item.dueDateRaw, item.kind)}
               >
                 <span className="schedule-week-summary-code">{item.code}</span>
                 <strong>{item.rowFleetCode || item.rowVehicle}</strong>
@@ -1634,7 +1652,7 @@ function ExcelScheduleView({ data, onOpenVehicle }) {
                                 }}
                                 onClick={(e) => {
                                   e.stopPropagation();
-                                  onOpenVehicle(row, assetType, ev.items[0].type, ev.dueDateRaw);
+                                  onOpenVehicle(row, assetType, ev.items[0].type, ev.dueDateRaw, "completed");
                                 }}
                               >
                                 {label}
@@ -1667,7 +1685,7 @@ function ExcelScheduleView({ data, onOpenVehicle }) {
                           const isCompleted = ev.kind === "completed";
                           const color = isCompleted
                             ? { bg: "#16a34a", text: "#fff" }
-                            : (EVENT_COLORS[ev.code] || { bg: "#94a3b8", text: "#fff" });
+                            : { bg: "#dc2626", text: "#fff" };
                           const day = ev.dueDateRaw?.slice(8, 10);
                           const mon = ev.dueDateRaw?.slice(5, 7);
                           return (
@@ -1686,7 +1704,7 @@ function ExcelScheduleView({ data, onOpenVehicle }) {
                               } : undefined}
                               onClick={(e) => {
                                 e.stopPropagation();
-                                onOpenVehicle(row, assetType, ev.type, ev.dueDateRaw);
+                                onOpenVehicle(row, assetType, ev.type, ev.dueDateRaw, ev.kind || "upcoming");
                               }}
                             >
                               {isCompleted ? `✓ ${ev.code} ${day}/${mon}` : `${ev.code} ${day}/${mon}`}
@@ -1833,8 +1851,8 @@ export function AdminMaintenancePage() {
     load();
   }, []);
 
-  function openVehicleDetail(row, assetType = "vehicle", preselectType = null, scheduledDueDate = "") {
-    setVehicleDetailTarget({ vehicleId: row.vehicleId, assetType, preselectType, scheduledDueDate });
+  function openVehicleDetail(row, assetType = "vehicle", preselectType = null, scheduledDueDate = "", selectionKind = "") {
+    setVehicleDetailTarget({ vehicleId: row.vehicleId, assetType, preselectType, scheduledDueDate, selectionKind });
   }
 
   function openEditJob(job) {

@@ -1014,7 +1014,9 @@ exports.getMaintenancePortal = async (_req, res) => {
         completionNotes: j.completion_notes || "-",
         completedAt: fmtDate(j.completed_at),
         completedAtRaw: rawDate(j.completed_at),
-        createdAt: fmtDate(j.created_at)
+        createdAt: fmtDate(j.created_at),
+        updatedAt: fmtDate(j.updated_at),
+        updatedAtRaw: rawDate(j.updated_at)
       };
     });
 
@@ -1174,6 +1176,7 @@ exports.getMaintenancePortal = async (_req, res) => {
             kmRemainingLabel: kmRemaining === null ? "-" : `${Number(kmRemaining).toLocaleString("en-GB")} km`,
             hasAttachment: Boolean(latest?.billAttachmentData),
             attachmentData: latest?.billAttachmentData || "",
+            documentSubmittedAt: latest?.billAttachmentData ? (latest.updatedAt || latest.completedAt || "-") : "",
             billNumber: latest?.billNumber || "",
             billAmountGbp: latest?.billAmountGbp || "",
             billNotes: latest?.billNotes && latest.billNotes !== "-" ? latest.billNotes : ""
@@ -1216,6 +1219,7 @@ exports.getMaintenancePortal = async (_req, res) => {
           kmRemainingLabel: "-",
           hasAttachment: Boolean(latest?.billAttachmentData),
           attachmentData: latest?.billAttachmentData || "",
+          documentSubmittedAt: latest?.billAttachmentData ? (latest.updatedAt || latest.completedAt || "-") : "",
           billNumber: latest?.billNumber || "",
           billAmountGbp: latest?.billAmountGbp || "",
           billNotes: latest?.billNotes && latest.billNotes !== "-" ? latest.billNotes : ""
@@ -1315,9 +1319,9 @@ exports.getMaintenancePortal = async (_req, res) => {
         if (job.trailerId || Number(job.vehicleId) !== Number(v.id)) continue;
         if (job.status !== "completed" || !job.serviceDateRaw) continue;
         if (job.serviceType === "Roller brake test") continue;
-        const displayDateRaw = job.serviceType === "Tacho Calibration"
-          ? job.serviceDateRaw
-          : (job.dueDateRaw || job.serviceDateRaw);
+        // A completed marker belongs to the day the work was actually done.
+        // The job's due date may now represent the next scheduled occurrence.
+        const displayDateRaw = job.serviceDateRaw;
         if (displayDateRaw < rawDate(planStart) || displayDateRaw > rawDate(planEnd)) continue;
         const week = planWeeks.find((w) => displayDateRaw >= w.startRaw && displayDateRaw <= w.endRaw);
         if (!week) continue;
@@ -1334,6 +1338,8 @@ exports.getMaintenancePortal = async (_req, res) => {
           dueDateRaw: displayDateRaw,
           displayDateRaw,
           dueDate: fmtDate(displayDateRaw),
+          scheduledDateRaw: job.dueDateRaw,
+          scheduledDate: job.dueDate,
           dueLabel: "Completed",
           daysLeft: -999,
           tone: "success",
@@ -1433,7 +1439,8 @@ exports.getMaintenancePortal = async (_req, res) => {
         if (!job.trailerId || Number(job.trailerId) !== Number(t.id)) continue;
         if (job.status !== "completed" || !job.serviceDateRaw) continue;
         if (!["Safety inspection", "MOT"].includes(job.serviceType)) continue;
-        const displayDateRaw = job.dueDateRaw || job.serviceDateRaw;
+        // Keep completed trailer work on its actual completion date as well.
+        const displayDateRaw = job.serviceDateRaw;
         if (displayDateRaw < rawDate(planStart) || displayDateRaw > rawDate(planEnd)) continue;
         const week = planWeeks.find((w) => displayDateRaw >= w.startRaw && displayDateRaw <= w.endRaw);
         if (!week) continue;
@@ -1451,6 +1458,8 @@ exports.getMaintenancePortal = async (_req, res) => {
           dueDateRaw: displayDateRaw,
           displayDateRaw,
           dueDate: fmtDate(displayDateRaw),
+          scheduledDateRaw: job.dueDateRaw,
+          scheduledDate: job.dueDate,
           dueLabel: "Completed",
           daysLeft: -999,
           tone: "success",
