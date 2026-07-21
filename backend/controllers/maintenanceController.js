@@ -415,20 +415,14 @@ function startOfWeek(date) {
   return next;
 }
 
-function firstPlanMondayForYear(year) {
-  const jan1 = new Date(year, 0, 1);
-  const firstWeekStart = startOfWeek(jan1);
-  return firstWeekStart.getFullYear() < year ? addDays(firstWeekStart, 7) : firstWeekStart;
-}
-
 function maintenanceWeekNumber(date) {
-  const weekStart = startOfWeek(date);
-  const firstMonday = firstPlanMondayForYear(weekStart.getFullYear());
-  if (weekStart < firstMonday) {
-    const previousFirstMonday = firstPlanMondayForYear(weekStart.getFullYear() - 1);
-    return Math.floor((weekStart - previousFirstMonday) / (7 * 24 * 60 * 60 * 1000)) + 1;
-  }
-  return Math.floor((weekStart - firstMonday) / (7 * 24 * 60 * 60 * 1000)) + 1;
+  // ISO-8601 week number: weeks start on Monday and week 1 contains 4 January.
+  const target = new Date(date);
+  target.setHours(0, 0, 0, 0);
+  target.setDate(target.getDate() + 3 - ((target.getDay() + 6) % 7));
+  const weekOne = new Date(target.getFullYear(), 0, 4);
+  weekOne.setHours(0, 0, 0, 0);
+  return 1 + Math.round(((target - weekOne) / (7 * 24 * 60 * 60 * 1000)) - (3 - ((weekOne.getDay() + 6) % 7)) / 7);
 }
 
 function planCodeForType(type) {
@@ -664,7 +658,27 @@ async function applyCompletedMaintenance(job, completion = {}) {
      WHERE id=?`,
     [finalCost, completionNotes, serviceDate, completedMileageKm, nextDueMileageKm, billAmountGbp, job.id]
   );
-  if (job.trailer_id || job.asset_type === "trailer") {
+  const isTrailer = Boolean(job.trailer_id || job.asset_type === "trailer");
+  const historyTable = isTrailer ? "trailer_maintenance_records" : "maintenance_records";
+  const historyAssetField = isTrailer ? "trailer_id" : "vehicle_id";
+  const historyAssetId = isTrailer ? job.trailer_id : job.vehicle_id;
+  const [[existingHistory]] = await db.query(
+    `SELECT id FROM ${historyTable}
+     WHERE ${historyAssetField}=? AND service_type=? AND service_date=?
+     ORDER BY id DESC LIMIT 1`,
+    [historyAssetId, job.service_type, serviceDate]
+  );
+  if (existingHistory) {
+    await db.query(
+      `UPDATE ${historyTable}
+       SET description=COALESCE(?,description), cost_gbp=?, next_due_date=?, garage_name=COALESCE(?,garage_name)
+           ${isTrailer ? "" : ", mileage=COALESCE(?,mileage)"}
+       WHERE id=?`,
+      isTrailer
+        ? [completionNotes || job.notes || null, finalCost, nextDueDate, job.garage_name || null, existingHistory.id]
+        : [completionNotes || job.notes || null, finalCost, nextDueDate, job.garage_name || null, completedMileageKm, existingHistory.id]
+    );
+  } else if (isTrailer) {
     await db.query(
       `INSERT INTO trailer_maintenance_records (trailer_id, service_date, service_type, description, cost_gbp, next_due_date, garage_name)
        VALUES (?, ?, ?, ?, ?, ?, ?)`,
@@ -706,12 +720,27 @@ async function applyCompletedMaintenance(job, completion = {}) {
     await ensureRecurringJob(job.vehicle_id, job.service_type, nextDueDate, job.id);
   }
   if (!job.trailer_id && job.asset_type !== "trailer" && ["Safety inspection", "Roller brake test"].includes(job.service_type)) {
-    await db.query(
-      `INSERT INTO vehicle_inspections
-        (vehicle_id, inspection_date, inspection_type, inspector_name, result, notes, next_due)
-       VALUES (?, ?, ?, ?, 'pass', ?, ?)`,
-      [job.vehicle_id, serviceDate, job.service_type, job.assigned_mechanic || job.garage_name, completionNotes || job.notes, nextDueDate]
+    const [[existingInspection]] = await db.query(
+      `SELECT id FROM vehicle_inspections
+       WHERE vehicle_id=? AND inspection_type=? AND inspection_date=?
+       ORDER BY id DESC LIMIT 1`,
+      [job.vehicle_id, job.service_type, serviceDate]
     );
+    if (existingInspection) {
+      await db.query(
+        `UPDATE vehicle_inspections
+         SET inspector_name=COALESCE(?,inspector_name), notes=COALESCE(?,notes), next_due=?
+         WHERE id=?`,
+        [job.assigned_mechanic || job.garage_name || null, completionNotes || job.notes || null, nextDueDate, existingInspection.id]
+      );
+    } else {
+      await db.query(
+        `INSERT INTO vehicle_inspections
+          (vehicle_id, inspection_date, inspection_type, inspector_name, result, notes, next_due)
+         VALUES (?, ?, ?, ?, 'pass', ?, ?)`,
+        [job.vehicle_id, serviceDate, job.service_type, job.assigned_mechanic || job.garage_name, completionNotes || job.notes, nextDueDate]
+      );
+    }
   }
   if (job.trailer_id || job.asset_type === "trailer") {
     await db.query(`UPDATE trailers SET status='available' WHERE id=? AND status='maintenance'`, [job.trailer_id]);
@@ -731,7 +760,7 @@ exports.getMaintenancePortal = async (_req, res) => {
         v.model_name,
         v.truck_type,
         v.status,
-        v.next_service_due,
+        last_fs.next_due_date AS next_service_due,
         v.mot_expiry,
         v.insurance_expiry,
         v.road_tax_expiry,
@@ -761,6 +790,14 @@ exports.getMaintenancePortal = async (_req, res) => {
           ORDER BY mr.service_date DESC, mr.id DESC
           LIMIT 1
         )
+      LEFT JOIN maintenance_records last_fs
+        ON last_fs.id = (
+          SELECT fs.id
+          FROM maintenance_records fs
+          WHERE fs.vehicle_id = v.id AND fs.service_type = 'Full Service'
+          ORDER BY fs.service_date DESC, fs.id DESC
+          LIMIT 1
+        )
       LEFT JOIN vehicle_inspections last_i
         ON last_i.id = (
           SELECT vi.id
@@ -778,8 +815,8 @@ exports.getMaintenancePortal = async (_req, res) => {
         GROUP BY vehicle_id
       ) def ON def.vehicle_id = v.id
       ORDER BY
-        v.next_service_due IS NULL,
-        v.next_service_due ASC,
+        last_fs.next_due_date IS NULL,
+        last_fs.next_due_date ASC,
         v.registration_number ASC
     `);
 
@@ -798,10 +835,7 @@ exports.getMaintenancePortal = async (_req, res) => {
         t.mot_expiry,
         t.insurance_expiry,
         t.next_service_due,
-        COALESCE(
-          (SELECT ti.next_due FROM trailer_inspections ti WHERE ti.trailer_id = t.id ORDER BY ti.inspection_date DESC LIMIT 1),
-          t.next_inspection_due
-        ) AS next_inspection_due,
+        (SELECT ti.next_due FROM trailer_inspections ti WHERE ti.trailer_id = t.id ORDER BY ti.inspection_date DESC LIMIT 1) AS next_inspection_due,
         COALESCE(t.inspection_frequency_weeks, 6) AS inspection_frequency_weeks,
         (SELECT ti.inspection_date FROM trailer_inspections ti WHERE ti.trailer_id = t.id ORDER BY ti.inspection_date DESC LIMIT 1) AS last_inspection_date,
         COALESCE(def.open_defects, 0) AS open_defects,
@@ -1098,10 +1132,28 @@ exports.getMaintenancePortal = async (_req, res) => {
       }
     }
 
-    const trailerComplianceItems = trailerRows.flatMap((t) => [
-      { vehicleId: t.id, assetType: "trailer", vehicle: t.registration_number, itemType: "MOT", dueDateRaw: rawDate(t.mot_expiry), dueDate: fmtDate(t.mot_expiry), daysLeft: daysUntil(t.mot_expiry) },
-      { vehicleId: t.id, assetType: "trailer", vehicle: t.registration_number, itemType: "Safety inspection", dueDateRaw: rawDate(t.next_inspection_due), dueDate: fmtDate(t.next_inspection_due), daysLeft: daysUntil(t.next_inspection_due) }
-    ]).filter((item) => item.dueDateRaw).map((item) => ({
+    const dueFromCompletedJob = (latest, type, assetType = "vehicle") => {
+      if (!latest?.serviceDateRaw) return "";
+      return calculateNextDueDate(
+        type,
+        latest.serviceDateRaw,
+        latest.roadTaxIntervalMonths || 12,
+        assetType === "trailer" && type === "Safety inspection"
+          ? TRAILER_INSPECTION_INTERVAL_DAYS
+          : INSPECTION_INTERVAL_DAYS
+      );
+    };
+
+    const profileItemTypes = ["MOT", "Road Tax", "Insurance", "Tacho Calibration", "Safety inspection", "Roller brake test", "Full Service"];
+    const trailerProfileItemTypes = ["MOT", "Safety inspection"];
+
+    const trailerComplianceItems = trailerRows.flatMap((t) =>
+      trailerProfileItemTypes.map((itemType) => {
+        const latest = latestServiceByVehicleAndType.get(`trailer:${t.id}:${itemType}`);
+        const dueDateRaw = dueFromCompletedJob(latest, itemType, "trailer");
+        return { vehicleId: t.id, assetType: "trailer", vehicle: t.registration_number, itemType, dueDateRaw, dueDate: fmtDate(dueDateRaw), daysLeft: daysUntil(dueDateRaw) };
+      })
+    ).filter((item) => item.dueDateRaw).map((item) => ({
       ...item,
       dueLabel: dueLabel(item.daysLeft),
       tone: item.daysLeft < 0 ? "danger" : item.daysLeft <= 30 ? "warning" : "success",
@@ -1110,29 +1162,16 @@ exports.getMaintenancePortal = async (_req, res) => {
 
     const fullServiceDueRaw = (v) => {
       const lastFullService = latestServiceByVehicleAndType.get(`${v.id}:Full Service`);
-      const raw = rawDate(v.next_service_due);
-      const calculated = lastFullService?.serviceDateRaw ? rawDate(addMonths(lastFullService.serviceDateRaw, 6)) : "";
-      if (!raw) return calculated;
-      if (lastFullService?.serviceDateRaw && raw <= lastFullService.serviceDateRaw) return calculated;
-      return raw;
+      return dueFromCompletedJob(lastFullService, "Full Service");
     };
 
-    const complianceItems = rows.flatMap((v) => [
-      { vehicleId: v.id, vehicle: v.registration_number, itemType: "MOT", dueDateRaw: rawDate(v.mot_expiry), dueDate: fmtDate(v.mot_expiry), daysLeft: daysUntil(v.mot_expiry) },
-      { vehicleId: v.id, vehicle: v.registration_number, itemType: "Insurance", dueDateRaw: rawDate(v.insurance_expiry), dueDate: fmtDate(v.insurance_expiry), daysLeft: daysUntil(v.insurance_expiry) },
-      { vehicleId: v.id, vehicle: v.registration_number, itemType: "Road Tax", dueDateRaw: rawDate(v.road_tax_expiry), dueDate: fmtDate(v.road_tax_expiry), daysLeft: daysUntil(v.road_tax_expiry) },
-      { vehicleId: v.id, vehicle: v.registration_number, itemType: "Full Service", dueDateRaw: fullServiceDueRaw(v), dueDate: fmtDate(fullServiceDueRaw(v)), daysLeft: daysUntil(fullServiceDueRaw(v)) },
-      { vehicleId: v.id, vehicle: v.registration_number, itemType: "Roller brake test", dueDateRaw: rawDate(v.next_inspection_due), dueDate: fmtDate(v.next_inspection_due), daysLeft: daysUntil(v.next_inspection_due) },
-      { vehicleId: v.id, vehicle: v.registration_number, itemType: "Safety inspection", dueDateRaw: rawDate(v.next_inspection_due), dueDate: fmtDate(v.next_inspection_due), daysLeft: daysUntil(v.next_inspection_due) },
-      {
-        vehicleId: v.id,
-        vehicle: v.registration_number,
-        itemType: "Tacho Calibration",
-        dueDateRaw: rawDate(v.tacho_calibration_expiry),
-        dueDate: fmtDate(v.tacho_calibration_expiry),
-        daysLeft: daysUntil(v.tacho_calibration_expiry)
-      }
-    ]).filter((item) => item.dueDateRaw).map((item) => ({
+    const complianceItems = rows.flatMap((v) =>
+      profileItemTypes.map((itemType) => {
+        const latest = latestServiceByVehicleAndType.get(`${v.id}:${itemType}`);
+        const dueDateRaw = itemType === "Full Service" ? fullServiceDueRaw(v) : dueFromCompletedJob(latest, itemType);
+        return { vehicleId: v.id, vehicle: v.registration_number, itemType, dueDateRaw, dueDate: fmtDate(dueDateRaw), daysLeft: daysUntil(dueDateRaw) };
+      })
+    ).filter((item) => item.dueDateRaw).map((item) => ({
       ...item,
       assetType: "vehicle",
       dueLabel: dueLabel(item.daysLeft),
@@ -1143,8 +1182,6 @@ exports.getMaintenancePortal = async (_req, res) => {
     const allComplianceItems = [...complianceItems, ...trailerComplianceItems]
       .sort((a, b) => (a.daysLeft ?? 9999) - (b.daysLeft ?? 9999));
 
-    const profileItemTypes = ["MOT", "Road Tax", "Insurance", "Tacho Calibration", "Safety inspection", "Roller brake test", "Full Service"];
-    const trailerProfileItemTypes = ["MOT", "Safety inspection"];
     const vehicleProfiles = rows.map((v) => {
       const currentKm = odometerByVehicle.get(Number(v.id)) || null;
       return {
@@ -1160,19 +1197,9 @@ exports.getMaintenancePortal = async (_req, res) => {
         vorTill: v.vor_till ? fmtDate(v.vor_till) : "",
         items: profileItemTypes.map((type) => {
           const latest = latestServiceByVehicleAndType.get(`${v.id}:${type}`);
-          const dueDateRaw = type === "MOT"
-            ? rawDate(v.mot_expiry)
-            : type === "Road Tax"
-              ? rawDate(v.road_tax_expiry)
-              : type === "Insurance"
-                ? rawDate(v.insurance_expiry)
-                : type === "Tacho Calibration"
-                  ? rawDate(v.tacho_calibration_expiry)
-                  : type === "Full Service"
-                    ? fullServiceDueRaw(v)
-                    : latest?.serviceDateRaw
-                      ? calculateNextDueDate(type, latest.serviceDateRaw, 12, INSPECTION_INTERVAL_DAYS)
-                      : rawDate(v.next_inspection_due) || "";
+          const dueDateRaw = type === "Full Service"
+            ? fullServiceDueRaw(v)
+            : dueFromCompletedJob(latest, type);
           const daysLeft = daysUntil(dueDateRaw);
           const serviceStatus = statusFromDays(daysLeft);
           const kmRemaining = type === "Full Service" && latest?.nextDueMileageKm && currentKm
@@ -1223,10 +1250,7 @@ exports.getMaintenancePortal = async (_req, res) => {
       vorTill: t.vor_till ? fmtDate(t.vor_till) : "",
       items: trailerProfileItemTypes.map((type) => {
         const latest = latestServiceByVehicleAndType.get(`trailer:${t.id}:${type}`);
-        const dueDateRaw = type === "MOT" ? rawDate(t.mot_expiry)
-          : latest?.serviceDateRaw
-            ? calculateNextDueDate(type, latest.serviceDateRaw, 12, TRAILER_INSPECTION_INTERVAL_DAYS)
-            : rawDate(t.next_inspection_due);
+        const dueDateRaw = dueFromCompletedJob(latest, type, "trailer");
         const daysLeft = daysUntil(dueDateRaw);
         const serviceStatus = statusFromDays(daysLeft);
         return {
@@ -1295,21 +1319,14 @@ exports.getMaintenancePortal = async (_req, res) => {
     const yearPlanRows = rows.map((v) => {
       const profile = vehicleProfiles.find((item) => Number(item.vehicleId) === Number(v.id));
       const events = [];
-      const latestSafetyInspection = latestServiceByVehicleAndType.get(`${v.id}:Safety inspection`);
-      const seeds = [
-        {
-          type: "Safety inspection",
-          dueDateRaw: latestSafetyInspection?.serviceDateRaw
-            ? calculateNextDueDate("Safety inspection", latestSafetyInspection.serviceDateRaw, 12, INSPECTION_INTERVAL_DAYS)
-            : rawDate(v.next_inspection_due),
-          roadTaxIntervalMonths: 12
-        },
-        { type: "MOT", dueDateRaw: rawDate(v.mot_expiry), roadTaxIntervalMonths: 12 },
-        { type: "Road Tax", dueDateRaw: rawDate(v.road_tax_expiry), roadTaxIntervalMonths: latestServiceByVehicleAndType.get(`${v.id}:Road Tax`)?.roadTaxIntervalMonths || 12 },
-        { type: "Insurance", dueDateRaw: rawDate(v.insurance_expiry), roadTaxIntervalMonths: 12 },
-        { type: "Tacho Calibration", dueDateRaw: rawDate(v.tacho_calibration_expiry), roadTaxIntervalMonths: 12 },
-        { type: "Full Service", dueDateRaw: fullServiceDueRaw(v), roadTaxIntervalMonths: 12 }
-      ];
+      const seeds = profileItemTypes.map((type) => {
+        const latest = latestServiceByVehicleAndType.get(`${v.id}:${type}`);
+        return {
+          type,
+          dueDateRaw: type === "Full Service" ? fullServiceDueRaw(v) : dueFromCompletedJob(latest, type),
+          roadTaxIntervalMonths: latest?.roadTaxIntervalMonths || 12
+        };
+      });
       for (const seed of seeds) {
         const dates = buildFuturePlanDates(seed.dueDateRaw, seed.type, planStart, planEnd, seed.roadTaxIntervalMonths);
         for (const dueDateRaw of dates) {
@@ -1428,6 +1445,8 @@ exports.getMaintenancePortal = async (_req, res) => {
           kind: "completed",
           completedDateRaw,
           completedDate: job.serviceDate,
+          nextDueDateRaw: dueFromCompletedJob(job, job.serviceType),
+          nextDueDate: fmtDate(dueFromCompletedJob(job, job.serviceType)),
           completionNotes: job.completionNotes && job.completionNotes !== "-" && !isGeneratedMaintenanceNote(job.completionNotes) ? job.completionNotes : ""
         });
       }
@@ -1447,17 +1466,14 @@ exports.getMaintenancePortal = async (_req, res) => {
 
     const trailerYearPlanRows = trailerRows.map((t) => {
       const events = [];
-      const latestSafetyInspection = latestServiceByVehicleAndType.get(`trailer:${t.id}:Safety inspection`);
-      const seeds = [
-        {
-          type: "Safety inspection",
-          dueDateRaw: latestSafetyInspection?.serviceDateRaw
-            ? calculateNextDueDate("Safety inspection", latestSafetyInspection.serviceDateRaw, 12, TRAILER_INSPECTION_INTERVAL_DAYS)
-            : rawDate(t.next_inspection_due),
-          roadTaxIntervalMonths: 12
-        },
-        { type: "MOT", dueDateRaw: rawDate(t.mot_expiry), roadTaxIntervalMonths: 12 }
-      ];
+      const seeds = trailerProfileItemTypes.map((type) => {
+        const latest = latestServiceByVehicleAndType.get(`trailer:${t.id}:${type}`);
+        return {
+          type,
+          dueDateRaw: dueFromCompletedJob(latest, type, "trailer"),
+          roadTaxIntervalMonths: latest?.roadTaxIntervalMonths || 12
+        };
+      });
       for (const seed of seeds) {
         const dates = buildFuturePlanDates(
           seed.dueDateRaw,
@@ -1587,6 +1603,8 @@ exports.getMaintenancePortal = async (_req, res) => {
           kind: "completed",
           completedDateRaw,
           completedDate: job.serviceDate,
+          nextDueDateRaw: dueFromCompletedJob(job, job.serviceType, "trailer"),
+          nextDueDate: fmtDate(dueFromCompletedJob(job, job.serviceType, "trailer")),
           completionNotes: job.completionNotes && job.completionNotes !== "-" && !isGeneratedMaintenanceNote(job.completionNotes) ? job.completionNotes : ""
         });
       }
@@ -2016,34 +2034,36 @@ exports.markVehicleInspectionDone = async (req, res) => {
 
 exports.autoPlanDueWork = async (_req, res) => {
   try {
-    const [vehicleRows] = await db.query(`
+    const [completedRows] = await db.query(`
       SELECT
         v.id,
         v.registration_number,
-        v.next_service_due,
-        v.mot_expiry,
-        v.insurance_expiry,
-        v.road_tax_expiry,
-        last_i.next_due AS next_inspection_due
+        j.service_type,
+        j.service_date,
+        j.road_tax_interval_months
       FROM vehicles v
-      LEFT JOIN vehicle_inspections last_i
-        ON last_i.id = (
-          SELECT vi.id
-          FROM vehicle_inspections vi
-          WHERE vi.vehicle_id = v.id
-          ORDER BY vi.inspection_date DESC, vi.id DESC
-          LIMIT 1
-        )
+      JOIN maintenance_jobs j
+        ON j.vehicle_id = v.id
+       AND j.status = 'completed'
+       AND j.service_date IS NOT NULL
+       AND j.service_type IN ('MOT','Insurance','Road Tax','Safety inspection','Roller brake test')
+      WHERE NOT EXISTS (
+        SELECT 1
+        FROM maintenance_jobs newer
+        WHERE newer.vehicle_id = j.vehicle_id
+          AND newer.service_type = j.service_type
+          AND newer.status = 'completed'
+          AND newer.service_date IS NOT NULL
+          AND (newer.service_date > j.service_date OR (newer.service_date = j.service_date AND newer.id > j.id))
+      )
     `);
 
-    const dueItems = vehicleRows.flatMap((vehicle) => [
-      { vehicleId: vehicle.id, vehicle: vehicle.registration_number, serviceType: "MOT", dueDate: rawDate(vehicle.mot_expiry) },
-      { vehicleId: vehicle.id, vehicle: vehicle.registration_number, serviceType: "Insurance", dueDate: rawDate(vehicle.insurance_expiry) },
-      { vehicleId: vehicle.id, vehicle: vehicle.registration_number, serviceType: "Road Tax", dueDate: rawDate(vehicle.road_tax_expiry) },
-      // Full Service is mileage-governed (see MAINTENANCE_RULES), not date-recurring — excluded from date-based auto-planning.
-      { vehicleId: vehicle.id, vehicle: vehicle.registration_number, serviceType: "Safety inspection", dueDate: rawDate(vehicle.next_inspection_due) },
-      { vehicleId: vehicle.id, vehicle: vehicle.registration_number, serviceType: "Roller brake test", dueDate: rawDate(vehicle.next_inspection_due) }
-    ]).filter((item) => item.dueDate && daysUntil(item.dueDate) <= 30);
+    const dueItems = completedRows.map((row) => ({
+      vehicleId: row.id,
+      vehicle: row.registration_number,
+      serviceType: row.service_type,
+      dueDate: calculateNextDueDate(row.service_type, rawDate(row.service_date), row.road_tax_interval_months || 12)
+    })).filter((item) => item.dueDate && daysUntil(item.dueDate) <= 30);
 
     const created = [];
     const existing = [];
@@ -2342,6 +2362,9 @@ exports.completeJob = async (req, res) => {
     const id = Number(req.params.id);
     const [[job]] = await db.query(`SELECT * FROM maintenance_jobs WHERE id=?`, [id]);
     if (!job) return res.status(404).json({ message: "Maintenance job not found." });
+    if (job.status === "completed") {
+      return res.json({ message: "Maintenance job was already completed; no duplicate history was created." });
+    }
 
     await applyCompletedMaintenance(job, {
       finalCost: Number(req.body.final_cost_gbp || req.body.finalCostGbp || job.final_cost_gbp || job.estimated_cost_gbp || 0),

@@ -531,24 +531,25 @@ function VehicleDetailModal({ target, profiles, onClose, onSaved }) {
   useEffect(() => {
     const selectedItem = profile?.items?.find((item) => item.type === target?.preselectType);
     const isCompletedSelection = target?.selectionKind === "completed";
+    const completedJob = isCompletedSelection ? target?.completedJob : null;
     setActiveType(target?.preselectType || null);
     setForm({
       service_date: isCompletedSelection
-        ? (selectedItem?.lastDoneRaw || target?.scheduledDueDate || dateKey(new Date()))
+        ? (completedJob?.serviceDateRaw || target?.scheduledDueDate || selectedItem?.lastDoneRaw || dateKey(new Date()))
         : dateKey(new Date()),
       due_date: target?.scheduledDueDate || "",
-      garage_name: "",
-      final_cost_gbp: "",
-      completed_mileage_km: "",
-      bill_number: isCompletedSelection ? (selectedItem?.billNumber || "") : "",
-      bill_amount_gbp: isCompletedSelection ? (selectedItem?.billAmountGbp || "") : "",
-      bill_notes: isCompletedSelection ? (selectedItem?.billNotes || "") : "",
-      bill_attachment_data: isCompletedSelection ? (selectedItem?.attachmentData || "") : "",
-      road_tax_interval_months: String(selectedItem?.roadTaxIntervalMonths || 12)
+      garage_name: isCompletedSelection && completedJob?.garageName !== "-" ? (completedJob?.garageName || "") : "",
+      final_cost_gbp: isCompletedSelection ? (completedJob?.finalCostGbp ?? "") : "",
+      completed_mileage_km: isCompletedSelection ? (completedJob?.completedMileageKm || "") : "",
+      bill_number: isCompletedSelection ? (completedJob?.billNumber || selectedItem?.billNumber || "") : "",
+      bill_amount_gbp: isCompletedSelection ? (completedJob?.billAmountGbp || selectedItem?.billAmountGbp || "") : "",
+      bill_notes: isCompletedSelection && completedJob?.billNotes !== "-" ? (completedJob?.billNotes || "") : (isCompletedSelection ? (selectedItem?.billNotes || "") : ""),
+      bill_attachment_data: isCompletedSelection ? (completedJob?.billAttachmentData || selectedItem?.attachmentData || "") : "",
+      road_tax_interval_months: String(completedJob?.roadTaxIntervalMonths || selectedItem?.roadTaxIntervalMonths || 12)
     });
     setError("");
     setSuccessMessage("");
-  }, [profile, target?.vehicleId, target?.assetType, target?.preselectType, target?.scheduledDueDate, target?.selectionKind]);
+  }, [profile, target?.vehicleId, target?.assetType, target?.preselectType, target?.scheduledDueDate, target?.selectionKind, target?.completedJob]);
 
   function set(name, value) {
     setForm((c) => ({ ...c, [name]: value }));
@@ -561,15 +562,22 @@ function VehicleDetailModal({ target, profiles, onClose, onSaved }) {
     const item = profile?.items?.find((entry) => entry.type === type);
     const isSelectedCompletedEvent = type === target?.preselectType && target?.selectionKind === "completed";
     const isSelectedUpcomingEvent = type === target?.preselectType && Boolean(target?.scheduledDueDate) && !isSelectedCompletedEvent;
+    const isUpdatingExistingCompletion = Boolean(item?.latestJobId) && !isSelectedUpcomingEvent;
+    const completedJob = isSelectedCompletedEvent ? target?.completedJob : null;
     setForm((c) => ({
       ...c,
-      service_date: isSelectedCompletedEvent ? (item?.lastDoneRaw || dateKey(new Date())) : dateKey(new Date()),
+      service_date: isSelectedCompletedEvent || isUpdatingExistingCompletion
+        ? (completedJob?.serviceDateRaw || target?.scheduledDueDate || item?.lastDoneRaw || dateKey(new Date()))
+        : dateKey(new Date()),
       due_date: isSelectedUpcomingEvent ? target.scheduledDueDate : (item?.nextDueRaw || ""),
-      bill_number: isSelectedCompletedEvent ? (item?.billNumber || "") : "",
-      bill_amount_gbp: isSelectedCompletedEvent ? (item?.billAmountGbp || "") : "",
-      bill_notes: isSelectedCompletedEvent ? (item?.billNotes || "") : "",
-      bill_attachment_data: isSelectedCompletedEvent ? (item?.attachmentData || "") : "",
-      road_tax_interval_months: String(item?.roadTaxIntervalMonths || 12)
+      garage_name: completedJob?.garageName && completedJob.garageName !== "-" ? completedJob.garageName : c.garage_name,
+      final_cost_gbp: completedJob?.finalCostGbp ?? c.final_cost_gbp,
+      completed_mileage_km: completedJob?.completedMileageKm || c.completed_mileage_km,
+      bill_number: isSelectedCompletedEvent || isUpdatingExistingCompletion ? (completedJob?.billNumber || item?.billNumber || "") : "",
+      bill_amount_gbp: isSelectedCompletedEvent || isUpdatingExistingCompletion ? (completedJob?.billAmountGbp || item?.billAmountGbp || "") : "",
+      bill_notes: isSelectedCompletedEvent || isUpdatingExistingCompletion ? (completedJob?.billNotes !== "-" ? completedJob?.billNotes : "") || item?.billNotes || "" : "",
+      bill_attachment_data: isSelectedCompletedEvent || isUpdatingExistingCompletion ? (completedJob?.billAttachmentData || item?.attachmentData || "") : "",
+      road_tax_interval_months: String(completedJob?.roadTaxIntervalMonths || item?.roadTaxIntervalMonths || 12)
     }));
   }
 
@@ -577,7 +585,14 @@ function VehicleDetailModal({ target, profiles, onClose, onSaved }) {
     if (!activeType || !form.service_date) return "";
     return nextDueForItem(activeType, form.service_date, form.road_tax_interval_months, target?.assetType) || "";
   }, [activeType, form.service_date, form.road_tax_interval_months, target?.assetType]);
-  const isEditingCompleted = target?.selectionKind === "completed";
+  const activeItem = profile?.items?.find((item) => item.type === activeType);
+  const isSelectedUpcoming = Boolean(
+    activeType === target?.preselectType
+    && target?.scheduledDueDate
+    && target?.selectionKind !== "completed"
+  );
+  const isEditingCompleted = target?.selectionKind === "completed"
+    || (Boolean(activeItem?.latestJobId) && !isSelectedUpcoming);
 
   async function submit(e) {
     e.preventDefault();
@@ -600,7 +615,7 @@ function VehicleDetailModal({ target, profiles, onClose, onSaved }) {
         bill_attachment_data: form.bill_attachment_data,
         road_tax_interval_months: form.road_tax_interval_months,
         completed_job_id: isEditingCompleted
-          ? (target?.completedJobId || profile.items.find((item) => item.type === activeType)?.latestJobId || null)
+          ? (target?.completedJobId || activeItem?.latestJobId || null)
           : null
       });
       await onSaved();
@@ -1302,14 +1317,10 @@ function formatWeekStart(dateStr) {
 
 function isoWeekNumber(dateStr) {
   if (!dateStr) return 0;
-  const d = new Date(`${dateStr}T12:00:00`);
-  const year = d.getFullYear();
-  const jan1 = new Date(year, 0, 1);
-  const dow = jan1.getDay(); // 0=Sun,1=Mon,...
-  const daysToFirstMonday = dow === 1 ? 0 : dow === 0 ? 1 : 8 - dow;
-  const firstMonday = new Date(year, 0, 1 + daysToFirstMonday);
-  if (d < firstMonday) return 0;
-  return Math.floor((d - firstMonday) / 604800000) + 1;
+  const target = new Date(`${dateStr}T12:00:00`);
+  target.setDate(target.getDate() + 3 - ((target.getDay() + 6) % 7));
+  const weekOne = new Date(target.getFullYear(), 0, 4, 12);
+  return 1 + Math.round(((target - weekOne) / 604800000) - (3 - ((weekOne.getDay() + 6) % 7)) / 7);
 }
 
 function eventBelongsToWeek(event, week) {
@@ -1824,12 +1835,12 @@ function ExcelScheduleView({ data, onOpenVehicle }) {
                   <span className="ccp-value">{ev.type}</span>
                 </div>
                 <div className="ccp-row">
-                  <span className="ccp-label">Scheduled</span>
-                  <span className="ccp-value">{ev.dueDate}</span>
-                </div>
-                <div className="ccp-row">
                   <span className="ccp-label">Done</span>
                   <span className="ccp-value">{ev.completedDate || ev.dueDate}</span>
+                </div>
+                <div className="ccp-row">
+                  <span className="ccp-label">Next due</span>
+                  <span className="ccp-value">{ev.nextDueDate || "-"}</span>
                 </div>
                 {ev.completionNotes && !isGeneratedMaintenanceNote(ev.completionNotes) && (
                   <p className="ccp-notes-text">{ev.completionNotes}</p>
@@ -1867,12 +1878,12 @@ function ExcelScheduleView({ data, onOpenVehicle }) {
               <strong className="ccp-title">{popover.ev.type}</strong>
             </div>
             <div className="ccp-row">
-              <span className="ccp-label">Scheduled</span>
-              <span className="ccp-value">{popover.ev.dueDate}</span>
-            </div>
-            <div className="ccp-row">
               <span className="ccp-label">Done</span>
               <span className="ccp-value">{popover.ev.completedDate || popover.ev.dueDate}</span>
+            </div>
+            <div className="ccp-row">
+              <span className="ccp-label">Next due</span>
+              <span className="ccp-value">{popover.ev.nextDueDate || "-"}</span>
             </div>
             {popover.ev.completionNotes && !isGeneratedMaintenanceNote(popover.ev.completionNotes) && (
               <div className="ccp-notes">
@@ -1931,7 +1942,8 @@ export function AdminMaintenancePage() {
   }, []);
 
   function openVehicleDetail(row, assetType = "vehicle", preselectType = null, scheduledDueDate = "", selectionKind = "", completedJobId = null) {
-    setVehicleDetailTarget({ vehicleId: row.vehicleId, assetType, preselectType, scheduledDueDate, selectionKind, completedJobId });
+    const completedJob = completedJobId ? data?.jobs?.find((job) => Number(job.id) === Number(completedJobId)) : null;
+    setVehicleDetailTarget({ vehicleId: row.vehicleId, assetType, preselectType, scheduledDueDate, selectionKind, completedJobId, completedJob });
   }
 
   function openEditJob(job) {
