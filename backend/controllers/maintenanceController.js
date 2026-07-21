@@ -314,6 +314,21 @@ async function syncMaintenanceSchema() {
   await modifyColumnBestEffort("defect_reports", "vehicle_id", "INT DEFAULT NULL");
   await addColumnIfMissing("defect_reports", "trailer_id", "INT DEFAULT NULL");
   await addColumnIfMissing("defect_reports", "asset_type", "ENUM('vehicle','trailer') NOT NULL DEFAULT 'vehicle'");
+
+  // Keeps a permanent record of every VOR period so the schedule can still show
+  // which weeks a vehicle was off road after it's marked back on road.
+  await db.query(`
+    CREATE TABLE IF NOT EXISTS vor_history (
+      id                 INT AUTO_INCREMENT PRIMARY KEY,
+      asset_type         ENUM('vehicle','trailer') NOT NULL DEFAULT 'vehicle',
+      asset_id           INT NOT NULL,
+      reason             VARCHAR(255) DEFAULT NULL,
+      since_date         DATE NOT NULL,
+      expected_till_date DATE DEFAULT NULL,
+      actual_return_date DATE DEFAULT NULL,
+      created_at         TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    ) ENGINE=InnoDB
+  `);
 }
 
 exports.ensureMaintenanceSchema = async (_req, res, next) => {
@@ -1242,11 +1257,12 @@ exports.getMaintenancePortal = async (_req, res) => {
     }));
     const allVehicleProfiles = [...vehicleProfiles, ...trailerProfiles];
 
-    // Keep three completed weeks available so operators can review the
-    // immediately preceding maintenance history from the week selector.
-    // Use 59 weeks to retain the existing future-planning horizon.
-    const planStart = addDays(startOfWeek(new Date()), -21);
-    const planWeekCount = 59;
+    // Look back far enough that a completion logged with an older backdated
+    // "date done" (e.g. catching up on paperwork weeks after the work was
+    // actually done) still gets its own week column, while keeping the same
+    // forward planning horizon as before (56 weeks past the current week).
+    const planStart = addDays(startOfWeek(new Date()), -26 * 7);
+    const planWeekCount = 82;
     const planWeeks = Array.from({ length: planWeekCount }, (_, index) => {
       const start = addDays(planStart, index * 7);
       const end = addDays(start, 6);
@@ -1263,6 +1279,20 @@ exports.getMaintenancePortal = async (_req, res) => {
       };
     });
     const planEnd = addDays(planStart, (planWeekCount * 7) - 1);
+
+    // Closed VOR periods (asset already marked back on road) — kept so past
+    // off-road weeks still show on the schedule for history purposes.
+    const [closedVorRows] = await db.query(
+      `SELECT asset_type, asset_id, reason, since_date, actual_return_date
+       FROM vor_history WHERE actual_return_date IS NOT NULL`
+    );
+    const closedVorByAsset = new Map();
+    for (const entry of closedVorRows) {
+      const key = `${entry.asset_type}:${entry.asset_id}`;
+      if (!closedVorByAsset.has(key)) closedVorByAsset.set(key, []);
+      closedVorByAsset.get(key).push(entry);
+    }
+
     const yearPlanRows = rows.map((v) => {
       const profile = vehicleProfiles.find((item) => Number(item.vehicleId) === Number(v.id));
       const events = [];
@@ -1326,6 +1356,33 @@ exports.getMaintenancePortal = async (_req, res) => {
             reason: v.vor_reason,
             vorSince: fmtDate(v.vor_marked_at),
             vorTill: v.vor_till ? fmtDate(v.vor_till) : "Ongoing",
+            dueDateRaw: week.startRaw,
+            dueDate: fmtDate(week.startRaw),
+            tone: "danger",
+            weekKey: week.key,
+            weekLabel: week.label
+          });
+        }
+      }
+      // Add past (closed) VOR periods so history stays visible after the
+      // vehicle is marked back on road.
+      for (const period of closedVorByAsset.get(`vehicle:${v.id}`) || []) {
+        const vorStartRaw = rawDate(period.since_date);
+        const vorEndRaw = rawDate(period.actual_return_date);
+        for (const week of planWeeks) {
+          if (week.endRaw < vorStartRaw || week.startRaw > vorEndRaw) continue;
+          events.push({
+            id: `vor-history-${v.id}-${vorStartRaw}-${week.key}`,
+            vehicleId: v.id,
+            vehicle: v.registration_number,
+            fleetCode: v.fleet_code,
+            make: v.model_name,
+            type: "Vehicle Off Road",
+            code: "VOR",
+            kind: "vor",
+            reason: period.reason,
+            vorSince: fmtDate(period.since_date),
+            vorTill: fmtDate(period.actual_return_date),
             dueDateRaw: week.startRaw,
             dueDate: fmtDate(week.startRaw),
             tone: "danger",
@@ -1456,6 +1513,34 @@ exports.getMaintenancePortal = async (_req, res) => {
             reason: t.vor_reason,
             vorSince: fmtDate(t.vor_marked_at),
             vorTill: t.vor_till ? fmtDate(t.vor_till) : "Ongoing",
+            dueDateRaw: week.startRaw,
+            dueDate: fmtDate(week.startRaw),
+            tone: "danger",
+            weekKey: week.key,
+            weekLabel: week.label
+          });
+        }
+      }
+      // Add past (closed) VOR periods so history stays visible after the
+      // trailer is marked back on road.
+      for (const period of closedVorByAsset.get(`trailer:${t.id}`) || []) {
+        const vorStartRaw = rawDate(period.since_date);
+        const vorEndRaw = rawDate(period.actual_return_date);
+        for (const week of planWeeks) {
+          if (week.endRaw < vorStartRaw || week.startRaw > vorEndRaw) continue;
+          events.push({
+            id: `vor-history-trailer-${t.id}-${vorStartRaw}-${week.key}`,
+            vehicleId: t.id,
+            assetType: "trailer",
+            vehicle: t.registration_number,
+            fleetCode: t.fleet_code,
+            make: t.trailer_type,
+            type: "Vehicle Off Road",
+            code: "VOR",
+            kind: "vor",
+            reason: period.reason,
+            vorSince: fmtDate(period.since_date),
+            vorTill: fmtDate(period.actual_return_date),
             dueDateRaw: week.startRaw,
             dueDate: fmtDate(week.startRaw),
             tone: "danger",
@@ -2478,6 +2563,12 @@ exports.setVorStatus = async (req, res) => {
 
     const table = assetType === "trailer" ? "trailers" : "vehicles";
     if (onRoad) {
+      // Close the open history record first so the past VOR weeks stay on the
+      // schedule for reference, then clear the live status columns.
+      await db.query(
+        `UPDATE vor_history SET actual_return_date=? WHERE asset_type=? AND asset_id=? AND actual_return_date IS NULL`,
+        [rawDate(new Date()), assetType, assetNumericId]
+      );
       await db.query(
         `UPDATE ${table} SET status='available', vor_reason=NULL, vor_marked_at=NULL, vor_till=NULL WHERE id=? AND status IN ('maintenance','stopped')`,
         [assetNumericId]
@@ -2485,9 +2576,14 @@ exports.setVorStatus = async (req, res) => {
       return res.json({ message: "Vehicle marked back on road." });
     }
 
+    const sinceDate = since || rawDate(new Date());
     await db.query(
       `UPDATE ${table} SET status='maintenance', vor_reason=?, vor_marked_at=?, vor_till=? WHERE id=?`,
-      [reason, since || rawDate(new Date()), till || null, assetNumericId]
+      [reason, sinceDate, till || null, assetNumericId]
+    );
+    await db.query(
+      `INSERT INTO vor_history (asset_type, asset_id, reason, since_date, expected_till_date) VALUES (?, ?, ?, ?, ?)`,
+      [assetType, assetNumericId, reason, sinceDate, till || null]
     );
     res.json({ message: "Vehicle marked off road (VOR)." });
   } catch (err) {

@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { useNavigate } from "react-router-dom";
 import {
   addJobNote,
@@ -1420,6 +1421,7 @@ function ExcelScheduleView({ data, onOpenVehicle }) {
   const [search, setSearch] = useState("");
   const [selectedWeekKey, setSelectedWeekKey] = useState("");
   const [popover, setPopover] = useState(null); // { ev, x, y }
+  const [isFullscreen, setIsFullscreen] = useState(false);
   const scheduleWrapRef = useRef(null);
   const popoverTimer = useRef(null);
   const weeks = useMemo(() => data?.yearPlan?.weeks || [], [data]);
@@ -1509,6 +1511,20 @@ function ExcelScheduleView({ data, onOpenVehicle }) {
     return () => window.cancelAnimationFrame(frame);
   }, [selectedWeekKey, weeks]);
 
+  useEffect(() => {
+    if (!isFullscreen) return;
+    function handleKeyDown(e) {
+      if (e.key === "Escape") setIsFullscreen(false);
+    }
+    document.addEventListener("keydown", handleKeyDown);
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.removeEventListener("keydown", handleKeyDown);
+      document.body.style.overflow = previousOverflow;
+    };
+  }, [isFullscreen]);
+
   const totalCols = 4 + weeks.length;
 
   if (!weeks.length) {
@@ -1523,8 +1539,8 @@ function ExcelScheduleView({ data, onOpenVehicle }) {
     ))
   ];
 
-  return (
-    <>
+  const scheduleContent = (
+    <div className={`excel-schedule-view${isFullscreen ? " is-fullscreen" : ""}`}>
       <div className="schedule-search-bar">
         <div className="schedule-search-field">
           <input
@@ -1550,6 +1566,13 @@ function ExcelScheduleView({ data, onOpenVehicle }) {
               </option>
             ))}
           </select>
+          <button
+            className="header-action-button"
+            type="button"
+            onClick={() => setIsFullscreen((current) => !current)}
+          >
+            {isFullscreen ? "✕ Exit Full Screen" : "⛶ Full Screen"}
+          </button>
         </div>
         <div className="schedule-legend-chips" aria-label="Maintenance schedule legend">
           {legendChips}
@@ -1861,8 +1884,13 @@ function ExcelScheduleView({ data, onOpenVehicle }) {
         <div className="ccp-arrow" />
       </div>
     )}
-    </>
+    </div>
   );
+
+  // Rendered via a portal to document.body so the fullscreen overlay isn't
+  // clipped by ancestor containers using backdrop-filter/transform, which
+  // create their own containing block and break position: fixed.
+  return isFullscreen ? createPortal(scheduleContent, document.body) : scheduleContent;
 }
 
 export function AdminMaintenancePage() {
@@ -2014,32 +2042,15 @@ export function AdminMaintenancePage() {
   const findStat = (items, label) => (items || []).find((item) => item.label === label);
   const primaryCards = [
     {
-      key: "attention",
-      label: "Needs attention",
-      value: findStat(data?.stats, "Overdue")?.value ?? 0,
-      note: "Overdue service, inspection or repair work",
-      tone: Number(findStat(data?.stats, "Overdue")?.value || 0) > 0 ? "danger" : "success"
-    },
-    {
       key: "offroad",
       label: "Off road",
       value: findStat(data?.stats, "Vehicles off road")?.value ?? 0,
       note: "Vehicles unavailable because of maintenance or stopped status",
       tone: Number(findStat(data?.stats, "Vehicles off road")?.value || 0) > 0 ? "danger" : "success"
-    },
-    {
-      key: "bills",
-      label: "Bills to check",
-      value: findStat(data?.health, "Bills pending approval")?.value ?? 0,
-      note: "Workshop bills waiting for approval",
-      tone: Number(findStat(data?.health, "Bills pending approval")?.value || 0) > 0 ? "warning" : "success"
     }
   ];
 
-  const attentionItems = (data?.plannerRows || []).filter((row) => row.priorityDays !== null && row.priorityDays < 0);
-  const overdueJobs = (data?.jobs || []).filter((job) => job.daysLeft < 0 && !["completed", "cancelled"].includes(job.status));
   const offRoadItems = (data?.plannerRows || []).filter((row) => ["maintenance", "stopped"].includes(row.status));
-  const billsItems = (data?.jobs || []).filter((job) => job.billStatus === "pending" && (job.billAmountGbp || job.billAttachmentData));
 
   const maintenanceViews = [
     { id: "annual", label: "Annual Schedule" },
@@ -2092,7 +2103,7 @@ export function AdminMaintenancePage() {
             + Add Maintenance
           </button>
           <button className="header-action-button danger" type="button" onClick={() => setShowBreakdownModal(true)}>Report Breakdown</button>
-          <button className="header-action-button" type="button" onClick={() => setShowVorModal(true)}>Mark Off Road</button>
+          <button className="header-action-button" type="button" onClick={() => setShowVorModal(true)}>VOR</button>
           <button className="header-action-button" type="button" onClick={load}>Refresh</button>
           <button className="header-action-button" type="button" onClick={() => setShowExportModal(true)}>Export Schedule</button>
           <button className="header-action-button" type="button" onClick={() => navigate("/admin/vehicles")}>Vehicle Register</button>
@@ -2102,38 +2113,10 @@ export function AdminMaintenancePage() {
       {statPanel && (
         <div className="maintenance-stat-panel">
           <div className="section-head">
-            <h3>
-              {statPanel === "attention" && "Needs Attention"}
-              {statPanel === "offroad" && "Off Road Vehicles"}
-              {statPanel === "bills" && "Bills To Check"}
-            </h3>
+            <h3>Off Road Vehicles</h3>
             <button className="header-action-button" type="button" onClick={() => setStatPanel(null)}>Close</button>
           </div>
           <div className="maintenance-stat-panel-list">
-            {statPanel === "attention" && (
-              <>
-                {attentionItems.map((row) => (
-                  <button
-                    key={`att-${row.assetType || "vehicle"}-${row.id}`}
-                    className="maintenance-stat-panel-item"
-                    type="button"
-                    onClick={() => openVehicleDetail({ vehicleId: row.id }, row.assetType === "trailer" ? "trailer" : "vehicle")}
-                  >
-                    <strong>{row.registrationNumber}</strong>
-                    <span>{row.fleetCode}</span>
-                    <p>{row.action} · {Math.abs(row.priorityDays)}d overdue</p>
-                  </button>
-                ))}
-                {overdueJobs.map((job) => (
-                  <button key={`att-job-${job.id}`} className="maintenance-stat-panel-item" type="button" onClick={() => setDrawerJob(job)}>
-                    <strong>{job.vehicle}</strong>
-                    <span>{job.jobNumber}</span>
-                    <p>{job.serviceType} · {Math.abs(job.daysLeft)}d overdue</p>
-                  </button>
-                ))}
-                {attentionItems.length === 0 && overdueJobs.length === 0 && <p className="finance-empty">Nothing overdue right now.</p>}
-              </>
-            )}
             {statPanel === "offroad" && (
               <>
                 {offRoadItems.map((row) => {
@@ -2180,18 +2163,6 @@ export function AdminMaintenancePage() {
                   );
                 })}
                 {offRoadItems.length === 0 && <p className="finance-empty">No vehicles off road.</p>}
-              </>
-            )}
-            {statPanel === "bills" && (
-              <>
-                {billsItems.map((job) => (
-                  <button key={`bill-${job.id}`} className="maintenance-stat-panel-item" type="button" onClick={() => setDrawerJob(job)}>
-                    <strong>{job.vehicle}</strong>
-                    <span>{job.billNumber || job.jobNumber}</span>
-                    <p>{job.billAmountLabel} · {job.serviceType}</p>
-                  </button>
-                ))}
-                {billsItems.length === 0 && <p className="finance-empty">No bills waiting for approval.</p>}
               </>
             )}
           </div>

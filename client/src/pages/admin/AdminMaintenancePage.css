@@ -1848,6 +1848,23 @@
   box-shadow: inset 0 0 0 1px rgba(255,255,255,.65), 0 6px 20px rgba(15,23,42,.045);
 }
 
+.excel-schedule-view.is-fullscreen {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: flex;
+  flex-direction: column;
+  padding: 16px;
+  background: #fff;
+  overflow: auto;
+}
+
+.excel-schedule-view.is-fullscreen .excel-schedule-wrap {
+  flex: 1;
+  max-height: none;
+  margin-top: 10px;
+}
+
 .excel-schedule-table {
   --excel-reg-col: 150px;
   --excel-fleet-code-col: 90px;
