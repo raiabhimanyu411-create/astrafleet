@@ -443,11 +443,10 @@ function planCodeForType(type) {
   }[type] || null;
 }
 
-// Inspection cadence is counted inclusively by week (the week the work is done
-// counts as week 1), so an "N week" interval lands N-1 calendar weeks later —
-// e.g. done in week 26 with a 6-week interval is due in week 31, not week 32.
+// Inspection intervals are elapsed calendar periods from the date the work was
+// completed: 6 weeks = 42 days and 10 weeks = 70 days.
 function addIntervalForPlan(date, type, roadTaxIntervalMonths = 12, inspectionIntervalDays = INSPECTION_INTERVAL_DAYS) {
-  if (["Safety inspection", "Roller brake test"].includes(type)) return addDays(date, inspectionIntervalDays - 7);
+  if (["Safety inspection", "Roller brake test"].includes(type)) return addDays(date, inspectionIntervalDays);
   if (type === "Road Tax") return addMonths(date, Number(roadTaxIntervalMonths || 12));
   if (type === "Tacho Calibration") return addMonths(date, 24);
   if (["MOT", "Insurance"].includes(type)) return addMonths(date, 12);
@@ -483,7 +482,7 @@ function calculateNextDueDate(serviceType, serviceDate, roadTaxIntervalMonths, i
     return rawDate(addMonths(serviceDate, Number(roadTaxIntervalMonths || 12)));
   }
   const rule = MAINTENANCE_RULES[serviceType];
-  if (rule?.days) return rawDate(addDays(serviceDate, inspectionIntervalDays - 7));
+  if (rule?.days) return rawDate(addDays(serviceDate, inspectionIntervalDays));
   if (rule?.months) return rawDate(addMonths(serviceDate, rule.months));
   return "";
 }
@@ -2440,7 +2439,7 @@ exports.markTrailerInspectionDone = async (req, res) => {
     const inspectorName = String(req.body.inspector_name || req.body.inspectorName || "").trim() || null;
     const notes = String(req.body.notes || "").trim() || null;
     const inspectionDate = req.body.inspection_date || req.body.inspectionDate || rawDate(new Date());
-    const nextDue = rawDate(addDays(inspectionDate, TRAILER_INSPECTION_INTERVAL_DAYS - 7));
+    const nextDue = rawDate(addDays(inspectionDate, TRAILER_INSPECTION_INTERVAL_DAYS));
 
     if (!trailerId) return res.status(400).json({ message: "Valid trailer id is required." });
     if (!["pass", "advisory", "fail"].includes(result)) {

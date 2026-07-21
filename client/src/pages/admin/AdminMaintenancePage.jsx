@@ -100,14 +100,14 @@ function daysFromToday(value) {
   return Math.round((date - today) / (1000 * 60 * 60 * 24));
 }
 
-// Kept in sync with backend calculateNextDueDate: inspection cadence counts the
-// completion week as week 1, so an "N week" interval is N-1 calendar weeks later.
+// Kept in sync with backend calculateNextDueDate: inspection intervals are
+// elapsed calendar periods from the date the work was completed.
 function nextDueForItem(serviceType, serviceDate, roadTaxIntervalMonths, assetType = "vehicle") {
   const item = maintenanceItems.find((option) => option.value === serviceType);
   if (!item || !serviceDate) return "";
   if (item.roadTax) return addMonthsToKey(serviceDate, Number(roadTaxIntervalMonths || 12));
-  if (assetType === "trailer" && serviceType === "Safety inspection") return addDaysToKey(serviceDate, 70 - 7);
-  if (item.days) return addDaysToKey(serviceDate, item.days - 7);
+  if (assetType === "trailer" && serviceType === "Safety inspection") return addDaysToKey(serviceDate, 70);
+  if (item.days) return addDaysToKey(serviceDate, item.days);
   if (item.months) return addMonthsToKey(serviceDate, item.months);
   return "";
 }
