@@ -2550,7 +2550,7 @@ exports.completeEventFromSchedule = async (req, res) => {
           : serviceType === "Insurance" ? "insurance_expiry"
             : serviceType === "Tacho Calibration" && assetType === "vehicle" ? "tacho_calibration_expiry"
               : serviceType === "Full Service" ? "next_service_due"
-                : ["Safety inspection", "Roller brake test"].includes(serviceType) ? "next_inspection_due"
+                : assetType === "trailer" && ["Safety inspection", "Roller brake test"].includes(serviceType) ? "next_inspection_due"
                   : null;
       if (dueColumn && nextDueDate) {
         await db.query(`UPDATE ${assetTable} SET ${dueColumn}=? WHERE id=?`, [nextDueDate, assetNumericId]);
@@ -2560,10 +2560,10 @@ exports.completeEventFromSchedule = async (req, res) => {
         await db.query(
           `UPDATE vehicle_inspections
            SET inspection_date=?, next_due=?, inspector_name=COALESCE(?,inspector_name), notes=COALESCE(?,notes)
-           WHERE vehicle_id=? AND inspection_type=? AND inspection_date=?
+           WHERE vehicle_id=? AND inspection_type=?
            ORDER BY id DESC LIMIT 1`,
           [serviceDate, nextDueDate || null, garageName, completionNotes,
-            assetNumericId, serviceType, previousServiceDate]
+            assetNumericId, serviceType]
         );
       }
 
