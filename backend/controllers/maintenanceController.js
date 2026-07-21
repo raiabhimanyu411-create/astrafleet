@@ -1326,8 +1326,10 @@ exports.getMaintenancePortal = async (_req, res) => {
         if (job.serviceType === "Roller brake test") continue;
         // A completed marker belongs to the day the work was actually done.
         // The job's due date may now represent the next scheduled occurrence.
-        const displayDateRaw = job.serviceDateRaw;
-        if (displayDateRaw < rawDate(planStart) || displayDateRaw > rawDate(planEnd)) continue;
+        const completedDateRaw = job.serviceDateRaw;
+        const completedLookbackStart = rawDate(addDays(planStart, -7));
+        if (completedDateRaw < completedLookbackStart || completedDateRaw > rawDate(planEnd)) continue;
+        const displayDateRaw = completedDateRaw < rawDate(planStart) ? rawDate(planStart) : completedDateRaw;
         const week = planWeeks.find((w) => displayDateRaw >= w.startRaw && displayDateRaw <= w.endRaw);
         if (!week) continue;
         const code = planCodeForType(job.serviceType);
@@ -1352,7 +1354,7 @@ exports.getMaintenancePortal = async (_req, res) => {
           weekKey: week.key,
           weekLabel: week.label,
           kind: "completed",
-          completedDateRaw: job.serviceDateRaw,
+          completedDateRaw,
           completedDate: job.serviceDate,
           completionNotes: job.completionNotes && job.completionNotes !== "-" && !isGeneratedMaintenanceNote(job.completionNotes) ? job.completionNotes : ""
         });
@@ -1446,8 +1448,10 @@ exports.getMaintenancePortal = async (_req, res) => {
         if (job.status !== "completed" || !job.serviceDateRaw) continue;
         if (!["Safety inspection", "MOT"].includes(job.serviceType)) continue;
         // Keep completed trailer work on its actual completion date as well.
-        const displayDateRaw = job.serviceDateRaw;
-        if (displayDateRaw < rawDate(planStart) || displayDateRaw > rawDate(planEnd)) continue;
+        const completedDateRaw = job.serviceDateRaw;
+        const completedLookbackStart = rawDate(addDays(planStart, -7));
+        if (completedDateRaw < completedLookbackStart || completedDateRaw > rawDate(planEnd)) continue;
+        const displayDateRaw = completedDateRaw < rawDate(planStart) ? rawDate(planStart) : completedDateRaw;
         const week = planWeeks.find((w) => displayDateRaw >= w.startRaw && displayDateRaw <= w.endRaw);
         if (!week) continue;
         const code = planCodeForType(job.serviceType);
@@ -1473,7 +1477,7 @@ exports.getMaintenancePortal = async (_req, res) => {
           weekKey: week.key,
           weekLabel: week.label,
           kind: "completed",
-          completedDateRaw: job.serviceDateRaw,
+          completedDateRaw,
           completedDate: job.serviceDate,
           completionNotes: job.completionNotes && job.completionNotes !== "-" && !isGeneratedMaintenanceNote(job.completionNotes) ? job.completionNotes : ""
         });

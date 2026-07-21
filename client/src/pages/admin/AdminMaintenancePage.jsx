@@ -1321,12 +1321,16 @@ function groupCompletedByDate(events) {
   const completed = events.filter((event) => event.kind === "completed");
   const others = events.filter((event) => event.kind !== "completed");
   if (completed.length <= 1) return events;
-  const items = [...completed].sort((a, b) => String(a.dueDateRaw || "").localeCompare(String(b.dueDateRaw || "")));
-  const sameDate = items.every((event) => event.dueDateRaw === items[0].dueDateRaw);
+  const items = [...completed].sort((a, b) =>
+    String(a.completedDateRaw || a.dueDateRaw || "").localeCompare(String(b.completedDateRaw || b.dueDateRaw || ""))
+  );
+  const firstCompletedDateRaw = items[0].completedDateRaw || items[0].dueDateRaw;
+  const sameDate = items.every((event) => (event.completedDateRaw || event.dueDateRaw) === firstCompletedDateRaw);
   const group = {
     id: `group-${items.map((item) => item.id).join("-")}`,
     kind: "completed-group",
     dueDateRaw: items[0].dueDateRaw,
+    completedDateRaw: firstCompletedDateRaw,
     dueDate: items[0].dueDate,
     sameDate,
     items
@@ -1640,8 +1644,9 @@ function ExcelScheduleView({ data, onOpenVehicle }) {
                       >
                         {events.map((ev) => {
                           if (ev.kind === "completed-group") {
-                            const day = ev.dueDateRaw?.slice(8, 10);
-                            const mon = ev.dueDateRaw?.slice(5, 7);
+                            const actualDateRaw = ev.completedDateRaw || ev.dueDateRaw;
+                            const day = actualDateRaw?.slice(8, 10);
+                            const mon = actualDateRaw?.slice(5, 7);
                             const codes = ev.items.map((item) => item.code).join("+");
                             const label = ev.sameDate ? `✓ ${codes} ${day}/${mon}` : `✓ ${codes}`;
                             return (
@@ -1693,8 +1698,9 @@ function ExcelScheduleView({ data, onOpenVehicle }) {
                           const color = isCompleted
                             ? { bg: "#16a34a", text: "#fff" }
                             : { bg: "#dc2626", text: "#fff" };
-                          const day = ev.dueDateRaw?.slice(8, 10);
-                          const mon = ev.dueDateRaw?.slice(5, 7);
+                          const chipDateRaw = isCompleted ? (ev.completedDateRaw || ev.dueDateRaw) : ev.dueDateRaw;
+                          const day = chipDateRaw?.slice(8, 10);
+                          const mon = chipDateRaw?.slice(5, 7);
                           return (
                             <button
                               key={ev.id}
