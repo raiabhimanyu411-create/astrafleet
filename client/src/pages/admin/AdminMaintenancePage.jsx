@@ -646,6 +646,7 @@ function VehicleDetailModal({ target, profiles, onClose, onSaved }) {
     ) || "";
   }, [activeType, form.service_date, form.road_tax_interval_months, profile?.inspectionFrequencyWeeks, target?.assetType]);
   const activeItem = profile?.items?.find((item) => item.type === activeType);
+  const isInspectionCycle = ["Safety inspection", "Brake test"].includes(activeType);
   const isSelectedUpcoming = Boolean(
     activeType === target?.preselectType
     && target?.scheduledDueDate
@@ -781,8 +782,12 @@ function VehicleDetailModal({ target, profiles, onClose, onSaved }) {
             </div>
             {nextDue && (
               <div className="event-done-next-due">
-                <span>Next due date will be set to</span>
-                <strong>{nextDue}</strong>
+                <span>{isInspectionCycle ? "Next due week" : "Next due date will be set to"}</span>
+                <strong>
+                  {isInspectionCycle
+                    ? `WK${isoWeekNumber(nextDue)} · ${formatWeekStart(nextDue)} to ${formatWeekStart(addDaysToKey(nextDue, 6))}`
+                    : nextDue}
+                </strong>
               </div>
             )}
             {activeType === "Road Tax" && (
