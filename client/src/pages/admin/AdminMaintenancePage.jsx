@@ -24,6 +24,13 @@ import { AdminWorkspaceLayout } from "./AdminWorkspaceLayout";
 import "./AdminMaintenancePage.css";
 
 const DEFAULT_ROAD_TAX_INTERVAL_MONTHS = 6;
+const UK_TIME_ZONE = "Europe/London";
+const UK_DATE_FORMATTER = new Intl.DateTimeFormat("en-GB", {
+  timeZone: UK_TIME_ZONE,
+  year: "numeric",
+  month: "2-digit",
+  day: "2-digit"
+});
 
 const emptyJob = {
   vehicle_id: "",
@@ -80,6 +87,15 @@ function dateKey(date) {
   return `${year}-${month}-${day}`;
 }
 
+function ukDateKey(value = new Date()) {
+  const parts = Object.fromEntries(
+    UK_DATE_FORMATTER.formatToParts(value)
+      .filter((part) => part.type !== "literal")
+      .map((part) => [part.type, part.value])
+  );
+  return `${parts.year}-${parts.month}-${parts.day}`;
+}
+
 function addDaysToKey(value, days) {
   if (!value) return "";
   const date = new Date(`${value}T00:00:00`);
@@ -101,7 +117,7 @@ function addMonthsToKey(value, months) {
 function daysFromToday(value) {
   if (!value) return null;
   const date = new Date(`${value}T00:00:00`);
-  const today = new Date();
+  const today = new Date(`${ukDateKey()}T00:00:00`);
   today.setHours(0, 0, 0, 0);
   return Math.round((date - today) / (1000 * 60 * 60 * 24));
 }
@@ -539,7 +555,7 @@ function VehicleDetailModal({ target, profiles, onClose, onSaved }) {
 
   const [activeType, setActiveType] = useState(target?.preselectType || null);
   const [form, setForm] = useState({
-    service_date: dateKey(new Date()),
+    service_date: ukDateKey(),
     due_date: "",
     garage_name: "",
     final_cost_gbp: "",
@@ -561,8 +577,8 @@ function VehicleDetailModal({ target, profiles, onClose, onSaved }) {
     setActiveType(target?.preselectType || null);
     setForm({
       service_date: isCompletedSelection
-        ? (completedJob?.serviceDateRaw || target?.scheduledDueDate || selectedItem?.lastDoneRaw || dateKey(new Date()))
-        : dateKey(new Date()),
+        ? (completedJob?.serviceDateRaw || target?.scheduledDueDate || selectedItem?.lastDoneRaw || ukDateKey())
+        : ukDateKey(),
       due_date: target?.scheduledDueDate || "",
       garage_name: isCompletedSelection && completedJob?.garageName !== "-" ? (completedJob?.garageName || "") : "",
       final_cost_gbp: isCompletedSelection ? (completedJob?.finalCostGbp ?? "") : "",
@@ -593,8 +609,8 @@ function VehicleDetailModal({ target, profiles, onClose, onSaved }) {
     setForm((c) => ({
       ...c,
       service_date: isSelectedCompletedEvent || isUpdatingExistingCompletion
-        ? (completedJob?.serviceDateRaw || target?.scheduledDueDate || item?.lastDoneRaw || dateKey(new Date()))
-        : dateKey(new Date()),
+        ? (completedJob?.serviceDateRaw || target?.scheduledDueDate || item?.lastDoneRaw || ukDateKey())
+        : ukDateKey(),
       due_date: isSelectedUpcomingEvent ? target.scheduledDueDate : (item?.nextDueRaw || ""),
       garage_name: completedJob?.garageName && completedJob.garageName !== "-" ? completedJob.garageName : c.garage_name,
       final_cost_gbp: completedJob?.finalCostGbp ?? c.final_cost_gbp,
@@ -930,7 +946,7 @@ function BreakdownModal({ vehicles, onClose, onSaved }) {
 function VorModal({ vehicles, profiles, onClose, onSaved }) {
   const [assetId, setAssetId] = useState("");
   const [reason, setReason] = useState("");
-  const [since, setSince] = useState(() => dateKey(new Date()));
+  const [since, setSince] = useState(() => ukDateKey());
   const [till, setTill] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
@@ -1079,7 +1095,7 @@ function ExportJobsModal({ vehicles, weeks, jobs, onClose }) {
     link.href = url;
     const vehicleSlug = assetId ? (vehicles.find((v) => v.assetId === assetId)?.label || "vehicle").split(" ")[0] : "all-vehicles";
     const weekSlug = (fromWeek || toWeek) ? `${fromWeek?.label || "start"}-${toWeek?.label || "end"}` : "all-weeks";
-    link.download = `maintenance-jobs-${vehicleSlug}-${weekSlug}-${dateKey(new Date())}.csv`;
+    link.download = `maintenance-jobs-${vehicleSlug}-${weekSlug}-${ukDateKey()}.csv`;
     link.click();
     URL.revokeObjectURL(url);
     onClose();
@@ -1365,34 +1381,21 @@ function eventBelongsToWeek(event, week) {
 }
 
 function uniqueWeekEvents(events) {
-  const completed = new Map();
-  const scheduled = [];
-  for (const event of events) {
-    if (event.kind !== "completed") {
-      scheduled.push(event);
-      continue;
-    }
-    const key = `${event.kind}-${event.vehicleId}-${event.assetType || "vehicle"}-${event.type}`;
-    const current = completed.get(key);
-    if (!current || String(event.dueDateRaw || "") > String(current.dueDateRaw || "")) {
-      completed.set(key, event);
-    }
-  }
-  const completedEvents = [...completed.values()];
+  // Keep every completed job visible. Previously this collapsed all same-type
+  // completions in a week and could reveal a hidden older duplicate after the
+  // visible record was corrected, making the displayed date appear random.
+  const completedEvents = events.filter((event) => event.kind === "completed");
+  const scheduled = events.filter((event) => event.kind !== "completed");
   const completedScheduleKeys = new Set(completedEvents.map((event) =>
     `${event.vehicleId}-${event.assetType || "vehicle"}-${event.type}-${event.dueDateRaw}`
   ));
-  const seen = new Set(completedEvents.map((event) =>
-    `${event.kind}-${event.vehicleId}-${event.assetType || "vehicle"}-${event.type}`
-  ));
+  const seen = new Set(completedEvents.map((event) => event.id));
   return [
     ...completedEvents,
     ...scheduled.filter((event) => {
       const scheduleKey = `${event.vehicleId}-${event.assetType || "vehicle"}-${event.type}-${event.dueDateRaw}`;
       if (completedScheduleKeys.has(scheduleKey)) return false;
-      const key = event.kind === "completed"
-      ? `${event.kind}-${event.vehicleId}-${event.assetType || "vehicle"}-${event.type}-${event.dueDateRaw}`
-      : event.id;
+      const key = event.id;
       if (seen.has(key)) return false;
       seen.add(key);
       return true;
@@ -1511,7 +1514,7 @@ function ExcelScheduleView({ data, onOpenVehicle }) {
   }, [filteredRows]);
 
   const currentWeekKey = useMemo(() => {
-    const today = dateKey(new Date());
+    const today = ukDateKey();
     return weeks.find((week) => today >= week.startRaw && today <= week.endRaw)?.key || weeks[0]?.key || "";
   }, [weeks]);
 
@@ -1999,7 +2002,13 @@ export function AdminMaintenancePage() {
     return getMaintenancePortal()
       .then((res) => {
         setData(res.data);
+        setVehicleDetailTarget((current) => {
+          if (!current?.completedJobId) return current;
+          const completedJob = (res.data?.jobs || []).find((job) => Number(job.id) === Number(current.completedJobId));
+          return completedJob ? { ...current, completedJob } : current;
+        });
         setError("");
+        return res.data;
       })
       .catch((err) => {
         const msg = err.response?.data?.message || "Could not load maintenance planner.";
@@ -2027,7 +2036,7 @@ export function AdminMaintenancePage() {
   async function handleComplete(job) {
     const finalCost = window.prompt("Final cost (£)", String(job.finalCostGbp ?? job.estimatedCostGbp ?? ""));
     if (finalCost === null) return;
-    const serviceDate = window.prompt("Date completed (YYYY-MM-DD)", job.serviceDateRaw || dateKey(new Date()));
+    const serviceDate = window.prompt("Date completed (YYYY-MM-DD)", job.serviceDateRaw || ukDateKey());
     if (serviceDate === null) return;
     const completionNotes = window.prompt("Completion notes", job.completionNotes === "-" ? "" : job.completionNotes);
     if (completionNotes === null) return;
@@ -2088,7 +2097,7 @@ export function AdminMaintenancePage() {
   }
 
   async function handleInspectionDone(row) {
-    const inspectionDate = window.prompt("Inspection date (YYYY-MM-DD)", dateKey(new Date()));
+    const inspectionDate = window.prompt("Inspection date (YYYY-MM-DD)", ukDateKey());
     if (inspectionDate === null) return;
     const inspectorName = window.prompt("Inspector name", "");
     if (inspectorName === null) return;

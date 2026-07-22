@@ -3,6 +3,13 @@ const db = require("../db/connection");
 const INSPECTION_INTERVAL_DAYS = 42;
 const TRAILER_INSPECTION_INTERVAL_DAYS = 70;
 const DEFAULT_ROAD_TAX_INTERVAL_MONTHS = 6;
+const UK_TIME_ZONE = "Europe/London";
+const UK_DATE_FORMATTER = new Intl.DateTimeFormat("en-GB", {
+  timeZone: UK_TIME_ZONE,
+  year: "numeric",
+  month: "2-digit",
+  day: "2-digit"
+});
 const MAINTENANCE_RULES = {
   "Brake test": { days: INSPECTION_INTERVAL_DAYS },
   "Safety inspection": { days: INSPECTION_INTERVAL_DAYS },
@@ -415,6 +422,15 @@ function rawDate(d) {
   return `${y}-${m}-${day}`;
 }
 
+function ukDateKey(value = new Date()) {
+  const parts = Object.fromEntries(
+    UK_DATE_FORMATTER.formatToParts(value)
+      .filter((part) => part.type !== "literal")
+      .map((part) => [part.type, part.value])
+  );
+  return `${parts.year}-${parts.month}-${parts.day}`;
+}
+
 function calendarDate(value) {
   if (typeof value === "string" && /^\d{4}-\d{2}-\d{2}/.test(value)) {
     const [year, month, day] = value.slice(0, 10).split("-").map(Number);
@@ -430,7 +446,7 @@ function fmtDate(d) {
 
 function daysUntil(dateStr) {
   if (!dateStr) return null;
-  const today = new Date();
+  const today = calendarDate(ukDateKey());
   today.setHours(0, 0, 0, 0);
   const date = calendarDate(dateStr);
   date.setHours(0, 0, 0, 0);
@@ -575,7 +591,7 @@ function priorityTone(priority) {
 }
 
 async function nextJobNumber() {
-  const year = new Date().getFullYear();
+  const year = Number(ukDateKey().slice(0, 4));
   const [[row]] = await db.query(
     `SELECT COALESCE(MAX(CAST(SUBSTRING_INDEX(job_number, '-', -1) AS UNSIGNED)), 0) AS maxNum
      FROM maintenance_jobs WHERE job_number LIKE ?`,
@@ -703,7 +719,7 @@ async function ensureDefectRepairJob(defect, defaults = {}) {
   );
   if (existing) return { id: existing.id, created: false };
 
-  const due = defaults.dueDate || rawDate(addDays(new Date(), defect.severity === "critical" ? 1 : defect.severity === "high" ? 3 : 7));
+  const due = defaults.dueDate || rawDate(addDays(ukDateKey(), defect.severity === "critical" ? 1 : defect.severity === "high" ? 3 : 7));
   const jobNumber = await nextJobNumber();
   const [result] = await db.query(
     `INSERT INTO maintenance_jobs
@@ -750,7 +766,7 @@ async function applyCompletedMaintenance(job, completion = {}) {
     ? null
     : job.completion_notes || (isGeneratedMaintenanceNote(job.notes) ? null : job.notes);
   const completionNotes = completion.completionNotes ?? fallbackNotes ?? null;
-  const serviceDate = completion.serviceDate || job.service_date || rawDate(new Date());
+  const serviceDate = completion.serviceDate || job.service_date || ukDateKey();
   const isTrailer = Boolean(job.trailer_id || job.asset_type === "trailer");
   let inspectionIntervalDays = isTrailer ? TRAILER_INSPECTION_INTERVAL_DAYS : INSPECTION_INTERVAL_DAYS;
   if (!isTrailer && ["Safety inspection", "Brake test"].includes(job.service_type)) {
@@ -1076,7 +1092,7 @@ exports.getMaintenancePortal = async (_req, res) => {
     });
     const allPlannerRows = [...plannerRows, ...trailerPlannerRows];
 
-    const today = new Date();
+    const today = calendarDate(ukDateKey());
     today.setHours(0, 0, 0, 0);
     const weeklyBoard = Array.from({ length: 8 }, (_, index) => {
       const start = addDays(today, index * 7);
@@ -1431,7 +1447,7 @@ exports.getMaintenancePortal = async (_req, res) => {
     // "date done" (e.g. catching up on paperwork weeks after the work was
     // actually done) still gets its own week column, while keeping the same
     // forward planning horizon as before (56 weeks past the current week).
-    const planStart = addDays(startOfWeek(new Date()), -26 * 7);
+    const planStart = addDays(startOfWeek(calendarDate(ukDateKey())), -26 * 7);
     const planWeekCount = 82;
     const planWeeks = Array.from({ length: planWeekCount }, (_, index) => {
       const start = addDays(planStart, index * 7);
@@ -1876,8 +1892,7 @@ exports.getMaintenancePortal = async (_req, res) => {
       tone: h.source === "defect" ? "danger" : ["inspection", "trailer_inspection"].includes(h.source) ? "warning" : "success"
     }));
 
-    const thisMonth = new Date();
-    const thisMonthKey = `${thisMonth.getFullYear()}-${String(thisMonth.getMonth() + 1).padStart(2, "0")}`;
+    const thisMonthKey = ukDateKey().slice(0, 7);
     const monthlySpend = jobs
       .filter((job) => (job.completedAtRaw || job.dueDateRaw || "").startsWith(thisMonthKey))
       .reduce((sum, job) => sum + Number(job.finalCostGbp ?? job.billAmountGbp ?? job.estimatedCostGbp), 0);
@@ -2104,7 +2119,7 @@ exports.getMaintenancePortal = async (_req, res) => {
       plannerRows: allPlannerRows,
       vehicleProfiles: allVehicleProfiles,
       yearPlan: {
-        generatedAt: rawDate(new Date()),
+        generatedAt: ukDateKey(),
         startDate: rawDate(planStart),
         endDate: rawDate(planEnd),
         weeks: planWeeks,
@@ -2144,7 +2159,7 @@ exports.markVehicleInspectionDone = async (req, res) => {
     const result = req.body.result || "pass";
     const inspectorName = String(req.body.inspector_name || req.body.inspectorName || "").trim() || req.sessionUser?.name || null;
     const notes = String(req.body.notes || "").trim() || null;
-    const inspectionDate = req.body.inspection_date || req.body.inspectionDate || rawDate(new Date());
+    const inspectionDate = req.body.inspection_date || req.body.inspectionDate || ukDateKey();
 
     if (!vehicleId) {
       return res.status(400).json({ message: "Valid vehicle id is required." });
@@ -2547,7 +2562,7 @@ exports.completeJob = async (req, res) => {
     await applyCompletedMaintenance(job, {
       finalCost: Number(req.body.final_cost_gbp || req.body.finalCostGbp || job.final_cost_gbp || job.estimated_cost_gbp || 0),
       completionNotes: String(req.body.completion_notes || req.body.completionNotes || job.completion_notes || "").trim() || null,
-      serviceDate: req.body.service_date || req.body.serviceDate || job.service_date || rawDate(new Date()),
+      serviceDate: req.body.service_date || req.body.serviceDate || job.service_date || ukDateKey(),
       nextDueDate: req.body.next_due_date || req.body.nextDueDate || null,
       completedMileageKm: req.body.completed_mileage_km || req.body.completedMileageKm || job.completed_mileage_km || null,
       nextDueMileageKm: req.body.next_due_mileage_km || req.body.nextDueMileageKm || job.next_due_mileage_km || null,
@@ -2634,7 +2649,7 @@ exports.markTrailerInspectionDone = async (req, res) => {
     const result = req.body.result || "pass";
     const inspectorName = String(req.body.inspector_name || req.body.inspectorName || "").trim() || null;
     const notes = String(req.body.notes || "").trim() || null;
-    const inspectionDate = req.body.inspection_date || req.body.inspectionDate || rawDate(new Date());
+    const inspectionDate = req.body.inspection_date || req.body.inspectionDate || ukDateKey();
     const nextDue = rawDate(addDays(inspectionDate, TRAILER_INSPECTION_INTERVAL_DAYS));
 
     if (!trailerId) return res.status(400).json({ message: "Valid trailer id is required." });
@@ -2711,7 +2726,7 @@ exports.reportBreakdown = async (req, res) => {
     const defectId = defectResult.insertId;
 
     // Create linked repair job immediately
-    const dueDate = rawDate(addDays(new Date(), severity === "critical" ? 1 : severity === "high" ? 3 : 7));
+    const dueDate = rawDate(addDays(ukDateKey(), severity === "critical" ? 1 : severity === "high" ? 3 : 7));
     const jobNumber = await nextJobNumber();
     const [jobResult] = await db.query(
       `INSERT INTO maintenance_jobs
@@ -2768,7 +2783,7 @@ exports.setVorStatus = async (req, res) => {
       // schedule for reference, then clear the live status columns.
       await db.query(
         `UPDATE vor_history SET actual_return_date=? WHERE asset_type=? AND asset_id=? AND actual_return_date IS NULL`,
-        [rawDate(new Date()), assetType, assetNumericId]
+        [ukDateKey(), assetType, assetNumericId]
       );
       await db.query(
         `UPDATE ${table} SET status='available', vor_reason=NULL, vor_marked_at=NULL, vor_till=NULL WHERE id=? AND status IN ('maintenance','stopped')`,
@@ -2777,7 +2792,7 @@ exports.setVorStatus = async (req, res) => {
       return res.json({ message: "Vehicle marked back on road." });
     }
 
-    const sinceDate = since || rawDate(new Date());
+    const sinceDate = since || ukDateKey();
     await db.query(
       `UPDATE ${table} SET status='maintenance', vor_reason=?, vor_marked_at=?, vor_till=? WHERE id=?`,
       [reason, sinceDate, till || null, assetNumericId]
@@ -2800,7 +2815,7 @@ exports.completeEventFromSchedule = async (req, res) => {
     const assetType = encodedType === "trailer" ? "trailer" : "vehicle";
     const assetNumericId = Number(encodedId || 0);
     const serviceType = String(req.body.service_type || req.body.serviceType || "").trim().replace(/^Roller brake test$/i, "Brake test");
-    const serviceDate = req.body.service_date || req.body.serviceDate || rawDate(new Date());
+    const serviceDate = req.body.service_date || req.body.serviceDate || ukDateKey();
     const scheduledDueDate = req.body.due_date || req.body.dueDate || serviceDate;
     const garageName = String(req.body.garage_name || req.body.garageName || "").trim() || null;
     const finalCostGbp = Number(req.body.final_cost_gbp || req.body.finalCostGbp || 0);
@@ -2849,6 +2864,14 @@ exports.completeEventFromSchedule = async (req, res) => {
       }
 
       const previousServiceDate = rawDate(completedJob.service_date);
+      const [duplicateCompletedJobs] = await db.query(
+        `SELECT id, bill_attachment_data, bill_notes, completion_notes, bill_number, bill_amount_gbp
+         FROM maintenance_jobs
+         WHERE ${idField}=? AND service_type=? AND status='completed'
+           AND service_date IN (?, ?) AND id!=?
+         ORDER BY id DESC`,
+        [assetNumericId, serviceType, previousServiceDate, serviceDate, completedJobId]
+      );
       await db.query(
         `UPDATE maintenance_jobs
          SET service_date=?, due_date=?, garage_name=COALESCE(?,garage_name), final_cost_gbp=COALESCE(?,final_cost_gbp),
@@ -2863,14 +2886,36 @@ exports.completeEventFromSchedule = async (req, res) => {
           DEFAULT_ROAD_TAX_INTERVAL_MONTHS, completedJobId]
       );
 
+      if (duplicateCompletedJobs.length > 0) {
+        const paperworkSource = duplicateCompletedJobs.find((job) =>
+          job.bill_attachment_data || job.bill_notes || job.completion_notes || job.bill_number || job.bill_amount_gbp
+        );
+        if (paperworkSource) {
+          await db.query(
+            `UPDATE maintenance_jobs
+             SET bill_attachment_data=COALESCE(bill_attachment_data, ?),
+                 bill_notes=COALESCE(bill_notes, ?),
+                 completion_notes=COALESCE(completion_notes, ?),
+                 bill_number=COALESCE(bill_number, ?),
+                 bill_amount_gbp=COALESCE(bill_amount_gbp, ?)
+             WHERE id=?`,
+            [paperworkSource.bill_attachment_data, paperworkSource.bill_notes, paperworkSource.completion_notes,
+              paperworkSource.bill_number, paperworkSource.bill_amount_gbp, completedJobId]
+          );
+        }
+        await db.query(
+          `UPDATE maintenance_jobs SET status='cancelled' WHERE id IN (?) AND status='completed'`,
+          [duplicateCompletedJobs.map((job) => job.id)]
+        );
+      }
+
       const historyTable = assetType === "trailer" ? "trailer_maintenance_records" : "maintenance_records";
       const historyIdField = assetType === "trailer" ? "trailer_id" : "vehicle_id";
       await db.query(
         `UPDATE ${historyTable}
          SET service_date=?, next_due_date=?, description=COALESCE(?,description),
              cost_gbp=COALESCE(?,cost_gbp), garage_name=COALESCE(?,garage_name)
-         WHERE ${historyIdField}=? AND service_type=? AND service_date=?
-         ORDER BY id DESC LIMIT 1`,
+         WHERE ${historyIdField}=? AND service_type=? AND service_date=?`,
         [serviceDate, nextDueDate || null, completionNotes, correctionFinalCost, garageName,
           assetNumericId, serviceType, previousServiceDate]
       );
@@ -2891,10 +2936,11 @@ exports.completeEventFromSchedule = async (req, res) => {
         await db.query(
           `UPDATE vehicle_inspections
            SET inspection_date=?, next_due=?, inspector_name=COALESCE(?,inspector_name), notes=COALESCE(?,notes)
-           WHERE vehicle_id=? AND inspection_type=?
-           ORDER BY id DESC LIMIT 1`,
+           WHERE vehicle_id=?
+             AND (inspection_type=? OR (?='Safety inspection' AND inspection_type='6-week safety inspection'))
+             AND inspection_date=?`,
           [serviceDate, nextDueDate || null, garageName, completionNotes,
-            assetNumericId, serviceType]
+            assetNumericId, serviceType, serviceType, previousServiceDate]
         );
       }
 
