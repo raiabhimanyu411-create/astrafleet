@@ -439,7 +439,9 @@ async function syncMaintenanceSchema() {
     SET t.next_inspection_due=latest_inspection.next_due
   `);
 
-  // Align legacy open IB/BT jobs from the latest completed safety inspection.
+  // Align legacy open IB/BT jobs from the latest completed item in the shared
+  // inspection cycle. A later brake test must advance the common cycle rather
+  // than being assigned a next-due date before the brake test was completed.
   // This runs automatically on the first maintenance request after a restart,
   // so existing vehicles do not need to be opened and saved one by one.
   const [inspectionAlignmentSeeds] = await db.query(`
@@ -449,7 +451,7 @@ async function syncMaintenanceSchema() {
     FROM vehicles v
     JOIN maintenance_jobs j
       ON j.vehicle_id=v.id
-     AND j.service_type='Safety inspection'
+     AND j.service_type IN ('Safety inspection','Brake test')
      AND j.status='completed'
      AND j.service_date IS NOT NULL
     GROUP BY v.id, v.inspection_frequency_weeks
@@ -774,6 +776,33 @@ async function ensureAlignedInspectionJobs(vehicleId, dueDate) {
   }
 }
 
+async function alignInspectionJobsFromLatestCompletion(vehicleId, fallbackDueDate = null) {
+  if (!vehicleId) return fallbackDueDate;
+  const [[latest]] = await db.query(
+    `SELECT j.service_date, COALESCE(v.inspection_frequency_weeks, 6) AS inspection_frequency_weeks
+     FROM vehicles v
+     LEFT JOIN maintenance_jobs j
+       ON j.vehicle_id=v.id
+      AND j.status='completed'
+      AND j.service_type IN ('Safety inspection','Brake test')
+      AND j.service_date IS NOT NULL
+     WHERE v.id=?
+     ORDER BY j.service_date DESC, j.id DESC
+     LIMIT 1`,
+    [vehicleId]
+  );
+  const alignedDueDate = latest?.service_date
+    ? calculateNextDueDate(
+        "Safety inspection",
+        rawDate(latest.service_date),
+        null,
+        Math.max(2, Number(latest.inspection_frequency_weeks || 6)) * 7
+      )
+    : fallbackDueDate;
+  if (alignedDueDate) await ensureAlignedInspectionJobs(vehicleId, alignedDueDate);
+  return alignedDueDate;
+}
+
 function isGeneratedMaintenanceNote(note) {
   return /^auto-created/i.test(String(note || "").trim());
 }
@@ -921,7 +950,7 @@ async function applyCompletedMaintenance(job, completion = {}) {
     }
   }
   if (!job.trailer_id && job.asset_type !== "trailer" && ["Safety inspection", "Brake test"].includes(job.service_type)) {
-    await ensureAlignedInspectionJobs(job.vehicle_id, nextDueDate);
+    await alignInspectionJobsFromLatestCompletion(job.vehicle_id, nextDueDate);
   } else if (!job.trailer_id && job.asset_type !== "trailer") {
     await ensureRecurringJob(job.vehicle_id, job.service_type, nextDueDate, job.id);
   }
@@ -1358,18 +1387,22 @@ exports.getMaintenancePortal = async (_req, res) => {
       Number(vehicle?.inspection_frequency_weeks || 6)
     ) * 7;
 
-    // Vehicle brake tests are carried out with the safety inspection. Using
-    // the IB seed for both keeps their upcoming cells in the same ISO week even
-    // when older BT paperwork was entered on a different date.
+    // IB and BT share one upcoming cycle. Whichever one was completed most
+    // recently advances both future schedules, so their due weeks remain
+    // together and neither next-due date can precede the latest completion.
     const dueForVehicleType = (vehicle, type) => {
       const inspectionIntervalDays = inspectionIntervalDaysForVehicle(vehicle);
       if (type === "Full Service") {
         return dueFromCompletedJob(latestServiceByVehicleAndType.get(`${vehicle.id}:Full Service`), type);
       }
-      if (type === "Brake test") {
+      if (["Safety inspection", "Brake test"].includes(type)) {
         const latestSafetyInspection = latestServiceByVehicleAndType.get(`${vehicle.id}:Safety inspection`);
+        const latestBrakeTest = latestServiceByVehicleAndType.get(`${vehicle.id}:Brake test`);
+        const latestInspectionCycleJob = [latestSafetyInspection, latestBrakeTest]
+          .filter(Boolean)
+          .sort((a, b) => String(b.serviceDateRaw || "").localeCompare(String(a.serviceDateRaw || "")))[0];
         const alignedDueDate = dueFromCompletedJob(
-          latestSafetyInspection,
+          latestInspectionCycleJob,
           "Safety inspection",
           "vehicle",
           inspectionIntervalDays
@@ -2276,7 +2309,7 @@ exports.markVehicleInspectionDone = async (req, res) => {
       if (Number(open.defects || 0) === 0 && Number(open.jobs || 0) === 0) {
         await db.query(`UPDATE vehicles SET status='available' WHERE id=? AND status IN ('maintenance','stopped')`, [vehicleId]);
       }
-      await ensureAlignedInspectionJobs(vehicleId, nextDue);
+      await alignInspectionJobsFromLatestCompletion(vehicleId, nextDue);
     }
 
     res.status(201).json({
@@ -3022,6 +3055,7 @@ exports.completeEventFromSchedule = async (req, res) => {
           [serviceDate, nextDueDate || null, garageName, completionNotes,
             assetNumericId, serviceType, serviceType, previousServiceDate]
         );
+        await alignInspectionJobsFromLatestCompletion(assetNumericId, nextDueDate || null);
       }
 
       return res.json({ message: "Completed event updated.", jobId: completedJobId, nextDueDate });
