@@ -380,6 +380,65 @@ async function syncMaintenanceSchema() {
        OR v.road_tax_expiry != DATE_ADD(tax.latest_service_date, INTERVAL 6 MONTH)
   `);
 
+  // Inspection frequency is counted by inclusive ISO-week buckets: the week
+  // containing the completed inspection is Week 1. For example, a 6-week
+  // inspection completed in WK17 is next due in WK22 (five week-start jumps).
+  // Recalculate legacy saved dates automatically so no vehicle needs a manual
+  // edit after deployment.
+  await db.query(`
+    UPDATE vehicle_inspections vi
+    JOIN vehicles v ON v.id=vi.vehicle_id
+    SET vi.next_due=ADDDATE(
+      DATE_SUB(vi.inspection_date, INTERVAL WEEKDAY(vi.inspection_date) DAY),
+      (GREATEST(COALESCE(v.inspection_frequency_weeks, 6), 2) - 1) * 7
+    )
+    WHERE vi.inspection_date IS NOT NULL
+      AND vi.inspection_type IN ('Safety inspection','Brake test','6-week safety inspection')
+  `);
+  await db.query(`
+    UPDATE maintenance_records mr
+    JOIN vehicles v ON v.id=mr.vehicle_id
+    SET mr.next_due_date=ADDDATE(
+      DATE_SUB(mr.service_date, INTERVAL WEEKDAY(mr.service_date) DAY),
+      (GREATEST(COALESCE(v.inspection_frequency_weeks, 6), 2) - 1) * 7
+    )
+    WHERE mr.service_date IS NOT NULL
+      AND mr.service_type IN ('Safety inspection','Brake test','6-week safety inspection')
+  `);
+  await db.query(`
+    UPDATE trailer_inspections
+    SET next_due=ADDDATE(
+      DATE_SUB(inspection_date, INTERVAL WEEKDAY(inspection_date) DAY),
+      (10 - 1) * 7
+    )
+    WHERE inspection_date IS NOT NULL
+      AND inspection_type IN ('Safety inspection','Brake test','10-week safety inspection')
+  `);
+  await db.query(`
+    UPDATE trailer_maintenance_records
+    SET next_due_date=ADDDATE(
+      DATE_SUB(service_date, INTERVAL WEEKDAY(service_date) DAY),
+      (10 - 1) * 7
+    )
+    WHERE service_date IS NOT NULL
+      AND service_type IN ('Safety inspection','Brake test','10-week safety inspection')
+  `);
+  await db.query(`
+    UPDATE trailers t
+    JOIN (
+      SELECT ti.trailer_id, ti.next_due
+      FROM trailer_inspections ti
+      WHERE ti.id = (
+        SELECT ti2.id
+        FROM trailer_inspections ti2
+        WHERE ti2.trailer_id=ti.trailer_id
+        ORDER BY ti2.inspection_date DESC, ti2.id DESC
+        LIMIT 1
+      )
+    ) latest_inspection ON latest_inspection.trailer_id=t.id
+    SET t.next_inspection_due=latest_inspection.next_due
+  `);
+
   // Align legacy open IB/BT jobs from the latest completed safety inspection.
   // This runs automatically on the first maintenance request after a restart,
   // so existing vehicles do not need to be opened and saved one by one.
@@ -397,7 +456,12 @@ async function syncMaintenanceSchema() {
   `);
   for (const seed of inspectionAlignmentSeeds) {
     const intervalDays = Math.max(1, Number(seed.inspection_frequency_weeks || 6)) * 7;
-    const alignedDueDate = rawDate(addDays(rawDate(seed.latest_inspection_date), intervalDays));
+    const alignedDueDate = calculateNextDueDate(
+      "Safety inspection",
+      rawDate(seed.latest_inspection_date),
+      null,
+      intervalDays
+    );
     await ensureAlignedInspectionJobs(seed.vehicle_id, alignedDueDate);
   }
 }
@@ -507,6 +571,12 @@ function startOfWeek(date) {
   return next;
 }
 
+function inspectionDueWeekDate(date, inspectionIntervalDays = INSPECTION_INTERVAL_DAYS) {
+  const frequencyWeeks = Math.max(2, Math.round(Number(inspectionIntervalDays || INSPECTION_INTERVAL_DAYS) / 7));
+  const completedWeekStart = startOfWeek(calendarDate(date));
+  return addDays(completedWeekStart, (frequencyWeeks - 1) * 7);
+}
+
 function maintenanceWeekNumber(date) {
   // ISO-8601 week number: weeks start on Monday and week 1 contains 4 January.
   const [year, month, day] = rawDate(date).split("-").map(Number);
@@ -529,10 +599,10 @@ function planCodeForType(type) {
   }[type] || null;
 }
 
-// Inspection intervals are elapsed calendar periods from the date the work was
-// completed: 6 weeks = 42 days and 10 weeks = 70 days.
+// Inspection recurrence uses inclusive ISO-week buckets. The completion week
+// is Week 1, so a 6-week cycle advances five Monday-based calendar weeks.
 function addIntervalForPlan(date, type, _roadTaxIntervalMonths = DEFAULT_ROAD_TAX_INTERVAL_MONTHS, inspectionIntervalDays = INSPECTION_INTERVAL_DAYS) {
-  if (["Safety inspection", "Brake test"].includes(type)) return addDays(date, inspectionIntervalDays);
+  if (["Safety inspection", "Brake test"].includes(type)) return inspectionDueWeekDate(date, inspectionIntervalDays);
   if (type === "Road Tax") return addMonths(date, DEFAULT_ROAD_TAX_INTERVAL_MONTHS);
   if (type === "Tacho Calibration") return addMonths(date, 24);
   if (["MOT", "Insurance"].includes(type)) return addMonths(date, 12);
@@ -568,7 +638,7 @@ function calculateNextDueDate(serviceType, serviceDate, _roadTaxIntervalMonths, 
     return rawDate(addMonths(serviceDate, DEFAULT_ROAD_TAX_INTERVAL_MONTHS));
   }
   const rule = MAINTENANCE_RULES[serviceType];
-  if (rule?.days) return rawDate(addDays(serviceDate, inspectionIntervalDays));
+  if (rule?.days) return rawDate(inspectionDueWeekDate(serviceDate, inspectionIntervalDays));
   if (rule?.months) return rawDate(addMonths(serviceDate, rule.months));
   return "";
 }
@@ -2170,8 +2240,13 @@ exports.markVehicleInspectionDone = async (req, res) => {
 
     const [[vehicle]] = await db.query(`SELECT id, inspection_frequency_weeks FROM vehicles WHERE id=?`, [vehicleId]);
     if (!vehicle) return res.status(404).json({ message: "Vehicle not found." });
-    const inspectionFrequencyWeeks = Math.max(1, Number(vehicle.inspection_frequency_weeks || 6));
-    const nextDue = rawDate(addDays(inspectionDate, inspectionFrequencyWeeks * 7));
+    const inspectionFrequencyWeeks = Math.max(2, Number(vehicle.inspection_frequency_weeks || 6));
+    const nextDue = calculateNextDueDate(
+      "Safety inspection",
+      inspectionDate,
+      null,
+      inspectionFrequencyWeeks * 7
+    );
 
     const [inserted] = await db.query(
       `INSERT INTO vehicle_inspections
@@ -2650,7 +2725,12 @@ exports.markTrailerInspectionDone = async (req, res) => {
     const inspectorName = String(req.body.inspector_name || req.body.inspectorName || "").trim() || null;
     const notes = String(req.body.notes || "").trim() || null;
     const inspectionDate = req.body.inspection_date || req.body.inspectionDate || ukDateKey();
-    const nextDue = rawDate(addDays(inspectionDate, TRAILER_INSPECTION_INTERVAL_DAYS));
+    const nextDue = calculateNextDueDate(
+      "Safety inspection",
+      inspectionDate,
+      null,
+      TRAILER_INSPECTION_INTERVAL_DAYS
+    );
 
     if (!trailerId) return res.status(400).json({ message: "Valid trailer id is required." });
     if (!["pass", "advisory", "fail"].includes(result)) {

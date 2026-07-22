@@ -103,6 +103,18 @@ function addDaysToKey(value, days) {
   return dateKey(date);
 }
 
+function inspectionDueWeekKey(value, frequencyWeeks) {
+  if (!value) return "";
+  const [year, month, day] = value.slice(0, 10).split("-").map(Number);
+  const completedWeekStart = new Date(Date.UTC(year, month - 1, day));
+  const isoDay = completedWeekStart.getUTCDay() || 7;
+  completedWeekStart.setUTCDate(completedWeekStart.getUTCDate() - isoDay + 1);
+  completedWeekStart.setUTCDate(
+    completedWeekStart.getUTCDate() + (Math.max(2, Number(frequencyWeeks || 6)) - 1) * 7
+  );
+  return completedWeekStart.toISOString().slice(0, 10);
+}
+
 function addMonthsToKey(value, months) {
   if (!value) return "";
   const date = new Date(`${value}T00:00:00`);
@@ -122,17 +134,17 @@ function daysFromToday(value) {
   return Math.round((date - today) / (1000 * 60 * 60 * 24));
 }
 
-// Kept in sync with backend calculateNextDueDate: inspection intervals are
-// elapsed calendar periods from the date the work was completed.
+// Kept in sync with backend calculateNextDueDate: the completion ISO week is
+// Week 1, so the next 6-week due bucket starts five calendar weeks later.
 function nextDueForItem(serviceType, serviceDate, _roadTaxIntervalMonths, assetType = "vehicle", inspectionFrequencyWeeks = 6) {
   const item = maintenanceItems.find((option) => option.value === serviceType);
   if (!item || !serviceDate) return "";
   if (item.roadTax) return addMonthsToKey(serviceDate, DEFAULT_ROAD_TAX_INTERVAL_MONTHS);
   if (item.days) {
-    const inspectionDays = assetType === "trailer"
-      ? 70
-      : Math.max(1, Number(inspectionFrequencyWeeks || 6)) * 7;
-    return addDaysToKey(serviceDate, inspectionDays);
+    const frequencyWeeks = assetType === "trailer"
+      ? 10
+      : Math.max(2, Number(inspectionFrequencyWeeks || 6));
+    return inspectionDueWeekKey(serviceDate, frequencyWeeks);
   }
   if (item.months) return addMonthsToKey(serviceDate, item.months);
   return "";
