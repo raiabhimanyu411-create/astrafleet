@@ -910,6 +910,113 @@
   font-weight: 800;
 }
 
+/* Subtle motion polish — visual only; no maintenance behaviour is changed. */
+@keyframes maintenance-fade-up {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes maintenance-modal-in {
+  from {
+    opacity: 0;
+    transform: translateY(16px) scale(0.985);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.maintenance-page-shell .maintenance-command-bar,
+.maintenance-page-shell .maintenance-view-tabs,
+.maintenance-page-shell .maintenance-stat-panel,
+.maintenance-page-shell > .content-card,
+.maintenance-page-shell > .content-grid,
+.maintenance-page-shell > .maintenance-more-tools {
+  animation: maintenance-fade-up 420ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.maintenance-page-shell .maintenance-view-tabs { animation-delay: 45ms; }
+.maintenance-page-shell > .content-card,
+.maintenance-page-shell > .content-grid { animation-delay: 80ms; }
+.maintenance-page-shell > .maintenance-more-tools { animation-delay: 115ms; }
+
+.maintenance-view-tabs button,
+.maintenance-command-actions .af-submit-btn,
+.maintenance-command-actions .header-action-button {
+  transition: transform 160ms ease, box-shadow 160ms ease, background-color 160ms ease, color 160ms ease;
+}
+
+.maintenance-view-tabs button:hover,
+.maintenance-command-actions .af-submit-btn:hover,
+.maintenance-command-actions .header-action-button:hover {
+  transform: translateY(-1px);
+}
+
+.maintenance-view-tabs button:active,
+.maintenance-command-actions .af-submit-btn:active,
+.maintenance-command-actions .header-action-button:active {
+  transform: translateY(0) scale(0.98);
+}
+
+.maintenance-profile-item,
+.maintenance-automation-item,
+.maintenance-stat-panel-item,
+.maintenance-job-card,
+.maintenance-compliance-item {
+  transition: transform 180ms ease, box-shadow 180ms ease, border-color 180ms ease, background-color 180ms ease;
+}
+
+.maintenance-profile-item:hover,
+.maintenance-automation-item:hover,
+.maintenance-stat-panel-item:hover,
+.maintenance-job-card:hover,
+.maintenance-compliance-item:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 18px rgba(15, 23, 42, 0.09);
+}
+
+.excel-vehicle-row > td {
+  transition: background-color 160ms ease;
+}
+
+.excel-event-chip {
+  transition: opacity 140ms ease, transform 140ms ease, box-shadow 140ms ease;
+}
+
+.excel-event-chip:hover {
+  box-shadow: 0 4px 10px rgba(15, 23, 42, 0.2);
+}
+
+.maintenance-modal-backdrop {
+  animation: maintenance-backdrop-in 180ms ease-out both;
+}
+
+.maintenance-modal {
+  animation: maintenance-modal-in 260ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@keyframes maintenance-backdrop-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .maintenance-page-shell *,
+  .maintenance-modal-backdrop,
+  .maintenance-modal {
+    animation: none !important;
+    transition: none !important;
+    scroll-behavior: auto !important;
+  }
+}
+
 .maintenance-profile-item.active {
   border-color: var(--primary-ring);
   background: var(--primary-soft);
@@ -1014,7 +1121,7 @@
   background: var(--surface);
   text-align: left;
   cursor: pointer;
-  transition: border-color 130ms, background 130ms;
+  transition: transform 180ms ease, box-shadow 180ms ease, border-color 180ms ease, background-color 180ms ease;
 }
 
 .maintenance-job-card:hover,

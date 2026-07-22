@@ -23,13 +23,15 @@ import { StatusPill } from "../../components/StatusPill";
 import { AdminWorkspaceLayout } from "./AdminWorkspaceLayout";
 import "./AdminMaintenancePage.css";
 
+const DEFAULT_ROAD_TAX_INTERVAL_MONTHS = 6;
+
 const emptyJob = {
   vehicle_id: "",
   defect_id: "",
   service_type: "",
   service_date: "",
   due_date: "",
-  road_tax_interval_months: "12",
+  road_tax_interval_months: String(DEFAULT_ROAD_TAX_INTERVAL_MONTHS),
   completed_mileage_km: "",
   next_due_mileage_km: "",
   garage_name: "",
@@ -58,7 +60,7 @@ const allMaintenanceItems = [
   { value: "Safety inspection", label: "Safety inspection", interval: "Every 6 weeks", days: 42, trailerOk: true },
   { value: "MOT", label: "MOT", interval: "Every 12 months", months: 12, trailerOk: true },
   { value: "Tacho Calibration", label: "Tacho Calibration", interval: "Every 2 years", months: 24, trailerOk: false },
-  { value: "Road Tax", label: "Road Tax", interval: "Every 6 or 12 months", roadTax: true, trailerOk: false },
+  { value: "Road Tax", label: "Road Tax", interval: "Every 6 months", roadTax: true, trailerOk: false },
   { value: "Insurance", label: "Insurance", interval: "Every 12 months", months: 12, trailerOk: false },
   { value: "Full Service", label: "Full Service", interval: "Every 6 months / 85,000 km", months: 6, mileageKm: 85000, trailerOk: false }
 ];
@@ -88,7 +90,11 @@ function addDaysToKey(value, days) {
 function addMonthsToKey(value, months) {
   if (!value) return "";
   const date = new Date(`${value}T00:00:00`);
+  const originalDay = date.getDate();
+  date.setDate(1);
   date.setMonth(date.getMonth() + months);
+  const lastDayOfTargetMonth = new Date(date.getFullYear(), date.getMonth() + 1, 0).getDate();
+  date.setDate(Math.min(originalDay, lastDayOfTargetMonth));
   return dateKey(date);
 }
 
@@ -102,12 +108,16 @@ function daysFromToday(value) {
 
 // Kept in sync with backend calculateNextDueDate: inspection intervals are
 // elapsed calendar periods from the date the work was completed.
-function nextDueForItem(serviceType, serviceDate, roadTaxIntervalMonths, assetType = "vehicle") {
+function nextDueForItem(serviceType, serviceDate, _roadTaxIntervalMonths, assetType = "vehicle", inspectionFrequencyWeeks = 6) {
   const item = maintenanceItems.find((option) => option.value === serviceType);
   if (!item || !serviceDate) return "";
-  if (item.roadTax) return addMonthsToKey(serviceDate, Number(roadTaxIntervalMonths || 12));
-  if (assetType === "trailer" && serviceType === "Safety inspection") return addDaysToKey(serviceDate, 70);
-  if (item.days) return addDaysToKey(serviceDate, item.days);
+  if (item.roadTax) return addMonthsToKey(serviceDate, DEFAULT_ROAD_TAX_INTERVAL_MONTHS);
+  if (item.days) {
+    const inspectionDays = assetType === "trailer"
+      ? 70
+      : Math.max(1, Number(inspectionFrequencyWeeks || 6)) * 7;
+    return addDaysToKey(serviceDate, inspectionDays);
+  }
   if (item.months) return addMonthsToKey(serviceDate, item.months);
   return "";
 }
@@ -209,13 +219,16 @@ function openAttachment(dataUrl) {
 
 function toJobForm(job) {
   if (!job) return emptyJob;
+  const roadTaxDueDate = job.serviceType === "Road Tax" && job.serviceDateRaw
+    ? nextDueForItem("Road Tax", job.serviceDateRaw, DEFAULT_ROAD_TAX_INTERVAL_MONTHS)
+    : "";
   return {
     vehicle_id: job.vehicleId ? `vehicle:${job.vehicleId}` : "",
     defect_id: job.defectId || "",
     service_type: job.serviceType || "",
     service_date: job.serviceDateRaw || "",
-    due_date: job.dueDateRaw || "",
-    road_tax_interval_months: job.roadTaxIntervalMonths || "12",
+    due_date: roadTaxDueDate || job.dueDateRaw || "",
+    road_tax_interval_months: String(job.serviceType === "Road Tax" ? DEFAULT_ROAD_TAX_INTERVAL_MONTHS : (job.roadTaxIntervalMonths || DEFAULT_ROAD_TAX_INTERVAL_MONTHS)),
     completed_mileage_km: job.completedMileageKm || "",
     next_due_mileage_km: job.nextDueMileageKm || "",
     garage_name: job.garageName === "-" ? "" : job.garageName,
@@ -267,7 +280,14 @@ function JobModal({ vehicles, defects, editingJob, initialForm, onClose, onSaved
       const next = { ...current, [name]: value };
       if (["service_type", "service_date", "road_tax_interval_months"].includes(name)) {
         const assetType = next.vehicle_id?.startsWith("trailer:") ? "trailer" : "vehicle";
-        const calculatedDue = nextDueForItem(next.service_type, next.service_date, next.road_tax_interval_months, assetType);
+        const selectedVehicle = vehicles.find((vehicle) => vehicle.assetId === next.vehicle_id);
+        const calculatedDue = nextDueForItem(
+          next.service_type,
+          next.service_date,
+          next.road_tax_interval_months,
+          assetType,
+          selectedVehicle?.inspectionFrequencyWeeks
+        );
         if (calculatedDue) next.due_date = calculatedDue;
       }
       if (["service_type", "completed_mileage_km"].includes(name)) {
@@ -278,8 +298,15 @@ function JobModal({ vehicles, defects, editingJob, initialForm, onClose, onSaved
   }
 
   const selectedItem = availableItems.find((item) => item.value === form.service_type);
+  const selectedVehicle = vehicles.find((vehicle) => vehicle.assetId === form.vehicle_id);
   const bulkRows = availableItems.map((item) => {
-    const nextDue = nextDueForItem(item.value, form.service_date, form.road_tax_interval_months, selectedAssetType);
+    const nextDue = nextDueForItem(
+      item.value,
+      form.service_date,
+      form.road_tax_interval_months,
+      selectedAssetType,
+      selectedVehicle?.inspectionFrequencyWeeks
+    );
     const nextMileage = item.value === "Full Service" ? nextMileageForItem(item.value, form.completed_mileage_km) : "";
     return { ...item, nextDue, nextMileage, selected: selectedServices.includes(item.value) };
   });
@@ -359,7 +386,6 @@ function JobModal({ vehicles, defects, editingJob, initialForm, onClose, onSaved
             <Field label="Road Tax Period">
               <select className="af-select" value={form.road_tax_interval_months} onChange={(e) => set("road_tax_interval_months", e.target.value)}>
                 <option value="6">6 months</option>
-                <option value="12">12 months</option>
               </select>
             </Field>
           )}
@@ -522,7 +548,7 @@ function VehicleDetailModal({ target, profiles, onClose, onSaved }) {
     bill_amount_gbp: "",
     bill_notes: "",
     bill_attachment_data: "",
-    road_tax_interval_months: "12"
+    road_tax_interval_months: String(DEFAULT_ROAD_TAX_INTERVAL_MONTHS)
   });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
@@ -545,7 +571,7 @@ function VehicleDetailModal({ target, profiles, onClose, onSaved }) {
       bill_amount_gbp: isCompletedSelection ? (completedJob?.billAmountGbp || selectedItem?.billAmountGbp || "") : "",
       bill_notes: isCompletedSelection && completedJob?.billNotes !== "-" ? (completedJob?.billNotes || "") : (isCompletedSelection ? (selectedItem?.billNotes || "") : ""),
       bill_attachment_data: isCompletedSelection ? (completedJob?.billAttachmentData || selectedItem?.attachmentData || "") : "",
-      road_tax_interval_months: String(completedJob?.roadTaxIntervalMonths || selectedItem?.roadTaxIntervalMonths || 12)
+      road_tax_interval_months: String(target?.preselectType === "Road Tax" ? DEFAULT_ROAD_TAX_INTERVAL_MONTHS : (completedJob?.roadTaxIntervalMonths || selectedItem?.roadTaxIntervalMonths || DEFAULT_ROAD_TAX_INTERVAL_MONTHS))
     });
     setError("");
     setSuccessMessage("");
@@ -577,14 +603,20 @@ function VehicleDetailModal({ target, profiles, onClose, onSaved }) {
       bill_amount_gbp: isSelectedCompletedEvent || isUpdatingExistingCompletion ? (completedJob?.billAmountGbp || item?.billAmountGbp || "") : "",
       bill_notes: isSelectedCompletedEvent || isUpdatingExistingCompletion ? (completedJob?.billNotes !== "-" ? completedJob?.billNotes : "") || item?.billNotes || "" : "",
       bill_attachment_data: isSelectedCompletedEvent || isUpdatingExistingCompletion ? (completedJob?.billAttachmentData || item?.attachmentData || "") : "",
-      road_tax_interval_months: String(completedJob?.roadTaxIntervalMonths || item?.roadTaxIntervalMonths || 12)
+      road_tax_interval_months: String(type === "Road Tax" ? DEFAULT_ROAD_TAX_INTERVAL_MONTHS : (completedJob?.roadTaxIntervalMonths || item?.roadTaxIntervalMonths || DEFAULT_ROAD_TAX_INTERVAL_MONTHS))
     }));
   }
 
   const nextDue = useMemo(() => {
     if (!activeType || !form.service_date) return "";
-    return nextDueForItem(activeType, form.service_date, form.road_tax_interval_months, target?.assetType) || "";
-  }, [activeType, form.service_date, form.road_tax_interval_months, target?.assetType]);
+    return nextDueForItem(
+      activeType,
+      form.service_date,
+      form.road_tax_interval_months,
+      target?.assetType,
+      profile?.inspectionFrequencyWeeks
+    ) || "";
+  }, [activeType, form.service_date, form.road_tax_interval_months, profile?.inspectionFrequencyWeeks, target?.assetType]);
   const activeItem = profile?.items?.find((item) => item.type === activeType);
   const isSelectedUpcoming = Boolean(
     activeType === target?.preselectType
@@ -729,7 +761,6 @@ function VehicleDetailModal({ target, profiles, onClose, onSaved }) {
               <Field label="Road Tax Period">
                 <select className="af-select" value={form.road_tax_interval_months} onChange={(e) => set("road_tax_interval_months", e.target.value)}>
                   <option value="6">6 months</option>
-                  <option value="12">12 months</option>
                 </select>
               </Field>
             )}
@@ -1317,10 +1348,12 @@ function formatWeekStart(dateStr) {
 
 function isoWeekNumber(dateStr) {
   if (!dateStr) return 0;
-  const target = new Date(`${dateStr}T12:00:00`);
-  target.setDate(target.getDate() + 3 - ((target.getDay() + 6) % 7));
-  const weekOne = new Date(target.getFullYear(), 0, 4, 12);
-  return 1 + Math.round(((target - weekOne) / 604800000) - (3 - ((weekOne.getDay() + 6) % 7)) / 7);
+  const [year, month, day] = dateStr.slice(0, 10).split("-").map(Number);
+  const target = new Date(Date.UTC(year, month - 1, day));
+  const isoDay = target.getUTCDay() || 7;
+  target.setUTCDate(target.getUTCDate() + 4 - isoDay);
+  const yearStart = new Date(Date.UTC(target.getUTCFullYear(), 0, 1));
+  return Math.ceil((((target - yearStart) / 86400000) + 1) / 7);
 }
 
 function eventBelongsToWeek(event, week) {
@@ -1478,7 +1511,7 @@ function ExcelScheduleView({ data, onOpenVehicle }) {
   }, [filteredRows]);
 
   const currentWeekKey = useMemo(() => {
-    const today = new Date().toISOString().slice(0, 10);
+    const today = dateKey(new Date());
     return weeks.find((week) => today >= week.startRaw && today <= week.endRaw)?.key || weeks[0]?.key || "";
   }, [weeks]);
 
@@ -1720,7 +1753,8 @@ function ExcelScheduleView({ data, onOpenVehicle }) {
                             const day = actualDateRaw?.slice(8, 10);
                             const mon = actualDateRaw?.slice(5, 7);
                             const codes = ev.items.map((item) => item.code).join("+");
-                            const label = ev.sameDate ? `✓ ${codes} ${day}/${mon}` : `✓ ${codes}`;
+                            const paperclip = ev.items.some((item) => item.hasAttachment) ? " 📎" : "";
+                            const label = `${ev.sameDate ? `✓ ${codes} ${day}/${mon}` : `✓ ${codes}`}${paperclip}`;
                             return (
                               <button
                                 key={ev.id}
@@ -1736,7 +1770,8 @@ function ExcelScheduleView({ data, onOpenVehicle }) {
                                 }}
                                 onClick={(e) => {
                                   e.stopPropagation();
-                                  onOpenVehicle(row, assetType, ev.items[0].type, ev.dueDateRaw, "completed", ev.items[0].jobId);
+                                  const rect = e.currentTarget.getBoundingClientRect();
+                                  setPopover({ group: ev.items, x: rect.left + rect.width / 2, y: rect.top - 8 });
                                 }}
                               >
                                 {label}
@@ -1792,7 +1827,7 @@ function ExcelScheduleView({ data, onOpenVehicle }) {
                                 onOpenVehicle(row, assetType, ev.type, ev.dueDateRaw, ev.kind || "upcoming", ev.jobId);
                               }}
                             >
-                              {isCompleted ? `✓ ${ev.code} ${day}/${mon}` : `${ev.code} ${day}/${mon}`}
+                              {isCompleted ? `✓ ${ev.code} ${day}/${mon}${ev.hasAttachment ? " 📎" : ""}` : `${ev.code} ${day}/${mon}`}
                             </button>
                           );
                         })}
@@ -1842,6 +1877,20 @@ function ExcelScheduleView({ data, onOpenVehicle }) {
                   <span className="ccp-label">Next due</span>
                   <span className="ccp-value">{ev.nextDueDate || "-"}</span>
                 </div>
+                <button
+                  className="vehicle-detail-item-doc-link"
+                  type="button"
+                  onClick={() => {
+                    if (ev.hasAttachment) {
+                      openAttachment(ev.billAttachmentData);
+                      return;
+                    }
+                    const assetType = ev.assetType === "trailer" ? "trailer" : "vehicle";
+                    onOpenVehicle({ vehicleId: ev.vehicleId, assetType }, assetType, ev.type, ev.dueDateRaw, "completed", ev.jobId);
+                  }}
+                >
+                  {ev.hasAttachment ? `View paperwork${ev.billNumber ? ` · ${ev.billNumber}` : ""}` : "Attach paperwork"}
+                </button>
                 {ev.completionNotes && !isGeneratedMaintenanceNote(ev.completionNotes) && (
                   <p className="ccp-notes-text">{ev.completionNotes}</p>
                 )}
@@ -1885,6 +1934,29 @@ function ExcelScheduleView({ data, onOpenVehicle }) {
               <span className="ccp-label">Next due</span>
               <span className="ccp-value">{popover.ev.nextDueDate || "-"}</span>
             </div>
+            <button
+              className="vehicle-detail-item-doc-link"
+              type="button"
+              onClick={() => {
+                if (popover.ev.hasAttachment) {
+                  openAttachment(popover.ev.billAttachmentData);
+                  return;
+                }
+                const assetType = popover.ev.assetType === "trailer" ? "trailer" : "vehicle";
+                onOpenVehicle(
+                  { vehicleId: popover.ev.vehicleId, assetType },
+                  assetType,
+                  popover.ev.type,
+                  popover.ev.dueDateRaw,
+                  "completed",
+                  popover.ev.jobId
+                );
+              }}
+            >
+              {popover.ev.hasAttachment
+                ? `View paperwork${popover.ev.billNumber ? ` · ${popover.ev.billNumber}` : ""}`
+                : "Attach paperwork"}
+            </button>
             {popover.ev.completionNotes && !isGeneratedMaintenanceNote(popover.ev.completionNotes) && (
               <div className="ccp-notes">
                 <span className="ccp-label">Notes</span>
