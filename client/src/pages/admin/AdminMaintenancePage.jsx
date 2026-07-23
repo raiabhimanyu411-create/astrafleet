@@ -1975,6 +1975,7 @@ function ExcelScheduleView({ data, onOpenVehicle }) {
                                 key={ev.id}
                                 className="excel-event-chip completed"
                                 style={{ background: "#16a34a", color: "#fff" }}
+                                title="Click to open vehicle details"
                                 onMouseEnter={(e) => {
                                   clearTimeout(popoverTimer.current);
                                   const rect = e.currentTarget.getBoundingClientRect();
@@ -1985,8 +1986,8 @@ function ExcelScheduleView({ data, onOpenVehicle }) {
                                 }}
                                 onClick={(e) => {
                                   e.stopPropagation();
-                                  const rect = e.currentTarget.getBoundingClientRect();
-                                  setPopover({ group: ev.items, x: rect.left + rect.width / 2, y: rect.top - 8 });
+                                  setPopover(null);
+                                  onOpenVehicle(row, assetType);
                                 }}
                               >
                                 {label}
@@ -1999,6 +2000,7 @@ function ExcelScheduleView({ data, onOpenVehicle }) {
                                 key={ev.id}
                                 className="excel-event-chip vor"
                                 style={{ background: EVENT_COLORS.VOR.bg, color: EVENT_COLORS.VOR.text }}
+                                title="Click to open vehicle details"
                                 onMouseEnter={(e) => {
                                   clearTimeout(popoverTimer.current);
                                   const rect = e.currentTarget.getBoundingClientRect();
@@ -2009,7 +2011,8 @@ function ExcelScheduleView({ data, onOpenVehicle }) {
                                 }}
                                 onClick={(e) => {
                                   e.stopPropagation();
-                                  setPopover((current) => current?.vor?.id === ev.id ? null : { vor: ev, x: e.currentTarget.getBoundingClientRect().left + e.currentTarget.getBoundingClientRect().width / 2, y: e.currentTarget.getBoundingClientRect().top - 8 });
+                                  setPopover(null);
+                                  onOpenVehicle(row, assetType);
                                 }}
                               >
                                 VOR
@@ -2034,9 +2037,8 @@ function ExcelScheduleView({ data, onOpenVehicle }) {
                               title={isCompleted
                                 ? undefined
                                 : isForecast
-                                  ? `${ev.type} · ${ev.dueDate} · 12-month planning forecast (not a live job)`
+                                  ? `${ev.type} · ${ev.dueDate} · 12-month planning forecast — Click to open vehicle details`
                                   : `${ev.type} · ${ev.dueDate} · ${ev.dueLabel} — Click to mark done or attach document`}
-                              aria-disabled={isForecast || undefined}
                               onMouseEnter={isCompleted ? (e) => {
                                 clearTimeout(popoverTimer.current);
                                 const rect = e.currentTarget.getBoundingClientRect();
@@ -2047,7 +2049,10 @@ function ExcelScheduleView({ data, onOpenVehicle }) {
                               } : undefined}
                               onClick={(e) => {
                                 e.stopPropagation();
-                                if (isForecast) return;
+                                if (isForecast) {
+                                  onOpenVehicle(row, assetType);
+                                  return;
+                                }
                                 onOpenVehicle(
                                   row,
                                   assetType,
