@@ -13,6 +13,7 @@ import {
   markVehicleInspectionDone,
   reportBreakdown,
   setVorStatus,
+  undoCompletedMaintenanceEvent,
   updateDefectWorkflow,
   updateMaintenanceBill,
   updateMaintenanceJob
@@ -588,6 +589,7 @@ function VehicleDetailModal({ target, profiles, onClose, onSaved }) {
     road_tax_interval_months: String(DEFAULT_ROAD_TAX_INTERVAL_MONTHS)
   });
   const [saving, setSaving] = useState(false);
+  const [undoing, setUndoing] = useState(false);
   const [error, setError] = useState("");
   const [successMessage, setSuccessMessage] = useState("");
 
@@ -713,6 +715,26 @@ function VehicleDetailModal({ target, profiles, onClose, onSaved }) {
       setError(detail ? `${message}: ${detail}` : message);
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function undoCompletion() {
+    const jobId = target?.completedJobId || activeItem?.latestJobId;
+    if (!jobId || !activeType) return;
+    if (!window.confirm(`Mark ${activeType} as not done? The completion and its generated next due will be rolled back.`)) return;
+    setUndoing(true);
+    setError("");
+    try {
+      await undoCompletedMaintenanceEvent(jobId, {
+        reason: `${activeType} was marked as completed by mistake.`
+      });
+      await onSaved();
+      setSuccessMessage(`${activeType} marked as not done.`);
+      setActiveType(null);
+    } catch (err) {
+      setError(err.response?.data?.message || "Could not mark this item as not done.");
+    } finally {
+      setUndoing(false);
     }
   }
 
@@ -894,7 +916,12 @@ function VehicleDetailModal({ target, profiles, onClose, onSaved }) {
             {error && <p className="lp-error">{error}</p>}
             <div className="finance-command-bar">
               <button className="header-action-button" type="button" onClick={() => setActiveType(null)}>Cancel</button>
-              <button className="af-submit-btn" disabled={saving} type="submit">
+              {isEditingCompleted && (
+                <button className="header-action-button danger" disabled={saving || undoing} type="button" onClick={undoCompletion}>
+                  {undoing ? "Undoing..." : "Mark as not done"}
+                </button>
+              )}
+              <button className="af-submit-btn" disabled={saving || undoing} type="submit">
                 {saving ? "Saving..." : isEditingCompleted ? `Update ${activeType}` : `Mark ${activeType} Done`}
               </button>
             </div>
@@ -1651,7 +1678,6 @@ function ExcelScheduleView({ data, onOpenVehicle }) {
   const legendChips = [
     <span key="upcoming" className="excel-legend-chip" style={{ background: "#dc2626", color: "#fff" }}>UPCOMING</span>,
     <span key="completed" className="excel-legend-chip" style={{ background: "#16a34a", color: "#fff" }}>DONE</span>,
-    <span key="completed-due" className="excel-legend-chip" style={{ background: "#64748b", color: "#fff" }}>DUE DATE</span>,
     ...Object.entries(EVENT_COLORS).map(([code, { bg, text, label }]) => (
       <span key={code} className="excel-legend-chip" style={{ background: bg, color: text }} title={label}>{code}</span>
     ))
@@ -1711,7 +1737,7 @@ function ExcelScheduleView({ data, onOpenVehicle }) {
                 onClick={() => onOpenVehicle({
                   vehicleId: item.vehicleId,
                   assetType: item.rowAssetType === "Trailer" ? "trailer" : "vehicle"
-                }, item.rowAssetType === "Trailer" ? "trailer" : "vehicle", item.type, item.scheduledDateRaw || item.dueDateRaw, item.kind === "completed-due" ? "completed" : item.kind, item.jobId)}
+                }, item.rowAssetType === "Trailer" ? "trailer" : "vehicle", item.type, item.scheduledDateRaw || item.dueDateRaw, item.kind, item.jobId)}
               >
                 <span className="schedule-week-summary-code">{item.code}</span>
                 <strong>{item.rowFleetCode || item.rowVehicle}</strong>
@@ -1875,12 +1901,9 @@ function ExcelScheduleView({ data, onOpenVehicle }) {
                             );
                           }
                           const isCompleted = ev.kind === "completed";
-                          const isCompletedDue = ev.kind === "completed-due";
                           const color = isCompleted
                             ? { bg: "#16a34a", text: "#fff" }
-                            : isCompletedDue
-                              ? { bg: "#64748b", text: "#fff" }
-                              : urgencyColor(EVENT_COLORS[ev.code] || { bg: "#dc2626", text: "#fff" }, daysFromToday(ev.dueDateRaw));
+                            : urgencyColor(EVENT_COLORS[ev.code] || { bg: "#dc2626", text: "#fff" }, daysFromToday(ev.dueDateRaw));
                           const chipDateRaw = isCompleted ? (ev.completedDateRaw || ev.dueDateRaw) : ev.dueDateRaw;
                           const day = chipDateRaw?.slice(8, 10);
                           const mon = chipDateRaw?.slice(5, 7);
@@ -1889,11 +1912,7 @@ function ExcelScheduleView({ data, onOpenVehicle }) {
                               key={ev.id}
                               className={`excel-event-chip${isCompleted ? " completed" : ""}`}
                               style={{ background: color.bg, color: color.text }}
-                              title={isCompleted
-                                ? undefined
-                                : isCompletedDue
-                                  ? `${ev.type} was due ${ev.dueDate}; completed ${ev.completedDate}`
-                                  : `${ev.type} · ${ev.dueDate} · ${ev.dueLabel} — Click to mark done or attach document`}
+                              title={isCompleted ? undefined : `${ev.type} · ${ev.dueDate} · ${ev.dueLabel} — Click to mark done or attach document`}
                               onMouseEnter={isCompleted ? (e) => {
                                 clearTimeout(popoverTimer.current);
                                 const rect = e.currentTarget.getBoundingClientRect();
@@ -1909,16 +1928,14 @@ function ExcelScheduleView({ data, onOpenVehicle }) {
                                   assetType,
                                   ev.type,
                                   ev.scheduledDateRaw || ev.dueDateRaw,
-                                  isCompletedDue ? "completed" : ev.kind || "upcoming",
+                                  ev.kind || "upcoming",
                                   ev.jobId
                                 );
                               }}
                             >
                               {isCompleted
                                 ? `✓ ${ev.code} ${day}/${mon}${ev.hasAttachment ? " 📎" : ""}`
-                                : isCompletedDue
-                                  ? `DUE ${ev.code} ${day}/${mon}`
-                                  : `${ev.code} ${day}/${mon}`}
+                                : `${ev.code} ${day}/${mon}`}
                             </button>
                           );
                         })}
@@ -2070,6 +2087,7 @@ function ExcelScheduleView({ data, onOpenVehicle }) {
 
 export function AdminMaintenancePage() {
   const navigate = useNavigate();
+  const loadRequestRef = useRef(0);
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -2086,24 +2104,32 @@ export function AdminMaintenancePage() {
   const [statPanel, setStatPanel] = useState(null);
 
   function load() {
+    const requestId = loadRequestRef.current + 1;
+    loadRequestRef.current = requestId;
     setLoading(true);
     return getMaintenancePortal()
       .then((res) => {
+        if (requestId !== loadRequestRef.current) return res.data;
         setData(res.data);
         setVehicleDetailTarget((current) => {
           if (!current?.completedJobId) return current;
           const completedJob = (res.data?.jobs || []).find((job) => Number(job.id) === Number(current.completedJobId));
-          return completedJob ? { ...current, completedJob } : current;
+          return completedJob
+            ? { ...current, completedJob }
+            : { ...current, preselectType: null, scheduledDueDate: "", selectionKind: "", completedJobId: null, completedJob: null };
         });
         setError("");
         return res.data;
       })
       .catch((err) => {
+        if (requestId !== loadRequestRef.current) return;
         const msg = err.response?.data?.message || "Could not load maintenance planner.";
         const detail = err.response?.data?.error || "";
         setError(detail ? `${msg}: ${detail}` : msg);
       })
-      .finally(() => setLoading(false));
+      .finally(() => {
+        if (requestId === loadRequestRef.current) setLoading(false);
+      });
   }
 
   useEffect(() => {

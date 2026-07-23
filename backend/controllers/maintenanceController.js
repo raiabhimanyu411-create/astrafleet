@@ -1,4 +1,5 @@
 const db = require("../db/connection");
+const { logActivity } = require("../utils/auditLogger");
 
 const INSPECTION_INTERVAL_DAYS = 42;
 const TRAILER_INSPECTION_INTERVAL_DAYS = 70;
@@ -34,6 +35,256 @@ async function modifyColumnBestEffort(table, column, definition) {
   } catch (_err) {
     // Some MySQL setups reject MODIFY when legacy constraints differ; existing installs can still use vehicle jobs.
   }
+}
+
+async function addUniqueIndexIfMissing(table, indexName, columns) {
+  const [rows] = await db.query(`SHOW INDEX FROM ${table} WHERE Key_name=?`, [indexName]);
+  if (rows.length > 0) return;
+  await db.query(`CREATE UNIQUE INDEX ${indexName} ON ${table} (${columns.join(", ")})`);
+}
+
+async function duplicateGroupCount(table, identityColumns, whereClause = "1=1") {
+  const [[row]] = await db.query(
+    `SELECT COUNT(*) AS count FROM (
+       SELECT 1 FROM ${table}
+       WHERE ${whereClause}
+       GROUP BY ${identityColumns.join(", ")}
+       HAVING COUNT(*) > 1
+     ) duplicate_groups`
+  );
+  return Number(row?.count || 0);
+}
+
+async function duplicateExtraRowCount(table, identityColumns, whereClause = "1=1") {
+  const [[row]] = await db.query(
+    `SELECT COALESCE(SUM(duplicate_count - 1), 0) AS count FROM (
+       SELECT COUNT(*) AS duplicate_count FROM ${table}
+       WHERE ${whereClause}
+       GROUP BY ${identityColumns.join(", ")}
+       HAVING COUNT(*) > 1
+     ) duplicate_groups`
+  );
+  return Number(row?.count || 0);
+}
+
+async function removeEmptyOpenJobDuplicates() {
+  const [groups] = await db.query(`
+    SELECT asset_type, vehicle_id, trailer_id, service_type
+    FROM maintenance_jobs
+    WHERE status IN ('planned','booked','in_progress')
+    GROUP BY asset_type, vehicle_id, trailer_id, service_type
+    HAVING COUNT(*) > 1
+  `);
+  let removed = 0;
+  const deletions = [];
+  for (const group of groups) {
+    const idField = group.asset_type === "trailer" ? "trailer_id" : "vehicle_id";
+    const assetId = group.asset_type === "trailer" ? group.trailer_id : group.vehicle_id;
+    const [rows] = await db.query(
+      `SELECT id,
+              (defect_id IS NOT NULL OR bill_attachment_data IS NOT NULL OR bill_number IS NOT NULL
+               OR COALESCE(notes,'')!='' OR COALESCE(completion_notes,'')!=''
+               OR COALESCE(final_cost_gbp,0)!=0) AS has_user_data
+       FROM maintenance_jobs
+       WHERE ${idField}=? AND service_type=? AND status IN ('planned','booked','in_progress')
+       ORDER BY has_user_data DESC, FIELD(status,'in_progress','booked','planned'), id DESC`,
+      [assetId, group.service_type]
+    );
+    if (rows.length < 2) continue;
+    const [keeper, ...extras] = rows;
+    const emptyExtraIds = extras.filter((row) => !Number(row.has_user_data)).map((row) => row.id);
+    if (emptyExtraIds.length > 0) {
+      const [result] = await db.query(`DELETE FROM maintenance_jobs WHERE id IN (?)`, [emptyExtraIds]);
+      removed += Number(result.affectedRows || 0);
+      deletions.push({
+        assetType: group.asset_type,
+        assetId,
+        serviceType: group.service_type,
+        keeperId: keeper.id,
+        removedIds: emptyExtraIds
+      });
+    }
+  }
+  return { removed, deletions };
+}
+
+async function mergeExactCompletedJobDuplicates() {
+  const [groups] = await db.query(`
+    SELECT asset_type, vehicle_id, trailer_id, service_type, service_date, COUNT(*) AS duplicate_count
+    FROM maintenance_jobs
+    WHERE status='completed' AND service_date IS NOT NULL
+    GROUP BY asset_type, vehicle_id, trailer_id, service_type, service_date
+    HAVING COUNT(*) > 1
+  `);
+  let removed = 0;
+  const merges = [];
+  for (const group of groups) {
+    const idField = group.asset_type === "trailer" ? "trailer_id" : "vehicle_id";
+    const assetId = group.asset_type === "trailer" ? group.trailer_id : group.vehicle_id;
+    const [duplicates] = await db.query(
+      `SELECT * FROM maintenance_jobs
+       WHERE ${idField}=? AND service_type=? AND service_date=? AND status='completed'
+       ORDER BY (job_number NOT LIKE 'MIG-%') DESC,
+                (bill_attachment_data IS NOT NULL) DESC,
+                (bill_number IS NOT NULL) DESC,
+                (completion_notes IS NOT NULL) DESC,
+                id DESC`,
+      [assetId, group.service_type, rawDate(group.service_date)]
+    );
+    if (duplicates.length < 2) continue;
+    const [keeper, ...extras] = duplicates;
+    const removedIds = [];
+    const connection = await db.getConnection();
+    try {
+      await connection.beginTransaction();
+      for (const extra of extras) {
+        await connection.query(
+          `UPDATE maintenance_jobs SET
+             garage_name=COALESCE(garage_name, ?), assigned_mechanic=COALESCE(assigned_mechanic, ?),
+             final_cost_gbp=COALESCE(final_cost_gbp, ?), completed_mileage_km=COALESCE(completed_mileage_km, ?),
+             next_due_mileage_km=COALESCE(next_due_mileage_km, ?), bill_number=COALESCE(bill_number, ?),
+             bill_date=COALESCE(bill_date, ?), bill_amount_gbp=COALESCE(bill_amount_gbp, ?),
+             bill_notes=COALESCE(bill_notes, ?), bill_attachment_data=COALESCE(bill_attachment_data, ?),
+             completion_notes=COALESCE(completion_notes, ?)
+           WHERE id=?`,
+          [extra.garage_name, extra.assigned_mechanic, extra.final_cost_gbp, extra.completed_mileage_km,
+            extra.next_due_mileage_km, extra.bill_number, extra.bill_date, extra.bill_amount_gbp,
+            extra.bill_notes, extra.bill_attachment_data, extra.completion_notes, keeper.id]
+        );
+        await connection.query(`UPDATE maintenance_job_notes SET job_id=? WHERE job_id=?`, [keeper.id, extra.id]);
+        await connection.query(`DELETE FROM maintenance_jobs WHERE id=?`, [extra.id]);
+        removed += 1;
+        removedIds.push(extra.id);
+      }
+      await connection.commit();
+    } catch (error) {
+      await connection.rollback();
+      throw error;
+    } finally {
+      connection.release();
+    }
+    if (removedIds.length > 0) {
+      merges.push({
+        assetType: group.asset_type,
+        assetId,
+        serviceType: group.service_type,
+        serviceDate: rawDate(group.service_date),
+        keeperId: keeper.id,
+        removedIds
+      });
+    }
+  }
+  return { removed, merges };
+}
+
+async function verifyAndRepairMaintenanceIntegrity() {
+  await db.query(`
+    CREATE TABLE IF NOT EXISTS maintenance_integrity_runs (
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      checked_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      completed_job_duplicate_groups_before INT NOT NULL DEFAULT 0,
+      completed_jobs_removed INT NOT NULL DEFAULT 0,
+      projection_rows_removed INT NOT NULL DEFAULT 0,
+      unresolved_open_job_groups INT NOT NULL DEFAULT 0,
+      status VARCHAR(30) NOT NULL DEFAULT 'verified',
+      details JSON DEFAULT NULL
+    ) ENGINE=InnoDB
+  `);
+
+  // Canonicalize legacy names before applying exact-identity constraints.
+  await db.query(`UPDATE vehicle_inspections SET inspection_type='Safety inspection' WHERE inspection_type='6-week safety inspection'`);
+  await db.query(`UPDATE trailer_inspections SET inspection_type='Safety inspection' WHERE inspection_type='10-week safety inspection'`);
+
+  const completedGroupsBefore = await duplicateGroupCount(
+    "maintenance_jobs",
+    ["asset_type", "vehicle_id", "trailer_id", "service_type", "service_date"],
+    "status='completed' AND service_date IS NOT NULL"
+  );
+  const projectionBefore = await Promise.all([
+    duplicateExtraRowCount("vehicle_inspections", ["vehicle_id", "inspection_type", "inspection_date"]),
+    duplicateExtraRowCount("trailer_inspections", ["trailer_id", "inspection_type", "inspection_date"]),
+    duplicateExtraRowCount("maintenance_records", ["vehicle_id", "service_type", "service_date"]),
+    duplicateExtraRowCount("trailer_maintenance_records", ["trailer_id", "service_type", "service_date"])
+  ]);
+
+  // Merge useful fields into the oldest projection row, then remove only rows
+  // with the exact same asset, type and service/inspection date.
+  await db.query(`
+    UPDATE vehicle_inspections keeper
+    JOIN vehicle_inspections duplicate
+      ON duplicate.vehicle_id=keeper.vehicle_id AND duplicate.inspection_type=keeper.inspection_type
+     AND duplicate.inspection_date=keeper.inspection_date AND duplicate.id>keeper.id
+    SET keeper.inspector_name=COALESCE(keeper.inspector_name,duplicate.inspector_name),
+        keeper.notes=COALESCE(keeper.notes,duplicate.notes), keeper.next_due=COALESCE(keeper.next_due,duplicate.next_due)
+  `);
+  await db.query(`DELETE duplicate FROM vehicle_inspections duplicate JOIN vehicle_inspections keeper ON duplicate.vehicle_id=keeper.vehicle_id AND duplicate.inspection_type=keeper.inspection_type AND duplicate.inspection_date=keeper.inspection_date AND duplicate.id>keeper.id`);
+  await db.query(`
+    UPDATE trailer_inspections keeper
+    JOIN trailer_inspections duplicate
+      ON duplicate.trailer_id=keeper.trailer_id AND duplicate.inspection_type=keeper.inspection_type
+     AND duplicate.inspection_date=keeper.inspection_date AND duplicate.id>keeper.id
+    SET keeper.inspector_name=COALESCE(keeper.inspector_name,duplicate.inspector_name),
+        keeper.notes=COALESCE(keeper.notes,duplicate.notes), keeper.next_due=COALESCE(keeper.next_due,duplicate.next_due)
+  `);
+  await db.query(`DELETE duplicate FROM trailer_inspections duplicate JOIN trailer_inspections keeper ON duplicate.trailer_id=keeper.trailer_id AND duplicate.inspection_type=keeper.inspection_type AND duplicate.inspection_date=keeper.inspection_date AND duplicate.id>keeper.id`);
+  await db.query(`
+    UPDATE maintenance_records keeper
+    JOIN maintenance_records duplicate
+      ON duplicate.vehicle_id=keeper.vehicle_id AND duplicate.service_type=keeper.service_type
+     AND duplicate.service_date=keeper.service_date AND duplicate.id>keeper.id
+    SET keeper.description=COALESCE(keeper.description,duplicate.description),
+        keeper.cost_gbp=GREATEST(keeper.cost_gbp,duplicate.cost_gbp), keeper.mileage=COALESCE(keeper.mileage,duplicate.mileage),
+        keeper.next_due_date=COALESCE(keeper.next_due_date,duplicate.next_due_date), keeper.garage_name=COALESCE(keeper.garage_name,duplicate.garage_name)
+  `);
+  await db.query(`DELETE duplicate FROM maintenance_records duplicate JOIN maintenance_records keeper ON duplicate.vehicle_id=keeper.vehicle_id AND duplicate.service_type=keeper.service_type AND duplicate.service_date=keeper.service_date AND duplicate.id>keeper.id`);
+  await db.query(`
+    UPDATE trailer_maintenance_records keeper
+    JOIN trailer_maintenance_records duplicate
+      ON duplicate.trailer_id=keeper.trailer_id AND duplicate.service_type=keeper.service_type
+     AND duplicate.service_date=keeper.service_date AND duplicate.id>keeper.id
+    SET keeper.description=COALESCE(keeper.description,duplicate.description),
+        keeper.cost_gbp=GREATEST(keeper.cost_gbp,duplicate.cost_gbp),
+        keeper.next_due_date=COALESCE(keeper.next_due_date,duplicate.next_due_date), keeper.garage_name=COALESCE(keeper.garage_name,duplicate.garage_name)
+  `);
+  await db.query(`DELETE duplicate FROM trailer_maintenance_records duplicate JOIN trailer_maintenance_records keeper ON duplicate.trailer_id=keeper.trailer_id AND duplicate.service_type=keeper.service_type AND duplicate.service_date=keeper.service_date AND duplicate.id>keeper.id`);
+
+  const completedJobCleanup = await mergeExactCompletedJobDuplicates();
+  const openJobCleanup = await removeEmptyOpenJobDuplicates();
+  const completedJobsRemoved = completedJobCleanup.removed;
+  const emptyOpenJobsRemoved = openJobCleanup.removed;
+  await addUniqueIndexIfMissing("vehicle_inspections", "uniq_vehicle_inspection_event", ["vehicle_id", "inspection_type", "inspection_date"]);
+  await addUniqueIndexIfMissing("trailer_inspections", "uniq_trailer_inspection_event", ["trailer_id", "inspection_type", "inspection_date"]);
+  await addUniqueIndexIfMissing("maintenance_records", "uniq_vehicle_maintenance_event", ["vehicle_id", "service_type", "service_date"]);
+  await addUniqueIndexIfMissing("trailer_maintenance_records", "uniq_trailer_maintenance_event", ["trailer_id", "service_type", "service_date"]);
+
+  const [[openGroups]] = await db.query(`
+    SELECT COUNT(*) AS count FROM (
+      SELECT asset_type, vehicle_id, trailer_id, service_type
+      FROM maintenance_jobs
+      WHERE status IN ('planned','booked','in_progress')
+      GROUP BY asset_type, vehicle_id, trailer_id, service_type
+      HAVING COUNT(*) > 1
+    ) duplicates
+  `);
+  const projectionRowsRemoved = projectionBefore.reduce((sum, count) => sum + count, 0);
+  const unresolvedOpenJobGroups = Number(openGroups?.count || 0);
+  await db.query(
+    `INSERT INTO maintenance_integrity_runs
+      (completed_job_duplicate_groups_before, completed_jobs_removed, projection_rows_removed,
+       unresolved_open_job_groups, status, details)
+     VALUES (?, ?, ?, ?, ?, ?)`,
+    [completedGroupsBefore, completedJobsRemoved, projectionRowsRemoved, unresolvedOpenJobGroups,
+      unresolvedOpenJobGroups > 0 ? "review_required" : "verified",
+      JSON.stringify({
+        checkedAt: new Date().toISOString(),
+        mode: "exact-duplicate-safe-merge",
+        emptyOpenJobsRemoved,
+        completedJobMerges: completedJobCleanup.merges.slice(0, 200),
+        emptyOpenJobDeletions: openJobCleanup.deletions.slice(0, 200),
+        auditTruncated: completedJobCleanup.merges.length > 200 || openJobCleanup.deletions.length > 200
+      })]
+  );
+  return { completedGroupsBefore, completedJobsRemoved, projectionRowsRemoved, emptyOpenJobsRemoved, unresolvedOpenJobGroups };
 }
 
 async function syncMaintenanceSchema() {
@@ -199,6 +450,7 @@ async function syncMaintenanceSchema() {
   await addColumnIfMissing("maintenance_jobs", "bill_approved_at", "DATETIME DEFAULT NULL");
   await addColumnIfMissing("maintenance_jobs", "bill_payment_status", "ENUM('unpaid','scheduled','paid') NOT NULL DEFAULT 'unpaid'");
   await addColumnIfMissing("maintenance_jobs", "vendor_invoice_ref", "VARCHAR(100) DEFAULT NULL");
+  await addColumnIfMissing("maintenance_jobs", "recurrence_source_job_id", "INT DEFAULT NULL");
 
   await db.query(`
     CREATE TABLE IF NOT EXISTS maintenance_inventory (
@@ -501,13 +753,13 @@ async function syncMaintenanceSchema() {
       AND (next_due_mileage_km IS NULL OR next_due_mileage_km != completed_mileage_km + 85000)
   `);
 
-  // Align legacy open IB/BT jobs from the latest completed item in the shared
-  // inspection cycle. A later brake test must advance the common cycle rather
-  // than being assigned a next-due date before the brake test was completed.
+  // Keep one independent live due job per inspection type. Completing a brake
+  // test must not advance the safety-inspection cycle (or vice versa).
   // This runs automatically on the first maintenance request after a restart,
   // so existing vehicles do not need to be opened and saved one by one.
   const [inspectionAlignmentSeeds] = await db.query(`
     SELECT v.id AS vehicle_id,
+           j.service_type,
            COALESCE(v.inspection_frequency_weeks, 6) AS inspection_frequency_weeks,
            MAX(j.service_date) AS latest_inspection_date
     FROM vehicles v
@@ -516,18 +768,21 @@ async function syncMaintenanceSchema() {
      AND j.service_type IN ('Safety inspection','Brake test')
      AND j.status='completed'
      AND j.service_date IS NOT NULL
-    GROUP BY v.id, v.inspection_frequency_weeks
+    GROUP BY v.id, j.service_type, v.inspection_frequency_weeks
   `);
   for (const seed of inspectionAlignmentSeeds) {
     const intervalDays = Math.max(1, Number(seed.inspection_frequency_weeks || 6)) * 7;
     const alignedDueDate = calculateNextDueDate(
-      "Safety inspection",
+      seed.service_type,
       rawDate(seed.latest_inspection_date),
       null,
       intervalDays
     );
-    await ensureAlignedInspectionJobs(seed.vehicle_id, alignedDueDate);
+    await ensureInspectionJob(seed.vehicle_id, seed.service_type, alignedDueDate);
   }
+
+  const integrityResult = await verifyAndRepairMaintenanceIntegrity();
+  console.log("[MaintenanceIntegrity] verified", integrityResult);
 }
 
 exports.ensureMaintenanceSchema = async (_req, res, next) => {
@@ -539,6 +794,11 @@ exports.ensureMaintenanceSchema = async (_req, res, next) => {
     schemaSyncPromise = null;
     res.status(500).json({ message: "Maintenance schema sync error", error: err.message });
   }
+};
+
+exports.initializeMaintenance = async () => {
+  if (!schemaSyncPromise) schemaSyncPromise = syncMaintenanceSchema();
+  return schemaSyncPromise;
 };
 
 function rawDate(d) {
@@ -663,39 +923,6 @@ function planCodeForType(type) {
   }[type] || null;
 }
 
-// Inspection recurrence uses inclusive ISO-week buckets. The completion week
-// is Week 1, so a 6-week cycle advances five Monday-based calendar weeks.
-function addIntervalForPlan(date, type, _roadTaxIntervalMonths = DEFAULT_ROAD_TAX_INTERVAL_MONTHS, inspectionIntervalDays = INSPECTION_INTERVAL_DAYS) {
-  if (["Safety inspection", "Brake test"].includes(type)) return inspectionDueWeekDate(date, inspectionIntervalDays);
-  if (type === "Road Tax") return addMonths(date, DEFAULT_ROAD_TAX_INTERVAL_MONTHS);
-  if (type === "Tacho Calibration") return addMonths(date, 24);
-  if (["MOT", "Insurance"].includes(type)) return addMonths(date, 12);
-  if (type === "Full Service") return addMonths(date, 6);
-  return null;
-}
-
-function buildFuturePlanDates(seedDateRaw, type, horizonStart, horizonEnd, roadTaxIntervalMonths, inspectionIntervalDays = INSPECTION_INTERVAL_DAYS) {
-  if (!seedDateRaw) return [];
-  let cursor = new Date(`${seedDateRaw}T00:00:00`);
-  if (Number.isNaN(cursor.getTime())) return [];
-  let guard = 0;
-  while (cursor < horizonStart && guard < 80) {
-    const next = addIntervalForPlan(cursor, type, roadTaxIntervalMonths, inspectionIntervalDays);
-    if (!next) break;
-    cursor = next;
-    guard += 1;
-  }
-  const dates = [];
-  while (cursor <= horizonEnd && guard < 120) {
-    dates.push(rawDate(cursor));
-    const next = addIntervalForPlan(cursor, type, roadTaxIntervalMonths, inspectionIntervalDays);
-    if (!next) break;
-    cursor = next;
-    guard += 1;
-  }
-  return dates;
-}
-
 function calculateNextDueDate(serviceType, serviceDate, _roadTaxIntervalMonths, inspectionIntervalDays = INSPECTION_INTERVAL_DAYS) {
   if (!serviceType || !serviceDate) return "";
   if (serviceType === "Road Tax") {
@@ -792,76 +1019,185 @@ function recurringPriority(daysLeft) {
   return "low";
 }
 
+async function findOpenMaintenanceJob(assetType, assetId, serviceType) {
+  const idField = assetType === "trailer" ? "trailer_id" : "vehicle_id";
+  const [[existing]] = await db.query(
+    `SELECT id, job_number FROM maintenance_jobs
+     WHERE ${idField}=? AND service_type=? AND status IN ('planned','booked','in_progress')
+     ORDER BY FIELD(status,'in_progress','booked','planned'), id DESC LIMIT 1`,
+    [assetId, serviceType]
+  );
+  return existing || null;
+}
+
+async function findCompletedMaintenanceJob(assetType, assetId, serviceType, serviceDate) {
+  if (!serviceDate) return null;
+  const idField = assetType === "trailer" ? "trailer_id" : "vehicle_id";
+  const [[existing]] = await db.query(
+    `SELECT id, job_number FROM maintenance_jobs
+     WHERE ${idField}=? AND service_type=? AND service_date=? AND status='completed'
+     ORDER BY id DESC LIMIT 1`,
+    [assetId, serviceType, serviceDate]
+  );
+  return existing || null;
+}
+
+async function mergeCompletedJobDetails(jobId, job) {
+  await db.query(
+    `UPDATE maintenance_jobs SET
+       due_date=COALESCE(?,due_date), garage_name=COALESCE(?,garage_name),
+       assigned_mechanic=COALESCE(?,assigned_mechanic), final_cost_gbp=COALESCE(?,final_cost_gbp),
+       completed_mileage_km=COALESCE(?,completed_mileage_km), next_due_mileage_km=COALESCE(?,next_due_mileage_km),
+       bill_number=COALESCE(?,bill_number), bill_date=COALESCE(?,bill_date),
+       bill_amount_gbp=COALESCE(?,bill_amount_gbp), bill_notes=COALESCE(?,bill_notes),
+       bill_attachment_data=COALESCE(?,bill_attachment_data), completion_notes=COALESCE(?,completion_notes)
+     WHERE id=?`,
+    [job.due_date || null, job.garage_name, job.assigned_mechanic, job.final_cost_gbp,
+      job.completed_mileage_km, job.next_due_mileage_km, job.bill_number, job.bill_date,
+      job.bill_amount_gbp, job.bill_notes, job.bill_attachment_data, job.completion_notes, jobId]
+  );
+  const historyTable = job.asset_type === "trailer" ? "trailer_maintenance_records" : "maintenance_records";
+  const historyIdField = job.asset_type === "trailer" ? "trailer_id" : "vehicle_id";
+  const assetId = job.trailer_id || job.vehicle_id;
+  await db.query(
+    `UPDATE ${historyTable}
+     SET description=COALESCE(?,description), cost_gbp=COALESCE(?,cost_gbp),
+         garage_name=COALESCE(?,garage_name)
+     WHERE ${historyIdField}=? AND service_type=? AND service_date=?`,
+    [job.completion_notes || job.notes, job.final_cost_gbp, job.garage_name,
+      assetId, job.service_type, job.service_date]
+  );
+}
+
 async function ensureRecurringJob(vehicleId, serviceType, dueDate, sourceJobId = null) {
   if (!vehicleId || !serviceType || !dueDate) return null;
-  const [[existing]] = await db.query(
+  const [openRows] = await db.query(
     `SELECT id FROM maintenance_jobs
-     WHERE vehicle_id=? AND service_type=? AND due_date=? AND status IN ('planned','booked','in_progress')
-     LIMIT 1`,
-    [vehicleId, serviceType, dueDate]
+     WHERE vehicle_id=? AND service_type=? AND status IN ('planned','booked','in_progress')
+     ORDER BY FIELD(status,'in_progress','booked','planned'), id DESC`,
+    [vehicleId, serviceType]
   );
-  if (existing) return existing.id;
+  if (openRows.length > 0) {
+    const [existing, ...duplicates] = openRows;
+    await db.query(
+      `UPDATE maintenance_jobs
+       SET due_date=?, priority=?, recurrence_source_job_id=COALESCE(?,recurrence_source_job_id)
+       WHERE id=?`,
+      [dueDate, recurringPriority(daysUntil(dueDate)), sourceJobId || null, existing.id]
+    );
+    // Old empty planner duplicates can be removed safely; data-bearing jobs
+    // are retained for the startup integrity audit instead of being destroyed.
+    if (duplicates.length > 0) {
+      await db.query(
+        `DELETE FROM maintenance_jobs
+         WHERE id IN (?)
+           AND defect_id IS NULL
+           AND bill_attachment_data IS NULL
+           AND bill_number IS NULL
+           AND COALESCE(notes,'')=''
+           AND COALESCE(completion_notes,'')=''
+           AND COALESCE(final_cost_gbp,0)=0`,
+        [duplicates.map((row) => row.id)]
+      );
+    }
+    return existing.id;
+  }
   const jobNumber = await nextJobNumber();
   const daysLeft = daysUntil(dueDate);
   const [result] = await db.query(
     `INSERT INTO maintenance_jobs
-      (job_number, vehicle_id, service_type, due_date, priority, status)
-     VALUES (?, ?, ?, ?, ?, 'planned')`,
-    [jobNumber, vehicleId, serviceType, dueDate, recurringPriority(daysLeft)]
+      (job_number, vehicle_id, service_type, due_date, priority, status, recurrence_source_job_id)
+     VALUES (?, ?, ?, ?, ?, 'planned', ?)`,
+    [jobNumber, vehicleId, serviceType, dueDate, recurringPriority(daysLeft), sourceJobId || null]
   );
   return result.insertId;
 }
 
-async function ensureAlignedInspectionJobs(vehicleId, dueDate) {
-  if (!vehicleId || !dueDate) return;
-  const priority = recurringPriority(daysUntil(dueDate));
-  for (const serviceType of ["Safety inspection", "Brake test"]) {
-    const [openRows] = await db.query(
-      `SELECT id FROM maintenance_jobs
-       WHERE vehicle_id=? AND service_type=? AND status IN ('planned','booked','in_progress')
-       ORDER BY FIELD(status,'in_progress','booked','planned'), id DESC`,
-      [vehicleId, serviceType]
+async function ensureTrailerRecurringJob(trailerId, serviceType, dueDate, sourceJobId = null) {
+  if (!trailerId || !serviceType || !dueDate) return null;
+  const [openRows] = await db.query(
+    `SELECT id FROM maintenance_jobs
+     WHERE trailer_id=? AND service_type=? AND status IN ('planned','booked','in_progress')
+     ORDER BY FIELD(status,'in_progress','booked','planned'), id DESC`,
+    [trailerId, serviceType]
+  );
+  if (openRows.length > 0) {
+    const [existing, ...duplicates] = openRows;
+    await db.query(
+      `UPDATE maintenance_jobs
+       SET due_date=?, priority=?, recurrence_source_job_id=COALESCE(?,recurrence_source_job_id)
+       WHERE id=?`,
+      [dueDate, recurringPriority(daysUntil(dueDate)), sourceJobId || null, existing.id]
     );
-    if (openRows.length === 0) {
-      await ensureRecurringJob(vehicleId, serviceType, dueDate);
-      continue;
-    }
-    const [primary, ...duplicates] = openRows;
-    await db.query(`UPDATE maintenance_jobs SET due_date=?, priority=? WHERE id=?`, [dueDate, priority, primary.id]);
     if (duplicates.length > 0) {
       await db.query(
-        `UPDATE maintenance_jobs SET status='cancelled'
-         WHERE id IN (?) AND status IN ('planned','booked','in_progress')`,
+        `DELETE FROM maintenance_jobs
+         WHERE id IN (?) AND defect_id IS NULL AND bill_attachment_data IS NULL
+           AND bill_number IS NULL AND COALESCE(notes,'')='' AND COALESCE(completion_notes,'')=''
+           AND COALESCE(final_cost_gbp,0)=0`,
         [duplicates.map((row) => row.id)]
       );
     }
+    return existing.id;
   }
+  const jobNumber = await nextJobNumber();
+  const [result] = await db.query(
+    `INSERT INTO maintenance_jobs
+      (job_number, asset_type, trailer_id, service_type, due_date, priority, status, recurrence_source_job_id)
+     VALUES (?, 'trailer', ?, ?, ?, ?, 'planned', ?)`,
+    [jobNumber, trailerId, serviceType, dueDate, recurringPriority(daysUntil(dueDate)), sourceJobId || null]
+  );
+  return result.insertId;
 }
 
-async function alignInspectionJobsFromLatestCompletion(vehicleId, fallbackDueDate = null) {
-  if (!vehicleId) return fallbackDueDate;
+async function ensureInspectionJob(vehicleId, serviceType, dueDate, sourceJobId = null) {
+  if (!vehicleId || !serviceType || !dueDate) return;
+  const priority = recurringPriority(daysUntil(dueDate));
+  const jobId = await ensureRecurringJob(vehicleId, serviceType, dueDate, sourceJobId);
+  if (jobId) await db.query(`UPDATE maintenance_jobs SET priority=? WHERE id=?`, [priority, jobId]);
+}
+
+async function alignInspectionJobFromLatestCompletion(vehicleId, serviceType, fallbackDueDate = null, sourceJobId = null) {
+  return alignRecurringJobFromLatestCompletion("vehicle", vehicleId, serviceType, fallbackDueDate, sourceJobId);
+}
+
+async function alignRecurringJobFromLatestCompletion(assetType, assetId, serviceType, fallbackDueDate = null, sourceJobId = null) {
+  if (!assetId) return fallbackDueDate;
+  const idField = assetType === "trailer" ? "trailer_id" : "vehicle_id";
   const [[latest]] = await db.query(
-    `SELECT j.service_date, COALESCE(v.inspection_frequency_weeks, 6) AS inspection_frequency_weeks
-     FROM vehicles v
-     LEFT JOIN maintenance_jobs j
-       ON j.vehicle_id=v.id
-      AND j.status='completed'
-      AND j.service_type IN ('Safety inspection','Brake test')
-      AND j.service_date IS NOT NULL
-     WHERE v.id=?
-     ORDER BY j.service_date DESC, j.id DESC
-     LIMIT 1`,
-    [vehicleId]
+    `SELECT id, service_date, road_tax_interval_months
+     FROM maintenance_jobs
+     WHERE ${idField}=? AND status='completed' AND service_type=? AND service_date IS NOT NULL
+     ORDER BY service_date DESC, id DESC LIMIT 1`,
+    [assetId, serviceType]
   );
+  let inspectionIntervalDays = assetType === "trailer"
+    ? TRAILER_INSPECTION_INTERVAL_DAYS
+    : INSPECTION_INTERVAL_DAYS;
+  if (assetType === "vehicle" && ["Safety inspection", "Brake test"].includes(serviceType)) {
+    const [[vehicle]] = await db.query(`SELECT inspection_frequency_weeks FROM vehicles WHERE id=?`, [assetId]);
+    inspectionIntervalDays = Math.max(2, Number(vehicle?.inspection_frequency_weeks || 6)) * 7;
+  }
   const alignedDueDate = latest?.service_date
     ? calculateNextDueDate(
-        "Safety inspection",
+        serviceType,
         rawDate(latest.service_date),
-        null,
-        Math.max(2, Number(latest.inspection_frequency_weeks || 6)) * 7
+        latest.road_tax_interval_months,
+        inspectionIntervalDays
       )
     : fallbackDueDate;
-  if (alignedDueDate) await ensureAlignedInspectionJobs(vehicleId, alignedDueDate);
+  if (alignedDueDate) {
+    if (assetType === "trailer") {
+      await ensureTrailerRecurringJob(assetId, serviceType, alignedDueDate, latest?.id || sourceJobId);
+    } else {
+      await ensureRecurringJob(assetId, serviceType, alignedDueDate, latest?.id || sourceJobId);
+    }
+    const dueColumn = dueColumnForService(assetType, serviceType);
+    if (dueColumn) {
+      const assetTable = assetType === "trailer" ? "trailers" : "vehicles";
+      await db.query(`UPDATE ${assetTable} SET ${dueColumn}=? WHERE id=?`, [alignedDueDate, assetId]);
+    }
+  }
   return alignedDueDate;
 }
 
@@ -889,12 +1225,49 @@ async function inspectionJobForQuickCompletion(assetType, assetId, serviceDate) 
   return job;
 }
 
+async function upsertInspectionRecord(assetType, assetId, inspectionType, inspectionDate, values) {
+  const table = assetType === "trailer" ? "trailer_inspections" : "vehicle_inspections";
+  const idField = assetType === "trailer" ? "trailer_id" : "vehicle_id";
+  const [[existing]] = await db.query(
+    `SELECT id FROM ${table}
+     WHERE ${idField}=? AND inspection_type=? AND inspection_date=?
+     ORDER BY id DESC LIMIT 1`,
+    [assetId, inspectionType, inspectionDate]
+  );
+  if (existing) {
+    await db.query(
+      `UPDATE ${table}
+       SET inspector_name=COALESCE(?,inspector_name), result=?, notes=COALESCE(?,notes), next_due=?
+       WHERE id=?`,
+      [values.inspectorName, values.result, values.notes, values.nextDue, existing.id]
+    );
+    return existing.id;
+  }
+  const [inserted] = await db.query(
+    `INSERT INTO ${table}
+      (${idField}, inspection_date, inspection_type, inspector_name, result, notes, next_due)
+     VALUES (?, ?, ?, ?, ?, ?, ?)`,
+    [assetId, inspectionDate, inspectionType, values.inspectorName, values.result, values.notes, values.nextDue]
+  );
+  return inserted.insertId;
+}
+
 function isGeneratedMaintenanceNote(note) {
   return /^auto-created/i.test(String(note || "").trim());
 }
 
 function isTrailerMaintenanceTypeAllowed(serviceType) {
   return ["Safety inspection", "MOT"].includes(serviceType);
+}
+
+function dueColumnForService(assetType, serviceType) {
+  if (serviceType === "MOT") return "mot_expiry";
+  if (assetType === "vehicle" && serviceType === "Road Tax") return "road_tax_expiry";
+  if (serviceType === "Insurance") return "insurance_expiry";
+  if (assetType === "vehicle" && serviceType === "Tacho Calibration") return "tacho_calibration_expiry";
+  if (serviceType === "Full Service") return "next_service_due";
+  if (assetType === "trailer" && serviceType === "Safety inspection") return "next_inspection_due";
+  return null;
 }
 
 async function ensureDefectRepairJob(defect, defaults = {}) {
@@ -972,6 +1345,44 @@ async function applyCompletedMaintenance(job, completion = {}) {
       : null);
   const billAmountGbp = completion.billAmountGbp || job.bill_amount_gbp || null;
 
+  // All completion entry points converge here. If the same asset/test/date was
+  // already completed (for example from a double click or stale refresh), keep
+  // the existing event and only merge newly supplied paperwork/details.
+  const completionAssetType = isTrailer ? "trailer" : "vehicle";
+  const completionAssetId = isTrailer ? job.trailer_id : job.vehicle_id;
+  const idField = isTrailer ? "trailer_id" : "vehicle_id";
+  const [[existingCompletion]] = await db.query(
+    `SELECT id, job_number FROM maintenance_jobs
+     WHERE ${idField}=? AND service_type=? AND service_date=? AND status='completed' AND id!=?
+     ORDER BY id DESC LIMIT 1`,
+    [completionAssetId, job.service_type, serviceDate, Number(job.id || 0)]
+  );
+  if (existingCompletion) {
+    await mergeCompletedJobDetails(existingCompletion.id, {
+      ...job,
+      asset_type: completionAssetType,
+      vehicle_id: isTrailer ? null : completionAssetId,
+      trailer_id: isTrailer ? completionAssetId : null,
+      service_date: serviceDate,
+      final_cost_gbp: finalCost,
+      completed_mileage_km: completedMileageKm,
+      next_due_mileage_km: nextDueMileageKm,
+      bill_amount_gbp: billAmountGbp,
+      completion_notes: completionNotes
+    });
+    return {
+      finalCost,
+      completionNotes,
+      serviceDate,
+      nextDueDate,
+      completedMileageKm,
+      nextDueMileageKm,
+      billAmountGbp,
+      duplicatePrevented: true,
+      existingJobId: existingCompletion.id
+    };
+  }
+
   await db.query(
     `UPDATE maintenance_jobs
      SET status='completed', final_cost_gbp=?, completion_notes=?, service_date=?, completed_mileage_km=?, next_due_mileage_km=?,
@@ -1038,11 +1449,14 @@ async function applyCompletedMaintenance(job, completion = {}) {
     } else if (nextDueDate && ["Safety inspection", "Brake test"].includes(job.service_type)) {
       await db.query(`UPDATE trailers SET next_inspection_due=? WHERE id=?`, [nextDueDate, job.trailer_id]);
     }
+    if (nextDueDate && isTrailerMaintenanceTypeAllowed(job.service_type)) {
+      await alignRecurringJobFromLatestCompletion("trailer", job.trailer_id, job.service_type, nextDueDate, job.id);
+    }
   }
   if (!job.trailer_id && job.asset_type !== "trailer" && ["Safety inspection", "Brake test"].includes(job.service_type)) {
-    await alignInspectionJobsFromLatestCompletion(job.vehicle_id, nextDueDate);
+    await alignInspectionJobFromLatestCompletion(job.vehicle_id, job.service_type, nextDueDate, job.id);
   } else if (!job.trailer_id && job.asset_type !== "trailer") {
-    await ensureRecurringJob(job.vehicle_id, job.service_type, nextDueDate, job.id);
+    await alignRecurringJobFromLatestCompletion("vehicle", job.vehicle_id, job.service_type, nextDueDate, job.id);
   }
   if (!job.trailer_id && job.asset_type !== "trailer" && ["Safety inspection", "Brake test"].includes(job.service_type)) {
     const [[existingInspection]] = await db.query(
@@ -1450,12 +1864,29 @@ exports.getMaintenancePortal = async (_req, res) => {
     const odometerByVehicle = new Map(odometerRows.map((row) => [Number(row.vehicle_id), Number(row.reading_km || 0)]));
 
     const latestServiceByVehicleAndType = new Map();
+    const openJobByVehicleAndType = new Map();
     for (const job of jobs) {
+      if (["planned", "booked", "in_progress"].includes(job.status)) {
+        const openPrefix = job.assetType === "trailer" ? `trailer:${job.trailerId}` : `${job.vehicleId}`;
+        const openKey = `${openPrefix}:${job.serviceType}`;
+        const currentOpen = openJobByVehicleAndType.get(openKey);
+        const rank = { in_progress: 3, booked: 2, planned: 1 };
+        if (!currentOpen
+          || rank[job.status] > rank[currentOpen.status]
+          || (rank[job.status] === rank[currentOpen.status] && Number(job.id) > Number(currentOpen.id))) {
+          openJobByVehicleAndType.set(openKey, job);
+        }
+      }
       if (job.status !== "completed") continue;
       const prefix = job.assetType === "trailer" ? `trailer:${job.trailerId}` : `${job.vehicleId}`;
       const key = `${prefix}:${job.serviceType}`;
       const current = latestServiceByVehicleAndType.get(key);
-      if (job.serviceDateRaw && (!current || job.serviceDateRaw > current.serviceDateRaw)) {
+      const isLaterDate = job.serviceDateRaw && (!current || job.serviceDateRaw > current.serviceDateRaw);
+      const isStableTieWinner = job.serviceDateRaw
+        && current
+        && job.serviceDateRaw === current.serviceDateRaw
+        && Number(job.id) > Number(current.id);
+      if (isLaterDate || isStableTieWinner) {
         latestServiceByVehicleAndType.set(key, job);
       }
     }
@@ -1477,27 +1908,12 @@ exports.getMaintenancePortal = async (_req, res) => {
       Number(vehicle?.inspection_frequency_weeks || 6)
     ) * 7;
 
-    // IB and BT share one upcoming cycle. Whichever one was completed most
-    // recently advances both future schedules, so their due weeks remain
-    // together and neither next-due date can precede the latest completion.
     const dueForVehicleType = (vehicle, type) => {
       const inspectionIntervalDays = inspectionIntervalDaysForVehicle(vehicle);
+      const openJob = openJobByVehicleAndType.get(`${vehicle.id}:${type}`);
+      if (openJob?.dueDateRaw) return openJob.dueDateRaw;
       if (type === "Full Service") {
         return dueFromCompletedJob(latestServiceByVehicleAndType.get(`${vehicle.id}:Full Service`), type);
-      }
-      if (["Safety inspection", "Brake test"].includes(type)) {
-        const latestSafetyInspection = latestServiceByVehicleAndType.get(`${vehicle.id}:Safety inspection`);
-        const latestBrakeTest = latestServiceByVehicleAndType.get(`${vehicle.id}:Brake test`);
-        const latestInspectionCycleJob = [latestSafetyInspection, latestBrakeTest]
-          .filter(Boolean)
-          .sort((a, b) => String(b.serviceDateRaw || "").localeCompare(String(a.serviceDateRaw || "")))[0];
-        const alignedDueDate = dueFromCompletedJob(
-          latestInspectionCycleJob,
-          "Safety inspection",
-          "vehicle",
-          inspectionIntervalDays
-        );
-        if (alignedDueDate) return alignedDueDate;
       }
       return dueFromCompletedJob(
         latestServiceByVehicleAndType.get(`${vehicle.id}:${type}`),
@@ -1513,7 +1929,8 @@ exports.getMaintenancePortal = async (_req, res) => {
     const trailerComplianceItems = trailerRows.flatMap((t) =>
       trailerProfileItemTypes.map((itemType) => {
         const latest = latestServiceByVehicleAndType.get(`trailer:${t.id}:${itemType}`);
-        const dueDateRaw = dueFromCompletedJob(latest, itemType, "trailer");
+        const openJob = openJobByVehicleAndType.get(`trailer:${t.id}:${itemType}`);
+        const dueDateRaw = openJob?.dueDateRaw || dueFromCompletedJob(latest, itemType, "trailer");
         return { vehicleId: t.id, assetType: "trailer", vehicle: t.registration_number, itemType, dueDateRaw, dueDate: fmtDate(dueDateRaw), daysLeft: daysUntil(dueDateRaw) };
       })
     ).filter((item) => item.dueDateRaw).map((item) => ({
@@ -1606,7 +2023,8 @@ exports.getMaintenancePortal = async (_req, res) => {
       vorTill: t.vor_till ? fmtDate(t.vor_till) : "",
       items: trailerProfileItemTypes.map((type) => {
         const latest = latestServiceByVehicleAndType.get(`trailer:${t.id}:${type}`);
-        const dueDateRaw = dueFromCompletedJob(latest, type, "trailer");
+        const openJob = openJobByVehicleAndType.get(`trailer:${t.id}:${type}`);
+        const dueDateRaw = openJob?.dueDateRaw || dueFromCompletedJob(latest, type, "trailer");
         const daysLeft = daysUntil(dueDateRaw);
         const serviceStatus = statusFromDays(daysLeft);
         return {
@@ -1675,43 +2093,6 @@ exports.getMaintenancePortal = async (_req, res) => {
     const yearPlanRows = rows.map((v) => {
       const profile = vehicleProfiles.find((item) => Number(item.vehicleId) === Number(v.id));
       const events = [];
-      const completedInspectionJobs = jobs
-        .filter((job) => Number(job.vehicleId) === Number(v.id)
-          && job.status === "completed"
-          && job.serviceDateRaw
-          && ["Safety inspection", "Brake test"].includes(job.serviceType))
-        .sort((a, b) => {
-          const byDate = String(a.serviceDateRaw).localeCompare(String(b.serviceDateRaw));
-          return byDate !== 0 ? byDate : Number(a.id) - Number(b.id);
-        });
-      const historicalInspectionDueByJobId = new Map();
-      let previousInspectionCycleJob = null;
-      for (let index = 0; index < completedInspectionJobs.length;) {
-        const completedDateRaw = completedInspectionJobs[index].serviceDateRaw;
-        const sameDayJobs = [];
-        while (index < completedInspectionJobs.length
-          && completedInspectionJobs[index].serviceDateRaw === completedDateRaw) {
-          sameDayJobs.push(completedInspectionJobs[index]);
-          index += 1;
-        }
-        const derivedScheduledDue = previousInspectionCycleJob
-          ? dueFromCompletedJob(
-              previousInspectionCycleJob,
-              "Safety inspection",
-              "vehicle",
-              inspectionIntervalDaysForVehicle(v)
-            )
-          : "";
-        for (const completedJob of sameDayJobs) {
-          // A completed record edited through the paperwork flow used to have
-          // due_date overwritten with service_date. Reconstruct the cycle's
-          // original due week from the preceding distinct completion date.
-          // Jobs completed together share that same historical due week.
-          const scheduledDueDateRaw = derivedScheduledDue || completedJob.dueDateRaw;
-          historicalInspectionDueByJobId.set(completedJob.id, scheduledDueDateRaw);
-        }
-        previousInspectionCycleJob = sameDayJobs[sameDayJobs.length - 1];
-      }
       const seeds = profileItemTypes.map((type) => {
         const latest = latestServiceByVehicleAndType.get(`${v.id}:${type}`);
         return {
@@ -1721,14 +2102,10 @@ exports.getMaintenancePortal = async (_req, res) => {
         };
       });
       for (const seed of seeds) {
-        const dates = buildFuturePlanDates(
-          seed.dueDateRaw,
-          seed.type,
-          planStart,
-          planEnd,
-          seed.roadTaxIntervalMonths,
-          inspectionIntervalDaysForVehicle(v)
-        );
+        // A cycle has exactly one live due occurrence. The following due is
+        // created only after this one is completed; do not pre-generate the
+        // whole recurrence horizon.
+        const dates = seed.dueDateRaw ? [seed.dueDateRaw] : [];
         for (const dueDateRaw of dates) {
           const daysLeft = daysUntil(dueDateRaw);
           const displayDateRaw = dueDateRaw < rawDate(planStart) ? rawDate(planStart) : dueDateRaw;
@@ -1823,7 +2200,6 @@ exports.getMaintenancePortal = async (_req, res) => {
         if (!week) continue;
         const code = planCodeForType(job.serviceType);
         if (!code) continue;
-        const scheduledDateRaw = historicalInspectionDueByJobId.get(job.id) || job.dueDateRaw;
         const completedEvent = {
           id: `done-${job.id}`,
           jobId: job.id,
@@ -1836,8 +2212,8 @@ exports.getMaintenancePortal = async (_req, res) => {
           dueDateRaw: displayDateRaw,
           displayDateRaw,
           dueDate: fmtDate(displayDateRaw),
-          scheduledDateRaw,
-          scheduledDate: fmtDate(scheduledDateRaw),
+          scheduledDateRaw: job.dueDateRaw,
+          scheduledDate: job.dueDate,
           dueLabel: "Completed",
           daysLeft: -999,
           tone: "success",
@@ -1856,31 +2232,6 @@ exports.getMaintenancePortal = async (_req, res) => {
           documentSubmittedAt: job.billAttachmentData ? (job.updatedAt || job.completedAt || "-") : ""
         };
         events.push(completedEvent);
-
-        // Keep the planned inspection due week visible even when the work was
-        // completed early/late in another week. The green marker remains on
-        // the actual service date; this separate marker is the historical due
-        // date and opens the same completed record.
-        if (["Safety inspection", "Brake test"].includes(job.serviceType)
-          && scheduledDateRaw
-          && scheduledDateRaw !== completedDateRaw
-          && scheduledDateRaw >= rawDate(planStart)
-          && scheduledDateRaw <= rawDate(planEnd)) {
-          const scheduledWeek = planWeeks.find((w) => scheduledDateRaw >= w.startRaw && scheduledDateRaw <= w.endRaw);
-          if (scheduledWeek) {
-            events.push({
-              ...completedEvent,
-              id: `completed-due-${job.id}-${scheduledDateRaw}`,
-              kind: "completed-due",
-              dueDateRaw: scheduledDateRaw,
-              displayDateRaw: scheduledDateRaw,
-              dueDate: fmtDate(scheduledDateRaw),
-              dueLabel: "Original due date",
-              weekKey: scheduledWeek.key,
-              weekLabel: scheduledWeek.label
-            });
-          }
-        }
       }
       return {
         vehicleId: v.id,
@@ -1900,21 +2251,15 @@ exports.getMaintenancePortal = async (_req, res) => {
       const events = [];
       const seeds = trailerProfileItemTypes.map((type) => {
         const latest = latestServiceByVehicleAndType.get(`trailer:${t.id}:${type}`);
+        const openJob = openJobByVehicleAndType.get(`trailer:${t.id}:${type}`);
         return {
           type,
-          dueDateRaw: dueFromCompletedJob(latest, type, "trailer"),
+          dueDateRaw: openJob?.dueDateRaw || dueFromCompletedJob(latest, type, "trailer"),
           roadTaxIntervalMonths: latest?.roadTaxIntervalMonths || DEFAULT_ROAD_TAX_INTERVAL_MONTHS
         };
       });
       for (const seed of seeds) {
-        const dates = buildFuturePlanDates(
-          seed.dueDateRaw,
-          seed.type,
-          planStart,
-          planEnd,
-          seed.roadTaxIntervalMonths,
-          seed.type === "Safety inspection" ? TRAILER_INSPECTION_INTERVAL_DAYS : INSPECTION_INTERVAL_DAYS
-        );
+        const dates = seed.dueDateRaw ? [seed.dueDateRaw] : [];
         for (const dueDateRaw of dates) {
           const daysLeft = daysUntil(dueDateRaw);
           const displayDateRaw = dueDateRaw < rawDate(planStart) ? rawDate(planStart) : dueDateRaw;
@@ -2435,11 +2780,12 @@ exports.markVehicleInspectionDone = async (req, res) => {
       inspectionFrequencyWeeks * 7
     );
 
-    const [inserted] = await db.query(
-      `INSERT INTO vehicle_inspections
-        (vehicle_id, inspection_date, inspection_type, inspector_name, result, notes, next_due)
-       VALUES (?, ?, 'Safety inspection', ?, ?, ?, ?)`,
-      [vehicleId, inspectionDate, inspectorName, result, notes, nextDue]
+    const inspectionId = await upsertInspectionRecord(
+      "vehicle",
+      vehicleId,
+      "Safety inspection",
+      inspectionDate,
+      { inspectorName, result, notes, nextDue }
     );
 
     if (result === "fail") {
@@ -2465,8 +2811,8 @@ exports.markVehicleInspectionDone = async (req, res) => {
     res.status(201).json({
       message: result === "fail"
         ? "Inspection recorded and vehicle kept in maintenance."
-        : `Inspection done. Next ${inspectionFrequencyWeeks}-week inspection and brake test scheduled together.`,
-      id: inserted.insertId,
+        : `Inspection done. Next ${inspectionFrequencyWeeks}-week safety inspection scheduled.`,
+      id: inspectionId,
       nextDue
     });
   } catch (err) {
@@ -2584,6 +2930,45 @@ exports.createJob = async (req, res) => {
     if (!assetId || !job.service_type || !job.due_date) {
       return res.status(400).json({ message: "Asset, service type, and due date are required." });
     }
+    if (job.status === "completed") {
+      if (!job.service_date) {
+        return res.status(400).json({ message: "Completed date is required." });
+      }
+      const existingCompleted = await findCompletedMaintenanceJob(
+        job.asset_type,
+        assetId,
+        job.service_type,
+        job.service_date
+      );
+      if (existingCompleted) {
+        await mergeCompletedJobDetails(existingCompleted.id, job);
+        return res.json({
+          message: "Existing completed item updated; no duplicate was created.",
+          id: existingCompleted.id,
+          jobNumber: existingCompleted.job_number,
+          updatedExisting: true
+        });
+      }
+    }
+    if (["planned", "booked", "in_progress"].includes(job.status)) {
+      const existingOpen = await findOpenMaintenanceJob(job.asset_type, assetId, job.service_type);
+      if (existingOpen) {
+        await db.query(
+          `UPDATE maintenance_jobs SET due_date=?, priority=?, status=?, garage_name=COALESCE(?,garage_name),
+             assigned_mechanic=COALESCE(?,assigned_mechanic), notes=COALESCE(?,notes),
+             parts_required=COALESCE(?,parts_required)
+           WHERE id=?`,
+          [job.due_date, job.priority, job.status, job.garage_name, job.assigned_mechanic,
+            job.notes, job.parts_required, existingOpen.id]
+        );
+        return res.json({
+          message: "Existing maintenance job updated; no duplicate was created.",
+          id: existingOpen.id,
+          jobNumber: existingOpen.job_number,
+          updatedExisting: true
+        });
+      }
+    }
     const jobNumber = await nextJobNumber();
     const [result] = await db.query(
       `INSERT INTO maintenance_jobs
@@ -2645,6 +3030,60 @@ exports.createBulkJobs = async (req, res) => {
       const completedMileageKm = rawItem.completed_mileage_km || rawItem.completedMileageKm || base.completed_mileage_km;
       const nextDueMileageKm = rawItem.next_due_mileage_km || rawItem.nextDueMileageKm || base.next_due_mileage_km;
       const roadTaxIntervalMonths = serviceType === "Road Tax" ? DEFAULT_ROAD_TAX_INTERVAL_MONTHS : null;
+
+      if (status === "completed") {
+        if (!base.service_date) {
+          return res.status(400).json({ message: "Completed date is required." });
+        }
+        const existingCompleted = await findCompletedMaintenanceJob(
+          base.asset_type,
+          assetId,
+          serviceType,
+          base.service_date
+        );
+        if (existingCompleted) {
+          await mergeCompletedJobDetails(existingCompleted.id, {
+            ...base,
+            service_type: serviceType,
+            due_date: dueDate,
+            road_tax_interval_months: roadTaxIntervalMonths,
+            completed_mileage_km: completedMileageKm,
+            next_due_mileage_km: nextDueMileageKm
+          });
+          created.push({
+            id: existingCompleted.id,
+            jobNumber: existingCompleted.job_number,
+            serviceType,
+            dueDate,
+            status,
+            updatedExisting: true
+          });
+          continue;
+        }
+      }
+
+      if (["planned", "booked", "in_progress"].includes(status)) {
+        const existingOpen = await findOpenMaintenanceJob(base.asset_type, assetId, serviceType);
+        if (existingOpen) {
+          await db.query(
+            `UPDATE maintenance_jobs SET due_date=?, priority=?, status=?, garage_name=COALESCE(?,garage_name),
+               assigned_mechanic=COALESCE(?,assigned_mechanic), notes=COALESCE(?,notes),
+               parts_required=COALESCE(?,parts_required)
+             WHERE id=?`,
+            [dueDate, priority, status, base.garage_name, base.assigned_mechanic,
+              base.notes, base.parts_required, existingOpen.id]
+          );
+          created.push({
+            id: existingOpen.id,
+            jobNumber: existingOpen.job_number,
+            serviceType,
+            dueDate,
+            status,
+            updatedExisting: true
+          });
+          continue;
+        }
+      }
 
       const [result] = await db.query(
         `INSERT INTO maintenance_jobs
@@ -2711,6 +3150,142 @@ exports.updateJob = async (req, res) => {
     if (!id || !assetId || !job.service_type || !job.due_date) {
       return res.status(400).json({ message: "Valid job, asset, service type, and due date are required." });
     }
+
+    if (existingJob.status === "completed" && job.status !== "completed") {
+      return res.status(409).json({
+        message: "Use ‘Mark as not done’ to undo a completion safely."
+      });
+    }
+
+    if (existingJob.status === "completed") {
+      const existingAssetType = existingJob.trailer_id || existingJob.asset_type === "trailer" ? "trailer" : "vehicle";
+      const existingAssetId = existingAssetType === "trailer" ? Number(existingJob.trailer_id) : Number(existingJob.vehicle_id);
+      if (job.asset_type !== existingAssetType || Number(assetId) !== existingAssetId || job.service_type !== existingJob.service_type) {
+        return res.status(409).json({
+          message: "A completed item’s vehicle and test type cannot be replaced. Update its date/details, or mark it as not done first."
+        });
+      }
+      if (!job.service_date) {
+        return res.status(400).json({ message: "Completed date is required." });
+      }
+
+      let inspectionIntervalDays = existingAssetType === "trailer"
+        ? TRAILER_INSPECTION_INTERVAL_DAYS
+        : INSPECTION_INTERVAL_DAYS;
+      if (existingAssetType === "vehicle" && ["Safety inspection", "Brake test"].includes(job.service_type)) {
+        const [[vehicle]] = await db.query(`SELECT inspection_frequency_weeks FROM vehicles WHERE id=?`, [existingAssetId]);
+        inspectionIntervalDays = Math.max(2, Number(vehicle?.inspection_frequency_weeks || 6)) * 7;
+      }
+      const nextDueDate = calculateNextDueDate(
+        job.service_type,
+        job.service_date,
+        job.road_tax_interval_months,
+        inspectionIntervalDays
+      ) || null;
+      const previousServiceDate = rawDate(existingJob.service_date);
+      const connection = await db.getConnection();
+      try {
+        await connection.beginTransaction();
+        const idField = existingAssetType === "trailer" ? "trailer_id" : "vehicle_id";
+        const [[dateCollision]] = await connection.query(
+          `SELECT id FROM maintenance_jobs
+           WHERE ${idField}=? AND service_type=? AND status='completed' AND service_date=? AND id!=?
+           LIMIT 1 FOR UPDATE`,
+          [existingAssetId, job.service_type, job.service_date, id]
+        );
+        if (dateCollision) {
+          await connection.rollback();
+          return res.status(409).json({
+            message: `${job.service_type} already has a completed record on ${job.service_date}. Edit that existing record instead.`
+          });
+        }
+
+        await connection.query(
+          `UPDATE maintenance_jobs SET
+            due_date=?, garage_name=?, assigned_mechanic=?, estimated_cost_gbp=?, labour_cost_gbp=?, parts_cost_gbp=?,
+            final_cost_gbp=?, service_date=?, road_tax_interval_months=?, completed_mileage_km=?, next_due_mileage_km=?,
+            bill_number=?, bill_date=?, bill_amount_gbp=?, bill_notes=?, bill_attachment_data=?,
+            bill_status=?, bill_payment_status=?, vendor_invoice_ref=?, priority=?, notes=?, parts_required=?, completion_notes=?
+           WHERE id=?`,
+          [
+            job.due_date, job.garage_name, job.assigned_mechanic, job.estimated_cost_gbp, job.labour_cost_gbp,
+            job.parts_cost_gbp, job.final_cost_gbp, job.service_date, job.road_tax_interval_months,
+            job.completed_mileage_km, job.next_due_mileage_km, job.bill_number, job.bill_date,
+            job.bill_amount_gbp, job.bill_notes, job.bill_attachment_data, job.bill_status,
+            job.bill_payment_status, job.vendor_invoice_ref, job.priority, job.notes, job.parts_required,
+            job.completion_notes, id
+          ]
+        );
+
+        if (existingAssetType === "trailer") {
+          await connection.query(
+            `INSERT INTO trailer_maintenance_records
+              (trailer_id, service_date, service_type, description, cost_gbp, next_due_date, garage_name)
+             VALUES (?, ?, ?, ?, ?, ?, ?)
+             ON DUPLICATE KEY UPDATE description=VALUES(description), cost_gbp=VALUES(cost_gbp),
+               next_due_date=VALUES(next_due_date), garage_name=VALUES(garage_name)`,
+            [existingAssetId, job.service_date, job.service_type, job.completion_notes || job.notes,
+              Number(job.final_cost_gbp || 0), nextDueDate, job.garage_name]
+          );
+        } else {
+          await connection.query(
+            `INSERT INTO maintenance_records
+              (vehicle_id, service_date, service_type, description, cost_gbp, mileage, next_due_date, garage_name)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+             ON DUPLICATE KEY UPDATE description=VALUES(description), cost_gbp=VALUES(cost_gbp),
+               mileage=VALUES(mileage), next_due_date=VALUES(next_due_date), garage_name=VALUES(garage_name)`,
+            [existingAssetId, job.service_date, job.service_type, job.completion_notes || job.notes,
+              Number(job.final_cost_gbp || 0), job.completed_mileage_km, nextDueDate, job.garage_name]
+          );
+        }
+        if (previousServiceDate && previousServiceDate !== job.service_date) {
+          const historyTable = existingAssetType === "trailer" ? "trailer_maintenance_records" : "maintenance_records";
+          const historyIdField = existingAssetType === "trailer" ? "trailer_id" : "vehicle_id";
+          await connection.query(
+            `DELETE FROM ${historyTable} WHERE ${historyIdField}=? AND service_type=? AND service_date=?`,
+            [existingAssetId, job.service_type, previousServiceDate]
+          );
+        }
+
+        if (["Safety inspection", "Brake test"].includes(job.service_type)) {
+          const inspectionTable = existingAssetType === "trailer" ? "trailer_inspections" : "vehicle_inspections";
+          const inspectionIdField = existingAssetType === "trailer" ? "trailer_id" : "vehicle_id";
+          await connection.query(
+            `INSERT INTO ${inspectionTable}
+              (${inspectionIdField}, inspection_date, inspection_type, inspector_name, result, notes, next_due)
+             VALUES (?, ?, ?, ?, 'pass', ?, ?)
+             ON DUPLICATE KEY UPDATE inspector_name=VALUES(inspector_name), result=VALUES(result),
+               notes=VALUES(notes), next_due=VALUES(next_due)`,
+            [existingAssetId, job.service_date, job.service_type,
+              job.assigned_mechanic || job.garage_name, job.completion_notes || job.notes, nextDueDate]
+          );
+          if (previousServiceDate && previousServiceDate !== job.service_date) {
+            await connection.query(
+              `DELETE FROM ${inspectionTable}
+               WHERE ${inspectionIdField}=? AND inspection_type=? AND inspection_date=?`,
+              [existingAssetId, job.service_type, previousServiceDate]
+            );
+          }
+        }
+        await connection.commit();
+      } catch (error) {
+        await connection.rollback();
+        throw error;
+      } finally {
+        connection.release();
+      }
+
+      await alignRecurringJobFromLatestCompletion(
+        existingAssetType,
+        existingAssetId,
+        job.service_type,
+        nextDueDate,
+        id
+      );
+      await setAssetWorkshopStatus(existingAssetType, existingAssetId, job.status);
+      return res.json({ message: "Completed maintenance item updated in place.", nextDueDate });
+    }
+
     await db.query(
       `UPDATE maintenance_jobs SET
         asset_type=?, vehicle_id=?, trailer_id=?, defect_id=?, service_type=?, due_date=?, garage_name=?, assigned_mechanic=?,
@@ -2923,10 +3498,12 @@ exports.markTrailerInspectionDone = async (req, res) => {
     const [[trailer]] = await db.query(`SELECT id FROM trailers WHERE id=?`, [trailerId]);
     if (!trailer) return res.status(404).json({ message: "Trailer not found." });
 
-    const [inserted] = await db.query(
-      `INSERT INTO trailer_inspections (trailer_id, inspection_date, inspection_type, inspector_name, result, notes, next_due)
-       VALUES (?, ?, '10-week safety inspection', ?, ?, ?, ?)`,
-      [trailerId, inspectionDate, inspectorName, result, notes, nextDue]
+    const inspectionId = await upsertInspectionRecord(
+      "trailer",
+      trailerId,
+      "Safety inspection",
+      inspectionDate,
+      { inspectorName, result, notes, nextDue }
     );
 
     if (result === "fail") {
@@ -2942,7 +3519,7 @@ exports.markTrailerInspectionDone = async (req, res) => {
 
     res.status(201).json({
       message: result === "fail" ? "Inspection recorded, trailer kept in maintenance." : "Inspection done. Next 10-week inspection scheduled.",
-      id: inserted.insertId,
+      id: inspectionId,
       nextDue
     });
   } catch (err) {
@@ -3066,6 +3643,161 @@ exports.setVorStatus = async (req, res) => {
   }
 };
 
+// Undo an accidental completion without creating a replacement/duplicate job.
+// The same job returns to its planned state and all completion projections are
+// removed in one transaction; the audit trail is stored separately.
+exports.undoCompletedEvent = async (req, res) => {
+  const connection = await db.getConnection();
+  try {
+    const jobId = Number(req.params.jobId);
+    if (!jobId) return res.status(400).json({ message: "Valid maintenance job id is required." });
+
+    await connection.beginTransaction();
+    const [[job]] = await connection.query(
+      `SELECT * FROM maintenance_jobs WHERE id=? FOR UPDATE`,
+      [jobId]
+    );
+    if (!job) {
+      await connection.rollback();
+      return res.status(404).json({ message: "Maintenance completion was not found." });
+    }
+    if (job.status !== "completed" || !job.service_date) {
+      await connection.rollback();
+      return res.status(409).json({ message: "This maintenance item is not marked as completed." });
+    }
+
+    const assetType = job.trailer_id || job.asset_type === "trailer" ? "trailer" : "vehicle";
+    const assetId = assetType === "trailer" ? Number(job.trailer_id) : Number(job.vehicle_id);
+    const idField = assetType === "trailer" ? "trailer_id" : "vehicle_id";
+    const historyTable = assetType === "trailer" ? "trailer_maintenance_records" : "maintenance_records";
+    const historyIdField = assetType === "trailer" ? "trailer_id" : "vehicle_id";
+    const inspectionTable = assetType === "trailer" ? "trailer_inspections" : "vehicle_inspections";
+    const serviceDate = rawDate(job.service_date);
+    let intervalDays = assetType === "trailer" ? TRAILER_INSPECTION_INTERVAL_DAYS : INSPECTION_INTERVAL_DAYS;
+    if (assetType === "vehicle" && ["Safety inspection", "Brake test"].includes(job.service_type)) {
+      const [[vehicle]] = await connection.query(`SELECT inspection_frequency_weeks FROM vehicles WHERE id=?`, [assetId]);
+      intervalDays = Math.max(2, Number(vehicle?.inspection_frequency_weeks || 6)) * 7;
+    }
+    const generatedNextDue = calculateNextDueDate(
+      job.service_type,
+      serviceDate,
+      job.road_tax_interval_months,
+      intervalDays
+    );
+
+    const [blockingOpenJobs] = await connection.query(
+      `SELECT id FROM maintenance_jobs
+       WHERE ${idField}=? AND service_type=? AND id!=?
+         AND status IN ('planned','booked','in_progress')
+         AND NOT (
+           recurrence_source_job_id=?
+           OR (
+             due_date=? AND defect_id IS NULL AND bill_attachment_data IS NULL
+             AND bill_number IS NULL AND COALESCE(notes,'')='' AND COALESCE(completion_notes,'')=''
+             AND COALESCE(final_cost_gbp,0)=0
+           )
+         )
+       LIMIT 1`,
+      [assetId, job.service_type, jobId, jobId, generatedNextDue || serviceDate]
+    );
+    if (blockingOpenJobs.length > 0) {
+      await connection.rollback();
+      return res.status(409).json({
+        message: "Undo stopped safely because the following cycle already contains workshop data. Review that open job first."
+      });
+    }
+
+    await connection.query(
+      `DELETE FROM maintenance_jobs
+       WHERE ${idField}=? AND service_type=? AND id!=?
+         AND status IN ('planned','booked','in_progress')
+         AND (
+           recurrence_source_job_id=?
+           OR (
+             due_date=? AND defect_id IS NULL AND bill_attachment_data IS NULL
+             AND bill_number IS NULL AND COALESCE(notes,'')='' AND COALESCE(completion_notes,'')=''
+             AND COALESCE(final_cost_gbp,0)=0
+           )
+         )`,
+      [assetId, job.service_type, jobId, jobId, generatedNextDue || serviceDate]
+    );
+    await connection.query(
+      `DELETE FROM ${historyTable}
+       WHERE ${historyIdField}=? AND service_type=? AND service_date=?`,
+      [assetId, job.service_type, serviceDate]
+    );
+    if (["Safety inspection", "Brake test"].includes(job.service_type)) {
+      const inspectionTypes = job.service_type === "Safety inspection"
+        ? (assetType === "trailer"
+            ? ["Safety inspection", "10-week safety inspection"]
+            : ["Safety inspection", "6-week safety inspection"])
+        : ["Brake test"];
+      await connection.query(
+        `DELETE FROM ${inspectionTable}
+         WHERE ${idField}=? AND inspection_type IN (?) AND inspection_date=?`,
+        [assetId, inspectionTypes, serviceDate]
+      );
+    }
+
+    await connection.query(
+      `UPDATE maintenance_jobs
+       SET status='planned', service_date=NULL, completed_at=NULL,
+           completion_notes=NULL, final_cost_gbp=NULL,
+           completed_mileage_km=NULL, next_due_mileage_km=NULL,
+           recurrence_source_job_id=NULL
+       WHERE id=?`,
+      [jobId]
+    );
+
+    const [[latestRemaining]] = await connection.query(
+      `SELECT id, service_date, road_tax_interval_months
+       FROM maintenance_jobs
+       WHERE ${idField}=? AND service_type=? AND status='completed' AND service_date IS NOT NULL
+       ORDER BY service_date DESC, id DESC LIMIT 1`,
+      [assetId, job.service_type]
+    );
+    const restoredDueDate = latestRemaining?.service_date
+      ? calculateNextDueDate(
+          job.service_type,
+          rawDate(latestRemaining.service_date),
+          latestRemaining.road_tax_interval_months,
+          intervalDays
+        )
+      : null;
+    if (restoredDueDate) {
+      await connection.query(
+        `UPDATE maintenance_jobs
+         SET due_date=?, priority=?, recurrence_source_job_id=?
+         WHERE id=?`,
+        [restoredDueDate, recurringPriority(daysUntil(restoredDueDate)), latestRemaining.id, jobId]
+      );
+    }
+    const dueColumn = dueColumnForService(assetType, job.service_type);
+    if (dueColumn) {
+      const assetTable = assetType === "trailer" ? "trailers" : "vehicles";
+      await connection.query(`UPDATE ${assetTable} SET ${dueColumn}=? WHERE id=?`, [restoredDueDate, assetId]);
+    }
+
+    await connection.commit();
+    await logActivity(req, {
+      module: "maintenance",
+      action: "undo_completion",
+      entityType: "maintenance_job",
+      entityId: jobId,
+      entityLabel: `${job.service_type} · ${serviceDate}`,
+      reason: String(req.body.reason || "Marked as not done from maintenance planner."),
+      reasonCategory: "data_correction",
+      details: { assetType, assetId, serviceType: job.service_type, serviceDate }
+    });
+    return res.json({ message: `${job.service_type} marked as not done.`, jobId });
+  } catch (err) {
+    try { await connection.rollback(); } catch (_rollbackError) { /* no-op */ }
+    return res.status(500).json({ message: "Could not undo maintenance completion.", error: err.message });
+  } finally {
+    connection.release();
+  }
+};
+
 // Mark an Excel schedule event as done — finds or creates job and completes it
 exports.completeEventFromSchedule = async (req, res) => {
   try {
@@ -3124,86 +3856,99 @@ exports.completeEventFromSchedule = async (req, res) => {
       }
 
       const previousServiceDate = rawDate(completedJob.service_date);
-      const [duplicateCompletedJobs] = await db.query(
-        `SELECT id, bill_attachment_data, bill_notes, completion_notes, bill_number, bill_amount_gbp
-         FROM maintenance_jobs
-         WHERE ${idField}=? AND service_type=? AND status='completed'
-           AND service_date IN (?, ?) AND id!=?
-         ORDER BY id DESC`,
-        [assetNumericId, serviceType, previousServiceDate, serviceDate, completedJobId]
-      );
-      await db.query(
-        `UPDATE maintenance_jobs
-         SET service_date=?, due_date=COALESCE(?,due_date), garage_name=COALESCE(?,garage_name), final_cost_gbp=COALESCE(?,final_cost_gbp),
-             bill_attachment_data=COALESCE(?,bill_attachment_data), bill_notes=COALESCE(?,bill_notes),
-             completion_notes=COALESCE(?,completion_notes), bill_number=COALESCE(?,bill_number),
-             bill_amount_gbp=COALESCE(?,bill_amount_gbp), completed_mileage_km=COALESCE(?,completed_mileage_km),
-             road_tax_interval_months=CASE WHEN service_type='Road Tax' THEN ? ELSE road_tax_interval_months END
-         WHERE id=?`,
-        [serviceDate, requestedScheduledDueDate, garageName, correctionFinalCost, billAttachmentData, billNotes,
-          completionNotes, billNumber, billAmountGbp,
-          req.body.completed_mileage_km || req.body.completedMileageKm || null,
-          DEFAULT_ROAD_TAX_INTERVAL_MONTHS, completedJobId]
-      );
-
-      if (duplicateCompletedJobs.length > 0) {
-        const paperworkSource = duplicateCompletedJobs.find((job) =>
-          job.bill_attachment_data || job.bill_notes || job.completion_notes || job.bill_number || job.bill_amount_gbp
-        );
-        if (paperworkSource) {
-          await db.query(
-            `UPDATE maintenance_jobs
-             SET bill_attachment_data=COALESCE(bill_attachment_data, ?),
-                 bill_notes=COALESCE(bill_notes, ?),
-                 completion_notes=COALESCE(completion_notes, ?),
-                 bill_number=COALESCE(bill_number, ?),
-                 bill_amount_gbp=COALESCE(bill_amount_gbp, ?)
-             WHERE id=?`,
-            [paperworkSource.bill_attachment_data, paperworkSource.bill_notes, paperworkSource.completion_notes,
-              paperworkSource.bill_number, paperworkSource.bill_amount_gbp, completedJobId]
-          );
-        }
-        await db.query(
-          `UPDATE maintenance_jobs SET status='cancelled' WHERE id IN (?) AND status='completed'`,
-          [duplicateCompletedJobs.map((job) => job.id)]
-        );
-      }
-
       const historyTable = assetType === "trailer" ? "trailer_maintenance_records" : "maintenance_records";
       const historyIdField = assetType === "trailer" ? "trailer_id" : "vehicle_id";
-      await db.query(
-        `UPDATE ${historyTable}
-         SET service_date=?, next_due_date=?, description=COALESCE(?,description),
-             cost_gbp=COALESCE(?,cost_gbp), garage_name=COALESCE(?,garage_name)
-         WHERE ${historyIdField}=? AND service_type=? AND service_date=?`,
-        [serviceDate, nextDueDate || null, completionNotes, correctionFinalCost, garageName,
-          assetNumericId, serviceType, previousServiceDate]
-      );
-
-      const assetTable = assetType === "trailer" ? "trailers" : "vehicles";
-      const dueColumn = serviceType === "MOT" ? "mot_expiry"
-        : serviceType === "Road Tax" && assetType === "vehicle" ? "road_tax_expiry"
-          : serviceType === "Insurance" ? "insurance_expiry"
-            : serviceType === "Tacho Calibration" && assetType === "vehicle" ? "tacho_calibration_expiry"
-              : serviceType === "Full Service" ? "next_service_due"
-                : assetType === "trailer" && ["Safety inspection", "Brake test"].includes(serviceType) ? "next_inspection_due"
-                  : null;
-      if (dueColumn && nextDueDate) {
-        await db.query(`UPDATE ${assetTable} SET ${dueColumn}=? WHERE id=?`, [nextDueDate, assetNumericId]);
-      }
-
-      if (assetType === "vehicle" && ["Safety inspection", "Brake test"].includes(serviceType)) {
-        await db.query(
-          `UPDATE vehicle_inspections
-           SET inspection_date=?, next_due=?, inspector_name=COALESCE(?,inspector_name), notes=COALESCE(?,notes)
-           WHERE vehicle_id=?
-             AND (inspection_type=? OR (?='Safety inspection' AND inspection_type='6-week safety inspection'))
-             AND inspection_date=?`,
-          [serviceDate, nextDueDate || null, garageName, completionNotes,
-            assetNumericId, serviceType, serviceType, previousServiceDate]
+      const correctionCost = correctionFinalCost ?? completedJob.final_cost_gbp ?? 0;
+      const completedMileageKm = req.body.completed_mileage_km || req.body.completedMileageKm || completedJob.completed_mileage_km || null;
+      const connection = await db.getConnection();
+      try {
+        await connection.beginTransaction();
+        const [[dateCollision]] = await connection.query(
+          `SELECT id FROM maintenance_jobs
+           WHERE ${idField}=? AND service_type=? AND status='completed' AND service_date=? AND id!=?
+           LIMIT 1 FOR UPDATE`,
+          [assetNumericId, serviceType, serviceDate, completedJobId]
         );
-        await alignInspectionJobsFromLatestCompletion(assetNumericId, nextDueDate || null);
+        if (dateCollision) {
+          await connection.rollback();
+          return res.status(409).json({
+            message: `${serviceType} already has a completed record on ${serviceDate}. Edit that existing record instead.`
+          });
+        }
+        await connection.query(
+          `UPDATE maintenance_jobs
+           SET service_date=?, due_date=COALESCE(?,due_date), garage_name=COALESCE(?,garage_name), final_cost_gbp=COALESCE(?,final_cost_gbp),
+               bill_attachment_data=COALESCE(?,bill_attachment_data), bill_notes=COALESCE(?,bill_notes),
+               completion_notes=COALESCE(?,completion_notes), bill_number=COALESCE(?,bill_number),
+               bill_amount_gbp=COALESCE(?,bill_amount_gbp), completed_mileage_km=COALESCE(?,completed_mileage_km),
+               road_tax_interval_months=CASE WHEN service_type='Road Tax' THEN ? ELSE road_tax_interval_months END
+           WHERE id=?`,
+          [serviceDate, requestedScheduledDueDate, garageName, correctionFinalCost, billAttachmentData, billNotes,
+            completionNotes, billNumber, billAmountGbp, completedMileageKm,
+            DEFAULT_ROAD_TAX_INTERVAL_MONTHS, completedJobId]
+        );
+
+        if (assetType === "trailer") {
+          await connection.query(
+            `INSERT INTO trailer_maintenance_records
+              (trailer_id, service_date, service_type, description, cost_gbp, next_due_date, garage_name)
+             VALUES (?, ?, ?, ?, ?, ?, ?)
+             ON DUPLICATE KEY UPDATE description=COALESCE(VALUES(description),description),
+               cost_gbp=VALUES(cost_gbp), next_due_date=VALUES(next_due_date),
+               garage_name=COALESCE(VALUES(garage_name),garage_name)`,
+            [assetNumericId, serviceDate, serviceType, completionNotes, correctionCost, nextDueDate || null, garageName]
+          );
+        } else {
+          await connection.query(
+            `INSERT INTO maintenance_records
+              (vehicle_id, service_date, service_type, description, cost_gbp, mileage, next_due_date, garage_name)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+             ON DUPLICATE KEY UPDATE description=COALESCE(VALUES(description),description),
+               cost_gbp=VALUES(cost_gbp), mileage=COALESCE(VALUES(mileage),mileage),
+               next_due_date=VALUES(next_due_date), garage_name=COALESCE(VALUES(garage_name),garage_name)`,
+            [assetNumericId, serviceDate, serviceType, completionNotes, correctionCost,
+              completedMileageKm, nextDueDate || null, garageName]
+          );
+        }
+        if (previousServiceDate && previousServiceDate !== serviceDate) {
+          await connection.query(
+            `DELETE FROM ${historyTable} WHERE ${historyIdField}=? AND service_type=? AND service_date=?`,
+            [assetNumericId, serviceType, previousServiceDate]
+          );
+        }
+
+        if (["Safety inspection", "Brake test"].includes(serviceType)) {
+          const inspectionTable = assetType === "trailer" ? "trailer_inspections" : "vehicle_inspections";
+          await connection.query(
+            `INSERT INTO ${inspectionTable}
+              (${idField}, inspection_date, inspection_type, inspector_name, result, notes, next_due)
+             VALUES (?, ?, ?, ?, 'pass', ?, ?)
+             ON DUPLICATE KEY UPDATE inspector_name=COALESCE(VALUES(inspector_name),inspector_name),
+               notes=COALESCE(VALUES(notes),notes), next_due=VALUES(next_due)`,
+            [assetNumericId, serviceDate, serviceType, garageName, completionNotes, nextDueDate || null]
+          );
+          if (previousServiceDate && previousServiceDate !== serviceDate) {
+            await connection.query(
+              `DELETE FROM ${inspectionTable} WHERE ${idField}=? AND inspection_type=? AND inspection_date=?`,
+              [assetNumericId, serviceType, previousServiceDate]
+            );
+          }
+        }
+        await connection.commit();
+      } catch (error) {
+        await connection.rollback();
+        throw error;
+      } finally {
+        connection.release();
       }
+
+      await alignRecurringJobFromLatestCompletion(
+        assetType,
+        assetNumericId,
+        serviceType,
+        nextDueDate || null,
+        completedJobId
+      );
 
       return res.json({ message: "Completed event updated.", jobId: completedJobId, nextDueDate });
     }
@@ -3243,10 +3988,10 @@ exports.completeEventFromSchedule = async (req, res) => {
        WHERE ${idField}=?
          AND service_type=?
          AND status NOT IN ('completed','cancelled')
-         AND (due_date IS NULL OR due_date BETWEEN DATE_SUB(?, INTERVAL 7 DAY) AND DATE_ADD(?, INTERVAL 7 DAY))
-       ORDER BY ABS(DATEDIFF(COALESCE(due_date, ?), ?)) ASC, id DESC
+       ORDER BY FIELD(status,'in_progress','booked','planned'),
+                ABS(DATEDIFF(COALESCE(due_date, ?), ?)) ASC, id DESC
        LIMIT 1`,
-      [assetNumericId, serviceType, scheduledDueDate, scheduledDueDate, scheduledDueDate, scheduledDueDate]
+      [assetNumericId, serviceType, scheduledDueDate, scheduledDueDate]
     );
 
     let jobId;

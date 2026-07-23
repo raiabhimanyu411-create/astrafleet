@@ -12,6 +12,7 @@ const jobRoutes      = require("./routes/jobRoutes");
 const driverRoutes   = require("./routes/driverRoutes");
 const vehicleRoutes  = require("./routes/vehicleRoutes");
 const maintenanceRoutes = require("./routes/maintenanceRoutes");
+const maintenanceController = require("./controllers/maintenanceController");
 const settingsRoutes    = require("./routes/settingsRoutes");
 const { chatRoom, setRealtimeServer } = require("./realtime");
 
@@ -119,6 +120,8 @@ if (process.env.NODE_ENV === "production") {
 if (require.main === module) {
   httpServer.listen(PORT, () => {
     console.log(`Astra Fleet backend listening on http://localhost:${PORT}`);
+    maintenanceController.initializeMaintenance()
+      .catch((error) => console.error("[MaintenanceIntegrity] startup verification failed:", error.message));
   });
 }
 

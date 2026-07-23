@@ -14,5 +14,6 @@ export const markTrailerInspectionDone = (trailerId, data = {}) => api.post(`/ap
 export const reportBreakdown = (data) => api.post("/api/maintenance/breakdown", data);
 export const setVorStatus = (data) => api.post("/api/maintenance/vor", data);
 export const completeEventFromSchedule = (data) => api.post("/api/maintenance/events/done", data);
+export const undoCompletedMaintenanceEvent = (jobId, data = {}) => api.patch(`/api/maintenance/events/${jobId}/undo`, data);
 export const getJobNotes = (jobId) => api.get(`/api/maintenance/jobs/${jobId}/notes`);
 export const addJobNote = (jobId, data) => api.post(`/api/maintenance/jobs/${jobId}/notes`, data);

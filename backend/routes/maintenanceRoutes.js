@@ -22,5 +22,6 @@ router.post("/trailers/:trailerId/inspection-done", maintenance.markTrailerInspe
 router.post("/breakdown", maintenance.reportBreakdown);
 router.post("/vor", maintenance.setVorStatus);
 router.post("/events/done", maintenance.completeEventFromSchedule);
+router.patch("/events/:jobId/undo", maintenance.undoCompletedEvent);
 
 module.exports = router;
