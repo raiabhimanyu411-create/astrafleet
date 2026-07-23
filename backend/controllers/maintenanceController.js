@@ -1675,6 +1675,43 @@ exports.getMaintenancePortal = async (_req, res) => {
     const yearPlanRows = rows.map((v) => {
       const profile = vehicleProfiles.find((item) => Number(item.vehicleId) === Number(v.id));
       const events = [];
+      const completedInspectionJobs = jobs
+        .filter((job) => Number(job.vehicleId) === Number(v.id)
+          && job.status === "completed"
+          && job.serviceDateRaw
+          && ["Safety inspection", "Brake test"].includes(job.serviceType))
+        .sort((a, b) => {
+          const byDate = String(a.serviceDateRaw).localeCompare(String(b.serviceDateRaw));
+          return byDate !== 0 ? byDate : Number(a.id) - Number(b.id);
+        });
+      const historicalInspectionDueByJobId = new Map();
+      let previousInspectionCycleJob = null;
+      for (let index = 0; index < completedInspectionJobs.length;) {
+        const completedDateRaw = completedInspectionJobs[index].serviceDateRaw;
+        const sameDayJobs = [];
+        while (index < completedInspectionJobs.length
+          && completedInspectionJobs[index].serviceDateRaw === completedDateRaw) {
+          sameDayJobs.push(completedInspectionJobs[index]);
+          index += 1;
+        }
+        const derivedScheduledDue = previousInspectionCycleJob
+          ? dueFromCompletedJob(
+              previousInspectionCycleJob,
+              "Safety inspection",
+              "vehicle",
+              inspectionIntervalDaysForVehicle(v)
+            )
+          : "";
+        for (const completedJob of sameDayJobs) {
+          // A completed record edited through the paperwork flow used to have
+          // due_date overwritten with service_date. Reconstruct the cycle's
+          // original due week from the preceding distinct completion date.
+          // Jobs completed together share that same historical due week.
+          const scheduledDueDateRaw = derivedScheduledDue || completedJob.dueDateRaw;
+          historicalInspectionDueByJobId.set(completedJob.id, scheduledDueDateRaw);
+        }
+        previousInspectionCycleJob = sameDayJobs[sameDayJobs.length - 1];
+      }
       const seeds = profileItemTypes.map((type) => {
         const latest = latestServiceByVehicleAndType.get(`${v.id}:${type}`);
         return {
@@ -1786,7 +1823,8 @@ exports.getMaintenancePortal = async (_req, res) => {
         if (!week) continue;
         const code = planCodeForType(job.serviceType);
         if (!code) continue;
-        events.push({
+        const scheduledDateRaw = historicalInspectionDueByJobId.get(job.id) || job.dueDateRaw;
+        const completedEvent = {
           id: `done-${job.id}`,
           jobId: job.id,
           vehicleId: v.id,
@@ -1798,8 +1836,8 @@ exports.getMaintenancePortal = async (_req, res) => {
           dueDateRaw: displayDateRaw,
           displayDateRaw,
           dueDate: fmtDate(displayDateRaw),
-          scheduledDateRaw: job.dueDateRaw,
-          scheduledDate: job.dueDate,
+          scheduledDateRaw,
+          scheduledDate: fmtDate(scheduledDateRaw),
           dueLabel: "Completed",
           daysLeft: -999,
           tone: "success",
@@ -1816,7 +1854,33 @@ exports.getMaintenancePortal = async (_req, res) => {
           billNumber: job.billNumber || "",
           billDate: job.billDateRaw ? job.billDate : "-",
           documentSubmittedAt: job.billAttachmentData ? (job.updatedAt || job.completedAt || "-") : ""
-        });
+        };
+        events.push(completedEvent);
+
+        // Keep the planned inspection due week visible even when the work was
+        // completed early/late in another week. The green marker remains on
+        // the actual service date; this separate marker is the historical due
+        // date and opens the same completed record.
+        if (["Safety inspection", "Brake test"].includes(job.serviceType)
+          && scheduledDateRaw
+          && scheduledDateRaw !== completedDateRaw
+          && scheduledDateRaw >= rawDate(planStart)
+          && scheduledDateRaw <= rawDate(planEnd)) {
+          const scheduledWeek = planWeeks.find((w) => scheduledDateRaw >= w.startRaw && scheduledDateRaw <= w.endRaw);
+          if (scheduledWeek) {
+            events.push({
+              ...completedEvent,
+              id: `completed-due-${job.id}-${scheduledDateRaw}`,
+              kind: "completed-due",
+              dueDateRaw: scheduledDateRaw,
+              displayDateRaw: scheduledDateRaw,
+              dueDate: fmtDate(scheduledDateRaw),
+              dueLabel: "Original due date",
+              weekKey: scheduledWeek.key,
+              weekLabel: scheduledWeek.label
+            });
+          }
+        }
       }
       return {
         vehicleId: v.id,
@@ -3011,7 +3075,8 @@ exports.completeEventFromSchedule = async (req, res) => {
     const assetNumericId = Number(encodedId || 0);
     const serviceType = String(req.body.service_type || req.body.serviceType || "").trim().replace(/^Roller brake test$/i, "Brake test");
     const serviceDate = req.body.service_date || req.body.serviceDate || ukDateKey();
-    const scheduledDueDate = req.body.due_date || req.body.dueDate || serviceDate;
+    const requestedScheduledDueDate = req.body.due_date || req.body.dueDate || null;
+    const scheduledDueDate = requestedScheduledDueDate || serviceDate;
     const garageName = String(req.body.garage_name || req.body.garageName || "").trim() || null;
     const finalCostGbp = Number(req.body.final_cost_gbp || req.body.finalCostGbp || 0);
     const correctionFinalCost = req.body.final_cost_gbp === "" || req.body.final_cost_gbp == null
@@ -3069,13 +3134,13 @@ exports.completeEventFromSchedule = async (req, res) => {
       );
       await db.query(
         `UPDATE maintenance_jobs
-         SET service_date=?, due_date=?, garage_name=COALESCE(?,garage_name), final_cost_gbp=COALESCE(?,final_cost_gbp),
+         SET service_date=?, due_date=COALESCE(?,due_date), garage_name=COALESCE(?,garage_name), final_cost_gbp=COALESCE(?,final_cost_gbp),
              bill_attachment_data=COALESCE(?,bill_attachment_data), bill_notes=COALESCE(?,bill_notes),
              completion_notes=COALESCE(?,completion_notes), bill_number=COALESCE(?,bill_number),
              bill_amount_gbp=COALESCE(?,bill_amount_gbp), completed_mileage_km=COALESCE(?,completed_mileage_km),
              road_tax_interval_months=CASE WHEN service_type='Road Tax' THEN ? ELSE road_tax_interval_months END
          WHERE id=?`,
-        [serviceDate, serviceDate, garageName, correctionFinalCost, billAttachmentData, billNotes,
+        [serviceDate, requestedScheduledDueDate, garageName, correctionFinalCost, billAttachmentData, billNotes,
           completionNotes, billNumber, billAmountGbp,
           req.body.completed_mileage_km || req.body.completedMileageKm || null,
           DEFAULT_ROAD_TAX_INTERVAL_MONTHS, completedJobId]

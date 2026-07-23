@@ -632,7 +632,13 @@ function VehicleDetailModal({ target, profiles, onClose, onSaved }) {
       service_date: isSelectedCompletedEvent || isUpdatingExistingCompletion
         ? (completedJob?.serviceDateRaw || target?.scheduledDueDate || item?.lastDoneRaw || ukDateKey())
         : ukDateKey(),
-      due_date: isSelectedUpcomingEvent ? target.scheduledDueDate : (item?.nextDueRaw || ""),
+      // Only a schedule-chip selection owns a concrete original due date.
+      // Opening the latest completion from the vehicle card must leave this
+      // blank so attaching paperwork cannot replace its historical due date
+      // with the next recurring date.
+      due_date: isSelectedUpcomingEvent || isSelectedCompletedEvent
+        ? target.scheduledDueDate
+        : "",
       garage_name: completedJob?.garageName && completedJob.garageName !== "-" ? completedJob.garageName : c.garage_name,
       final_cost_gbp: completedJob?.finalCostGbp ?? c.final_cost_gbp,
       completed_mileage_km: completedJob?.completedMileageKm || c.completed_mileage_km,
@@ -1645,6 +1651,7 @@ function ExcelScheduleView({ data, onOpenVehicle }) {
   const legendChips = [
     <span key="upcoming" className="excel-legend-chip" style={{ background: "#dc2626", color: "#fff" }}>UPCOMING</span>,
     <span key="completed" className="excel-legend-chip" style={{ background: "#16a34a", color: "#fff" }}>DONE</span>,
+    <span key="completed-due" className="excel-legend-chip" style={{ background: "#64748b", color: "#fff" }}>DUE DATE</span>,
     ...Object.entries(EVENT_COLORS).map(([code, { bg, text, label }]) => (
       <span key={code} className="excel-legend-chip" style={{ background: bg, color: text }} title={label}>{code}</span>
     ))
@@ -1704,7 +1711,7 @@ function ExcelScheduleView({ data, onOpenVehicle }) {
                 onClick={() => onOpenVehicle({
                   vehicleId: item.vehicleId,
                   assetType: item.rowAssetType === "Trailer" ? "trailer" : "vehicle"
-                }, item.rowAssetType === "Trailer" ? "trailer" : "vehicle", item.type, item.dueDateRaw, item.kind, item.jobId)}
+                }, item.rowAssetType === "Trailer" ? "trailer" : "vehicle", item.type, item.scheduledDateRaw || item.dueDateRaw, item.kind === "completed-due" ? "completed" : item.kind, item.jobId)}
               >
                 <span className="schedule-week-summary-code">{item.code}</span>
                 <strong>{item.rowFleetCode || item.rowVehicle}</strong>
@@ -1868,9 +1875,12 @@ function ExcelScheduleView({ data, onOpenVehicle }) {
                             );
                           }
                           const isCompleted = ev.kind === "completed";
+                          const isCompletedDue = ev.kind === "completed-due";
                           const color = isCompleted
                             ? { bg: "#16a34a", text: "#fff" }
-                            : urgencyColor(EVENT_COLORS[ev.code] || { bg: "#dc2626", text: "#fff" }, daysFromToday(ev.dueDateRaw));
+                            : isCompletedDue
+                              ? { bg: "#64748b", text: "#fff" }
+                              : urgencyColor(EVENT_COLORS[ev.code] || { bg: "#dc2626", text: "#fff" }, daysFromToday(ev.dueDateRaw));
                           const chipDateRaw = isCompleted ? (ev.completedDateRaw || ev.dueDateRaw) : ev.dueDateRaw;
                           const day = chipDateRaw?.slice(8, 10);
                           const mon = chipDateRaw?.slice(5, 7);
@@ -1879,7 +1889,11 @@ function ExcelScheduleView({ data, onOpenVehicle }) {
                               key={ev.id}
                               className={`excel-event-chip${isCompleted ? " completed" : ""}`}
                               style={{ background: color.bg, color: color.text }}
-                              title={isCompleted ? undefined : `${ev.type} · ${ev.dueDate} · ${ev.dueLabel} — Click to mark done or attach document`}
+                              title={isCompleted
+                                ? undefined
+                                : isCompletedDue
+                                  ? `${ev.type} was due ${ev.dueDate}; completed ${ev.completedDate}`
+                                  : `${ev.type} · ${ev.dueDate} · ${ev.dueLabel} — Click to mark done or attach document`}
                               onMouseEnter={isCompleted ? (e) => {
                                 clearTimeout(popoverTimer.current);
                                 const rect = e.currentTarget.getBoundingClientRect();
@@ -1890,10 +1904,21 @@ function ExcelScheduleView({ data, onOpenVehicle }) {
                               } : undefined}
                               onClick={(e) => {
                                 e.stopPropagation();
-                                onOpenVehicle(row, assetType, ev.type, ev.dueDateRaw, ev.kind || "upcoming", ev.jobId);
+                                onOpenVehicle(
+                                  row,
+                                  assetType,
+                                  ev.type,
+                                  ev.scheduledDateRaw || ev.dueDateRaw,
+                                  isCompletedDue ? "completed" : ev.kind || "upcoming",
+                                  ev.jobId
+                                );
                               }}
                             >
-                              {isCompleted ? `✓ ${ev.code} ${day}/${mon}${ev.hasAttachment ? " 📎" : ""}` : `${ev.code} ${day}/${mon}`}
+                              {isCompleted
+                                ? `✓ ${ev.code} ${day}/${mon}${ev.hasAttachment ? " 📎" : ""}`
+                                : isCompletedDue
+                                  ? `DUE ${ev.code} ${day}/${mon}`
+                                  : `${ev.code} ${day}/${mon}`}
                             </button>
                           );
                         })}
@@ -1952,7 +1977,7 @@ function ExcelScheduleView({ data, onOpenVehicle }) {
                       return;
                     }
                     const assetType = ev.assetType === "trailer" ? "trailer" : "vehicle";
-                    onOpenVehicle({ vehicleId: ev.vehicleId, assetType }, assetType, ev.type, ev.dueDateRaw, "completed", ev.jobId);
+                    onOpenVehicle({ vehicleId: ev.vehicleId, assetType }, assetType, ev.type, ev.scheduledDateRaw || ev.dueDateRaw, "completed", ev.jobId);
                   }}
                 >
                   {ev.hasAttachment ? `View paperwork${ev.billNumber ? ` · ${ev.billNumber}` : ""}` : "Attach paperwork"}
@@ -2013,7 +2038,7 @@ function ExcelScheduleView({ data, onOpenVehicle }) {
                   { vehicleId: popover.ev.vehicleId, assetType },
                   assetType,
                   popover.ev.type,
-                  popover.ev.dueDateRaw,
+                  popover.ev.scheduledDateRaw || popover.ev.dueDateRaw,
                   "completed",
                   popover.ev.jobId
                 );
