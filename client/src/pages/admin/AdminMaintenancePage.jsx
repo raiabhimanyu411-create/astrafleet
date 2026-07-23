@@ -8,6 +8,7 @@ import {
   createBulkMaintenanceJobs,
   createJobFromDefect,
   getJobNotes,
+  getMaintenanceDocument,
   getMaintenancePortal,
   markTrailerInspectionDone,
   markVehicleInspectionDone,
@@ -70,7 +71,7 @@ const allMaintenanceItems = [
   { value: "Safety inspection", label: "Safety inspection", interval: "Every 6 weeks", days: 42, trailerOk: true },
   { value: "MOT", label: "MOT", interval: "Every 12 months", months: 12, trailerOk: true },
   { value: "Tacho Calibration", label: "Tacho Calibration", interval: "Every 2 years", months: 24, trailerOk: false },
-  { value: "Road Tax", label: "Road Tax", interval: "Every 6 months", roadTax: true, trailerOk: false },
+  { value: "Road Tax", label: "Road Tax", interval: "Every 6 or 12 months", roadTax: true, trailerOk: false },
   { value: "Insurance", label: "Insurance", interval: "Every 12 months", months: 12, trailerOk: false },
   { value: "Full Service", label: "Full Service", interval: "Every 6 months / 85,000 km", months: 6, mileageKm: 85000, trailerOk: false }
 ];
@@ -148,10 +149,14 @@ function daysFromToday(value) {
 
 // Kept in sync with backend calculateNextDueDate: the completion ISO week is
 // Week 1, so the next 6-week due bucket starts five calendar weeks later.
-function nextDueForItem(serviceType, serviceDate, _roadTaxIntervalMonths, assetType = "vehicle", inspectionFrequencyWeeks = 6) {
+function normalizeRoadTaxIntervalMonths(value) {
+  return Number(value) === 12 ? 12 : DEFAULT_ROAD_TAX_INTERVAL_MONTHS;
+}
+
+function nextDueForItem(serviceType, serviceDate, roadTaxIntervalMonths, assetType = "vehicle", inspectionFrequencyWeeks = 6) {
   const item = maintenanceItems.find((option) => option.value === serviceType);
   if (!item || !serviceDate) return "";
-  if (item.roadTax) return addMonthsToKey(serviceDate, DEFAULT_ROAD_TAX_INTERVAL_MONTHS);
+  if (item.roadTax) return addMonthsToKey(serviceDate, normalizeRoadTaxIntervalMonths(roadTaxIntervalMonths));
   if (item.days) {
     const frequencyWeeks = assetType === "trailer"
       ? 10
@@ -174,8 +179,8 @@ function readFileAsDataUrl(file, onDone) {
   reader.readAsDataURL(file);
 }
 
-function writeAttachmentPreview(blobUrl, mime) {
-  const preview = window.open("", "_blank");
+function writeAttachmentPreview(blobUrl, mime, existingPreview = null) {
+  const preview = existingPreview || window.open("", "_blank");
   if (!preview) return false;
   preview.opener = null;
   const isPdf = mime === "application/pdf";
@@ -183,6 +188,7 @@ function writeAttachmentPreview(blobUrl, mime) {
   const body = isImage
     ? `<img src="${blobUrl}" alt="Document attachment" />`
     : `<iframe title="Document attachment" src="${blobUrl}"></iframe>`;
+  preview.document.open();
   preview.document.write(`
     <!doctype html>
     <title>Document attachment</title>
@@ -207,11 +213,12 @@ function writeAttachmentPreview(blobUrl, mime) {
 // Browsers block top-level navigation to data: URLs (shows a blank tab) and some
 // mime types force a silent download instead of opening. Converting to a blob: URL
 // first makes "open in new tab" behave the same way as a normal uploaded file link.
-function openAttachment(dataUrl) {
+function openAttachment(dataUrl, existingPreview = null) {
   if (!dataUrl) return;
   const match = /^data:([^;,]*)(;base64)?,(.*)$/s.exec(dataUrl);
   if (!match) {
-    window.open(dataUrl, "_blank", "noopener,noreferrer");
+    if (existingPreview) existingPreview.location.href = dataUrl;
+    else window.open(dataUrl, "_blank", "noopener,noreferrer");
     return;
   }
   const [, mime, isBase64, payload] = match;
@@ -223,15 +230,16 @@ function openAttachment(dataUrl) {
     const blobUrl = URL.createObjectURL(blob);
     const previewable = (mime || "").startsWith("image/") || mime === "application/pdf" || (mime || "").startsWith("text/");
     if (previewable) {
-      if (!writeAttachmentPreview(blobUrl, mime)) {
+      if (!writeAttachmentPreview(blobUrl, mime, existingPreview)) {
         window.open(blobUrl, "_blank", "noopener,noreferrer");
       }
     } else {
-      const preview = window.open("", "_blank");
+      const preview = existingPreview || window.open("", "_blank");
       if (!preview) {
         window.open(blobUrl, "_blank", "noopener,noreferrer");
       } else {
         preview.opener = null;
+        preview.document.open();
         preview.document.write(`
           <!doctype html>
           <title>Document attachment</title>
@@ -253,14 +261,45 @@ function openAttachment(dataUrl) {
     }
     setTimeout(() => URL.revokeObjectURL(blobUrl), 60000);
   } catch (_err) {
-    window.open(dataUrl, "_blank", "noopener,noreferrer");
+    if (existingPreview) {
+      existingPreview.document.open();
+      existingPreview.document.write("<p style='font-family:system-ui;padding:24px'>Could not preview this document.</p>");
+      existingPreview.document.close();
+    } else {
+      window.open(dataUrl, "_blank", "noopener,noreferrer");
+    }
+  }
+}
+
+async function openJobAttachment(jobId) {
+  if (!jobId) return;
+  const preview = window.open("", "_blank");
+  if (preview) {
+    preview.opener = null;
+    preview.document.write("<p style='font-family:system-ui;padding:24px'>Loading document…</p>");
+    preview.document.close();
+  }
+  try {
+    const response = await getMaintenanceDocument(jobId);
+    openAttachment(response.data?.attachmentData, preview);
+  } catch (err) {
+    const message = err.response?.data?.message || "Could not load this document.";
+    if (preview) {
+      preview.document.open();
+      preview.document.write('<p id="document-load-error" style="font-family:system-ui;padding:24px"></p>');
+      preview.document.close();
+      const errorNode = preview.document.getElementById("document-load-error");
+      if (errorNode) errorNode.textContent = message;
+    } else {
+      window.alert(message);
+    }
   }
 }
 
 function toJobForm(job) {
   if (!job) return emptyJob;
   const roadTaxDueDate = job.serviceType === "Road Tax" && job.serviceDateRaw
-    ? nextDueForItem("Road Tax", job.serviceDateRaw, DEFAULT_ROAD_TAX_INTERVAL_MONTHS)
+    ? nextDueForItem("Road Tax", job.serviceDateRaw, job.roadTaxIntervalMonths)
     : "";
   return {
     vehicle_id: job.vehicleId ? `vehicle:${job.vehicleId}` : "",
@@ -268,7 +307,7 @@ function toJobForm(job) {
     service_type: job.serviceType || "",
     service_date: job.serviceDateRaw || "",
     due_date: roadTaxDueDate || job.dueDateRaw || "",
-    road_tax_interval_months: String(job.serviceType === "Road Tax" ? DEFAULT_ROAD_TAX_INTERVAL_MONTHS : (job.roadTaxIntervalMonths || DEFAULT_ROAD_TAX_INTERVAL_MONTHS)),
+    road_tax_interval_months: String(normalizeRoadTaxIntervalMonths(job.roadTaxIntervalMonths)),
     completed_mileage_km: job.completedMileageKm || "",
     next_due_mileage_km: job.nextDueMileageKm || "",
     garage_name: job.garageName === "-" ? "" : job.garageName,
@@ -281,7 +320,7 @@ function toJobForm(job) {
     bill_date: job.billDateRaw || "",
     bill_amount_gbp: job.billAmountGbp || "",
     bill_notes: job.billNotes === "-" ? "" : job.billNotes,
-    bill_attachment_data: job.billAttachmentData || "",
+    bill_attachment_data: "",
     priority: job.priority || "normal",
     status: job.status || "planned",
     notes: job.notes === "-" ? "" : job.notes,
@@ -426,6 +465,7 @@ function JobModal({ vehicles, defects, editingJob, initialForm, onClose, onSaved
             <Field label="Road Tax Period">
               <select className="af-select" value={form.road_tax_interval_months} onChange={(e) => set("road_tax_interval_months", e.target.value)}>
                 <option value="6">6 months</option>
+                <option value="12">12 months</option>
               </select>
             </Field>
           )}
@@ -612,8 +652,10 @@ function VehicleDetailModal({ target, profiles, onClose, onSaved }) {
       bill_number: isCompletedSelection ? (completedJob?.billNumber || "") : "",
       bill_amount_gbp: isCompletedSelection ? (completedJob?.billAmountGbp || "") : "",
       bill_notes: isCompletedSelection && completedJob?.billNotes !== "-" ? (completedJob?.billNotes || "") : "",
-      bill_attachment_data: isCompletedSelection ? (completedJob?.billAttachmentData || "") : "",
-      road_tax_interval_months: String(target?.preselectType === "Road Tax" ? DEFAULT_ROAD_TAX_INTERVAL_MONTHS : (completedJob?.roadTaxIntervalMonths || selectedItem?.roadTaxIntervalMonths || DEFAULT_ROAD_TAX_INTERVAL_MONTHS))
+      bill_attachment_data: "",
+      road_tax_interval_months: String(normalizeRoadTaxIntervalMonths(
+        completedJob?.roadTaxIntervalMonths || selectedItem?.roadTaxIntervalMonths
+      ))
     });
     setError("");
     setSuccessMessage("");
@@ -656,10 +698,10 @@ function VehicleDetailModal({ target, profiles, onClose, onSaved }) {
       bill_notes: isSelectedCompletedEvent
         ? (completedJob?.billNotes !== "-" ? completedJob?.billNotes : "") || ""
         : isUpdatingExistingCompletion ? (item?.billNotes || "") : "",
-      bill_attachment_data: isSelectedCompletedEvent
-        ? (completedJob?.billAttachmentData || "")
-        : isUpdatingExistingCompletion ? (item?.attachmentData || "") : "",
-      road_tax_interval_months: String(type === "Road Tax" ? DEFAULT_ROAD_TAX_INTERVAL_MONTHS : (completedJob?.roadTaxIntervalMonths || item?.roadTaxIntervalMonths || DEFAULT_ROAD_TAX_INTERVAL_MONTHS))
+      bill_attachment_data: "",
+      road_tax_interval_months: String(normalizeRoadTaxIntervalMonths(
+        completedJob?.roadTaxIntervalMonths || item?.roadTaxIntervalMonths
+      ))
     }));
   }
 
@@ -686,6 +728,13 @@ function VehicleDetailModal({ target, profiles, onClose, onSaved }) {
     && activeType === target?.preselectType
     ? target?.completedJobId
     : activeItem?.latestJobId;
+  const activeHasAttachment = target?.selectionKind === "completed"
+    && activeType === target?.preselectType
+    ? Boolean(target?.completedJob?.hasAttachment)
+    : Boolean(activeItem?.hasAttachment);
+  const activeDocumentJobId = activeHasAttachment
+    ? (activeCompletedJobId || activeItem?.documentJobId || null)
+    : null;
 
   async function submit(e) {
     e.preventDefault();
@@ -747,7 +796,7 @@ function VehicleDetailModal({ target, profiles, onClose, onSaved }) {
 
   async function removeWrongDocument() {
     const jobId = activeCompletedJobId;
-    if (!jobId || !form.bill_attachment_data) return;
+    if (!jobId || !activeHasAttachment) return;
     if (!window.confirm(`Remove the document from this ${activeType} record? It will be preserved in the recovery archive.`)) return;
     setRemovingDocument(true);
     setError("");
@@ -820,10 +869,12 @@ function VehicleDetailModal({ target, profiles, onClose, onSaved }) {
             const displayedNextDue = isSelectedCompleted
               ? formatDateKeyLong(selectedNextDueRaw)
               : item.nextDue;
-            const displayedAttachment = isSelectedCompleted
-              ? selectedCompletedJob.billAttachmentData
-              : item.attachmentData;
-            const displayedHasAttachment = Boolean(displayedAttachment);
+            const displayedHasAttachment = isSelectedCompleted
+              ? Boolean(selectedCompletedJob.hasAttachment)
+              : Boolean(item.hasAttachment);
+            const displayedDocumentJobId = isSelectedCompleted
+              ? selectedCompletedJob.id
+              : item.documentJobId;
             const displayedDocumentSubmittedAt = isSelectedCompleted
               ? (selectedCompletedJob.updatedAt || selectedCompletedJob.completedAt || "-")
               : item.documentSubmittedAt;
@@ -859,7 +910,7 @@ function VehicleDetailModal({ target, profiles, onClose, onSaved }) {
                       className="vehicle-detail-item-doc-link"
                       onClick={(e) => {
                         e.stopPropagation();
-                        openAttachment(displayedAttachment);
+                        openJobAttachment(displayedDocumentJobId);
                       }}
                     >
                       View last document
@@ -895,6 +946,7 @@ function VehicleDetailModal({ target, profiles, onClose, onSaved }) {
               <Field label="Road Tax Period">
                 <select className="af-select" value={form.road_tax_interval_months} onChange={(e) => set("road_tax_interval_months", e.target.value)}>
                   <option value="6">6 months</option>
+                  <option value="12">12 months</option>
                 </select>
               </Field>
             )}
@@ -928,12 +980,14 @@ function VehicleDetailModal({ target, profiles, onClose, onSaved }) {
               </Field>
               <div className="maintenance-rule-note">
                 <span>Document</span>
-                <strong>{form.bill_attachment_data ? "Document attached" : "No document"}</strong>
-                {form.bill_attachment_data && (
+                <strong>{form.bill_attachment_data || activeHasAttachment ? "Document attached" : "No document"}</strong>
+                {(form.bill_attachment_data || activeHasAttachment) && (
                   <button
                     className="vehicle-detail-item-doc-link"
                     type="button"
-                    onClick={() => openAttachment(form.bill_attachment_data)}
+                    onClick={() => form.bill_attachment_data
+                      ? openAttachment(form.bill_attachment_data)
+                      : openJobAttachment(activeDocumentJobId)}
                   >
                     View document
                   </button>
@@ -948,7 +1002,7 @@ function VehicleDetailModal({ target, profiles, onClose, onSaved }) {
                   {undoing ? "Undoing..." : "Mark as not done"}
                 </button>
               )}
-              {isEditingCompleted && form.bill_attachment_data && (
+              {isEditingCompleted && activeHasAttachment && (
                 <button className="header-action-button danger" disabled={saving || undoing || removingDocument} type="button" onClick={removeWrongDocument}>
                   {removingDocument ? "Archiving..." : "Remove wrong document"}
                 </button>
@@ -1337,16 +1391,16 @@ function JobDrawer({ job, history, onClose, onEdit, onComplete, onBillStatus, sa
         <div><span>Date done</span><strong>{job.serviceDateRaw ? job.serviceDate : "-"}</strong></div>
         <div><span>Mileage</span><strong>{job.mileageLabel}</strong></div>
       </div>
-      {(job.billNotes !== "-" || job.billAttachmentData) && (
+      {(job.billNotes !== "-" || job.hasAttachment) && (
         <section className="maintenance-drawer-section">
           <span className="card-label">Documents And Paperwork</span>
           <p><strong>Bill date:</strong> {job.billDateRaw ? job.billDate : "-"}</p>
           <p><strong>Document notes:</strong> {job.billNotes}</p>
-          {job.billAttachmentData && (
+          {job.hasAttachment && (
             <button
               type="button"
               className="header-action-button maintenance-bill-link"
-              onClick={() => openAttachment(job.billAttachmentData)}
+              onClick={() => openJobAttachment(job.id)}
             >
               Open attached document
             </button>
@@ -1355,7 +1409,7 @@ function JobDrawer({ job, history, onClose, onEdit, onComplete, onBillStatus, sa
       )}
       <div className="maintenance-drawer-actions">
         <button className="header-action-button" type="button" onClick={() => onEdit(job)}>Edit Job</button>
-        {job.billStatus === "pending" && (job.billAmountGbp || job.billAttachmentData) && (
+        {job.billStatus === "pending" && (job.billAmountGbp || job.hasAttachment) && (
           <>
             <button className="header-action-button" disabled={savingAction === `bill-${job.id}`} type="button" onClick={() => onBillStatus(job, "approved")}>Approve Bill</button>
             <button className="header-action-button danger" disabled={savingAction === `bill-${job.id}`} type="button" onClick={() => onBillStatus(job, "rejected")}>Reject Bill</button>
@@ -1710,6 +1764,7 @@ function ExcelScheduleView({ data, onOpenVehicle }) {
   const legendChips = [
     <span key="upcoming" className="excel-legend-chip" style={{ background: "#dc2626", color: "#fff" }}>UPCOMING</span>,
     <span key="completed" className="excel-legend-chip" style={{ background: "#16a34a", color: "#fff" }}>DONE</span>,
+    <span key="forecast" className="excel-legend-chip forecast">FORECAST</span>,
     ...Object.entries(EVENT_COLORS).map(([code, { bg, text, label }]) => (
       <span key={code} className="excel-legend-chip" style={{ background: bg, color: text }} title={label}>{code}</span>
     ))
@@ -1761,21 +1816,29 @@ function ExcelScheduleView({ data, onOpenVehicle }) {
             <span>{selectedWeekItems.length} maintenance item{selectedWeekItems.length === 1 ? "" : "s"}</span>
           </div>
           <div className="schedule-week-summary-list">
-            {selectedWeekItems.slice(0, 10).map((item) => (
-              <button
-                key={`${item.id}-${item.rowAssetType}`}
-                className="schedule-week-summary-item"
-                type="button"
-                onClick={() => onOpenVehicle({
-                  vehicleId: item.vehicleId,
-                  assetType: item.rowAssetType === "Trailer" ? "trailer" : "vehicle"
-                }, item.rowAssetType === "Trailer" ? "trailer" : "vehicle", item.type, item.scheduledDateRaw || item.dueDateRaw, item.kind, item.jobId)}
-              >
-                <span className="schedule-week-summary-code">{item.code}</span>
-                <strong>{item.rowFleetCode || item.rowVehicle}</strong>
-                <small>{item.rowVehicle} · {item.type} · {item.dueDate}</small>
-              </button>
-            ))}
+            {selectedWeekItems.slice(0, 10).map((item) => {
+              const isForecast = item.kind === "forecast";
+              return (
+                <button
+                  key={`${item.id}-${item.rowAssetType}`}
+                  className={`schedule-week-summary-item${isForecast ? " forecast" : ""}`}
+                  type="button"
+                  title={isForecast ? "12-month planning forecast (not a live job)" : undefined}
+                  aria-disabled={isForecast || undefined}
+                  onClick={() => {
+                    if (isForecast) return;
+                    onOpenVehicle({
+                      vehicleId: item.vehicleId,
+                      assetType: item.rowAssetType === "Trailer" ? "trailer" : "vehicle"
+                    }, item.rowAssetType === "Trailer" ? "trailer" : "vehicle", item.type, item.scheduledDateRaw || item.dueDateRaw, item.kind, item.jobId);
+                  }}
+                >
+                  <span className="schedule-week-summary-code">{isForecast ? `~ ${item.code}` : item.code}</span>
+                  <strong>{item.rowFleetCode || item.rowVehicle}</strong>
+                  <small>{item.rowVehicle} · {item.type} · {item.dueDate}</small>
+                </button>
+              );
+            })}
             {selectedWeekItems.length === 0 && <span className="schedule-week-empty">No maintenance items in this week.</span>}
             {selectedWeekItems.length > 10 && <span className="schedule-week-more">+{selectedWeekItems.length - 10} more in table</span>}
           </div>
@@ -1933,6 +1996,7 @@ function ExcelScheduleView({ data, onOpenVehicle }) {
                             );
                           }
                           const isCompleted = ev.kind === "completed";
+                          const isForecast = ev.kind === "forecast";
                           const color = isCompleted
                             ? { bg: "#16a34a", text: "#fff" }
                             : urgencyColor(EVENT_COLORS[ev.code] || { bg: "#dc2626", text: "#fff" }, daysFromToday(ev.dueDateRaw));
@@ -1942,9 +2006,14 @@ function ExcelScheduleView({ data, onOpenVehicle }) {
                           return (
                             <button
                               key={ev.id}
-                              className={`excel-event-chip${isCompleted ? " completed" : ""}`}
+                              className={`excel-event-chip${isCompleted ? " completed" : ""}${isForecast ? " forecast" : ""}`}
                               style={{ background: color.bg, color: color.text }}
-                              title={isCompleted ? undefined : `${ev.type} · ${ev.dueDate} · ${ev.dueLabel} — Click to mark done or attach document`}
+                              title={isCompleted
+                                ? undefined
+                                : isForecast
+                                  ? `${ev.type} · ${ev.dueDate} · 12-month planning forecast (not a live job)`
+                                  : `${ev.type} · ${ev.dueDate} · ${ev.dueLabel} — Click to mark done or attach document`}
+                              aria-disabled={isForecast || undefined}
                               onMouseEnter={isCompleted ? (e) => {
                                 clearTimeout(popoverTimer.current);
                                 const rect = e.currentTarget.getBoundingClientRect();
@@ -1955,6 +2024,7 @@ function ExcelScheduleView({ data, onOpenVehicle }) {
                               } : undefined}
                               onClick={(e) => {
                                 e.stopPropagation();
+                                if (isForecast) return;
                                 onOpenVehicle(
                                   row,
                                   assetType,
@@ -1967,7 +2037,7 @@ function ExcelScheduleView({ data, onOpenVehicle }) {
                             >
                               {isCompleted
                                 ? `✓ ${ev.code} ${day}/${mon}${ev.hasAttachment ? " 📎" : ""}`
-                                : `${ev.code} ${day}/${mon}`}
+                                : `${isForecast ? "~ " : ""}${ev.code} ${day}/${mon}`}
                             </button>
                           );
                         })}
@@ -2022,7 +2092,7 @@ function ExcelScheduleView({ data, onOpenVehicle }) {
                   type="button"
                   onClick={() => {
                     if (ev.hasAttachment) {
-                      openAttachment(ev.billAttachmentData);
+                      openJobAttachment(ev.jobId);
                       return;
                     }
                     const assetType = ev.assetType === "trailer" ? "trailer" : "vehicle";
@@ -2079,7 +2149,7 @@ function ExcelScheduleView({ data, onOpenVehicle }) {
               type="button"
               onClick={() => {
                 if (popover.ev.hasAttachment) {
-                  openAttachment(popover.ev.billAttachmentData);
+                  openJobAttachment(popover.ev.jobId);
                   return;
                 }
                 const assetType = popover.ev.assetType === "trailer" ? "trailer" : "vehicle";

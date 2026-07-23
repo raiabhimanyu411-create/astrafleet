@@ -1919,6 +1919,17 @@
   box-shadow: 0 6px 16px rgba(59, 130, 246, 0.14);
 }
 
+.schedule-week-summary-item.forecast {
+  border-style: dashed;
+  opacity: 0.72;
+  cursor: default;
+}
+
+.schedule-week-summary-item.forecast:hover {
+  border-color: #bfdbfe;
+  box-shadow: none;
+}
+
 .schedule-week-summary-code {
   display: inline-flex;
   align-items: center;
@@ -2333,6 +2344,24 @@
   color: #fff !important;
   border: 1px solid #15803d;
   box-shadow: 0 1px 3px rgba(22,163,74,0.3);
+}
+
+.excel-event-chip.forecast {
+  opacity: 0.58;
+  border: 1px dashed currentColor;
+  box-shadow: none;
+  cursor: default;
+}
+
+.excel-event-chip.forecast:hover {
+  opacity: 0.72;
+  transform: none;
+}
+
+.excel-legend-chip.forecast {
+  color: #334155;
+  background: #e2e8f0;
+  border: 1px dashed #64748b;
 }
 /* ── Completed event popover box ── */
 .completed-chip-popover {
