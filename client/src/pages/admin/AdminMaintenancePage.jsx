@@ -1672,7 +1672,6 @@ function compareScheduleRows(a, b) {
 function ExcelScheduleView({ data, onOpenVehicle }) {
   const [search, setSearch] = useState("");
   const [selectedWeekKey, setSelectedWeekKey] = useState("");
-  const [showEarlierWeeks, setShowEarlierWeeks] = useState(false);
   const [popover, setPopover] = useState(null); // { ev, x, y }
   const [isFullscreen, setIsFullscreen] = useState(false);
   const scheduleWrapRef = useRef(null);
@@ -1689,8 +1688,8 @@ function ExcelScheduleView({ data, onOpenVehicle }) {
   }, [weeks]);
 
   const displayWeeks = useMemo(
-    () => showEarlierWeeks ? weeks : weeks.slice(earlierWeekCutoffIndex),
-    [earlierWeekCutoffIndex, showEarlierWeeks, weeks]
+    () => weeks.slice(earlierWeekCutoffIndex),
+    [earlierWeekCutoffIndex, weeks]
   );
 
   const monthGroups = useMemo(() => {
@@ -1825,15 +1824,10 @@ function ExcelScheduleView({ data, onOpenVehicle }) {
           <select
             className="af-select schedule-week-select"
             value={selectedWeekKey}
-            onChange={(event) => {
-              const nextKey = event.target.value;
-              const nextIndex = weeks.findIndex((week) => week.key === nextKey);
-              setShowEarlierWeeks(nextIndex >= 0 && nextIndex < earlierWeekCutoffIndex);
-              setSelectedWeekKey(nextKey);
-            }}
+            onChange={(event) => setSelectedWeekKey(event.target.value)}
             aria-label="Jump to week"
           >
-            {weeks.map((week) => (
+            {displayWeeks.map((week) => (
               <option key={week.key} value={week.key}>
                 {week.label} · {formatWeekStart(week.startRaw)}
               </option>
