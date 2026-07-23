@@ -1921,7 +1921,7 @@
 
 .schedule-week-summary-item.forecast {
   border-style: dashed;
-  opacity: 0.72;
+  opacity: 1;
   cursor: default;
 }
 
@@ -2347,21 +2347,21 @@
 }
 
 .excel-event-chip.forecast {
-  opacity: 0.58;
+  opacity: 1;
   border: 1px dashed currentColor;
-  box-shadow: none;
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.28);
   cursor: default;
 }
 
 .excel-event-chip.forecast:hover {
-  opacity: 0.72;
+  opacity: 1;
   transform: none;
 }
 
 .excel-legend-chip.forecast {
-  color: #334155;
-  background: #e2e8f0;
-  border: 1px dashed #64748b;
+  color: #fff;
+  background: #475569;
+  border: 1px dashed #cbd5e1;
 }
 /* ── Completed event popover box ── */
 .completed-chip-popover {

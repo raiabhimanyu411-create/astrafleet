@@ -1503,6 +1503,19 @@ const EVENT_COLORS = {
   SRV: { bg: "#64748b", text: "#fff", label: "Full Service" }
 };
 
+// Forecast chips stay type-coloured, but use a deeper solid palette so they
+// remain clearly visible without relying on a faded/transparent treatment.
+const FORECAST_EVENT_COLORS = {
+  TAX: { bg: "#c2410c", text: "#fff" },
+  IB:  { bg: "#1d4ed8", text: "#fff" },
+  BT:  { bg: "#115e59", text: "#fff" },
+  MOT: { bg: "#a16207", text: "#fff" },
+  VOR: { bg: "#0f766e", text: "#fff" },
+  INS: { bg: "#15803d", text: "#fff" },
+  T:   { bg: "#7e22ce", text: "#fff" },
+  SRV: { bg: "#475569", text: "#fff" }
+};
+
 const URGENT_RED = "#dc2626";
 const URGENCY_WINDOW_DAYS = 30;
 
@@ -2007,7 +2020,9 @@ function ExcelScheduleView({ data, onOpenVehicle }) {
                           const isForecast = ev.kind === "forecast";
                           const color = isCompleted
                             ? { bg: "#16a34a", text: "#fff" }
-                            : urgencyColor(EVENT_COLORS[ev.code] || { bg: "#dc2626", text: "#fff" }, daysFromToday(ev.dueDateRaw));
+                            : isForecast
+                              ? (FORECAST_EVENT_COLORS[ev.code] || { bg: "#991b1b", text: "#fff" })
+                              : urgencyColor(EVENT_COLORS[ev.code] || { bg: "#dc2626", text: "#fff" }, daysFromToday(ev.dueDateRaw));
                           const chipDateRaw = isCompleted ? (ev.completedDateRaw || ev.dueDateRaw) : ev.dueDateRaw;
                           const day = chipDateRaw?.slice(8, 10);
                           const mon = chipDateRaw?.slice(5, 7);
