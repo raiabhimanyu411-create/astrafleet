@@ -7,6 +7,7 @@ router.use(maintenance.ensureMaintenanceSchema);
 router.use(requireModuleAccess("maintenance"));
 
 router.get("/", maintenance.getMaintenancePortal);
+router.post("/reconcile", maintenance.reconcileFleetMaintenance);
 router.post("/automation/plan", maintenance.autoPlanDueWork);
 router.post("/jobs/bulk", maintenance.createBulkJobs);
 router.post("/jobs", maintenance.createJob);

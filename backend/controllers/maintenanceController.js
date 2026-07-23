@@ -21,6 +21,7 @@ const MAINTENANCE_RULES = {
   "Full Service": { months: 6, mileageKm: 85000 }
 };
 let schemaSyncPromise;
+let fleetReconciliationPromise;
 
 async function addColumnIfMissing(table, column, definition) {
   const [rows] = await db.query(`SHOW COLUMNS FROM ${table} LIKE ?`, [column]);
@@ -814,36 +815,11 @@ async function syncMaintenanceSchema() {
       AND (next_due_mileage_km IS NULL OR next_due_mileage_km != completed_mileage_km + 85000)
   `);
 
-  // Keep one independent live due job per inspection type. Completing a brake
-  // test must not advance the safety-inspection cycle (or vice versa).
-  // This runs automatically on the first maintenance request after a restart,
-  // so existing vehicles do not need to be opened and saved one by one.
-  const [inspectionAlignmentSeeds] = await db.query(`
-    SELECT v.id AS vehicle_id,
-           j.service_type,
-           COALESCE(v.inspection_frequency_weeks, 6) AS inspection_frequency_weeks,
-           MAX(j.service_date) AS latest_inspection_date
-    FROM vehicles v
-    JOIN maintenance_jobs j
-      ON j.vehicle_id=v.id
-     AND j.service_type IN ('Safety inspection','Brake test')
-     AND j.status='completed'
-     AND j.service_date IS NOT NULL
-    GROUP BY v.id, j.service_type, v.inspection_frequency_weeks
-  `);
-  for (const seed of inspectionAlignmentSeeds) {
-    const intervalDays = Math.max(1, Number(seed.inspection_frequency_weeks || 6)) * 7;
-    const alignedDueDate = calculateNextDueDate(
-      seed.service_type,
-      rawDate(seed.latest_inspection_date),
-      null,
-      intervalDays
-    );
-    await ensureInspectionJob(seed.vehicle_id, seed.service_type, alignedDueDate);
-  }
-
-  const integrityResult = await verifyAndRepairMaintenanceIntegrity();
-  console.log("[MaintenanceIntegrity] verified", integrityResult);
+  // Rebuild every derived maintenance projection from the completed jobs on
+  // startup. This is deliberately idempotent: it updates the same records and
+  // next-due jobs, and never moves or removes an attached document.
+  const reconciliationResult = await reconcileMaintenanceFleetState();
+  console.log("[MaintenanceReconciliation] completed", reconciliationResult);
 }
 
 exports.ensureMaintenanceSchema = async (_req, res, next) => {
@@ -1344,6 +1320,148 @@ async function upsertInspectionRecord(assetType, assetId, inspectionType, inspec
   return inserted.insertId;
 }
 
+async function upsertMaintenanceProjectionFromJob(job, nextDueDate) {
+  const assetType = job.trailer_id || job.asset_type === "trailer" ? "trailer" : "vehicle";
+  const assetId = assetType === "trailer" ? job.trailer_id : job.vehicle_id;
+  if (!assetId || !job.service_date) return { history: null, inspection: null };
+
+  const historyTable = assetType === "trailer" ? "trailer_maintenance_records" : "maintenance_records";
+  const historyIdField = assetType === "trailer" ? "trailer_id" : "vehicle_id";
+  const serviceDate = rawDate(job.service_date);
+  const description = job.completion_notes || (isGeneratedMaintenanceNote(job.notes) ? null : job.notes) || null;
+  const cost = job.final_cost_gbp == null ? null : Number(job.final_cost_gbp);
+  const [[existingHistory]] = await db.query(
+    `SELECT id FROM ${historyTable}
+     WHERE ${historyIdField}=? AND service_type=? AND service_date=?
+     ORDER BY id DESC LIMIT 1`,
+    [assetId, job.service_type, serviceDate]
+  );
+
+  let historyAction;
+  if (existingHistory) {
+    await db.query(
+      `UPDATE ${historyTable}
+       SET description=COALESCE(?,description),
+           cost_gbp=CASE WHEN ? IS NULL THEN cost_gbp ELSE ? END,
+           next_due_date=?, garage_name=COALESCE(?,garage_name)
+           ${assetType === "vehicle" ? ", mileage=COALESCE(?,mileage)" : ""}
+       WHERE id=?`,
+      assetType === "vehicle"
+        ? [description, cost, cost, nextDueDate || null, job.garage_name || null,
+            job.completed_mileage_km || null, existingHistory.id]
+        : [description, cost, cost, nextDueDate || null, job.garage_name || null, existingHistory.id]
+    );
+    historyAction = "updated";
+  } else if (assetType === "trailer") {
+    await db.query(
+      `INSERT INTO trailer_maintenance_records
+        (trailer_id, service_date, service_type, description, cost_gbp, next_due_date, garage_name)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      [assetId, serviceDate, job.service_type, description, cost || 0, nextDueDate || null, job.garage_name || null]
+    );
+    historyAction = "created";
+  } else {
+    await db.query(
+      `INSERT INTO maintenance_records
+        (vehicle_id, service_date, service_type, description, cost_gbp, mileage, next_due_date, garage_name)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      [assetId, serviceDate, job.service_type, description, cost || 0, job.completed_mileage_km || null,
+        nextDueDate || null, job.garage_name || null]
+    );
+    historyAction = "created";
+  }
+
+  let inspectionAction = null;
+  if (["Safety inspection", "Brake test"].includes(job.service_type)) {
+    const inspectionTable = assetType === "trailer" ? "trailer_inspections" : "vehicle_inspections";
+    const inspectionIdField = assetType === "trailer" ? "trailer_id" : "vehicle_id";
+    const [[existingInspection]] = await db.query(
+      `SELECT id FROM ${inspectionTable}
+       WHERE ${inspectionIdField}=? AND inspection_type=? AND inspection_date=?
+       ORDER BY id DESC LIMIT 1`,
+      [assetId, job.service_type, serviceDate]
+    );
+    await upsertInspectionRecord(assetType, assetId, job.service_type, serviceDate, {
+      inspectorName: job.assigned_mechanic || job.garage_name || null,
+      result: "pass",
+      notes: description,
+      nextDue: nextDueDate || null
+    });
+    inspectionAction = existingInspection ? "updated" : "created";
+  }
+
+  return { history: historyAction, inspection: inspectionAction };
+}
+
+async function reconcileMaintenanceFleetState() {
+  // Exact duplicates are merged first so the remaining completed jobs are the
+  // single source of truth. Different dates and all document attachments are
+  // preserved for history/audit.
+  const integrity = await verifyAndRepairMaintenanceIntegrity();
+  const [completedJobs] = await db.query(`
+    SELECT j.*,
+           COALESCE(v.inspection_frequency_weeks, 6) AS vehicle_inspection_frequency_weeks
+    FROM maintenance_jobs j
+    LEFT JOIN vehicles v ON v.id=j.vehicle_id
+    WHERE j.status='completed'
+      AND j.service_date IS NOT NULL
+      AND ((j.asset_type='trailer' AND j.trailer_id IS NOT NULL) OR j.vehicle_id IS NOT NULL)
+    ORDER BY j.service_date ASC, j.id ASC
+  `);
+
+  const latestCycles = new Map();
+  let historiesCreated = 0;
+  let historiesUpdated = 0;
+  let inspectionsCreated = 0;
+  let inspectionsUpdated = 0;
+
+  for (const job of completedJobs) {
+    const assetType = job.trailer_id || job.asset_type === "trailer" ? "trailer" : "vehicle";
+    const assetId = assetType === "trailer" ? job.trailer_id : job.vehicle_id;
+    const inspectionIntervalDays = assetType === "trailer"
+      ? TRAILER_INSPECTION_INTERVAL_DAYS
+      : Math.max(2, Number(job.vehicle_inspection_frequency_weeks || 6)) * 7;
+    const nextDueDate = calculateNextDueDate(
+      job.service_type,
+      rawDate(job.service_date),
+      job.road_tax_interval_months,
+      inspectionIntervalDays
+    ) || null;
+    const projection = await upsertMaintenanceProjectionFromJob(job, nextDueDate);
+    if (projection.history === "created") historiesCreated += 1;
+    if (projection.history === "updated") historiesUpdated += 1;
+    if (projection.inspection === "created") inspectionsCreated += 1;
+    if (projection.inspection === "updated") inspectionsUpdated += 1;
+
+    const cycleKey = `${assetType}:${assetId}:${job.service_type}`;
+    latestCycles.set(cycleKey, { assetType, assetId, serviceType: job.service_type, nextDueDate, sourceJobId: job.id });
+  }
+
+  let cyclesAligned = 0;
+  for (const cycle of latestCycles.values()) {
+    const isSupportedTrailerCycle = cycle.assetType !== "trailer" || isTrailerMaintenanceTypeAllowed(cycle.serviceType);
+    if (!cycle.nextDueDate || !isSupportedTrailerCycle) continue;
+    await alignRecurringJobFromLatestCompletion(
+      cycle.assetType,
+      cycle.assetId,
+      cycle.serviceType,
+      cycle.nextDueDate,
+      cycle.sourceJobId
+    );
+    cyclesAligned += 1;
+  }
+
+  return {
+    completedJobsScanned: completedJobs.length,
+    historiesCreated,
+    historiesUpdated,
+    inspectionsCreated,
+    inspectionsUpdated,
+    cyclesAligned,
+    integrity
+  };
+}
+
 function isGeneratedMaintenanceNote(note) {
   return /^auto-created/i.test(String(note || "").trim());
 }
@@ -1581,6 +1699,31 @@ async function applyCompletedMaintenance(job, completion = {}) {
   return { finalCost, completionNotes, serviceDate, nextDueDate, completedMileageKm, nextDueMileageKm, billAmountGbp };
 }
 
+exports.reconcileFleetMaintenance = async (req, res) => {
+  try {
+    if (!fleetReconciliationPromise) {
+      fleetReconciliationPromise = reconcileMaintenanceFleetState();
+    }
+    const currentReconciliation = fleetReconciliationPromise;
+    const result = await currentReconciliation;
+    if (fleetReconciliationPromise === currentReconciliation) fleetReconciliationPromise = null;
+    await logActivity(req, {
+      module: "maintenance",
+      action: "reconcile_fleet",
+      entityType: "maintenance_fleet",
+      entityId: "all",
+      entityLabel: "Fleet maintenance refresh",
+      reason: "Manual maintenance planner refresh",
+      reasonCategory: "data_correction",
+      details: result
+    });
+    return res.json({ message: "Fleet maintenance dates and due cycles refreshed.", result });
+  } catch (err) {
+    fleetReconciliationPromise = null;
+    return res.status(500).json({ message: "Fleet maintenance refresh failed.", error: err.message });
+  }
+};
+
 exports.getMaintenancePortal = async (_req, res) => {
   try {
     const [rows] = await db.query(`
@@ -1591,7 +1734,13 @@ exports.getMaintenancePortal = async (_req, res) => {
         v.model_name,
         v.truck_type,
         v.status,
-        last_fs.next_due_date AS next_service_due,
+        COALESCE(
+          (SELECT MIN(next_fs.due_date)
+           FROM maintenance_jobs next_fs
+           WHERE next_fs.vehicle_id=v.id AND next_fs.service_type='Full Service'
+             AND next_fs.status IN ('planned','booked','in_progress')),
+          v.next_service_due
+        ) AS next_service_due,
         v.mot_expiry,
         v.insurance_expiry,
         v.road_tax_expiry,
@@ -1605,36 +1754,31 @@ exports.getMaintenancePortal = async (_req, res) => {
         last_m.service_date AS last_service_date,
         last_m.service_type AS last_service_type,
         last_m.garage_name AS last_garage_name,
-        last_m.mileage AS last_mileage,
-        last_i.inspection_date AS last_inspection_date,
-        last_i.inspection_type AS last_inspection_type,
-        last_i.result AS last_inspection_result,
-        last_i.next_due AS next_inspection_due,
+        last_m.completed_mileage_km AS last_mileage,
+        last_i.service_date AS last_inspection_date,
+        last_i.service_type AS last_inspection_type,
+        CASE WHEN last_i.id IS NULL THEN NULL ELSE 'pass' END AS last_inspection_result,
+        (SELECT MIN(next_i.due_date)
+         FROM maintenance_jobs next_i
+         WHERE next_i.vehicle_id=v.id
+           AND next_i.service_type IN ('Safety inspection','Brake test')
+           AND next_i.status IN ('planned','booked','in_progress')) AS next_inspection_due,
         COALESCE(def.open_defects, 0) AS open_defects,
         COALESCE(def.critical_defects, 0) AS critical_defects
       FROM vehicles v
-      LEFT JOIN maintenance_records last_m
+      LEFT JOIN maintenance_jobs last_m
         ON last_m.id = (
-          SELECT mr.id
-          FROM maintenance_records mr
-          WHERE mr.vehicle_id = v.id
+          SELECT mr.id FROM maintenance_jobs mr
+          WHERE mr.vehicle_id=v.id AND mr.status='completed' AND mr.service_date IS NOT NULL
           ORDER BY mr.service_date DESC, mr.id DESC
           LIMIT 1
         )
-      LEFT JOIN maintenance_records last_fs
-        ON last_fs.id = (
-          SELECT fs.id
-          FROM maintenance_records fs
-          WHERE fs.vehicle_id = v.id AND fs.service_type = 'Full Service'
-          ORDER BY fs.service_date DESC, fs.id DESC
-          LIMIT 1
-        )
-      LEFT JOIN vehicle_inspections last_i
+      LEFT JOIN maintenance_jobs last_i
         ON last_i.id = (
-          SELECT vi.id
-          FROM vehicle_inspections vi
-          WHERE vi.vehicle_id = v.id
-          ORDER BY vi.inspection_date DESC, vi.id DESC
+          SELECT vi.id FROM maintenance_jobs vi
+          WHERE vi.vehicle_id=v.id AND vi.status='completed' AND vi.service_date IS NOT NULL
+            AND vi.service_type IN ('Safety inspection','Brake test')
+          ORDER BY vi.service_date DESC, vi.id DESC
           LIMIT 1
         )
       LEFT JOIN (
@@ -1646,8 +1790,8 @@ exports.getMaintenancePortal = async (_req, res) => {
         GROUP BY vehicle_id
       ) def ON def.vehicle_id = v.id
       ORDER BY
-        last_fs.next_due_date IS NULL,
-        last_fs.next_due_date ASC,
+        next_service_due IS NULL,
+        next_service_due ASC,
         v.registration_number ASC
     `);
 
@@ -1666,9 +1810,19 @@ exports.getMaintenancePortal = async (_req, res) => {
         t.mot_expiry,
         t.insurance_expiry,
         t.next_service_due,
-        (SELECT ti.next_due FROM trailer_inspections ti WHERE ti.trailer_id = t.id ORDER BY ti.inspection_date DESC LIMIT 1) AS next_inspection_due,
+        COALESCE(
+          (SELECT MIN(next_i.due_date) FROM maintenance_jobs next_i
+           WHERE next_i.trailer_id=t.id
+             AND next_i.service_type IN ('Safety inspection','Brake test')
+             AND next_i.status IN ('planned','booked','in_progress')),
+          t.next_inspection_due
+        ) AS next_inspection_due,
         COALESCE(t.inspection_frequency_weeks, 6) AS inspection_frequency_weeks,
-        (SELECT ti.inspection_date FROM trailer_inspections ti WHERE ti.trailer_id = t.id ORDER BY ti.inspection_date DESC LIMIT 1) AS last_inspection_date,
+        (SELECT completed_i.service_date FROM maintenance_jobs completed_i
+         WHERE completed_i.trailer_id=t.id
+           AND completed_i.service_type IN ('Safety inspection','Brake test')
+           AND completed_i.status='completed' AND completed_i.service_date IS NOT NULL
+         ORDER BY completed_i.service_date DESC, completed_i.id DESC LIMIT 1) AS last_inspection_date,
         COALESCE(def.open_defects, 0) AS open_defects,
         COALESCE(def.critical_defects, 0) AS critical_defects
       FROM trailers t

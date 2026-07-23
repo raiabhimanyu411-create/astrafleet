@@ -11,6 +11,7 @@ import {
   getMaintenancePortal,
   markTrailerInspectionDone,
   markVehicleInspectionDone,
+  reconcileMaintenanceFleet,
   removeMaintenanceDocument,
   reportBreakdown,
   setVorStatus,
@@ -2134,11 +2135,14 @@ export function AdminMaintenancePage() {
   const [showVorModal, setShowVorModal] = useState(false);
   const [statPanel, setStatPanel] = useState(null);
 
-  function load() {
+  function load({ reconcile = false } = {}) {
     const requestId = loadRequestRef.current + 1;
     loadRequestRef.current = requestId;
     setLoading(true);
-    return getMaintenancePortal()
+    if (reconcile) setSavingAction("fleet-refresh");
+    const reconcileRequest = reconcile ? reconcileMaintenanceFleet() : Promise.resolve();
+    return reconcileRequest
+      .then(() => getMaintenancePortal())
       .then((res) => {
         if (requestId !== loadRequestRef.current) return res.data;
         setData(res.data);
@@ -2159,7 +2163,12 @@ export function AdminMaintenancePage() {
         setError(detail ? `${msg}: ${detail}` : msg);
       })
       .finally(() => {
-        if (requestId === loadRequestRef.current) setLoading(false);
+        if (reconcile) {
+          setSavingAction((current) => current === "fleet-refresh" ? "" : current);
+        }
+        if (requestId === loadRequestRef.current) {
+          setLoading(false);
+        }
       });
   }
 
@@ -2343,7 +2352,14 @@ export function AdminMaintenancePage() {
           </button>
           <button className="header-action-button danger" type="button" onClick={() => setShowBreakdownModal(true)}>Report Breakdown</button>
           <button className="header-action-button" type="button" onClick={() => setShowVorModal(true)}>VOR</button>
-          <button className="header-action-button" type="button" onClick={load}>Refresh</button>
+          <button
+            className="header-action-button"
+            type="button"
+            disabled={savingAction === "fleet-refresh"}
+            onClick={() => load({ reconcile: true })}
+          >
+            {savingAction === "fleet-refresh" ? "Refreshing..." : "Refresh"}
+          </button>
           <button className="header-action-button" type="button" onClick={() => setShowExportModal(true)}>Export Schedule</button>
           <button className="header-action-button" type="button" onClick={() => navigate("/admin/vehicles")}>Vehicle Register</button>
         </div>
