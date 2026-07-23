@@ -6,6 +6,7 @@ export const createMaintenanceJob = (data) => api.post("/api/maintenance/jobs", 
 export const createBulkMaintenanceJobs = (data) => api.post("/api/maintenance/jobs/bulk", data);
 export const updateMaintenanceJob = (id, data) => api.put(`/api/maintenance/jobs/${id}`, data);
 export const updateMaintenanceBill = (id, data) => api.patch(`/api/maintenance/jobs/${id}/bill`, data);
+export const removeMaintenanceDocument = (id, data = {}) => api.delete(`/api/maintenance/jobs/${id}/document`, { data });
 export const completeMaintenanceJob = (id, data) => api.patch(`/api/maintenance/jobs/${id}/complete`, data);
 export const createJobFromDefect = (defectId, data = {}) => api.post(`/api/maintenance/defects/${defectId}/job`, data);
 export const updateDefectWorkflow = (defectId, data = {}) => api.patch(`/api/maintenance/defects/${defectId}/workflow`, data);

@@ -11,6 +11,7 @@ import {
   getMaintenancePortal,
   markTrailerInspectionDone,
   markVehicleInspectionDone,
+  removeMaintenanceDocument,
   reportBreakdown,
   setVorStatus,
   undoCompletedMaintenanceEvent,
@@ -590,6 +591,7 @@ function VehicleDetailModal({ target, profiles, onClose, onSaved }) {
   });
   const [saving, setSaving] = useState(false);
   const [undoing, setUndoing] = useState(false);
+  const [removingDocument, setRemovingDocument] = useState(false);
   const [error, setError] = useState("");
   const [successMessage, setSuccessMessage] = useState("");
 
@@ -679,6 +681,10 @@ function VehicleDetailModal({ target, profiles, onClose, onSaved }) {
   );
   const isEditingCompleted = target?.selectionKind === "completed"
     || (Boolean(activeItem?.latestJobId) && !isSelectedUpcoming);
+  const activeCompletedJobId = target?.selectionKind === "completed"
+    && activeType === target?.preselectType
+    ? target?.completedJobId
+    : activeItem?.latestJobId;
 
   async function submit(e) {
     e.preventDefault();
@@ -701,7 +707,7 @@ function VehicleDetailModal({ target, profiles, onClose, onSaved }) {
         bill_attachment_data: form.bill_attachment_data,
         road_tax_interval_months: form.road_tax_interval_months,
         completed_job_id: isEditingCompleted
-          ? (target?.completedJobId || activeItem?.latestJobId || null)
+          ? (activeCompletedJobId || null)
           : null
       });
       await onSaved();
@@ -719,7 +725,7 @@ function VehicleDetailModal({ target, profiles, onClose, onSaved }) {
   }
 
   async function undoCompletion() {
-    const jobId = target?.completedJobId || activeItem?.latestJobId;
+    const jobId = activeCompletedJobId;
     if (!jobId || !activeType) return;
     if (!window.confirm(`Mark ${activeType} as not done? The completion and its generated next due will be rolled back.`)) return;
     setUndoing(true);
@@ -735,6 +741,26 @@ function VehicleDetailModal({ target, profiles, onClose, onSaved }) {
       setError(err.response?.data?.message || "Could not mark this item as not done.");
     } finally {
       setUndoing(false);
+    }
+  }
+
+  async function removeWrongDocument() {
+    const jobId = activeCompletedJobId;
+    if (!jobId || !form.bill_attachment_data) return;
+    if (!window.confirm(`Remove the document from this ${activeType} record? It will be preserved in the recovery archive.`)) return;
+    setRemovingDocument(true);
+    setError("");
+    try {
+      await removeMaintenanceDocument(jobId, {
+        reason: `${activeType} document was attached to the wrong completion.`
+      });
+      setForm((current) => ({ ...current, bill_attachment_data: "" }));
+      await onSaved();
+      setSuccessMessage("Wrong document removed and safely archived.");
+    } catch (err) {
+      setError(err.response?.data?.message || "Could not remove this document.");
+    } finally {
+      setRemovingDocument(false);
     }
   }
 
@@ -917,11 +943,16 @@ function VehicleDetailModal({ target, profiles, onClose, onSaved }) {
             <div className="finance-command-bar">
               <button className="header-action-button" type="button" onClick={() => setActiveType(null)}>Cancel</button>
               {isEditingCompleted && (
-                <button className="header-action-button danger" disabled={saving || undoing} type="button" onClick={undoCompletion}>
+                <button className="header-action-button danger" disabled={saving || undoing || removingDocument} type="button" onClick={undoCompletion}>
                   {undoing ? "Undoing..." : "Mark as not done"}
                 </button>
               )}
-              <button className="af-submit-btn" disabled={saving || undoing} type="submit">
+              {isEditingCompleted && form.bill_attachment_data && (
+                <button className="header-action-button danger" disabled={saving || undoing || removingDocument} type="button" onClick={removeWrongDocument}>
+                  {removingDocument ? "Archiving..." : "Remove wrong document"}
+                </button>
+              )}
+              <button className="af-submit-btn" disabled={saving || undoing || removingDocument} type="submit">
                 {saving ? "Saving..." : isEditingCompleted ? `Update ${activeType}` : `Mark ${activeType} Done`}
               </button>
             </div>

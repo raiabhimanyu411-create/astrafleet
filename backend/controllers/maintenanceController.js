@@ -266,25 +266,60 @@ async function verifyAndRepairMaintenanceIntegrity() {
       HAVING COUNT(*) > 1
     ) duplicates
   `);
+  const [duplicateDocumentGroups] = await db.query(`
+    SELECT document_hash, COUNT(*) AS copies, COUNT(DISTINCT identity_key) AS distinct_identities,
+           GROUP_CONCAT(job_id ORDER BY job_id SEPARATOR ',') AS job_ids
+    FROM (
+      SELECT id AS job_id,
+             SHA2(bill_attachment_data, 256) AS document_hash,
+             CONCAT(
+               COALESCE(asset_type, 'vehicle'), ':', COALESCE(vehicle_id, 0), ':', COALESCE(trailer_id, 0), ':',
+               service_type, ':', COALESCE(DATE_FORMAT(service_date, '%Y-%m-%d'), '-')
+             ) AS identity_key
+      FROM maintenance_jobs
+      WHERE bill_attachment_data IS NOT NULL AND bill_attachment_data != ''
+    ) documents
+    GROUP BY document_hash
+    HAVING COUNT(*) > 1 AND COUNT(DISTINCT identity_key) > 1
+    ORDER BY copies DESC, document_hash
+    LIMIT 200
+  `);
   const projectionRowsRemoved = projectionBefore.reduce((sum, count) => sum + count, 0);
   const unresolvedOpenJobGroups = Number(openGroups?.count || 0);
+  const documentDuplicateGroups = duplicateDocumentGroups.length;
+  const integrityNeedsReview = unresolvedOpenJobGroups > 0 || documentDuplicateGroups > 0;
   await db.query(
     `INSERT INTO maintenance_integrity_runs
       (completed_job_duplicate_groups_before, completed_jobs_removed, projection_rows_removed,
        unresolved_open_job_groups, status, details)
      VALUES (?, ?, ?, ?, ?, ?)`,
     [completedGroupsBefore, completedJobsRemoved, projectionRowsRemoved, unresolvedOpenJobGroups,
-      unresolvedOpenJobGroups > 0 ? "review_required" : "verified",
+      integrityNeedsReview ? "review_required" : "verified",
       JSON.stringify({
         checkedAt: new Date().toISOString(),
         mode: "exact-duplicate-safe-merge",
         emptyOpenJobsRemoved,
         completedJobMerges: completedJobCleanup.merges.slice(0, 200),
         emptyOpenJobDeletions: openJobCleanup.deletions.slice(0, 200),
-        auditTruncated: completedJobCleanup.merges.length > 200 || openJobCleanup.deletions.length > 200
+        duplicateDocumentGroups: duplicateDocumentGroups.map((group) => ({
+          documentHash: group.document_hash,
+          copies: Number(group.copies || 0),
+          distinctIdentities: Number(group.distinct_identities || 0),
+          jobIds: String(group.job_ids || "").split(",").filter(Boolean).map(Number)
+        })),
+        auditTruncated: completedJobCleanup.merges.length > 200
+          || openJobCleanup.deletions.length > 200
+          || duplicateDocumentGroups.length === 200
       })]
   );
-  return { completedGroupsBefore, completedJobsRemoved, projectionRowsRemoved, emptyOpenJobsRemoved, unresolvedOpenJobGroups };
+  return {
+    completedGroupsBefore,
+    completedJobsRemoved,
+    projectionRowsRemoved,
+    emptyOpenJobsRemoved,
+    unresolvedOpenJobGroups,
+    documentDuplicateGroups
+  };
 }
 
 async function syncMaintenanceSchema() {
@@ -451,6 +486,32 @@ async function syncMaintenanceSchema() {
   await addColumnIfMissing("maintenance_jobs", "bill_payment_status", "ENUM('unpaid','scheduled','paid') NOT NULL DEFAULT 'unpaid'");
   await addColumnIfMissing("maintenance_jobs", "vendor_invoice_ref", "VARCHAR(100) DEFAULT NULL");
   await addColumnIfMissing("maintenance_jobs", "recurrence_source_job_id", "INT DEFAULT NULL");
+
+  await db.query(`
+    CREATE TABLE IF NOT EXISTS maintenance_document_archive (
+      id                   INT AUTO_INCREMENT PRIMARY KEY,
+      original_job_id      INT DEFAULT NULL,
+      job_number           VARCHAR(40) DEFAULT NULL,
+      asset_type           VARCHAR(20) NOT NULL,
+      vehicle_id           INT DEFAULT NULL,
+      trailer_id           INT DEFAULT NULL,
+      service_type         VARCHAR(100) NOT NULL,
+      service_date         DATE DEFAULT NULL,
+      due_date             DATE DEFAULT NULL,
+      bill_number          VARCHAR(100) DEFAULT NULL,
+      bill_date            DATE DEFAULT NULL,
+      bill_amount_gbp      DECIMAL(10,2) DEFAULT NULL,
+      bill_notes           TEXT DEFAULT NULL,
+      attachment_data      LONGTEXT NOT NULL,
+      document_sha256      CHAR(64) NOT NULL,
+      archive_reason       VARCHAR(255) NOT NULL,
+      archived_by          VARCHAR(120) DEFAULT NULL,
+      archived_at          DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      INDEX idx_document_archive_job (original_job_id),
+      INDEX idx_document_archive_hash (document_sha256),
+      INDEX idx_document_archive_asset (asset_type, vehicle_id, trailer_id)
+    ) ENGINE=InnoDB
+  `);
 
   await db.query(`
     CREATE TABLE IF NOT EXISTS maintenance_inventory (
@@ -1067,6 +1128,37 @@ async function mergeCompletedJobDetails(jobId, job) {
     [job.completion_notes || job.notes, job.final_cost_gbp, job.garage_name,
       assetId, job.service_type, job.service_date]
   );
+}
+
+async function archiveJobDocument(connection, job, reason, archivedBy = "System") {
+  if (!job?.bill_attachment_data) return null;
+  const assetType = job.trailer_id || job.asset_type === "trailer" ? "trailer" : "vehicle";
+  const [result] = await connection.query(
+    `INSERT INTO maintenance_document_archive
+      (original_job_id, job_number, asset_type, vehicle_id, trailer_id, service_type,
+       service_date, due_date, bill_number, bill_date, bill_amount_gbp, bill_notes,
+       attachment_data, document_sha256, archive_reason, archived_by)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, SHA2(?, 256), ?, ?)`,
+    [
+      job.id,
+      job.job_number || null,
+      assetType,
+      job.vehicle_id || null,
+      job.trailer_id || null,
+      job.service_type,
+      rawDate(job.service_date) || null,
+      rawDate(job.due_date) || null,
+      job.bill_number || null,
+      rawDate(job.bill_date) || null,
+      job.bill_amount_gbp ?? null,
+      job.bill_notes || null,
+      job.bill_attachment_data,
+      job.bill_attachment_data,
+      String(reason || "Document detached from maintenance job.").slice(0, 255),
+      String(archivedBy || "System").slice(0, 120)
+    ]
+  );
+  return result.insertId;
 }
 
 async function ensureRecurringJob(vehicleId, serviceType, dueDate, sourceJobId = null) {
@@ -2558,7 +2650,8 @@ exports.getMaintenancePortal = async (_req, res) => {
     }));
 
     const documentsVault = jobs
-      .filter((job) => job.billAttachmentData || job.billNumber || job.billNotes !== "-")
+      .filter((job) => job.status === "completed"
+        && (job.billAttachmentData || job.billNumber || job.billNotes !== "-"))
       .slice(0, 12)
       .map((job) => ({
         id: job.id,
@@ -3168,6 +3261,14 @@ exports.updateJob = async (req, res) => {
       if (!job.service_date) {
         return res.status(400).json({ message: "Completed date is required." });
       }
+      const completedDateChanged = rawDate(existingJob.service_date) !== rawDate(job.service_date);
+      const carriesSameDocument = existingJob.bill_attachment_data
+        && (!job.bill_attachment_data || job.bill_attachment_data === existingJob.bill_attachment_data);
+      if (completedDateChanged && carriesSameDocument) {
+        return res.status(409).json({
+          message: "This completion date cannot be changed while its existing document is attached. Remove the wrong document first, or upload the correct document for the new date."
+        });
+      }
 
       let inspectionIntervalDays = existingAssetType === "trailer"
         ? TRAILER_INSPECTION_INTERVAL_DAYS
@@ -3643,6 +3744,63 @@ exports.setVorStatus = async (req, res) => {
   }
 };
 
+// Detach a wrongly associated document without destroying it. The full file
+// and its original job metadata are retained in a non-UI archive for audit and
+// recovery, while the active maintenance record stops displaying it.
+exports.removeJobDocument = async (req, res) => {
+  const connection = await db.getConnection();
+  try {
+    const jobId = Number(req.params.id);
+    const reason = String(req.body.reason || "Document was attached to the wrong maintenance event.").trim();
+    if (!jobId) return res.status(400).json({ message: "Valid maintenance job id is required." });
+    if (reason.length < 5) return res.status(400).json({ message: "A short removal reason is required." });
+
+    await connection.beginTransaction();
+    const [[job]] = await connection.query(`SELECT * FROM maintenance_jobs WHERE id=? FOR UPDATE`, [jobId]);
+    if (!job) {
+      await connection.rollback();
+      return res.status(404).json({ message: "Maintenance job was not found." });
+    }
+    if (!job.bill_attachment_data) {
+      await connection.rollback();
+      return res.status(409).json({ message: "This maintenance item has no attached document." });
+    }
+
+    const archiveId = await archiveJobDocument(
+      connection,
+      job,
+      reason,
+      req.sessionUser?.name || "Admin"
+    );
+    await connection.query(`UPDATE maintenance_jobs SET bill_attachment_data=NULL WHERE id=?`, [jobId]);
+    await connection.commit();
+
+    await logActivity(req, {
+      module: "maintenance",
+      action: "detach_document",
+      entityType: "maintenance_job",
+      entityId: jobId,
+      entityLabel: `${job.job_number} · ${job.service_type}`,
+      reason,
+      reasonCategory: "data_correction",
+      details: {
+        archiveId,
+        assetType: job.trailer_id || job.asset_type === "trailer" ? "trailer" : "vehicle",
+        vehicleId: job.vehicle_id || null,
+        trailerId: job.trailer_id || null,
+        serviceType: job.service_type,
+        serviceDate: rawDate(job.service_date) || null
+      }
+    });
+    return res.json({ message: "Document removed from this item and preserved in the recovery archive.", archiveId });
+  } catch (err) {
+    try { await connection.rollback(); } catch (_rollbackError) { /* no-op */ }
+    return res.status(500).json({ message: "Could not remove maintenance document.", error: err.message });
+  } finally {
+    connection.release();
+  }
+};
+
 // Undo an accidental completion without creating a replacement/duplicate job.
 // The same job returns to its planned state and all completion projections are
 // removed in one transaction; the audit trail is stored separately.
@@ -3739,12 +3897,23 @@ exports.undoCompletedEvent = async (req, res) => {
       );
     }
 
+    const undoReason = String(req.body.reason || "Marked as not done from maintenance planner.").trim();
+    const archivedDocumentId = await archiveJobDocument(
+      connection,
+      job,
+      `Completion undone: ${undoReason}`,
+      req.sessionUser?.name || "Admin"
+    );
+
     await connection.query(
       `UPDATE maintenance_jobs
        SET status='planned', service_date=NULL, completed_at=NULL,
            completion_notes=NULL, final_cost_gbp=NULL,
            completed_mileage_km=NULL, next_due_mileage_km=NULL,
-           recurrence_source_job_id=NULL
+           recurrence_source_job_id=NULL,
+           bill_attachment_data=NULL, bill_number=NULL, bill_date=NULL,
+           bill_amount_gbp=NULL, bill_notes=NULL, vendor_invoice_ref=NULL,
+           bill_status='pending', bill_payment_status='unpaid'
        WHERE id=?`,
       [jobId]
     );
@@ -3785,9 +3954,15 @@ exports.undoCompletedEvent = async (req, res) => {
       entityType: "maintenance_job",
       entityId: jobId,
       entityLabel: `${job.service_type} · ${serviceDate}`,
-      reason: String(req.body.reason || "Marked as not done from maintenance planner."),
+      reason: undoReason,
       reasonCategory: "data_correction",
-      details: { assetType, assetId, serviceType: job.service_type, serviceDate }
+      details: {
+        assetType,
+        assetId,
+        serviceType: job.service_type,
+        serviceDate,
+        archivedDocumentId
+      }
     });
     return res.json({ message: `${job.service_type} marked as not done.`, jobId });
   } catch (err) {
@@ -3856,6 +4031,14 @@ exports.completeEventFromSchedule = async (req, res) => {
       }
 
       const previousServiceDate = rawDate(completedJob.service_date);
+      const completedDateChanged = previousServiceDate !== rawDate(serviceDate);
+      const carriesSameDocument = completedJob.bill_attachment_data
+        && (!billAttachmentData || billAttachmentData === completedJob.bill_attachment_data);
+      if (completedDateChanged && carriesSameDocument) {
+        return res.status(409).json({
+          message: "This completion date cannot be changed while its existing document is attached. Remove the wrong document first, or upload the correct document for the new date."
+        });
+      }
       const historyTable = assetType === "trailer" ? "trailer_maintenance_records" : "maintenance_records";
       const historyIdField = assetType === "trailer" ? "trailer_id" : "vehicle_id";
       const correctionCost = correctionFinalCost ?? completedJob.final_cost_gbp ?? 0;

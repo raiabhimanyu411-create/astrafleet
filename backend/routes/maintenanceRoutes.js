@@ -12,6 +12,7 @@ router.post("/jobs/bulk", maintenance.createBulkJobs);
 router.post("/jobs", maintenance.createJob);
 router.put("/jobs/:id", maintenance.updateJob);
 router.patch("/jobs/:id/bill", maintenance.updateBillStatus);
+router.delete("/jobs/:id/document", maintenance.removeJobDocument);
 router.patch("/jobs/:id/complete", maintenance.completeJob);
 router.get("/jobs/:id/notes", maintenance.getJobNotes);
 router.post("/jobs/:id/notes", maintenance.addJobNote);
