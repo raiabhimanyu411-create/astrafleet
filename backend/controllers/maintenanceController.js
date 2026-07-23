@@ -439,6 +439,68 @@ async function syncMaintenanceSchema() {
     SET t.next_inspection_due=latest_inspection.next_due
   `);
 
+  // Older quick-inspection actions wrote the inspection tables but could miss
+  // the completed maintenance job used by the profile and annual planner.
+  // Backfill those historical completions once, without duplicating an event
+  // that already has a matching completed job.
+  await db.query(`
+    INSERT INTO maintenance_jobs
+      (job_number, asset_type, vehicle_id, service_type, due_date, service_date,
+       status, completion_notes, completed_at)
+    SELECT CONCAT('MIG-VI-', vi.vehicle_id, '-', vi.id),
+           'vehicle', vi.vehicle_id,
+           CASE
+             WHEN vi.inspection_type IN ('Safety inspection','6-week safety inspection') THEN 'Safety inspection'
+             ELSE 'Brake test'
+           END,
+           vi.inspection_date, vi.inspection_date, 'completed', vi.notes,
+           NOW()
+    FROM vehicle_inspections vi
+    WHERE vi.inspection_date IS NOT NULL
+      AND vi.inspection_type IN ('Safety inspection','6-week safety inspection','Brake test')
+      AND NOT EXISTS (
+        SELECT 1
+        FROM maintenance_jobs j
+        WHERE j.vehicle_id=vi.vehicle_id
+          AND j.asset_type='vehicle'
+          AND j.status='completed'
+          AND j.service_date=vi.inspection_date
+          AND j.service_type=CASE
+            WHEN vi.inspection_type IN ('Safety inspection','6-week safety inspection') THEN 'Safety inspection'
+            ELSE 'Brake test'
+          END
+      )
+  `);
+  await db.query(`
+    INSERT INTO maintenance_jobs
+      (job_number, asset_type, trailer_id, service_type, due_date, service_date,
+       status, completion_notes, completed_at)
+    SELECT CONCAT('MIG-TI-', ti.trailer_id, '-', ti.id),
+           'trailer', ti.trailer_id, 'Safety inspection',
+           ti.inspection_date, ti.inspection_date, 'completed', ti.notes,
+           NOW()
+    FROM trailer_inspections ti
+    WHERE ti.inspection_date IS NOT NULL
+      AND ti.inspection_type IN ('Safety inspection','10-week safety inspection')
+      AND NOT EXISTS (
+        SELECT 1
+        FROM maintenance_jobs j
+        WHERE j.trailer_id=ti.trailer_id
+          AND j.asset_type='trailer'
+          AND j.status='completed'
+          AND j.service_type='Safety inspection'
+          AND j.service_date=ti.inspection_date
+      )
+  `);
+  await db.query(`
+    UPDATE maintenance_jobs
+    SET next_due_mileage_km=completed_mileage_km + 85000
+    WHERE service_type='Full Service'
+      AND status='completed'
+      AND completed_mileage_km IS NOT NULL
+      AND (next_due_mileage_km IS NULL OR next_due_mileage_km != completed_mileage_km + 85000)
+  `);
+
   // Align legacy open IB/BT jobs from the latest completed item in the shared
   // inspection cycle. A later brake test must advance the common cycle rather
   // than being assigned a next-due date before the brake test was completed.
@@ -803,6 +865,30 @@ async function alignInspectionJobsFromLatestCompletion(vehicleId, fallbackDueDat
   return alignedDueDate;
 }
 
+async function inspectionJobForQuickCompletion(assetType, assetId, serviceDate) {
+  const idField = assetType === "trailer" ? "trailer_id" : "vehicle_id";
+  const [[existing]] = await db.query(
+    `SELECT * FROM maintenance_jobs
+     WHERE ${idField}=?
+       AND service_type='Safety inspection'
+       AND status IN ('planned','booked','in_progress')
+     ORDER BY ABS(DATEDIFF(due_date, ?)) ASC, id DESC
+     LIMIT 1`,
+    [assetId, serviceDate]
+  );
+  if (existing) return existing;
+
+  const jobNumber = await nextJobNumber();
+  const [created] = await db.query(
+    `INSERT INTO maintenance_jobs
+      (job_number, asset_type, ${idField}, service_type, due_date, service_date, priority, status)
+     VALUES (?, ?, ?, 'Safety inspection', ?, ?, 'normal', 'planned')`,
+    [jobNumber, assetType, assetId, serviceDate, serviceDate]
+  );
+  const [[job]] = await db.query(`SELECT * FROM maintenance_jobs WHERE id=?`, [created.insertId]);
+  return job;
+}
+
 function isGeneratedMaintenanceNote(note) {
   return /^auto-created/i.test(String(note || "").trim());
 }
@@ -879,7 +965,11 @@ async function applyCompletedMaintenance(job, completion = {}) {
     inspectionIntervalDays
   ) || null;
   const completedMileageKm = completion.completedMileageKm || job.completed_mileage_km || null;
-  const nextDueMileageKm = completion.nextDueMileageKm || job.next_due_mileage_km || null;
+  const nextDueMileageKm = completion.nextDueMileageKm
+    || job.next_due_mileage_km
+    || (job.service_type === "Full Service" && completedMileageKm
+      ? Number(completedMileageKm) + MAINTENANCE_RULES["Full Service"].mileageKm
+      : null);
   const billAmountGbp = completion.billAmountGbp || job.bill_amount_gbp || null;
 
   await db.query(
@@ -2291,15 +2381,12 @@ exports.markVehicleInspectionDone = async (req, res) => {
     if (result === "fail") {
       await db.query(`UPDATE vehicles SET status='maintenance' WHERE id=?`, [vehicleId]);
     } else {
-      await db.query(
-        `UPDATE maintenance_jobs
-         SET status='completed',
-             service_date=?,
-             completion_notes=COALESCE(completion_notes, ?),
-             completed_at=COALESCE(completed_at, NOW())
-         WHERE vehicle_id=? AND status IN ('planned','booked','in_progress') AND LOWER(service_type) LIKE '%inspection%'`,
-        [inspectionDate, notes || "6-week safety inspection completed.", vehicleId]
-      );
+      const job = await inspectionJobForQuickCompletion("vehicle", vehicleId, inspectionDate);
+      await applyCompletedMaintenance(job, {
+        serviceDate: inspectionDate,
+        nextDueDate: nextDue,
+        completionNotes: notes || "6-week safety inspection completed."
+      });
       const [[open]] = await db.query(
         `SELECT
           (SELECT COUNT(*) FROM defect_reports WHERE vehicle_id=? AND status != 'resolved') AS defects,
@@ -2309,7 +2396,6 @@ exports.markVehicleInspectionDone = async (req, res) => {
       if (Number(open.defects || 0) === 0 && Number(open.jobs || 0) === 0) {
         await db.query(`UPDATE vehicles SET status='available' WHERE id=? AND status IN ('maintenance','stopped')`, [vehicleId]);
       }
-      await alignInspectionJobsFromLatestCompletion(vehicleId, nextDue);
     }
 
     res.status(201).json({
@@ -2782,16 +2868,12 @@ exports.markTrailerInspectionDone = async (req, res) => {
     if (result === "fail") {
       await db.query(`UPDATE trailers SET status='maintenance' WHERE id=?`, [trailerId]);
     } else {
-      await db.query(`UPDATE trailers SET next_inspection_due=?, status=CASE WHEN status='maintenance' THEN 'available' ELSE status END WHERE id=?`, [nextDue, trailerId]);
-      await db.query(
-        `UPDATE maintenance_jobs
-         SET status='completed',
-             service_date=?,
-             completion_notes=COALESCE(completion_notes, ?),
-             completed_at=COALESCE(completed_at, NOW())
-         WHERE trailer_id=? AND status IN ('planned','booked','in_progress') AND LOWER(service_type) LIKE '%inspection%'`,
-        [inspectionDate, notes || "10-week safety inspection completed.", trailerId]
-      );
+      const job = await inspectionJobForQuickCompletion("trailer", trailerId, inspectionDate);
+      await applyCompletedMaintenance(job, {
+        serviceDate: inspectionDate,
+        nextDueDate: nextDue,
+        completionNotes: notes || "10-week safety inspection completed."
+      });
     }
 
     res.status(201).json({
