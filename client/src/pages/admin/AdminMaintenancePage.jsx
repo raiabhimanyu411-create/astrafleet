@@ -96,6 +96,15 @@ function ukDateKey(value = new Date()) {
   return `${parts.year}-${parts.month}-${parts.day}`;
 }
 
+function formatDateKeyLong(value) {
+  if (!value) return "-";
+  return new Date(`${value}T00:00:00`).toLocaleDateString("en-GB", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric"
+  });
+}
+
 function addDaysToKey(value, days) {
   if (!value) return "";
   const date = new Date(`${value}T00:00:00`);
@@ -595,10 +604,10 @@ function VehicleDetailModal({ target, profiles, onClose, onSaved }) {
       garage_name: isCompletedSelection && completedJob?.garageName !== "-" ? (completedJob?.garageName || "") : "",
       final_cost_gbp: isCompletedSelection ? (completedJob?.finalCostGbp ?? "") : "",
       completed_mileage_km: isCompletedSelection ? (completedJob?.completedMileageKm || "") : "",
-      bill_number: isCompletedSelection ? (completedJob?.billNumber || selectedItem?.billNumber || "") : "",
-      bill_amount_gbp: isCompletedSelection ? (completedJob?.billAmountGbp || selectedItem?.billAmountGbp || "") : "",
-      bill_notes: isCompletedSelection && completedJob?.billNotes !== "-" ? (completedJob?.billNotes || "") : (isCompletedSelection ? (selectedItem?.billNotes || "") : ""),
-      bill_attachment_data: isCompletedSelection ? (completedJob?.billAttachmentData || selectedItem?.attachmentData || "") : "",
+      bill_number: isCompletedSelection ? (completedJob?.billNumber || "") : "",
+      bill_amount_gbp: isCompletedSelection ? (completedJob?.billAmountGbp || "") : "",
+      bill_notes: isCompletedSelection && completedJob?.billNotes !== "-" ? (completedJob?.billNotes || "") : "",
+      bill_attachment_data: isCompletedSelection ? (completedJob?.billAttachmentData || "") : "",
       road_tax_interval_months: String(target?.preselectType === "Road Tax" ? DEFAULT_ROAD_TAX_INTERVAL_MONTHS : (completedJob?.roadTaxIntervalMonths || selectedItem?.roadTaxIntervalMonths || DEFAULT_ROAD_TAX_INTERVAL_MONTHS))
     });
     setError("");
@@ -627,10 +636,18 @@ function VehicleDetailModal({ target, profiles, onClose, onSaved }) {
       garage_name: completedJob?.garageName && completedJob.garageName !== "-" ? completedJob.garageName : c.garage_name,
       final_cost_gbp: completedJob?.finalCostGbp ?? c.final_cost_gbp,
       completed_mileage_km: completedJob?.completedMileageKm || c.completed_mileage_km,
-      bill_number: isSelectedCompletedEvent || isUpdatingExistingCompletion ? (completedJob?.billNumber || item?.billNumber || "") : "",
-      bill_amount_gbp: isSelectedCompletedEvent || isUpdatingExistingCompletion ? (completedJob?.billAmountGbp || item?.billAmountGbp || "") : "",
-      bill_notes: isSelectedCompletedEvent || isUpdatingExistingCompletion ? (completedJob?.billNotes !== "-" ? completedJob?.billNotes : "") || item?.billNotes || "" : "",
-      bill_attachment_data: isSelectedCompletedEvent || isUpdatingExistingCompletion ? (completedJob?.billAttachmentData || item?.attachmentData || "") : "",
+      bill_number: isSelectedCompletedEvent
+        ? (completedJob?.billNumber || "")
+        : isUpdatingExistingCompletion ? (item?.billNumber || "") : "",
+      bill_amount_gbp: isSelectedCompletedEvent
+        ? (completedJob?.billAmountGbp || "")
+        : isUpdatingExistingCompletion ? (item?.billAmountGbp || "") : "",
+      bill_notes: isSelectedCompletedEvent
+        ? (completedJob?.billNotes !== "-" ? completedJob?.billNotes : "") || ""
+        : isUpdatingExistingCompletion ? (item?.billNotes || "") : "",
+      bill_attachment_data: isSelectedCompletedEvent
+        ? (completedJob?.billAttachmentData || "")
+        : isUpdatingExistingCompletion ? (item?.attachmentData || "") : "",
       road_tax_interval_months: String(type === "Road Tax" ? DEFAULT_ROAD_TAX_INTERVAL_MONTHS : (completedJob?.roadTaxIntervalMonths || item?.roadTaxIntervalMonths || DEFAULT_ROAD_TAX_INTERVAL_MONTHS))
     }));
   }
@@ -726,6 +743,35 @@ function VehicleDetailModal({ target, profiles, onClose, onSaved }) {
           {profile.items.map((item) => {
             const code = TYPE_TO_CODE[item.type] || item.type;
             const color = EVENT_COLORS[code] || { bg: "#94a3b8", text: "#fff" };
+            const isSelectedCompleted = target?.selectionKind === "completed"
+              && target?.preselectType === item.type
+              && Boolean(target?.completedJob);
+            const selectedCompletedJob = isSelectedCompleted ? target.completedJob : null;
+            const selectedNextDueRaw = isSelectedCompleted
+              ? nextDueForItem(
+                  item.type,
+                  selectedCompletedJob.serviceDateRaw,
+                  selectedCompletedJob.roadTaxIntervalMonths,
+                  target?.assetType,
+                  profile?.inspectionFrequencyWeeks
+                )
+              : "";
+            const displayedLastDone = isSelectedCompleted
+              ? (selectedCompletedJob.serviceDate || formatDateKeyLong(selectedCompletedJob.serviceDateRaw))
+              : item.lastDone;
+            const displayedLastDoneKm = isSelectedCompleted
+              ? selectedCompletedJob.completedMileageKm
+              : item.lastDoneKm;
+            const displayedNextDue = isSelectedCompleted
+              ? formatDateKeyLong(selectedNextDueRaw)
+              : item.nextDue;
+            const displayedAttachment = isSelectedCompleted
+              ? selectedCompletedJob.billAttachmentData
+              : item.attachmentData;
+            const displayedHasAttachment = Boolean(displayedAttachment);
+            const displayedDocumentSubmittedAt = isSelectedCompleted
+              ? (selectedCompletedJob.updatedAt || selectedCompletedJob.completedAt || "-")
+              : item.documentSubmittedAt;
             const isSelectedUpcoming = activeType === item.type
               && target?.preselectType === item.type
               && Boolean(target?.scheduledDueDate)
@@ -746,24 +792,24 @@ function VehicleDetailModal({ target, profiles, onClose, onSaved }) {
               >
                 <span className="vehicle-detail-item-code" style={{ background: color.bg, color: color.text }}>{code}</span>
                 <strong>{item.type}</strong>
-                <p>Last done: <b className="maintenance-profile-date">{item.lastDone}{item.lastDoneKm ? ` · ${Number(item.lastDoneKm).toLocaleString("en-GB")} km` : ""}</b></p>
-                <p>Next due: <b className="maintenance-profile-date">{item.nextDue}</b></p>
-                <StatusPill tone={isSelectedUpcoming ? "danger" : item.tone}>
-                  {isSelectedUpcoming ? "Upcoming" : item.status}
+                <p>{isSelectedCompleted ? "Selected completion" : "Last done"}: <b className="maintenance-profile-date">{displayedLastDone}{displayedLastDoneKm ? ` · ${Number(displayedLastDoneKm).toLocaleString("en-GB")} km` : ""}</b></p>
+                <p>Next due: <b className="maintenance-profile-date">{displayedNextDue}</b></p>
+                <StatusPill tone={isSelectedCompleted ? "success" : isSelectedUpcoming ? "danger" : item.tone}>
+                  {isSelectedCompleted ? "Completed record" : isSelectedUpcoming ? "Upcoming" : item.status}
                 </StatusPill>
-                {item.hasAttachment && !isSelectedUpcoming && (
+                {displayedHasAttachment && !isSelectedUpcoming && (
                   <div className="vehicle-detail-item-document">
                     <button
                       type="button"
                       className="vehicle-detail-item-doc-link"
                       onClick={(e) => {
                         e.stopPropagation();
-                        openAttachment(item.attachmentData);
+                        openAttachment(displayedAttachment);
                       }}
                     >
                       View last document
                     </button>
-                    {item.documentSubmittedAt && <small>Submitted: {item.documentSubmittedAt}</small>}
+                    {displayedDocumentSubmittedAt && <small>Submitted: {displayedDocumentSubmittedAt}</small>}
                   </div>
                 )}
               </div>
