@@ -285,10 +285,34 @@ async function verifyAndRepairMaintenanceIntegrity() {
     ORDER BY copies DESC, document_hash
     LIMIT 200
   `);
+  const orphanAssetWhere = `
+    (j.trailer_id IS NOT NULL AND t.id IS NULL)
+    OR (j.trailer_id IS NULL AND j.asset_type='trailer')
+    OR (j.trailer_id IS NULL AND j.asset_type!='trailer' AND (j.vehicle_id IS NULL OR v.id IS NULL))
+  `;
+  const [[orphanAssetSummary]] = await db.query(`
+    SELECT COUNT(*) AS count
+    FROM maintenance_jobs j
+    LEFT JOIN vehicles v ON v.id=j.vehicle_id
+    LEFT JOIN trailers t ON t.id=j.trailer_id
+    WHERE ${orphanAssetWhere}
+  `);
+  const [orphanAssetJobs] = await db.query(`
+    SELECT j.id, j.job_number, j.asset_type, j.vehicle_id, j.trailer_id,
+           j.service_type, j.status, j.service_date,
+           (j.bill_attachment_data IS NOT NULL AND j.bill_attachment_data != '') AS has_document
+    FROM maintenance_jobs j
+    LEFT JOIN vehicles v ON v.id=j.vehicle_id
+    LEFT JOIN trailers t ON t.id=j.trailer_id
+    WHERE ${orphanAssetWhere}
+    ORDER BY j.id
+    LIMIT 200
+  `);
   const projectionRowsRemoved = projectionBefore.reduce((sum, count) => sum + count, 0);
   const unresolvedOpenJobGroups = Number(openGroups?.count || 0);
   const documentDuplicateGroups = duplicateDocumentGroups.length;
-  const integrityNeedsReview = unresolvedOpenJobGroups > 0 || documentDuplicateGroups > 0;
+  const orphanAssetJobCount = Number(orphanAssetSummary?.count || 0);
+  const integrityNeedsReview = unresolvedOpenJobGroups > 0 || documentDuplicateGroups > 0 || orphanAssetJobCount > 0;
   await db.query(
     `INSERT INTO maintenance_integrity_runs
       (completed_job_duplicate_groups_before, completed_jobs_removed, projection_rows_removed,
@@ -308,9 +332,21 @@ async function verifyAndRepairMaintenanceIntegrity() {
           distinctIdentities: Number(group.distinct_identities || 0),
           jobIds: String(group.job_ids || "").split(",").filter(Boolean).map(Number)
         })),
+        orphanAssetJobs: orphanAssetJobs.map((job) => ({
+          id: job.id,
+          jobNumber: job.job_number,
+          assetType: job.asset_type,
+          vehicleId: job.vehicle_id || null,
+          trailerId: job.trailer_id || null,
+          serviceType: job.service_type,
+          status: job.status,
+          serviceDate: rawDate(job.service_date) || null,
+          hasDocument: Boolean(job.has_document)
+        })),
         auditTruncated: completedJobCleanup.merges.length > 200
           || openJobCleanup.deletions.length > 200
           || duplicateDocumentGroups.length === 200
+          || orphanAssetJobs.length === 200
       })]
   );
   return {
@@ -319,7 +355,8 @@ async function verifyAndRepairMaintenanceIntegrity() {
     projectionRowsRemoved,
     emptyOpenJobsRemoved,
     unresolvedOpenJobGroups,
-    documentDuplicateGroups
+    documentDuplicateGroups,
+    orphanAssetJobCount
   };
 }
 
@@ -1403,9 +1440,16 @@ async function reconcileMaintenanceFleetState() {
            COALESCE(v.inspection_frequency_weeks, 6) AS vehicle_inspection_frequency_weeks
     FROM maintenance_jobs j
     LEFT JOIN vehicles v ON v.id=j.vehicle_id
+    LEFT JOIN trailers t ON t.id=j.trailer_id
     WHERE j.status='completed'
       AND j.service_date IS NOT NULL
-      AND ((j.asset_type='trailer' AND j.trailer_id IS NOT NULL) OR j.vehicle_id IS NOT NULL)
+      AND (
+        (j.trailer_id IS NOT NULL AND t.id IS NOT NULL)
+        OR (
+          j.trailer_id IS NULL AND j.asset_type!='trailer'
+          AND j.vehicle_id IS NOT NULL AND v.id IS NOT NULL
+        )
+      )
     ORDER BY j.service_date ASC, j.id ASC
   `);
 
