@@ -1698,8 +1698,9 @@ function ExcelScheduleView({ data, onOpenVehicle }) {
     let current = null;
     for (const week of displayWeeks) {
       const month = week.month;
-      if (!current || current.month !== month) {
-        current = { month, count: 1, key: week.key };
+      const year = String(week.startRaw || "").slice(0, 4);
+      if (!current || current.month !== month || current.year !== year) {
+        current = { month, year, count: 1, key: week.key };
         groups.push(current);
       } else {
         current.count++;
@@ -1907,7 +1908,7 @@ function ExcelScheduleView({ data, onOpenVehicle }) {
             <th className="excel-fixed-head">Make</th>
             {monthGroups.map((group) => (
               <th key={group.key} colSpan={group.count} className="excel-month-head">
-                {group.month.toUpperCase()}
+                {group.month.toUpperCase()} {group.year}
               </th>
             ))}
           </tr>
