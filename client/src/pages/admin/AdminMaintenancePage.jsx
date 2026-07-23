@@ -116,6 +116,13 @@ function addDaysToKey(value, days) {
   return dateKey(date);
 }
 
+function maintenanceCalendarWeekStartKey(value) {
+  if (!value) return "";
+  const date = new Date(`${value}T00:00:00`);
+  date.setDate(date.getDate() - date.getDay());
+  return dateKey(date);
+}
+
 function inspectionDueWeekKey(value, frequencyWeeks) {
   if (!value) return "";
   const [year, month, day] = value.slice(0, 10).split("-").map(Number);
@@ -717,6 +724,7 @@ function VehicleDetailModal({ target, profiles, onClose, onSaved }) {
   }, [activeType, form.service_date, form.road_tax_interval_months, profile?.inspectionFrequencyWeeks, target?.assetType]);
   const activeItem = profile?.items?.find((item) => item.type === activeType);
   const isInspectionCycle = ["Safety inspection", "Brake test"].includes(activeType);
+  const nextDueWeekStart = isInspectionCycle ? maintenanceCalendarWeekStartKey(nextDue) : "";
   const isSelectedUpcoming = Boolean(
     activeType === target?.preselectType
     && target?.scheduledDueDate
@@ -937,7 +945,7 @@ function VehicleDetailModal({ target, profiles, onClose, onSaved }) {
                 <span>{isInspectionCycle ? "Next due week" : "Next due date will be set to"}</span>
                 <strong>
                   {isInspectionCycle
-                    ? `WK${isoWeekNumber(nextDue)} · ${formatWeekStart(nextDue)} to ${formatWeekStart(addDaysToKey(nextDue, 6))}`
+                    ? `WK${isoWeekNumber(nextDueWeekStart)} · ${formatWeekStart(nextDueWeekStart)} to ${formatWeekStart(addDaysToKey(nextDueWeekStart, 6))}`
                     : nextDue}
                 </strong>
               </div>
@@ -1879,7 +1887,7 @@ function ExcelScheduleView({ data, onOpenVehicle }) {
               <th
                 key={week.key}
                 className={`excel-date-head${week.key === selectedWeekKey ? " selected-week" : ""}`}
-                title="Week commencing (Monday)"
+                title="Week commencing (Sunday)"
               >
                 {formatWeekStart(week.startRaw)}
               </th>
