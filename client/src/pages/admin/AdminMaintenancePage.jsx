@@ -119,7 +119,8 @@ function addDaysToKey(value, days) {
 function maintenanceCalendarWeekStartKey(value) {
   if (!value) return "";
   const date = new Date(`${value}T00:00:00`);
-  date.setDate(date.getDate() - date.getDay());
+  const daysSinceMonday = (date.getDay() + 6) % 7;
+  date.setDate(date.getDate() - daysSinceMonday);
   return dateKey(date);
 }
 
@@ -1671,6 +1672,7 @@ function compareScheduleRows(a, b) {
 function ExcelScheduleView({ data, onOpenVehicle }) {
   const [search, setSearch] = useState("");
   const [selectedWeekKey, setSelectedWeekKey] = useState("");
+  const [showEarlierWeeks, setShowEarlierWeeks] = useState(false);
   const [popover, setPopover] = useState(null); // { ev, x, y }
   const [isFullscreen, setIsFullscreen] = useState(false);
   const scheduleWrapRef = useRef(null);
@@ -1678,10 +1680,23 @@ function ExcelScheduleView({ data, onOpenVehicle }) {
   const weeks = useMemo(() => data?.yearPlan?.weeks || [], [data]);
   const allRows = useMemo(() => data?.yearPlan?.rows || [], [data]);
 
+  const earlierWeekCutoffIndex = useMemo(() => {
+    const currentYear = ukDateKey().slice(0, 4);
+    const week25Index = weeks.findIndex((week) =>
+      Number(week.weekNumber) === 25 && String(week.startRaw || "").startsWith(currentYear)
+    );
+    return week25Index > 0 ? week25Index : 0;
+  }, [weeks]);
+
+  const displayWeeks = useMemo(
+    () => showEarlierWeeks ? weeks : weeks.slice(earlierWeekCutoffIndex),
+    [earlierWeekCutoffIndex, showEarlierWeeks, weeks]
+  );
+
   const monthGroups = useMemo(() => {
     const groups = [];
     let current = null;
-    for (const week of weeks) {
+    for (const week of displayWeeks) {
       const month = week.month;
       if (!current || current.month !== month) {
         current = { month, count: 1, key: week.key };
@@ -1691,7 +1706,7 @@ function ExcelScheduleView({ data, onOpenVehicle }) {
       }
     }
     return groups;
-  }, [weeks]);
+  }, [displayWeeks]);
 
   const filteredRows = useMemo(() => {
     const q = search.toLowerCase();
@@ -1748,7 +1763,7 @@ function ExcelScheduleView({ data, onOpenVehicle }) {
 
   useEffect(() => {
     if (!selectedWeekKey || !scheduleWrapRef.current) return;
-    const weekIndex = weeks.findIndex((week) => week.key === selectedWeekKey);
+    const weekIndex = displayWeeks.findIndex((week) => week.key === selectedWeekKey);
     if (weekIndex < 0) return;
 
     // Each week column is 64px wide. Since the four asset columns are sticky,
@@ -1760,7 +1775,7 @@ function ExcelScheduleView({ data, onOpenVehicle }) {
       });
     });
     return () => window.cancelAnimationFrame(frame);
-  }, [selectedWeekKey, weeks]);
+  }, [displayWeeks, selectedWeekKey]);
 
   useEffect(() => {
     if (!isFullscreen) return;
@@ -1776,7 +1791,7 @@ function ExcelScheduleView({ data, onOpenVehicle }) {
     };
   }, [isFullscreen]);
 
-  const totalCols = 4 + weeks.length;
+  const totalCols = 4 + displayWeeks.length;
 
   if (!weeks.length) {
     return <p className="finance-empty">No annual schedule data available.</p>;
@@ -1809,7 +1824,12 @@ function ExcelScheduleView({ data, onOpenVehicle }) {
           <select
             className="af-select schedule-week-select"
             value={selectedWeekKey}
-            onChange={(event) => setSelectedWeekKey(event.target.value)}
+            onChange={(event) => {
+              const nextKey = event.target.value;
+              const nextIndex = weeks.findIndex((week) => week.key === nextKey);
+              setShowEarlierWeeks(nextIndex >= 0 && nextIndex < earlierWeekCutoffIndex);
+              setSelectedWeekKey(nextKey);
+            }}
             aria-label="Jump to week"
           >
             {weeks.map((week) => (
@@ -1868,14 +1888,14 @@ function ExcelScheduleView({ data, onOpenVehicle }) {
     <div className="excel-schedule-wrap" ref={scheduleWrapRef}>
       <table
         className="excel-schedule-table"
-        style={{ width: `${510 + (weeks.length * 64)}px` }}
+        style={{ width: `${510 + (displayWeeks.length * 64)}px` }}
       >
         <colgroup>
           <col className="excel-reg-col" />
           <col className="excel-fleet-code-col" />
           <col className="excel-freq-col" />
           <col className="excel-make-col" />
-          {weeks.map((week) => (
+          {displayWeeks.map((week) => (
             <col className="excel-week-col" key={`col-${week.key}`} />
           ))}
         </colgroup>
@@ -1896,11 +1916,11 @@ function ExcelScheduleView({ data, onOpenVehicle }) {
             <th className="excel-fixed-head excel-fixed-head-spacer" aria-hidden="true" />
             <th className="excel-fixed-head excel-fixed-head-spacer" aria-hidden="true" />
             <th className="excel-fixed-head excel-fixed-head-spacer" aria-hidden="true" />
-            {weeks.map((week) => (
+            {displayWeeks.map((week) => (
               <th
                 key={week.key}
                 className={`excel-date-head${week.key === selectedWeekKey ? " selected-week" : ""}`}
-                title="Week commencing (Sunday)"
+                title="Week commencing (Monday)"
               >
                 {formatWeekStart(week.startRaw)}
               </th>
@@ -1911,7 +1931,7 @@ function ExcelScheduleView({ data, onOpenVehicle }) {
             <th className="excel-fixed-head excel-fixed-head-spacer" aria-hidden="true" />
             <th className="excel-fixed-head excel-fixed-head-spacer" aria-hidden="true" />
             <th className="excel-fixed-head excel-fixed-head-spacer" aria-hidden="true" />
-            {weeks.map((week) => (
+            {displayWeeks.map((week) => (
               <th
                 key={week.key}
                 className={`excel-week-head${week.key === selectedWeekKey ? " selected-week" : ""}`}
@@ -1933,7 +1953,7 @@ function ExcelScheduleView({ data, onOpenVehicle }) {
                   {company.toUpperCase()}
                 </td>
                 <td
-                  colSpan={weeks.length}
+                  colSpan={displayWeeks.length}
                   className="excel-company-cell"
                   style={{ background: COMPANY_COLORS[coIndex % COMPANY_COLORS.length] }}
                   aria-hidden="true"
@@ -1953,7 +1973,7 @@ function ExcelScheduleView({ data, onOpenVehicle }) {
                   <td className="excel-fleet-code-cell" onClick={() => onOpenVehicle(row, assetType)}>{row.fleetCode}</td>
                   <td className="excel-freq-cell" onClick={() => onOpenVehicle(row, assetType)}>{row.inspectionFrequency}</td>
                   <td className="excel-make-cell" onClick={() => onOpenVehicle(row, assetType)}>{row.make}</td>
-                  {weeks.map((week) => {
+                  {displayWeeks.map((week) => {
                     const events = groupCompletedByDate(uniqueWeekEvents((row.events || []).filter((ev) => eventBelongsToWeek(ev, week))));
                     return (
                       <td

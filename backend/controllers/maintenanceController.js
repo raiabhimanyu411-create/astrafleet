@@ -1011,7 +1011,8 @@ function startOfWeek(date) {
 function startOfMaintenanceCalendarWeek(date) {
   const next = new Date(date);
   next.setHours(0, 0, 0, 0);
-  next.setDate(next.getDate() - next.getDay());
+  const daysSinceMonday = (next.getDay() + 6) % 7;
+  next.setDate(next.getDate() - daysSinceMonday);
   return next;
 }
 
@@ -2441,9 +2442,8 @@ exports.getMaintenancePortal = async (_req, res) => {
     // "date done" (e.g. catching up on paperwork weeks after the work was
     // actually done) still gets its own week column, while keeping the same
     // forward planning horizon as before (56 weeks past the current week).
-    // Match the client's calendar: each displayed week runs Sunday-Saturday.
-    // The ISO number of that opening Sunday is used as the row's week label,
-    // so 19-25 April 2020 is WK16 and includes 20 April.
+    // Match the client's calendar: each displayed week runs Monday-Sunday and
+    // uses the ISO-8601 number of that opening Monday.
     const planStart = addDays(startOfMaintenanceCalendarWeek(calendarDate(ukDateKey())), -26 * 7);
     const planWeekCount = 82;
     const planWeeks = Array.from({ length: planWeekCount }, (_, index) => {
