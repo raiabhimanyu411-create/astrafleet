@@ -2,7 +2,6 @@ import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { getMyProfile, updateMyProfile } from "../../api/authApi";
 import { getRealtimeSocket } from "../../api/realtime";
-import { StatCard } from "../../components/StatCard";
 import { StateNotice } from "../../components/StateNotice";
 import { StatusPill } from "../../components/StatusPill";
 import { usePanelData } from "../../hooks/usePanelData";
@@ -24,6 +23,62 @@ const overviewStatRoutes = {
   "fuel expense": "/admin/finance",
   "profit / loss": "/admin/finance"
 };
+
+const overviewMetricSets = {
+  operations: ["Total bookings / jobs", "Active trips", "Pending trips", "Completed trips"],
+  finance: ["Profit / loss", "Today's revenue", "Pending invoices", "Fuel expense"],
+  health: ["Available drivers", "Available vehicles", "Cancelled trips", "Delayed deliveries"]
+};
+
+function OverviewGlyph({ type }) {
+  if (type === "finance") {
+    return (
+      <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+        <path d="M5 18V9m7 9V5m7 13v-6" />
+        <path d="M3.5 20h17" />
+      </svg>
+    );
+  }
+
+  if (type === "health") {
+    return (
+      <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+        <path d="M4 12h3l2-5 4 10 2-5h5" />
+      </svg>
+    );
+  }
+
+  return (
+    <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <rect x="4" y="7" width="16" height="11" rx="2" />
+      <path d="M9 7V5.5h6V7M4 12h16" />
+    </svg>
+  );
+}
+
+function OverviewMetricLink({ item, variant = "compact" }) {
+  if (!item) return null;
+
+  const route = overviewStatRoutes[item.label.toLowerCase()] || "/admin/activity";
+
+  return (
+    <Link
+      className={`overview-metric-link overview-metric-${variant} tone-${item.tone || "neutral"}`}
+      to={route}
+      aria-label={`${item.label}: ${item.value}. Open details`}
+    >
+      <div className="overview-metric-copy">
+        <span className="overview-metric-label">{item.label}</span>
+        <strong>{item.value}</strong>
+        {variant === "featured" && <p>{item.description}</p>}
+      </div>
+      <div className="overview-metric-meta">
+        {item.change && <span>{item.change}</span>}
+        <span className="overview-metric-arrow" aria-hidden="true">→</span>
+      </div>
+    </Link>
+  );
+}
 
 function AdminProfileSettings() {
   const [profile, setProfile] = useState({ name: "", email: "" });
@@ -118,6 +173,10 @@ function AdminProfileSettings() {
 
 export function AdminPanel() {
   const { data, error, loading, refetch } = usePanelData("/api/admin/overview");
+  const statsByLabel = new Map((data?.stats || []).map((item) => [item.label, item]));
+  const metrics = Object.fromEntries(
+    Object.entries(overviewMetricSets).map(([group, labels]) => [group, labels.map((label) => statsByLabel.get(label))])
+  );
 
   useEffect(() => {
     const socket = getRealtimeSocket();
@@ -167,19 +226,74 @@ export function AdminPanel() {
         </span>
       </div>
 
-      <section className="stats-grid">
-        {(data?.stats || []).map((item) => (
-          <StatCard
-            item={item}
-            key={item.label}
-            to={overviewStatRoutes[item.label.toLowerCase()] || "/admin/activity"}
-          />
-        ))}
+      <section className="overview-dashboard" aria-label="Key performance metrics">
+        <article className="overview-cluster overview-operations-cluster">
+          <header className="overview-cluster-head">
+            <span className="overview-cluster-icon"><OverviewGlyph type="operations" /></span>
+            <div>
+              <span>Operations</span>
+              <h3>Trip activity</h3>
+            </div>
+            <span className="overview-cluster-note">Live workflow</span>
+          </header>
+          <div className="overview-operations-body">
+            <OverviewMetricLink item={metrics.operations[0]} variant="featured" />
+            <div className="overview-operations-list">
+              {metrics.operations.slice(1).filter(Boolean).map((item) => (
+                <OverviewMetricLink item={item} key={item.label} />
+              ))}
+            </div>
+          </div>
+        </article>
+
+        <article className="overview-cluster overview-finance-cluster">
+          <header className="overview-cluster-head">
+            <span className="overview-cluster-icon"><OverviewGlyph type="finance" /></span>
+            <div>
+              <span>Finance</span>
+              <h3>Money at a glance</h3>
+            </div>
+            <span className="overview-cluster-note">GBP</span>
+          </header>
+          <OverviewMetricLink item={metrics.finance[0]} variant="finance" />
+          <div className="overview-finance-list">
+            {metrics.finance.slice(1).filter(Boolean).map((item) => (
+              <OverviewMetricLink item={item} variant="mini" key={item.label} />
+            ))}
+          </div>
+        </article>
+
+        <article className="overview-cluster overview-health-cluster">
+          <header className="overview-cluster-head">
+            <span className="overview-cluster-icon"><OverviewGlyph type="health" /></span>
+            <div>
+              <span>Fleet health</span>
+              <h3>Capacity &amp; exceptions</h3>
+            </div>
+            <span className="overview-cluster-note">Actionable</span>
+          </header>
+          <div className="overview-health-list">
+            {metrics.health.filter(Boolean).map((item) => (
+              <OverviewMetricLink item={item} variant="health" key={item.label} />
+            ))}
+          </div>
+        </article>
       </section>
 
-      <h3 className="overview-group-label">Alerts &amp; Live Ops</h3>
-      <section className="content-grid overview-content-grid">
-        <Link className="content-card content-card-link tone-danger" to="/admin/alerts">
+      <div className="overview-workspace-head">
+        <div>
+          <span className="card-label">Live workspace</span>
+          <h2>Action centre</h2>
+          <p>Priority queues, fleet movement and approvals in one compact view.</p>
+        </div>
+        <Link to="/admin/activity">
+          Open activity report
+          <span aria-hidden="true">→</span>
+        </Link>
+      </div>
+
+      <section className="overview-bento-grid" aria-label="Operations action centre">
+        <Link className="content-card content-card-link overview-bento-card overview-bento-alerts tone-danger" to="/admin/alerts">
           <div className="section-head">
             <div>
               <span className="card-label">Control room alerts</span>
@@ -201,7 +315,7 @@ export function AdminPanel() {
           </div>
         </Link>
 
-        <Link className="content-card content-card-link tone-success" to="/admin/tracking">
+        <Link className="content-card content-card-link overview-bento-card overview-bento-tracking tone-success" to="/admin/tracking">
           <div className="section-head">
             <div>
               <span className="card-label">GPS / live tracking</span>
@@ -226,11 +340,7 @@ export function AdminPanel() {
             ))}
           </div>
         </Link>
-      </section>
-
-      <h3 className="overview-group-label">Approvals</h3>
-      <section className="content-grid overview-content-grid">
-        <Link className="content-card content-card-link tone-warning" to="/admin/employees">
+        <Link className="content-card content-card-link overview-bento-card overview-bento-employee tone-warning" to="/admin/employees">
           <div className="section-head">
             <div>
               <span className="card-label">Employee access</span>
@@ -269,7 +379,7 @@ export function AdminPanel() {
           </div>
         </Link>
 
-        <Link className="content-card content-card-link tone-warning" to="/admin/drivers">
+        <Link className="content-card content-card-link overview-bento-card overview-bento-drivers tone-warning" to="/admin/drivers">
           <div className="section-head">
             <div>
               <span className="card-label">Driver management</span>
@@ -294,11 +404,7 @@ export function AdminPanel() {
             ))}
           </div>
         </Link>
-      </section>
-
-      <h3 className="overview-group-label">Dispatch &amp; Finance</h3>
-      <section className="content-grid overview-content-grid">
-        <Link className="content-card content-card-link tone-neutral" to="/admin/trips">
+        <Link className="content-card content-card-link overview-bento-card overview-bento-dispatch tone-neutral" to="/admin/trips">
           <div className="section-head">
             <div>
               <span className="card-label">Trip / route planning</span>
@@ -324,7 +430,7 @@ export function AdminPanel() {
           </div>
         </Link>
 
-        <Link className="content-card content-card-link tone-warning" to="/admin/finance">
+        <Link className="content-card content-card-link overview-bento-card overview-bento-finance tone-warning" to="/admin/finance">
           <div className="section-head">
             <div>
               <span className="card-label">Finance snapshot</span>

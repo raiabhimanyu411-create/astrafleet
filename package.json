@@ -8,7 +8,9 @@
     "backend": "npm run dev --prefix backend",
     "install:all": "npm install --prefix client && npm install --prefix backend",
     "build": "npm run build --prefix client",
-    "start": "npm run start --prefix backend"
+    "start": "npm run start --prefix backend",
+    "test:compliance": "npm run test:compliance --prefix backend",
+    "test:compliance:integration": "npm run test:compliance:integration --prefix backend"
   },
   "devDependencies": {
     "concurrently": "^9.2.1"

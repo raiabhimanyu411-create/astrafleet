@@ -10,8 +10,6 @@ import {
   getJobNotes,
   getMaintenanceDocument,
   getMaintenancePortal,
-  markTrailerInspectionDone,
-  markVehicleInspectionDone,
   reconcileMaintenanceFleet,
   removeMaintenanceDocument,
   reportBreakdown,
@@ -25,6 +23,7 @@ import { getAuthSession } from "../../utils/authSession";
 import { StateNotice } from "../../components/StateNotice";
 import { StatusPill } from "../../components/StatusPill";
 import { AdminWorkspaceLayout } from "./AdminWorkspaceLayout";
+import { MaintenanceCompliancePanel } from "./MaintenanceCompliancePanel";
 import "./AdminMaintenancePage.css";
 
 const DEFAULT_ROAD_TAX_INTERVAL_MONTHS = 6;
@@ -2290,6 +2289,10 @@ export function AdminMaintenancePage() {
   }, []);
 
   function openVehicleDetail(row, assetType = "vehicle", preselectType = null, scheduledDueDate = "", selectionKind = "", completedJobId = null) {
+    if (["Safety inspection", "Brake test", "MOT"].includes(preselectType)) {
+      setActiveView("compliance");
+      return;
+    }
     const completedJob = completedJobId ? data?.jobs?.find((job) => Number(job.id) === Number(completedJobId)) : null;
     setVehicleDetailTarget({ vehicleId: row.vehicleId, assetType, preselectType, scheduledDueDate, selectionKind, completedJobId, completedJob });
   }
@@ -2363,29 +2366,6 @@ export function AdminMaintenancePage() {
     }
   }
 
-  async function handleInspectionDone(row) {
-    const inspectionDate = window.prompt("Inspection date (YYYY-MM-DD)", ukDateKey());
-    if (inspectionDate === null) return;
-    const inspectorName = window.prompt("Inspector name", "");
-    if (inspectorName === null) return;
-    const notes = window.prompt("Inspection notes", "6-week safety inspection completed. Roadworthy.");
-    if (notes === null) return;
-    setSavingAction(`inspection-${row.id}`);
-    try {
-      const payload = { inspection_date: inspectionDate, inspector_name: inspectorName, notes, result: "pass" };
-      if (row.assetType === "trailer") {
-        await markTrailerInspectionDone(row.id, payload);
-      } else {
-        await markVehicleInspectionDone(row.id, payload);
-      }
-      await load();
-    } catch (err) {
-      setError(err.response?.data?.message || "Could not mark inspection done.");
-    } finally {
-      setSavingAction("");
-    }
-  }
-
   async function handleMarkBackOnRoad(row) {
     if (!window.confirm(`Mark ${row.registrationNumber} back on road?`)) return;
     const assetType = row.assetType === "trailer" ? "trailer" : "vehicle";
@@ -2416,6 +2396,7 @@ export function AdminMaintenancePage() {
   const maintenanceViews = [
     { id: "annual", label: "Annual Schedule" },
     { id: "fleet", label: "Fleet Checks" },
+    { id: "compliance", label: "DVSA Compliance" },
     { id: "assets", label: "Parts & Tyres" },
     { id: "records", label: "History & Docs" }
   ];
@@ -2611,7 +2592,7 @@ export function AdminMaintenancePage() {
       <section className="content-card">
         <div className="section-head">
           <div>
-            <span className="card-label">6-Week Safety Inspections</span>
+            <span className="card-label">Licence-Based Safety Inspections</span>
             <h2>PMI / Roadworthiness Inspection Tracker</h2>
           </div>
           <StatusPill tone="neutral">{(data?.plannerRows || []).length} vehicles</StatusPill>
@@ -2638,11 +2619,10 @@ export function AdminMaintenancePage() {
               <StatusPill tone={row.inspectionTone}>{row.inspectionStatus}</StatusPill>
               <button
                 className="header-action-button"
-                disabled={savingAction === `inspection-${row.id}`}
                 type="button"
-                onClick={() => handleInspectionDone(row)}
+                onClick={() => setActiveView("compliance")}
               >
-                Mark Inspection Done
+                Complete DVSA Inspection
               </button>
             </div>
           ))}
@@ -2652,6 +2632,8 @@ export function AdminMaintenancePage() {
         </div>
       </section>
       )}
+
+      {activeView === "compliance" && <MaintenanceCompliancePanel />}
 
 
       {activeView === "records" && (

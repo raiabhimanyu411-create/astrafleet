@@ -5,7 +5,9 @@
   "scripts": {
     "dev": "nodemon server.js",
     "start": "node server.js",
-    "test:audit": "node scripts/auditSmokeTest.js"
+    "test:audit": "node scripts/auditSmokeTest.js",
+    "test:compliance": "node scripts/complianceSmokeTest.js",
+    "test:compliance:integration": "node scripts/complianceIntegrationTest.js"
   },
   "dependencies": {
     "bcrypt": "^6.0.0",

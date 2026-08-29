@@ -1601,6 +1601,14 @@ function isTrailerMaintenanceTypeAllowed(serviceType) {
   return ["Safety inspection", "MOT"].includes(serviceType);
 }
 
+function requiresComplianceCompletion(serviceType) {
+  return ["Safety inspection", "Brake test", "MOT"].includes(String(serviceType || "").trim());
+}
+
+function complianceCompletionMessage(serviceType) {
+  return `${serviceType} completion requires the DVSA Compliance workflow, mandatory evidence and QA approval.`;
+}
+
 function dueColumnForService(assetType, serviceType) {
   if (serviceType === "MOT") return "mot_expiry";
   if (assetType === "vehicle" && serviceType === "Road Tax") return "road_tax_expiry";
@@ -1942,7 +1950,7 @@ exports.getMaintenancePortal = async (_req, res) => {
              AND next_i.status IN ('planned','booked','in_progress')),
           t.next_inspection_due
         ) AS next_inspection_due,
-        COALESCE(t.inspection_frequency_weeks, 6) AS inspection_frequency_weeks,
+        COALESCE(t.inspection_frequency_weeks, 10) AS inspection_frequency_weeks,
         (SELECT completed_i.service_date FROM maintenance_jobs completed_i
          WHERE completed_i.trailer_id=t.id
            AND completed_i.service_type IN ('Safety inspection','Brake test')
@@ -1975,7 +1983,7 @@ exports.getMaintenancePortal = async (_req, res) => {
         status: v.status,
         statusLabel: (v.status || "").replace("_", " "),
         currentLocation: v.current_location || "-",
-        inspectionFrequency: "6-week safety inspection",
+        inspectionFrequency: `${Math.max(2, Number(v.inspection_frequency_weeks || 6))}-week safety inspection`,
         lastService: fmtDate(v.last_service_date),
         lastServiceRaw: rawDate(v.last_service_date),
         lastServiceType: v.last_service_type || "No service record",
@@ -2029,7 +2037,7 @@ exports.getMaintenancePortal = async (_req, res) => {
         status: t.status,
         statusLabel: (t.status || "").replace("_", " "),
         currentLocation: t.current_location || "-",
-        inspectionFrequency: "10-week safety inspection",
+        inspectionFrequency: `${Math.max(2, Number(t.inspection_frequency_weeks || 10))}-week safety inspection`,
         lastService: "-",
         lastServiceRaw: "",
         lastServiceType: "No service record",
@@ -2040,7 +2048,7 @@ exports.getMaintenancePortal = async (_req, res) => {
         serviceDaysLeft: serviceDays,
         serviceDueLabel: dueLabel(serviceDays),
         lastInspection: fmtDate(t.last_inspection_date),
-        lastInspectionType: "10-week safety inspection",
+        lastInspectionType: "Safety inspection",
         lastInspectionResult: "-",
         nextInspection: fmtDate(t.next_inspection_due),
         nextInspectionRaw: rawDate(t.next_inspection_due),
@@ -3163,6 +3171,10 @@ exports.getMaintenancePortal = async (_req, res) => {
 
 exports.markVehicleInspectionDone = async (req, res) => {
   try {
+    return res.status(410).json({
+      message: complianceCompletionMessage("Safety inspection")
+    });
+    /* istanbul ignore next -- retained below only for legacy migration reference */
     const vehicleId = Number(req.params.vehicleId);
     const result = req.body.result || "pass";
     const inspectorName = String(req.body.inspector_name || req.body.inspectorName || "").trim() || req.sessionUser?.name || null;
@@ -3319,6 +3331,9 @@ exports.autoPlanDueWork = async (_req, res) => {
 exports.createJob = async (req, res) => {
   try {
     const job = cleanJobPayload(req.body);
+    if (job.status === "completed" && requiresComplianceCompletion(job.service_type)) {
+      return res.status(409).json({ message: complianceCompletionMessage(job.service_type) });
+    }
     if (job.service_type === "Road Tax" && job.service_date) {
       job.due_date = calculateNextDueDate(job.service_type, job.service_date, job.road_tax_interval_months);
     } else if (!job.due_date && job.service_date) {
@@ -3432,6 +3447,9 @@ exports.createBulkJobs = async (req, res) => {
 
       const jobNumber = await nextJobNumber();
       const status = rawItem.status || base.status || "planned";
+      if (status === "completed" && requiresComplianceCompletion(serviceType)) {
+        return res.status(409).json({ message: complianceCompletionMessage(serviceType) });
+      }
       const priority = rawItem.priority || base.priority || recurringPriority(daysUntil(dueDate));
       const completedMileageKm = rawItem.completed_mileage_km || rawItem.completedMileageKm || base.completed_mileage_km;
       const nextDueMileageKm = rawItem.next_due_mileage_km || rawItem.nextDueMileageKm || base.next_due_mileage_km;
@@ -3541,6 +3559,9 @@ exports.updateJob = async (req, res) => {
     const [[existingJob]] = await db.query(`SELECT * FROM maintenance_jobs WHERE id=?`, [id]);
     if (!existingJob) return res.status(404).json({ message: "Maintenance job not found." });
     const job = cleanJobPayload(req.body);
+    if (job.status === "completed" && requiresComplianceCompletion(job.service_type)) {
+      return res.status(409).json({ message: complianceCompletionMessage(job.service_type) });
+    }
     // The list endpoint intentionally omits the large attachment body. An edit
     // without a newly uploaded file must therefore retain the existing file;
     // explicit removal uses DELETE /jobs/:id/document and remains audited.
@@ -3808,6 +3829,9 @@ exports.completeJob = async (req, res) => {
     const id = Number(req.params.id);
     const [[job]] = await db.query(`SELECT * FROM maintenance_jobs WHERE id=?`, [id]);
     if (!job) return res.status(404).json({ message: "Maintenance job not found." });
+    if (requiresComplianceCompletion(job.service_type)) {
+      return res.status(409).json({ message: complianceCompletionMessage(job.service_type) });
+    }
     if (job.status === "completed") {
       return res.json({ message: "Maintenance job was already completed; no duplicate history was created." });
     }
@@ -3898,6 +3922,10 @@ exports.addJobNote = async (req, res) => {
 // Mark trailer inspection done (same flow as vehicle but uses trailer_inspections table)
 exports.markTrailerInspectionDone = async (req, res) => {
   try {
+    return res.status(410).json({
+      message: complianceCompletionMessage("Safety inspection")
+    });
+    /* istanbul ignore next -- retained below only for legacy migration reference */
     const trailerId = Number(req.params.trailerId);
     const result = req.body.result || "pass";
     const inspectorName = String(req.body.inspector_name || req.body.inspectorName || "").trim() || null;
@@ -4035,6 +4063,11 @@ exports.setVorStatus = async (req, res) => {
 
     const table = assetType === "trailer" ? "trailers" : "vehicles";
     if (onRoad) {
+      const { canReturnAssetToRoad } = require("./maintenanceComplianceController");
+      const clearance = await canReturnAssetToRoad(assetType, assetNumericId);
+      if (!clearance.ok) {
+        return res.status(clearance.status || 409).json({ message: clearance.message });
+      }
       // Close the open history record first so the past VOR weeks stay on the
       // schedule for reference, then clear the live status columns.
       await db.query(
@@ -4320,6 +4353,9 @@ exports.completeEventFromSchedule = async (req, res) => {
     const assetType = encodedType === "trailer" ? "trailer" : "vehicle";
     const assetNumericId = Number(encodedId || 0);
     const serviceType = String(req.body.service_type || req.body.serviceType || "").trim().replace(/^Roller brake test$/i, "Brake test");
+    if (requiresComplianceCompletion(serviceType)) {
+      return res.status(409).json({ message: complianceCompletionMessage(serviceType) });
+    }
     const serviceDate = req.body.service_date || req.body.serviceDate || ukDateKey();
     const requestedScheduledDueDate = req.body.due_date || req.body.dueDate || null;
     const scheduledDueDate = requestedScheduledDueDate || serviceDate;
