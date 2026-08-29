@@ -80,6 +80,17 @@ function OverviewMetricLink({ item, variant = "compact" }) {
   );
 }
 
+function OverviewPanelFooter({ total, visible, label }) {
+  const remaining = Math.max(0, total - visible);
+
+  return (
+    <div className="overview-panel-footer">
+      <span>{remaining ? `+${remaining} more in queue` : "Workspace synced"}</span>
+      <strong>{label} <span aria-hidden="true">→</span></strong>
+    </div>
+  );
+}
+
 function AdminProfileSettings() {
   const [profile, setProfile] = useState({ name: "", email: "" });
   const [passwords, setPasswords] = useState({ currentPassword: "", newPassword: "", confirmPassword: "" });
@@ -303,8 +314,8 @@ export function AdminPanel() {
           </div>
 
           <div className="alert-stack">
-            {(data?.alerts || []).map((alert) => (
-              <div className="alert-card" key={alert.title}>
+            {(data?.alerts || []).slice(0, 6).map((alert, index) => (
+              <div className="alert-card" key={`${alert.title}-${index}`}>
                 <div className={`alert-bar ${alert.tone}`} />
                 <div>
                   <strong>{alert.title}</strong>
@@ -312,7 +323,14 @@ export function AdminPanel() {
                 </div>
               </div>
             ))}
+            {!loading && (data?.alerts || []).length === 0 && (
+              <div className="overview-panel-empty">
+                <strong>No active alerts</strong>
+                <p>The control-room queue is clear.</p>
+              </div>
+            )}
           </div>
+          <OverviewPanelFooter total={(data?.alerts || []).length} visible={6} label="Open alerts" />
         </Link>
 
         <Link className="content-card content-card-link overview-bento-card overview-bento-tracking tone-success" to="/admin/tracking">
@@ -325,7 +343,7 @@ export function AdminPanel() {
           </div>
 
           <div className="data-rows">
-            {(data?.trackingBoard || []).map((truck) => (
+            {(data?.trackingBoard || []).slice(0, 6).map((truck) => (
               <div className="data-row" key={truck.truck}>
                 <div>
                   <strong>{truck.truck}</strong>
@@ -338,7 +356,14 @@ export function AdminPanel() {
                 <StatusPill tone={truck.tone}>{truck.status}</StatusPill>
               </div>
             ))}
+            {!loading && (data?.trackingBoard || []).length === 0 && (
+              <div className="overview-panel-empty">
+                <strong>No vehicles reporting</strong>
+                <p>Live GPS updates will appear here.</p>
+              </div>
+            )}
           </div>
+          <OverviewPanelFooter total={(data?.trackingBoard || []).length} visible={6} label="Open live map" />
         </Link>
         <Link className="content-card content-card-link overview-bento-card overview-bento-employee tone-warning" to="/admin/employees">
           <div className="section-head">
@@ -350,7 +375,7 @@ export function AdminPanel() {
           </div>
 
           <div className="data-rows">
-            {(data?.employeeRequests || []).map((employee) => (
+            {(data?.employeeRequests || []).slice(0, 4).map((employee) => (
               <div className="data-row" key={employee.id}>
                 <div>
                   <strong>{employee.name}</strong>
@@ -377,6 +402,7 @@ export function AdminPanel() {
               </div>
             )}
           </div>
+          <OverviewPanelFooter total={(data?.employeeRequests || []).length} visible={4} label="Manage access" />
         </Link>
 
         <Link className="content-card content-card-link overview-bento-card overview-bento-drivers tone-warning" to="/admin/drivers">
@@ -389,7 +415,7 @@ export function AdminPanel() {
           </div>
 
           <div className="data-rows">
-            {(data?.driverQueue || []).map((driver) => (
+            {(data?.driverQueue || []).slice(0, 4).map((driver) => (
               <div className="data-row" key={driver.name}>
                 <div>
                   <strong>{driver.name}</strong>
@@ -402,7 +428,14 @@ export function AdminPanel() {
                 <StatusPill tone={driver.tone}>{driver.status}</StatusPill>
               </div>
             ))}
+            {!loading && (data?.driverQueue || []).length === 0 && (
+              <div className="overview-panel-empty">
+                <strong>No driver reviews</strong>
+                <p>Driver approvals and compliance are clear.</p>
+              </div>
+            )}
           </div>
+          <OverviewPanelFooter total={(data?.driverQueue || []).length} visible={4} label="Open drivers" />
         </Link>
         <Link className="content-card content-card-link overview-bento-card overview-bento-dispatch tone-neutral" to="/admin/trips">
           <div className="section-head">
@@ -414,7 +447,7 @@ export function AdminPanel() {
           </div>
 
           <div className="data-rows">
-            {(data?.tripPlans || []).map((trip) => (
+            {(data?.tripPlans || []).slice(0, 4).map((trip) => (
               <div className="data-row" key={trip.route}>
                 <div>
                   <strong>{trip.route}</strong>
@@ -427,7 +460,14 @@ export function AdminPanel() {
                 <StatusPill tone={trip.tone}>{trip.status}</StatusPill>
               </div>
             ))}
+            {!loading && (data?.tripPlans || []).length === 0 && (
+              <div className="overview-panel-empty">
+                <strong>No open trip plans</strong>
+                <p>The dispatch planning queue is clear.</p>
+              </div>
+            )}
           </div>
+          <OverviewPanelFooter total={(data?.tripPlans || []).length} visible={4} label="Open dispatch" />
         </Link>
 
         <Link className="content-card content-card-link overview-bento-card overview-bento-finance tone-warning" to="/admin/finance">
@@ -440,7 +480,7 @@ export function AdminPanel() {
           </div>
 
           <div className="data-rows compact">
-            {(data?.finance || []).map((invoice) => (
+            {(data?.finance || []).slice(0, 4).map((invoice) => (
               <div className="data-row" key={invoice.invoice}>
                 <div>
                   <strong>{invoice.invoice}</strong>
@@ -453,7 +493,14 @@ export function AdminPanel() {
                 <StatusPill tone={invoice.tone}>{invoice.status}</StatusPill>
               </div>
             ))}
+            {!loading && (data?.finance || []).length === 0 && (
+              <div className="overview-panel-empty">
+                <strong>No pending invoices</strong>
+                <p>The finance watchlist is clear.</p>
+              </div>
+            )}
           </div>
+          <OverviewPanelFooter total={(data?.finance || []).length} visible={4} label="Open finance" />
         </Link>
       </section>
 
