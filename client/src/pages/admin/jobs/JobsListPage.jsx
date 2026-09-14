@@ -77,30 +77,28 @@ const STATUS_TONE = {
 const PRIORITY_TONE = { standard: "neutral", priority: "warning", critical: "danger" };
 
 function getWeekRange(offset = 0) {
-  const now = new Date();
-  const day = now.getDay();
-  const monday = new Date(now);
-  monday.setDate(now.getDate() - (day === 0 ? 6 : day - 1) + offset * 7);
-  monday.setHours(0, 0, 0, 0);
+  const parts = Object.fromEntries(new Intl.DateTimeFormat("en-GB", {
+    timeZone: "Europe/London", year: "numeric", month: "2-digit", day: "2-digit"
+  }).formatToParts(new Date()).filter(part => part.type !== "literal").map(part => [part.type, part.value]));
+  const today = new Date(Date.UTC(Number(parts.year), Number(parts.month) - 1, Number(parts.day)));
+  const day = today.getUTCDay();
+  const monday = new Date(today);
+  monday.setUTCDate(today.getUTCDate() - (day === 0 ? 6 : day - 1) + offset * 7);
   const sunday = new Date(monday);
-  sunday.setDate(monday.getDate() + 6);
-  sunday.setHours(23, 59, 59, 999);
-  return { start: monday, end: sunday };
+  sunday.setUTCDate(monday.getUTCDate() + 6);
+  return { start: monday.toISOString().slice(0, 10), end: sunday.toISOString().slice(0, 10) };
 }
 
 function fmtWeekLabel(start, end) {
   const opts = { day: "numeric", month: "short" };
-  return `${start.toLocaleDateString("en-GB", opts)} – ${end.toLocaleDateString("en-GB", opts)}`;
+  const format = value => new Date(`${value}T12:00:00Z`).toLocaleDateString("en-GB", { ...opts, timeZone: "UTC" });
+  return `${format(start)} – ${format(end)}`;
 }
 
 function toDateInputValue(rawStr) {
   if (!rawStr) return "";
-  const d = new Date(rawStr);
-  if (isNaN(d.getTime())) return "";
-  const year = d.getFullYear();
-  const month = String(d.getMonth() + 1).padStart(2, "0");
-  const day = String(d.getDate()).padStart(2, "0");
-  return `${year}-${month}-${day}`;
+  const match = String(rawStr).match(/^(\d{4}-\d{2}-\d{2})/);
+  return match?.[1] || "";
 }
 
 function fmtDateInputLabel(value) {
@@ -278,13 +276,14 @@ function JobDetailsModal({ job, onClose }) {
                       <tr><td>Fuel Cost</td><td>£{Number(job.economics.fuelCost || 0).toFixed(2)}</td></tr>
                       <tr><td>Driver Cost</td><td>£{Number(job.economics.driverCost || 0).toFixed(2)}</td></tr>
                       <tr><td>Fleet Cost</td><td>£{Number(job.economics.fleetCost || 0).toFixed(2)}</td></tr>
+                      {Number(job.economics.tollCost || 0) > 0 && <tr><td>Route Toll Estimate</td><td>£{Number(job.economics.tollCost).toFixed(2)}</td></tr>}
                       <tr className="rjd-payout-subtotal"><td><strong>Total Cost</strong></td><td><strong>£{Number(job.economics.totalCost || 0).toFixed(2)}</strong></td></tr>
                       <tr><td>Suggested Price</td><td>£{Number(job.economics.suggestedPrice || 0).toFixed(2)}</td></tr>
                       <tr><td>Freight Charged</td><td>{job.freight || "—"}</td></tr>
                     </tbody>
                   </table>
                   <div className={`rjd-payout-pl ${job.isProfitable === true ? "profit" : job.isProfitable === false ? "loss" : ""}`}>
-                    <span>{job.isProfitable === true ? "Profit" : job.isProfitable === false ? "Loss" : "P&L"}</span>
+                    <span>{job.isProfitable === true ? "Estimated Profit" : job.isProfitable === false ? "Estimated Loss" : "P&L unavailable"}</span>
                     <strong>
                       {job.profitLossValue !== null && job.profitLossValue !== undefined
                         ? `${job.profitLossValue >= 0 ? "+" : "-"}£${Math.abs(job.profitLossValue).toFixed(2)}`
@@ -357,7 +356,7 @@ function JobDetailsModal({ job, onClose }) {
                   <div className="relay-note-item" key={note.id}>
                     <div className="relay-note-header">
                       <strong>{note.author_name}</strong>
-                      <span>{new Date(note.created_at).toLocaleString("en-GB", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" })}</span>
+                      <span>{note.createdAtLabel || "Time not recorded"}</span>
                     </div>
                     <p>{note.note_text}</p>
                   </div>
@@ -427,7 +426,7 @@ function JobNotesSection({ jobId }) {
           <div className="relay-note-item" key={note.id}>
             <div className="relay-note-header">
               <strong>{note.author_name}</strong>
-              <span>{new Date(note.created_at).toLocaleString("en-GB", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" })}</span>
+              <span>{note.createdAtLabel || "Time not recorded"}</span>
             </div>
             <p>{note.note_text}</p>
           </div>
@@ -563,8 +562,7 @@ export function JobsListPage() {
     const jobDate = toDateInputValue(job.departureRaw || job.loadingDoneTime || job.etaRaw);
     if (selectedDate) return jobDate === selectedDate;
     if (jobDate && tabId !== "completed" && tabId !== "history") {
-      const jobTime = new Date(jobDate).getTime();
-      return jobTime >= weekRange.start.getTime() && jobTime <= weekRange.end.getTime();
+      return jobDate >= weekRange.start && jobDate <= weekRange.end;
     }
     return true;
   }
@@ -929,7 +927,7 @@ export function JobsListPage() {
                 index: 1,
                 name: pickupShort,
                 title: job.pickupAddress,
-                arrival: fmtRouteStamp(job.departureRaw, job.departure),
+                arrival: fmtRouteStamp(job.collectionArrivedAtRaw || job.departureRaw, job.collectionArrivedAt || job.departure),
                 departure: fmtRouteStamp(job.actualDepartureRaw || job.loadingDoneTime, job.actualDeparture)
               },
               {
@@ -1102,11 +1100,11 @@ export function JobsListPage() {
                     <span>{job.freight}</span>
                     {job.profitLoss && (
                       <span className={`relay-profit-badge ${job.isProfitable ? "profit" : "loss"}`}>
-                        {job.isProfitable ? "▲" : "▼"} {job.profitLoss}
+                        {job.isProfitable ? "▲" : "▼"} Est. {job.profitLoss}
                       </span>
                     )}
                     {!job.profitLoss && job.economics && (
-                      <span className="relay-profit-badge pending">calc pending</span>
+                      <span className="relay-profit-badge pending">P&amp;L unavailable</span>
                     )}
                   </div>
                 </div>
@@ -1233,8 +1231,9 @@ export function JobsListPage() {
                             )}
                           </div>
                           <div className="relay-stop-time">
-                            <strong>{job.departure !== "—" ? job.departure : "—"}</strong>
-                            {job.departure !== "—" && <small className="relay-sch-time">Sch. {job.departure}</small>}
+                            <strong>{job.collectionArrivedAt !== "—" ? job.collectionArrivedAt : job.departure !== "—" ? job.departure : "TBD"}</strong>
+                            {job.collectionArrivedAt !== "—" && job.departure !== "—" && <small className="relay-sch-time">Sch. {job.departure}</small>}
+                            {job.collectionArrivedAt === "—" && job.departure !== "—" && <small className="relay-sch-time">Scheduled</small>}
                           </div>
                           <div className="relay-stop-time">
                             <strong className={depTimeTone}>
@@ -1508,6 +1507,13 @@ export function JobsListPage() {
                           <strong>{fmtGBP(job.economics.fleetCost)}</strong>
                           <small>{fmtGBP(job.economics.fleetCostPerHour)}/hr</small>
                         </div>
+                        {Number(job.economics.tollCost || 0) > 0 && (
+                          <div className="relay-economics-col">
+                            <span className="relay-economics-label">Route Toll</span>
+                            <strong>{fmtGBP(job.economics.tollCost)}</strong>
+                            <small>Estimate</small>
+                          </div>
+                        )}
                         <div className="relay-economics-col">
                           <span className="relay-economics-label">Total Cost</span>
                           <strong>{fmtGBP(job.economics.totalCost)}</strong>
@@ -1521,7 +1527,7 @@ export function JobsListPage() {
                           <strong>{job.freight}</strong>
                         </div>
                         <div className={`relay-economics-col profit-col ${job.isProfitable === true ? "profit" : job.isProfitable === false ? "loss" : ""}`}>
-                          <span className="relay-economics-label">{job.isProfitable ? "Profit" : job.isProfitable === false ? "Loss" : "P&L"}</span>
+                          <span className="relay-economics-label">{job.isProfitable ? "Estimated Profit" : job.isProfitable === false ? "Estimated Loss" : "P&L unavailable"}</span>
                           <strong>
                             {job.profitLossValue !== null
                               ? `${job.profitLossValue >= 0 ? "+" : "-"}${fmtGBP(Math.abs(job.profitLossValue))}`

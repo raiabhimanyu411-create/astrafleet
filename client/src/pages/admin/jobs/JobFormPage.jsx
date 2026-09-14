@@ -49,16 +49,16 @@ function calcTiming(loadingDoneTime, distanceMiles, loadingMins, unloadingMins, 
   return { travelMins, arrival, unloadEnd, totalMins };
 }
 
-function calcCost(distanceMiles, totalMins, settings) {
+function calcCost(distanceMiles, totalMins, settings, tollCost = 0) {
   if (!distanceMiles || !settings) return null;
   const fuelCostPerMile = (4.546 / settings.mpg) * settings.fuel_price_per_litre;
   const fuelCost = distanceMiles * fuelCostPerMile;
   const totalHours = (totalMins || 0) / 60;
   const driverCost = totalHours * settings.driver_rate_per_hour;
   const fleetCost = totalHours * FLEET_COST_PER_HOUR_GBP;
-  const totalCost = fuelCost + driverCost + fleetCost;
+  const totalCost = fuelCost + driverCost + fleetCost + Number(tollCost || 0);
   const suggestedPrice = totalCost * (1 + settings.margin_pct / 100);
-  return { fuelCost, driverCost, fleetCost, fleetCostPerHour: FLEET_COST_PER_HOUR_GBP, totalCost, suggestedPrice, fuelCostPerMile };
+  return { fuelCost, driverCost, fleetCost, tollCost: Number(tollCost || 0), fleetCostPerHour: FLEET_COST_PER_HOUR_GBP, totalCost, suggestedPrice, fuelCostPerMile };
 }
 
 function fmtGBP(n) {
@@ -105,7 +105,7 @@ function addHours(value, hours, extraStops = 0) {
   if (!value || !hours) return "";
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return "";
-  date.setMinutes(date.getMinutes() + Number(hours) * 60 + 30 + extraStops * 30);
+  date.setMinutes(date.getMinutes() + Number(hours) * 60 + extraStops * 30);
   return toInputDateTime(date);
 }
 
@@ -113,7 +113,7 @@ function addMinutes(value, minutes, extraStops = 0) {
   if (!value || !minutes) return "";
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return "";
-  date.setMinutes(date.getMinutes() + Number(minutes) + 30 + extraStops * 30);
+  date.setMinutes(date.getMinutes() + Number(minutes) + extraStops * 30);
   return toInputDateTime(date);
 }
 
@@ -141,12 +141,25 @@ function getApiErrorMessage(err) {
   return data?.error || data?.message || err?.message || "Could not save job. Please try again.";
 }
 
-function validateJobForm(fields) {
+function validateJobForm(fields, stops = []) {
   const errors = {};
   if (!fields.client_name.trim()) errors.client_name = "Enter the client name.";
   if (!fields.pickup_address.trim()) errors.pickup_address = "Enter the pickup address.";
   if (!fields.drop_address.trim()) errors.drop_address = "Enter the delivery address.";
   if (!fields.load_description.trim()) errors.load_description = "Enter the goods or load details.";
+  if (!fields.planned_departure) errors.planned_departure = "Enter the UK collection arrival date and time.";
+  if (!fields.loading_done_time) errors.loading_done_time = "Enter the UK collection departure time.";
+  if (fields.planned_departure && fields.loading_done_time && fields.loading_done_time < fields.planned_departure) {
+    errors.loading_done_time = "Collection departure cannot be before collection arrival.";
+  }
+  if (fields.loading_done_time && fields.delivery_arrival_time && fields.delivery_arrival_time < fields.loading_done_time) {
+    errors.delivery_arrival_time = "Delivery arrival cannot be before collection departure.";
+  }
+  if (fields.delivery_arrival_time && fields.delivery_departure_time && fields.delivery_departure_time < fields.delivery_arrival_time) {
+    errors.delivery_departure_time = "Delivery departure cannot be before delivery arrival.";
+  }
+  const invalidStop = stops.find(stop => stop.planned_arrival && stop.planned_departure && stop.planned_departure < stop.planned_arrival);
+  if (invalidStop) errors.stops = "A stop departure cannot be before its arrival.";
   return errors;
 }
 
@@ -378,12 +391,12 @@ export function JobFormPage() {
     ? Math.max(0, Math.round((manualDeliveryDeparture - manualDeliveryArrival) / 60000))
     : null;
   const estimatedTotalMins = timingCalc?.totalMins
-    || (hasManualDeliveryTimes ? loadingMins + manualTravelMins + unloadingMins : null)
+    || (hasManualDeliveryTimes ? loadingMins + manualTravelMins + manualUnloadingMins : null)
     || (estimatedTravelMins ? loadingMins + estimatedTravelMins + unloadingMins : null);
 
   const costCalc = useMemo(
-    () => calcCost(distanceMiles, estimatedTotalMins, sysSettings),
-    [distanceMiles, estimatedTotalMins, sysSettings]
+    () => calcCost(distanceMiles, estimatedTotalMins, sysSettings, selectedRoute?.toll_estimate_gbp),
+    [distanceMiles, estimatedTotalMins, selectedRoute?.toll_estimate_gbp, sysSettings]
   );
 
   const freightValue = parseFloat(fields.freight_amount) || 0;
@@ -419,7 +432,7 @@ export function JobFormPage() {
   async function handleSubmit(e) {
     e.preventDefault();
     setSubmitErr("");
-    const validationErrors = validateJobForm(fields);
+    const validationErrors = validateJobForm(fields, stops);
     setFieldErrors(validationErrors);
     if (Object.keys(validationErrors).length > 0) {
       setSubmitErr("Please amend the highlighted fields.");
@@ -429,7 +442,7 @@ export function JobFormPage() {
     setSubmitting(true);
 
     let submitRouteEstimate = routeEstimate;
-    if (!submitRouteEstimate && validStops.length > 0) {
+    if (!submitRouteEstimate && (!selectedRoute || validStops.length > 0)) {
       try {
         submitRouteEstimate = await fetchRouteEstimate();
         setRouteEstimate(submitRouteEstimate);
@@ -448,10 +461,6 @@ export function JobFormPage() {
     const submitTotalMins = hasManualDeliveryTimes
       ? loadingMins + manualTravelMins + manualUnloadingMins
       : submitTimingCalc?.totalMins || (submitTravelMins ? loadingMins + submitTravelMins + unloadingMins : null);
-    const submitEtaPreview = submitRouteEstimate?.durationMins
-      ? addMinutes(routeStartTime, submitRouteEstimate.durationMins, 0)
-      : etaPreview;
-
     const calcArrivalStr = fields.delivery_arrival_time || (submitTimingCalc?.arrival
       ? new Date(submitTimingCalc.arrival.getTime() - submitTimingCalc.arrival.getTimezoneOffset() * 60000).toISOString().slice(0, 16)
       : null);
@@ -584,10 +593,10 @@ export function JobFormPage() {
                 <Field label="Collection Address" required error={fieldErrors.pickup_address}>
                   <textarea className="af-input" style={{ minHeight: 72, resize: "vertical" }} placeholder="Full collection address" value={fields.pickup_address} onChange={e => set("pickup_address", e.target.value)} aria-invalid={Boolean(fieldErrors.pickup_address)} />
                 </Field>
-                <Field label="Arrival Date & Time" hint="When the truck reaches pickup/loading.">
+                <Field label="Collection Arrival (UK Date & Time)" hint="When the truck reaches pickup/loading. Uses UK local time." required error={fieldErrors.planned_departure}>
                   <input className="af-input" type="datetime-local" value={fields.planned_departure} onChange={e => handleArrivalChange(e.target.value)} />
                 </Field>
-                <Field label="Departure Time" hint="Same date as pickup arrival. Used for ETA and cost.">
+                <Field label="Collection Departure (UK Time)" hint="Same date as collection arrival. Used for ETA and estimated cost." required error={fieldErrors.loading_done_time}>
                   <input className="af-input" type="time" value={toInputTime(fields.loading_done_time)} onChange={e => handleRouteDepartureChange(e.target.value)} />
                 </Field>
                 <Field label={<>Delivery Address <span style={{ fontWeight: 700, fontSize: "0.72rem", color: "#2563eb", background: "#eff6ff", border: "1px solid #bfdbfe", borderRadius: 20, padding: "1px 8px", marginLeft: 6, verticalAlign: "middle" }}>Stop 1</span></>} required error={fieldErrors.drop_address}>
@@ -599,10 +608,10 @@ export function JobFormPage() {
                   )}
                   <textarea className="af-input" style={{ minHeight: 72, resize: "vertical" }} placeholder="Full delivery address" value={fields.drop_address} onChange={e => set("drop_address", e.target.value)} aria-invalid={Boolean(fieldErrors.drop_address)} />
                 </Field>
-                <Field label="Delivery Arrival Date & Time" hint="When the truck reaches the delivery point. Auto-calculated if left blank.">
+                <Field label="Delivery Arrival (UK Date & Time)" hint="When the truck reaches the delivery point. Auto-calculated if left blank." error={fieldErrors.delivery_arrival_time}>
                   <input className="af-input" type="datetime-local" value={fields.delivery_arrival_time} onChange={e => set("delivery_arrival_time", e.target.value)} />
                 </Field>
-                <Field label="Delivery Departure Time" hint="Same date as delivery arrival. Auto-calculated if left blank.">
+                <Field label="Delivery Departure (UK Time)" hint="Same date as delivery arrival. Auto-calculated if left blank." error={fieldErrors.delivery_departure_time}>
                   <input className="af-input" type="time" value={toInputTime(fields.delivery_departure_time)} onChange={e => handleDeliveryDepartureChange(e.target.value)} />
                 </Field>
               </div>
@@ -630,6 +639,7 @@ export function JobFormPage() {
                     No intermediate stops. Click "Add stop" to include waypoints, additional pickups, or delivery stops.
                   </p>
                 )}
+                {fieldErrors.stops && <p className="af-field-error">{fieldErrors.stops}</p>}
                 {stops.map((stop, i) => (
                   <div key={i} style={{ border: "1px solid #e2e8f0", borderRadius: 10, padding: "14px 16px", marginBottom: 10, background: "#f8fafc", position: "relative" }}>
                     <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
@@ -789,6 +799,12 @@ export function JobFormPage() {
                       <span>Fleet ({fmtMins(estimatedTotalMins)} @ {fmtGBP(costCalc.fleetCostPerHour)}/hr)</span>
                       <strong>{fmtGBP(costCalc.fleetCost)}</strong>
                     </div>
+                    {costCalc.tollCost > 0 && (
+                      <div className="job-economics-row">
+                        <span>Route Toll Estimate</span>
+                        <strong>{fmtGBP(costCalc.tollCost)}</strong>
+                      </div>
+                    )}
                     <div className="job-economics-row total">
                       <span>Total Cost</span>
                       <strong>{fmtGBP(costCalc.totalCost)}</strong>
@@ -799,7 +815,7 @@ export function JobFormPage() {
                     </div>
                     {freightValue > 0 && (
                       <div className={`job-economics-row profit ${profitLoss >= 0 ? "profit-pos" : "profit-neg"}`}>
-                        <span>{profitLoss >= 0 ? "Profit" : "Loss"}</span>
+                        <span>Estimated {profitLoss >= 0 ? "Profit" : "Loss"}</span>
                         <strong>{profitLoss >= 0 ? "+" : "-"}{fmtGBP(Math.abs(profitLoss))}</strong>
                       </div>
                     )}

@@ -325,16 +325,23 @@ export function JobDetailPage() {
                 <div className="detail-grid">
                   <DetailField label="Pickup Address"  value={data.route.pickupAddress || data.route.from} />
                   <DetailField label="Drop Address"    value={data.route.dropAddress || data.route.to} />
-                  <DetailField label="Planned Departure" value={data.schedule.plannedDeparture} />
+                  <DetailField label="Collection Arrival (UK)" value={data.schedule.collectionArrival} />
+                  <DetailField label="Actual Collection Arrival (UK)" value={data.schedule.actualCollectionArrival} />
+                  <DetailField label="Collection Departure (UK)" value={data.schedule.collectionDeparture} />
+                  <DetailField label="Planned Delivery Arrival (UK)" value={data.schedule.plannedDeliveryArrival} />
+                  <DetailField label="Planned Delivery Departure (UK)" value={data.schedule.plannedDeliveryDeparture} />
                   <DetailField label="Delivery Deadline" value={data.schedule.deliveryDeadline} />
-                  <DetailField label="ETA"             value={data.schedule.eta} />
-                  <DetailField label="Actual Departure" value={data.schedule.actualDeparture} />
-                  <DetailField label="Actual Arrival"  value={data.schedule.actualArrival} />
+                  <DetailField label="Current ETA (UK)" value={data.schedule.eta} />
+                  <DetailField label="Actual Collection Departure (UK)" value={data.schedule.actualDeparture} />
+                  <DetailField label="Actual Delivery Arrival (UK)" value={data.schedule.actualArrival} />
                   {data.schedule.dockWindow !== "—" && (
                     <DetailField label="Dock Window" value={data.schedule.dockWindow} />
                   )}
                   {data.route.distanceKm && (
                     <DetailField label="Distance" value={`${Math.round(data.route.distanceKm * 0.621371)} mi`} />
+                  )}
+                  {data.economics?.tollCost > 0 && (
+                    <DetailField label="Route Toll Estimate" value={`£${Number(data.economics.tollCost).toFixed(2)}`} />
                   )}
                 </div>
               </SectionCard>
@@ -608,6 +615,18 @@ export function JobDetailPage() {
                           <div>
                             <span style={{ fontSize: "0.72rem", color: "#64748b", fontWeight: 700, textTransform: "uppercase" }}>Planned Arrival</span>
                             <p style={{ margin: "2px 0 0", fontSize: "0.84rem", color: "#334155" }}>{stop.plannedArrival}</p>
+                          </div>
+                          <div>
+                            <span style={{ fontSize: "0.72rem", color: "#64748b", fontWeight: 700, textTransform: "uppercase" }}>Planned Departure</span>
+                            <p style={{ margin: "2px 0 0", fontSize: "0.84rem", color: "#334155" }}>{stop.plannedDeparture}</p>
+                          </div>
+                          <div>
+                            <span style={{ fontSize: "0.72rem", color: "#64748b", fontWeight: 700, textTransform: "uppercase" }}>Actual Arrival</span>
+                            <p style={{ margin: "2px 0 0", fontSize: "0.84rem", color: "#334155" }}>{stop.actualArrival}</p>
+                          </div>
+                          <div>
+                            <span style={{ fontSize: "0.72rem", color: "#64748b", fontWeight: 700, textTransform: "uppercase" }}>Actual Departure</span>
+                            <p style={{ margin: "2px 0 0", fontSize: "0.84rem", color: "#334155" }}>{stop.actualDeparture}</p>
                           </div>
                           {stop.notes !== "—" && (
                             <div>

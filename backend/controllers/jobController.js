@@ -3,28 +3,32 @@ const { emitDriverChatMessage, emitDriverJobAssigned, emitJobUpdate } = require(
 const { logActivity, requireDeleteReason } = require("../utils/auditLogger");
 const { getSettingsMap } = require("./settingsController");
 const maintenanceController = require("./maintenanceController");
+const {
+  addWallMinutes,
+  dateTimeKey,
+  fmtUkDateTime,
+  fmtUkTime,
+  isDateTimeKey,
+  ukNowDateTimeKey,
+  wallMinutesBetween
+} = require("../utils/jobDateTimes");
 
 function fmtDate(d) {
   if (!d) return "—";
   return new Date(d).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" });
 }
 function fmtDateTime(d) {
-  if (!d) return "—";
-  return new Date(d).toLocaleString("en-GB", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" });
+  return fmtUkDateTime(d);
 }
 function fmtAmount(n) {
   if (n == null) return "—";
   return `£${Number(n).toLocaleString("en-GB", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 function rawDateTime(d) {
-  if (!d) return "";
-  const date = new Date(d);
-  const offsetMs = date.getTimezoneOffset() * 60000;
-  return new Date(date.getTime() - offsetMs).toISOString().slice(0, 16);
+  return dateTimeKey(d);
 }
 function fmtTime(d) {
-  if (!d) return "—";
-  return new Date(d).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" });
+  return fmtUkTime(d);
 }
 const dispatchTone = { active: "success", loading: "warning", blocked: "danger", planned: "neutral", completed: "neutral" };
 const priorityTone = { standard: "neutral", priority: "warning", critical: "danger" };
@@ -71,13 +75,48 @@ function effectiveLoadingMins(rowOrValue) {
 }
 
 function effectiveUnloadingMins(rowOrValue) {
-  if (typeof rowOrValue === "object") {
-    if (!rowOrValue?.loading_duration_mins && Number(rowOrValue?.unloading_duration_mins) === 120) {
-      return DEFAULT_UNLOADING_MINS;
-    }
-    return Number(rowOrValue?.unloading_duration_mins || DEFAULT_UNLOADING_MINS);
-  }
+  if (typeof rowOrValue === "object") return Number(rowOrValue?.unloading_duration_mins || DEFAULT_UNLOADING_MINS);
   return Number(rowOrValue || DEFAULT_UNLOADING_MINS);
+}
+
+function optionalNonNegativeNumber(value) {
+  if (value === "" || value == null) return null;
+  const number = Number(value);
+  return Number.isFinite(number) && number >= 0 ? number : null;
+}
+
+function validateJobTiming(body) {
+  const fields = [
+    ["Collection arrival", body.planned_departure],
+    ["Collection departure", body.loading_done_time],
+    ["Delivery arrival", body.calculated_arrival],
+    ["Delivery departure", body.calculated_unload_end],
+    ["Delivery deadline", body.delivery_deadline]
+  ];
+  for (const [label, value] of fields) {
+    if (value && !isDateTimeKey(value)) return `${label} must contain a valid UK date and time.`;
+  }
+  const ordered = [
+    ["Collection departure cannot be before collection arrival.", body.planned_departure, body.loading_done_time],
+    ["Delivery arrival cannot be before collection departure.", body.loading_done_time, body.calculated_arrival],
+    ["Delivery departure cannot be before delivery arrival.", body.calculated_arrival, body.calculated_unload_end]
+  ];
+  for (const [message, start, end] of ordered) {
+    if (start && end && wallMinutesBetween(start, end) < 0) return message;
+  }
+  for (const [index, stop] of (Array.isArray(body.stops) ? body.stops : []).entries()) {
+    if (stop.planned_arrival && !isDateTimeKey(stop.planned_arrival)) return `Stop ${index + 2} arrival must contain a valid UK date and time.`;
+    if (stop.planned_departure && !isDateTimeKey(stop.planned_departure)) return `Stop ${index + 2} departure must contain a valid UK date and time.`;
+    if (stop.planned_arrival && stop.planned_departure && wallMinutesBetween(stop.planned_arrival, stop.planned_departure) < 0) {
+      return `Stop ${index + 2} departure cannot be before its arrival.`;
+    }
+  }
+  const loading = optionalNonNegativeNumber(body.loading_duration_mins);
+  const unloading = optionalNonNegativeNumber(body.unloading_duration_mins);
+  if (body.loading_duration_mins != null && (loading == null || loading < 1)) return "Loading duration must be at least 1 minute.";
+  if (body.unloading_duration_mins != null && (unloading == null || unloading < 1)) return "Unloading duration must be at least 1 minute.";
+  if (body.freight_amount != null && optionalNonNegativeNumber(body.freight_amount) == null) return "Freight amount must be zero or more.";
+  return "";
 }
 
 function trailerStatusForJob(status) {
@@ -395,21 +434,19 @@ async function backfillTiming(row, settings) {
     return row;
   }
 
-  const departure = new Date(row.loading_done_time);
-  if (Number.isNaN(departure.getTime())) return row;
+  const departure = dateTimeKey(row.loading_done_time);
+  if (!departure) return row;
 
-  const savedArrival = row.calculated_arrival ? new Date(row.calculated_arrival) : null;
-  const savedUnloadEnd = row.calculated_unload_end ? new Date(row.calculated_unload_end) : null;
+  const savedArrival = dateTimeKey(row.calculated_arrival);
+  const savedUnloadEnd = dateTimeKey(row.calculated_unload_end);
   if (
     savedArrival &&
     savedUnloadEnd &&
-    !Number.isNaN(savedArrival.getTime()) &&
-    !Number.isNaN(savedUnloadEnd.getTime()) &&
-    savedUnloadEnd >= savedArrival
+    wallMinutesBetween(savedArrival, savedUnloadEnd) >= 0
   ) {
     const loadingMins = effectiveLoadingMins(row);
     const totalJobDurationMins = row.total_job_duration_mins
-      || Math.max(0, Math.round((savedUnloadEnd.getTime() - departure.getTime()) / 60000) + loadingMins);
+      || Math.max(0, wallMinutesBetween(departure, savedUnloadEnd) + loadingMins);
 
     if (!row.total_job_duration_mins) {
       await db.query(
@@ -430,8 +467,8 @@ async function backfillTiming(row, settings) {
   const travelMins = Math.round((distanceMiles / Number(settings?.avg_speed_mph || 40)) * 60);
   const loadingMins = effectiveLoadingMins(row);
   const unloadingMins = effectiveUnloadingMins(row);
-  const calculatedArrival = new Date(departure.getTime() + travelMins * 60000);
-  const calculatedUnloadEnd = new Date(calculatedArrival.getTime() + unloadingMins * 60000);
+  const calculatedArrival = addWallMinutes(departure, travelMins);
+  const calculatedUnloadEnd = addWallMinutes(calculatedArrival, unloadingMins);
   const totalJobDurationMins = loadingMins + travelMins + unloadingMins;
 
   if (
@@ -462,7 +499,7 @@ async function backfillTiming(row, settings) {
   };
 }
 
-function calcJobEconomics(distanceKm, totalJobMins, settings, fallbackTravelMins = 0, loadingMins = DEFAULT_LOADING_MINS, unloadingMins = DEFAULT_UNLOADING_MINS) {
+function calcJobEconomics(distanceKm, totalJobMins, settings, fallbackTravelMins = 0, loadingMins = DEFAULT_LOADING_MINS, unloadingMins = DEFAULT_UNLOADING_MINS, tollCost = 0) {
   if (!distanceKm || !settings) return null;
   const distanceMiles = distanceKm * 0.621371;
   const fuelCostPerMile = (4.546 / settings.mpg) * settings.fuel_price_per_litre;
@@ -473,7 +510,8 @@ function calcJobEconomics(distanceKm, totalJobMins, settings, fallbackTravelMins
   const totalHours = totalMinutes / 60;
   const driverCost = totalHours * settings.driver_rate_per_hour;
   const fleetCost = totalHours * FLEET_COST_PER_HOUR_GBP;
-  const totalCost = fuelCost + driverCost + fleetCost;
+  const safeTollCost = Number(tollCost || 0);
+  const totalCost = fuelCost + driverCost + fleetCost + safeTollCost;
   const suggestedPrice = totalCost * (1 + settings.margin_pct / 100);
   return {
     distanceMiles: Math.round(distanceMiles * 10) / 10,
@@ -481,6 +519,7 @@ function calcJobEconomics(distanceKm, totalJobMins, settings, fallbackTravelMins
     fuelCost: Math.round(fuelCost * 100) / 100,
     driverCost: Math.round(driverCost * 100) / 100,
     fleetCost: Math.round(fleetCost * 100) / 100,
+    tollCost: Math.round(safeTollCost * 100) / 100,
     fleetCostPerHour: FLEET_COST_PER_HOUR_GBP,
     totalCost: Math.round(totalCost * 100) / 100,
     suggestedPrice: Math.round(suggestedPrice * 100) / 100,
@@ -572,6 +611,7 @@ exports.estimateRouteFromAddresses = async (req, res) => {
 
     const settingsMap = await getSettingsMap();
     const settings = { avg_speed_mph: parseFloat(settingsMap.avg_speed_mph) };
+    // Drop 1 is followed by the additional stops shown in the job planner.
     const postcodes = [pickupPostcode, dropPostcode, ...stopPostcodes];
     const points = await Promise.all(postcodes.map(postcode => lookupPostcode(postcode)));
 
@@ -584,8 +624,8 @@ exports.estimateRouteFromAddresses = async (req, res) => {
 
     res.json({
       pickupPostcode: points[0].postcode,
-      dropPostcode: points[points.length - 1].postcode,
-      stopPostcodes: points.slice(1, -1).map(point => point.postcode),
+      dropPostcode: points[1].postcode,
+      stopPostcodes: points.slice(2).map(point => point.postcode),
       stopCount: points.length - 2,
       distanceKm: estimate.distanceKm,
       distanceMiles,
@@ -616,10 +656,11 @@ exports.listJobs = async (req, res) => {
         COALESCE(SUM(dispatch_status='loading'), 0)   as loading,
         COALESCE(SUM(priority_level='critical'), 0)   as critical,
         COALESCE(SUM(driver_id IS NULL OR vehicle_id IS NULL), 0) as assignment_gaps,
-        COALESCE(SUM(eta IS NOT NULL AND eta < NOW() AND dispatch_status IN ('planned','loading','active') AND COALESCE(driver_job_status, '') NOT IN ('arrived_drop','delivered')), 0) as eta_risk,
+        COALESCE(SUM(eta IS NOT NULL AND eta < ? AND dispatch_status IN ('planned','loading','active') AND COALESCE(driver_job_status, '') NOT IN ('arrived_drop','delivered')), 0) as eta_risk,
         COALESCE(SUM(freight_amount_gbp), 0) as booked_value
        FROM trips
-       WHERE deleted_at IS NULL`
+       WHERE deleted_at IS NULL`,
+      [ukNowDateTimeKey()]
     );
 
     let where = ["1=1"];
@@ -654,6 +695,7 @@ exports.listJobs = async (req, res) => {
               t.calculated_unload_end, t.total_job_duration_mins, t.reference, t.load_id,
               c.company_name as customer_name, c.contact_name as customer_contact, c.phone as customer_phone,
               r.route_code, r.origin_hub, r.destination_hub,
+              r.toll_estimate_gbp,
               COALESCE(t.estimated_distance_km, r.distance_km) AS distance_km,
               COALESCE(t.estimated_eta_mins / 60, r.standard_eta_hours) AS standard_eta_hours,
               d.full_name as driver_name, d.phone as driver_phone, d.employee_code,
@@ -767,16 +809,20 @@ exports.listJobs = async (req, res) => {
       trailers,
       jobs: hydratedRows.map(r => {
         const stopsForTrip = stopsByTrip.get(r.id) || [];
+        const statusEventsForTrip = driverStatusEventsByTrip.get(r.id) || [];
+        const pickupArrivalEvent = statusEventsForTrip.find(event => event.status === "arrived_pickup");
+        const hasDepartureEvidence = statusEventsForTrip.some(event => ["in_transit", "arrived_drop", "delivered"].includes(event.status));
+        const hasArrivalEvidence = statusEventsForTrip.some(event => event.status === "delivered") || ["uploaded", "verified"].includes(r.pod_status);
         const pickupPostcode = extractUkPostcode(r.pickup_address || r.origin_hub);
         const lastStopId = stopsForTrip.length ? stopsForTrip[stopsForTrip.length - 1].id : null;
         const fallbackTravelMins = r.standard_eta_hours ? Math.round(Number(r.standard_eta_hours) * 60) : 0;
         const loadingMins = effectiveLoadingMins(r);
         const unloadingMins = effectiveUnloadingMins(r);
-        const econ = calcJobEconomics(r.distance_km, r.total_job_duration_mins, settings, fallbackTravelMins, loadingMins, unloadingMins);
+        const econ = calcJobEconomics(r.distance_km, r.total_job_duration_mins, settings, fallbackTravelMins, loadingMins, unloadingMins, r.toll_estimate_gbp);
         const totalJobDurationMins = r.total_job_duration_mins || econ?.totalMins || null;
         const freightValue = Number(r.freight_amount_gbp || 0);
-        const profitLossValue = econ ? freightValue - econ.totalCost : null;
-        const driverTimeline = (driverStatusEventsByTrip.get(r.id) || []).map(event => ({
+        const profitLossValue = econ && freightValue > 0 ? freightValue - econ.totalCost : null;
+        const driverTimeline = statusEventsForTrip.map(event => ({
           id: event.id,
           status: event.status,
           label: driverStatusLabel[event.status] || event.status,
@@ -836,6 +882,8 @@ exports.listJobs = async (req, res) => {
           trailerAssigned: Boolean(r.trailer_registration),
           departure: fmtDateTime(r.planned_departure),
           departureRaw: rawDateTime(r.planned_departure),
+          collectionArrivedAt: pickupArrivalEvent ? fmtDateTime(pickupArrivalEvent.created_at) : "—",
+          collectionArrivedAtRaw: pickupArrivalEvent ? rawDateTime(pickupArrivalEvent.created_at) : "",
           eta: fmtDateTime(r.eta),
           etaRaw: rawDateTime(r.eta),
           etaTime: fmtTime(r.eta),
@@ -844,11 +892,11 @@ exports.listJobs = async (req, res) => {
           hasDriverEtaUpdate: Boolean(r.eta_updated_at),
           deadline: fmtDateTime(r.delivery_deadline),
           deadlineRaw: rawDateTime(r.delivery_deadline),
-          actualDeparture: fmtDateTime(r.actual_departure),
-          actualDepartureRaw: rawDateTime(r.actual_departure),
-          actualArrival: fmtDateTime(r.actual_arrival),
-          actualArrivalRaw: rawDateTime(r.actual_arrival),
-          etaRisk: r.eta && new Date(r.eta).getTime() < Date.now() && ["planned", "loading", "active"].includes(r.dispatch_status) && !["arrived_drop", "delivered"].includes(r.driver_job_status),
+          actualDeparture: hasDepartureEvidence ? fmtDateTime(r.actual_departure) : "—",
+          actualDepartureRaw: hasDepartureEvidence ? rawDateTime(r.actual_departure) : "",
+          actualArrival: hasArrivalEvidence ? fmtDateTime(r.actual_arrival) : "—",
+          actualArrivalRaw: hasArrivalEvidence ? rawDateTime(r.actual_arrival) : "",
+          etaRisk: Boolean(r.eta) && dateTimeKey(r.eta) < ukNowDateTimeKey() && ["planned", "loading", "active"].includes(r.dispatch_status) && !["arrived_drop", "delivered"].includes(r.driver_job_status),
           primaryDropStatus: r.primary_drop_status || "pending",
           primaryDropStatusLabel: stopStatusLabel[r.primary_drop_status] || "Pending",
           primaryDropArrivedAt: fmtDateTime(r.primary_drop_arrived_at),
@@ -1009,9 +1057,9 @@ exports.updateJobAssignment = async (req, res) => {
 
     if (driverChanged && driverId) {
       await db.query(
-        `INSERT INTO driver_job_status_events (trip_id, driver_id, status, reason, source)
-         VALUES (?, ?, 'offered', 'Job offered by dispatch', 'dispatch')`,
-        [id, driverId]
+        `INSERT INTO driver_job_status_events (trip_id, driver_id, status, reason, source, created_at)
+         VALUES (?, ?, 'offered', 'Job offered by dispatch', 'dispatch', ?)`,
+        [id, driverId, ukNowDateTimeKey()]
       );
 
       const [[assignedJob]] = await db.query(
@@ -1134,6 +1182,14 @@ exports.getJobById = async (req, res) => {
        ORDER BY e.expense_at DESC`,
       [id]
     );
+    const [[actualEvidence]] = await db.query(
+      `SELECT
+         COALESCE(SUM(status IN ('in_transit','arrived_drop','delivered')), 0) AS departure_events,
+         COALESCE(SUM(status='delivered'), 0) AS arrival_events,
+         MIN(CASE WHEN status='arrived_pickup' THEN created_at END) AS collection_arrived_at
+       FROM driver_job_status_events WHERE trip_id=?`,
+      [id]
+    );
     const [defects] = j.vehicle_id ? await db.query(
       `SELECT * FROM defect_reports
        WHERE vehicle_id = ?
@@ -1162,8 +1218,8 @@ exports.getJobById = async (req, res) => {
         driver_id: j.driver_id,
         vehicle_id: j.vehicle_id,
         trailer_id: j.trailer_id,
-        planned_departure: j.planned_departure ? new Date(j.planned_departure).toISOString().slice(0, 16) : "",
-        delivery_deadline: j.delivery_deadline ? new Date(j.delivery_deadline).toISOString().slice(0, 16) : ""
+        planned_departure: rawDateTime(j.planned_departure),
+        delivery_deadline: rawDateTime(j.delivery_deadline)
       },
       driverExecution: {
         status: driverStatus,
@@ -1199,10 +1255,14 @@ exports.getJobById = async (req, res) => {
       },
 
       schedule: {
-        plannedDeparture: fmtDateTime(j.planned_departure),
+        collectionArrival: fmtDateTime(j.planned_departure),
+        actualCollectionArrival: fmtDateTime(actualEvidence.collection_arrived_at),
+        collectionDeparture: fmtDateTime(j.loading_done_time),
+        plannedDeliveryArrival: fmtDateTime(j.calculated_arrival || j.eta),
+        plannedDeliveryDeparture: fmtDateTime(j.calculated_unload_end),
         eta: fmtDateTime(j.eta),
-        actualDeparture: fmtDateTime(j.actual_departure),
-        actualArrival: fmtDateTime(j.actual_arrival),
+        actualDeparture: Number(actualEvidence.departure_events) > 0 ? fmtDateTime(j.actual_departure) : "—",
+        actualArrival: Number(actualEvidence.arrival_events) > 0 || ["uploaded", "verified"].includes(j.pod_status) ? fmtDateTime(j.actual_arrival) : "—",
         deliveryDeadline: fmtDateTime(j.delivery_deadline),
         dockWindow: j.dock_window || "—"
       },
@@ -1221,7 +1281,7 @@ exports.getJobById = async (req, res) => {
       dispatcherNotes: j.dispatcher_notes || "—",
 
       timing: {
-        loadingDoneTime: j.loading_done_time ? new Date(j.loading_done_time).toISOString().slice(0, 16) : "",
+        loadingDoneTime: rawDateTime(j.loading_done_time),
         loadingDurationMins: effectiveLoadingMins(j),
         unloadingDurationMins: effectiveUnloadingMins(j),
         calculatedArrival: rawDateTime(j.calculated_arrival),
@@ -1231,16 +1291,16 @@ exports.getJobById = async (req, res) => {
 
       economics: (() => {
         const fallbackTravelMins = j.standard_eta_hours ? Math.round(Number(j.standard_eta_hours) * 60) : 0;
-        const econ = calcJobEconomics(j.distance_km, j.total_job_duration_mins, settings, fallbackTravelMins, effectiveLoadingMins(j), effectiveUnloadingMins(j));
+        const econ = calcJobEconomics(j.distance_km, j.total_job_duration_mins, settings, fallbackTravelMins, effectiveLoadingMins(j), effectiveUnloadingMins(j), j.toll_estimate_gbp);
         if (!econ) return null;
         const freightValue = Number(j.freight_amount_gbp || 0);
-        const profitLossValue = freightValue - econ.totalCost;
+        const profitLossValue = freightValue > 0 ? freightValue - econ.totalCost : null;
         return {
           ...econ,
           freightValue,
           profitLossValue,
-          profitLoss: fmtAmount(Math.abs(profitLossValue)),
-          isProfitable: profitLossValue >= 0,
+          profitLoss: profitLossValue == null ? null : fmtAmount(Math.abs(profitLossValue)),
+          isProfitable: profitLossValue == null ? null : profitLossValue >= 0,
           settings: {
             fuelPricePerLitre: settings.fuel_price_per_litre,
             mpg: settings.mpg,
@@ -1286,6 +1346,9 @@ exports.getJobById = async (req, res) => {
         plannedDeparture: fmtDateTime(s.planned_departure),
         plannedDepartureRaw: rawDateTime(s.planned_departure),
         actualArrival: fmtDateTime(s.actual_arrival),
+        actualArrivalRaw: rawDateTime(s.actual_arrival),
+        actualDeparture: fmtDateTime(s.actual_departure),
+        actualDepartureRaw: rawDateTime(s.actual_departure),
         status: s.status,
         tone: stopStatusTone[s.status] || "neutral",
         notes: s.notes || "—"
@@ -1340,6 +1403,12 @@ exports.createJob = async (req, res) => {
       stops = []
     } = req.body;
 
+    const timingError = validateJobTiming(req.body);
+    if (timingError) {
+      await conn.rollback();
+      return res.status(400).json({ message: timingError });
+    }
+
     let resolvedClientName = client_name || null;
     if (customer_id && !resolvedClientName) {
       const [[customer]] = await conn.query(`SELECT company_name FROM customers WHERE id = ?`, [customer_id]);
@@ -1385,11 +1454,11 @@ exports.createJob = async (req, res) => {
     const routeStartTime = loading_done_time || planned_departure;
     let eta = null;
     if (estimated_eta_mins && routeStartTime) {
-      eta = new Date(new Date(routeStartTime).getTime() + Number(estimated_eta_mins) * 60000);
+      eta = addWallMinutes(routeStartTime, Number(estimated_eta_mins));
     } else if (route_id && routeStartTime) {
       const [[route]] = await conn.query(`SELECT standard_eta_hours FROM routes WHERE id = ?`, [route_id]);
       if (route) {
-        eta = new Date(new Date(routeStartTime).getTime() + route.standard_eta_hours * 3600 * 1000);
+        eta = addWallMinutes(routeStartTime, Number(route.standard_eta_hours) * 60);
       }
     }
 
@@ -1428,7 +1497,7 @@ exports.createJob = async (req, res) => {
         vehicle_type_requirement || null,
         delivery_deadline || null,
         load_description || null,
-        freight_amount || null,
+        optionalNonNegativeNumber(freight_amount) ?? 0,
         special_instructions || null,
         dispatcher_notes || null,
         driver_id ? "offered" : null,
@@ -1439,7 +1508,7 @@ exports.createJob = async (req, res) => {
         estimated_eta_mins ? Number(estimated_eta_mins) : null,
         calculated_arrival || null,
         calculated_unload_end || null,
-        total_job_duration_mins ? Number(total_job_duration_mins) : null,
+        optionalNonNegativeNumber(total_job_duration_mins),
         reference || null,
         load_id || null
       ]
@@ -1523,6 +1592,12 @@ exports.updateJob = async (req, res) => {
       stops = []
     } = req.body;
 
+    const timingError = validateJobTiming(req.body);
+    if (timingError) {
+      await conn.rollback();
+      return res.status(400).json({ message: timingError });
+    }
+
     let resolvedClientName = client_name || null;
     if (customer_id && !resolvedClientName) {
       const [[customer]] = await conn.query(`SELECT company_name FROM customers WHERE id = ?`, [customer_id]);
@@ -1568,10 +1643,10 @@ exports.updateJob = async (req, res) => {
     const routeStartTime = loading_done_time || planned_departure;
     let eta = null;
     if (estimated_eta_mins && routeStartTime) {
-      eta = new Date(new Date(routeStartTime).getTime() + Number(estimated_eta_mins) * 60000);
+      eta = addWallMinutes(routeStartTime, Number(estimated_eta_mins));
     } else if (route_id && routeStartTime) {
       const [[route]] = await conn.query(`SELECT standard_eta_hours FROM routes WHERE id = ?`, [route_id]);
-      if (route) eta = new Date(new Date(routeStartTime).getTime() + route.standard_eta_hours * 3600 * 1000);
+      if (route) eta = addWallMinutes(routeStartTime, Number(route.standard_eta_hours) * 60);
     }
 
     // Reset old vehicle if changed
@@ -1627,7 +1702,7 @@ exports.updateJob = async (req, res) => {
         valueOrExisting("vehicle_type_requirement", null),
         delivery_deadline || null,
         load_description || null,
-        freight_amount || null,
+        optionalNonNegativeNumber(freight_amount) ?? 0,
         valueOrExisting("special_instructions", null),
         valueOrExisting("dispatcher_notes", null),
         String(existing.driver_id || "") !== String(driver_id || "") && driver_id ? 1 : 0,
@@ -1638,7 +1713,7 @@ exports.updateJob = async (req, res) => {
         estimated_eta_mins ? Number(estimated_eta_mins) : null,
         calculated_arrival || null,
         calculated_unload_end || null,
-        total_job_duration_mins ? Number(total_job_duration_mins) : null,
+        optionalNonNegativeNumber(total_job_duration_mins),
         reference || null,
         load_id || null,
         id
@@ -1663,16 +1738,12 @@ exports.updateJob = async (req, res) => {
 
     // Recalc ETA with stop buffer only when an exact postcode estimate was not supplied.
     if (estimated_eta_mins && routeStartTime) {
-      eta = new Date(new Date(routeStartTime).getTime() + Number(estimated_eta_mins) * 60 * 1000);
+      eta = addWallMinutes(routeStartTime, Number(estimated_eta_mins));
       await conn.query(`UPDATE trips SET eta = ? WHERE id = ? AND deleted_at IS NULL`, [eta, id]);
     } else if (route_id && routeStartTime && validStops.length > 0) {
       const [[route]] = await conn.query(`SELECT standard_eta_hours FROM routes WHERE id = ?`, [route_id]);
       if (route) {
-        eta = new Date(
-          new Date(routeStartTime).getTime()
-          + route.standard_eta_hours * 3600 * 1000
-          + validStops.length * 30 * 60 * 1000
-        );
+        eta = addWallMinutes(routeStartTime, Number(route.standard_eta_hours) * 60 + validStops.length * 30);
         await conn.query(`UPDATE trips SET eta = ? WHERE id = ? AND deleted_at IS NULL`, [eta, id]);
       }
     }
@@ -1732,19 +1803,31 @@ exports.updateJobStatus = async (req, res) => {
     await ensureSoftDeleteSchema();
 
     const { id } = req.params;
-    const { status, reason } = req.body;
+    const { status, reason, actual_departure, actual_arrival } = req.body;
 
     const validStatuses = ["planned", "loading", "active", "blocked", "completed", "failed", "cancelled"];
     if (!validStatuses.includes(status)) {
       return res.status(400).json({ message: "Invalid status value." });
     }
 
-    const [[job]] = await db.query(`SELECT id, dispatch_status, vehicle_id, trailer_id FROM trips WHERE id = ? AND deleted_at IS NULL`, [id]);
+    const [[job]] = await db.query(`SELECT id, dispatch_status, vehicle_id, trailer_id, actual_departure FROM trips WHERE id = ? AND deleted_at IS NULL`, [id]);
     if (!job) return res.status(404).json({ message: "Job not found." });
 
     const updates = { dispatch_status: status };
-    if (status === "active")    updates.actual_departure = new Date();
-    if (status === "completed") { updates.actual_arrival = new Date(); updates.pod_status = "pending"; }
+    // Admin status changes do not invent operational timestamps. Actual times
+    // come from driver actions, or may be supplied explicitly as UK time.
+    if (actual_departure) {
+      if (!isDateTimeKey(actual_departure)) return res.status(400).json({ message: "Actual departure must contain a valid UK date and time." });
+      updates.actual_departure = dateTimeKey(actual_departure);
+    }
+    if (actual_arrival) {
+      if (!isDateTimeKey(actual_arrival)) return res.status(400).json({ message: "Actual arrival must contain a valid UK date and time." });
+      const departure = actual_departure || job.actual_departure;
+      if (departure && wallMinutesBetween(departure, actual_arrival) < 0) {
+        return res.status(400).json({ message: "Actual arrival cannot be before actual departure." });
+      }
+      updates.actual_arrival = dateTimeKey(actual_arrival);
+    }
     if (status === "blocked")   updates.cancellation_reason = reason || null;
     if (status === "failed")    updates.cancellation_reason = reason || null;
     if (status === "cancelled") updates.cancellation_reason = reason || null;
@@ -1831,6 +1914,11 @@ exports.addJobStop = async (req, res) => {
     const { address, stop_type, contact_name, contact_phone, planned_arrival, planned_departure, notes } = req.body;
 
     if (!address?.trim()) return res.status(400).json({ message: "Stop address is required." });
+    if (planned_arrival && !isDateTimeKey(planned_arrival)) return res.status(400).json({ message: "Stop arrival must contain a valid UK date and time." });
+    if (planned_departure && !isDateTimeKey(planned_departure)) return res.status(400).json({ message: "Stop departure must contain a valid UK date and time." });
+    if (planned_arrival && planned_departure && wallMinutesBetween(planned_arrival, planned_departure) < 0) {
+      return res.status(400).json({ message: "Stop departure cannot be before its arrival." });
+    }
 
     const [[job]] = await db.query(
       `SELECT t.id, t.trip_code, t.driver_id, t.route_id, t.planned_departure, t.loading_done_time,
@@ -1858,17 +1946,13 @@ exports.addJobStop = async (req, res) => {
     // Recalc ETA: exact postcode estimate when present, otherwise base route ETA + 30 min per stop.
     const routeStartTime = job.loading_done_time || job.planned_departure;
     if (job.estimated_eta_mins && routeStartTime) {
-      const newEta = new Date(new Date(routeStartTime).getTime() + Number(job.estimated_eta_mins) * 60 * 1000);
+      const newEta = addWallMinutes(routeStartTime, Number(job.estimated_eta_mins));
       await db.query(`UPDATE trips SET eta = ? WHERE id = ?`, [newEta, id]);
     } else if (job.route_id && routeStartTime && job.standard_eta_hours != null) {
       const [[{ stopCount }]] = await db.query(
         `SELECT COUNT(*) as stopCount FROM job_stops WHERE trip_id = ?`, [id]
       );
-      const newEta = new Date(
-        new Date(routeStartTime).getTime()
-        + job.standard_eta_hours * 3600 * 1000
-        + stopCount * 30 * 60 * 1000
-      );
+      const newEta = addWallMinutes(routeStartTime, Number(job.standard_eta_hours) * 60 + stopCount * 30);
       await db.query(`UPDATE trips SET eta = ? WHERE id = ?`, [newEta, id]);
     }
 
@@ -1936,17 +2020,13 @@ exports.deleteJobStop = async (req, res) => {
     // Recalc ETA
     const routeStartTime = job.loading_done_time || job.planned_departure;
     if (job.estimated_eta_mins && routeStartTime) {
-      const newEta = new Date(new Date(routeStartTime).getTime() + Number(job.estimated_eta_mins) * 60 * 1000);
+      const newEta = addWallMinutes(routeStartTime, Number(job.estimated_eta_mins));
       await db.query(`UPDATE trips SET eta = ? WHERE id = ?`, [newEta, id]);
     } else if (job.route_id && routeStartTime && job.standard_eta_hours != null) {
       const [[{ stopCount }]] = await db.query(
         `SELECT COUNT(*) as stopCount FROM job_stops WHERE trip_id = ?`, [id]
       );
-      const newEta = new Date(
-        new Date(routeStartTime).getTime()
-        + job.standard_eta_hours * 3600 * 1000
-        + stopCount * 30 * 60 * 1000
-      );
+      const newEta = addWallMinutes(routeStartTime, Number(job.standard_eta_hours) * 60 + stopCount * 30);
       await db.query(`UPDATE trips SET eta = ? WHERE id = ?`, [newEta, id]);
     }
 
@@ -1988,7 +2068,11 @@ exports.getJobNotes = async (req, res) => {
       `SELECT id, note_text, author_name, created_at FROM job_notes WHERE job_id=? ORDER BY created_at ASC`,
       [id]
     );
-    res.json({ notes });
+    res.json({ notes: notes.map(note => ({
+      ...note,
+      createdAtRaw: rawDateTime(note.created_at),
+      createdAtLabel: fmtDateTime(note.created_at)
+    })) });
   } catch (err) {
     res.status(500).json({ message: "Could not load job notes.", error: err.message });
   }
@@ -2004,8 +2088,8 @@ exports.addJobNote = async (req, res) => {
     const [[job]] = await db.query(`SELECT id FROM trips WHERE id=? AND deleted_at IS NULL`, [id]);
     if (!job) return res.status(404).json({ message: "Job not found." });
     const [result] = await db.query(
-      `INSERT INTO job_notes (job_id, note_text, author_name) VALUES (?, ?, ?)`,
-      [id, noteText, authorName]
+      `INSERT INTO job_notes (job_id, note_text, author_name, created_at) VALUES (?, ?, ?, ?)`,
+      [id, noteText, authorName, ukNowDateTimeKey()]
     );
     res.status(201).json({ message: "Note added.", id: result.insertId });
   } catch (err) {
@@ -2125,3 +2209,6 @@ exports.replaceJobVehicle = async (req, res) => {
     conn.release();
   }
 };
+
+// Pure rules exposed for regression tests; no route uses this property.
+exports.__test = { calcJobEconomics, validateJobTiming };

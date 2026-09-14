@@ -2,6 +2,7 @@ const db = require("../db/connection");
 const { verifySessionToken } = require("./authController");
 const { emitDriverChatMessage, emitDriverLocationUpdate, emitJobUpdate } = require("../realtime");
 const { buildChangeSet, logActivity } = require("../utils/auditLogger");
+const { dateTimeKey, fmtUkDateTime, fmtUkTime, isDateTimeKey, ukNowDateTimeKey } = require("../utils/jobDateTimes");
 
 function fmtDate(d) {
   if (!d) return "—";
@@ -14,11 +15,10 @@ function rawDate(d) {
   return new Date(date.getTime() - offsetMs).toISOString().slice(0, 10);
 }
 function fmtDateTime(d) {
-  if (!d) return "—";
-  return new Date(d).toLocaleString("en-GB", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" });
+  return fmtUkDateTime(d);
 }
 function isoDateTime(d) {
-  return d ? new Date(d).toISOString() : null;
+  return dateTimeKey(d) || null;
 }
 function fmtAmount(n) {
   if (n == null) return "—";
@@ -514,12 +514,10 @@ function isReturnStop(stop, pickupPostcode, lastStopId) {
 function combineEtaDateAndTime(value, job) {
   const raw = String(value || "").trim();
   const timeOnlyMatch = raw.match(/^([01]\d|2[0-3]):([0-5]\d)$/);
-  if (!timeOnlyMatch) return new Date(raw);
+  if (!timeOnlyMatch) return isDateTimeKey(raw) ? dateTimeKey(raw) : "";
 
-  const base = new Date(job.eta || job.planned_departure || Date.now());
-  if (Number.isNaN(base.getTime())) return new Date(raw);
-  base.setHours(Number(timeOnlyMatch[1]), Number(timeOnlyMatch[2]), 0, 0);
-  return base;
+  const base = dateTimeKey(job.eta || job.planned_departure) || ukNowDateTimeKey();
+  return `${base.slice(0, 10)}T${timeOnlyMatch[1]}:${timeOnlyMatch[2]}`;
 }
 
 async function getDriverJobs(driverId) {
@@ -755,15 +753,15 @@ exports.updateMyJobStatus = async (req, res) => {
     }
     if (status === "in_transit") {
       updates.push("actual_departure=COALESCE(actual_departure, ?)");
-      values.push(new Date());
+      values.push(ukNowDateTimeKey());
     }
     if (status === "arrived_drop") {
       updates.push("primary_drop_arrived_at=COALESCE(primary_drop_arrived_at, ?)");
-      values.push(new Date());
+      values.push(ukNowDateTimeKey());
     }
     if (status === "delivered") {
       updates.push("actual_arrival=COALESCE(actual_arrival, ?)", "pod_status='uploaded'");
-      values.push(new Date());
+      values.push(ukNowDateTimeKey());
     }
     if (status === "failed_delivery") {
       updates.push("failed_delivery_reason=?");
@@ -779,9 +777,9 @@ exports.updateMyJobStatus = async (req, res) => {
 
     if (changedStatus) {
       await db.query(
-        `INSERT INTO driver_job_status_events (trip_id, driver_id, status, reason, source)
-         VALUES (?, ?, ?, ?, 'driver')`,
-        [jobId, driver.id, status, reason || null]
+        `INSERT INTO driver_job_status_events (trip_id, driver_id, status, reason, source, created_at)
+         VALUES (?, ?, ?, ?, 'driver', ?)`,
+        [jobId, driver.id, status, reason || null, ukNowDateTimeKey()]
       );
     }
 
@@ -848,13 +846,14 @@ exports.submitMyProofOfDelivery = async (req, res) => {
       return res.status(400).json({ message: `Complete ${incompleteDeliveryStops.length} delivery stop(s) before submitting POD.` });
     }
     if ((job.primary_drop_status || "pending") !== "completed") {
+      const completedAt = ukNowDateTimeKey();
       await db.query(
         `UPDATE trips
          SET primary_drop_status='completed',
-             primary_drop_arrived_at=COALESCE(primary_drop_arrived_at, NOW()),
-             primary_drop_completed_at=COALESCE(primary_drop_completed_at, NOW())
+             primary_drop_arrived_at=COALESCE(primary_drop_arrived_at, ?),
+             primary_drop_completed_at=COALESCE(primary_drop_completed_at, ?)
          WHERE id=? AND driver_id=?`,
-        [jobId, driver.id]
+        [completedAt, completedAt, jobId, driver.id]
       );
     }
     if (!(await hasActiveShift(driver.id))) {
@@ -869,13 +868,13 @@ exports.submitMyProofOfDelivery = async (req, res) => {
       `UPDATE trips
        SET pod_signature_data=?, pod_photo_data=?, delivery_notes=?, pod_status='uploaded', driver_job_status='delivered', dispatch_status='completed', actual_arrival=COALESCE(actual_arrival, ?)
        WHERE id=? AND driver_id=?`,
-      [signatureData || null, photoData || null, deliveryNotes || null, new Date(), jobId, driver.id]
+      [signatureData || null, photoData || null, deliveryNotes || null, ukNowDateTimeKey(), jobId, driver.id]
     );
     if (job.driver_job_status !== "delivered") {
       await db.query(
-        `INSERT INTO driver_job_status_events (trip_id, driver_id, status, reason, source)
-         VALUES (?, ?, 'delivered', ?, 'driver')`,
-        [jobId, driver.id, deliveryNotes || null]
+        `INSERT INTO driver_job_status_events (trip_id, driver_id, status, reason, source, created_at)
+         VALUES (?, ?, 'delivered', ?, 'driver', ?)`,
+        [jobId, driver.id, deliveryNotes || null, ukNowDateTimeKey()]
       );
     }
     if (job.vehicle_id) {
@@ -1108,11 +1107,11 @@ exports.updateJobEta = async (req, res) => {
     if (!job) return res.status(404).json({ message: "Assigned job not found." });
 
     const etaDate = combineEtaDateAndTime(eta, job);
-    if (Number.isNaN(etaDate.getTime())) return res.status(400).json({ message: "A valid ETA is required." });
+    if (!etaDate) return res.status(400).json({ message: "A valid UK ETA is required." });
 
-    await db.query(`UPDATE trips SET eta=?, eta_updated_at=NOW() WHERE id=? AND driver_id=?`, [etaDate, jobId, driver.id]);
+    await db.query(`UPDATE trips SET eta=?, eta_updated_at=? WHERE id=? AND driver_id=?`, [etaDate, ukNowDateTimeKey(), jobId, driver.id]);
 
-    const etaTime = etaDate.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" });
+    const etaTime = fmtUkTime(etaDate);
     await createControlRoomAlert({
       title: `Driver ETA updated: ${job.trip_code}`,
       description: `${driver.full_name || "Driver"} set ETA to ${etaTime}.`,
@@ -1121,9 +1120,9 @@ exports.updateJobEta = async (req, res) => {
       tripId: jobId,
       vehicleId: job.vehicle_id || null
     });
-    emitJobUpdate({ jobId: Number(jobId), source: "driver-eta", eta: etaDate.toISOString(), etaTime });
+    emitJobUpdate({ jobId: Number(jobId), source: "driver-eta", eta: etaDate, etaTime });
 
-    res.json({ message: `ETA updated successfully for ${etaTime}.`, eta: etaDate.toISOString(), etaTime });
+    res.json({ message: `ETA updated successfully for ${etaTime}.`, eta: etaDate, etaTime });
   } catch (err) {
     res.status(500).json({ message: "ETA update error", error: err.message });
   }
@@ -1164,22 +1163,23 @@ exports.updatePrimaryDropStatus = async (req, res) => {
     const remainingDeliveryStops = openStops.filter(stop => !isReturnStop(stop, pickupPostcode, lastStop?.id || null));
     const nextDriverStatus = status === "completed" && remainingDeliveryStops.length > 0 ? "in_transit" : "arrived_drop";
 
+    const statusAt = ukNowDateTimeKey();
     await db.query(
       `UPDATE trips
        SET primary_drop_status=?,
-           primary_drop_arrived_at=IF(? IN ('arrived','completed'), COALESCE(primary_drop_arrived_at, NOW()), primary_drop_arrived_at),
-           primary_drop_completed_at=IF(?='completed', COALESCE(primary_drop_completed_at, NOW()), primary_drop_completed_at),
+           primary_drop_arrived_at=IF(? IN ('arrived','completed'), COALESCE(primary_drop_arrived_at, ?), primary_drop_arrived_at),
+           primary_drop_completed_at=IF(?='completed', COALESCE(primary_drop_completed_at, ?), primary_drop_completed_at),
            driver_job_status=?,
            dispatch_status='active'
        WHERE id=? AND driver_id=?`,
-      [status, status, status, nextDriverStatus, jobId, driver.id]
+      [status, status, statusAt, status, statusAt, nextDriverStatus, jobId, driver.id]
     );
 
     if (job.driver_job_status !== nextDriverStatus) {
       await db.query(
-        `INSERT INTO driver_job_status_events (trip_id, driver_id, status, reason, source)
-         VALUES (?, ?, ?, ?, 'driver')`,
-        [jobId, driver.id, nextDriverStatus, status === "completed" ? "Drop 1 completed; moving to next drop." : "Driver arrived at Drop 1."]
+        `INSERT INTO driver_job_status_events (trip_id, driver_id, status, reason, source, created_at)
+         VALUES (?, ?, ?, ?, 'driver', ?)`,
+        [jobId, driver.id, nextDriverStatus, status === "completed" ? "Drop 1 completed; moving to next drop." : "Driver arrived at Drop 1.", ukNowDateTimeKey()]
       );
     }
 
@@ -1220,13 +1220,14 @@ exports.updateJobStopStatus = async (req, res) => {
     );
     if (!stop) return res.status(404).json({ message: "Assigned stop not found." });
 
+    const statusAt = ukNowDateTimeKey();
     await db.query(
       `UPDATE job_stops
        SET status=?,
-           actual_arrival=IF(? IN ('arrived','completed'), COALESCE(actual_arrival, NOW()), actual_arrival),
-           actual_departure=IF(? IN ('completed','skipped'), COALESCE(actual_departure, NOW()), actual_departure)
+           actual_arrival=IF(? IN ('arrived','completed'), COALESCE(actual_arrival, ?), actual_arrival),
+           actual_departure=IF(? IN ('completed','skipped'), COALESCE(actual_departure, ?), actual_departure)
        WHERE id=? AND trip_id=?`,
-      [status, status, status, stopId, jobId]
+      [status, status, statusAt, status, statusAt, stopId, jobId]
     );
 
     if (status === "completed" || status === "skipped") {
