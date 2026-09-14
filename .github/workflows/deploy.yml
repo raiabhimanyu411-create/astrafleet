@@ -33,8 +33,11 @@ jobs:
             echo "Entering AstraFleet directory..."
             cd /var/www/astrafleet
 
-            echo "Pulling latest code..."
-            git pull --ff-only origin main
+            echo "Fetching latest code..."
+            git fetch origin main
+
+            echo "Resetting VPS code to GitHub main..."
+            git reset --hard origin/main
 
             echo "Installing dependencies..."
             npm install
