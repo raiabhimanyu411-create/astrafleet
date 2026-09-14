@@ -25,6 +25,7 @@ import { StatusPill } from "../../components/StatusPill";
 import { AdminWorkspaceLayout } from "./AdminWorkspaceLayout";
 import { MaintenanceCompliancePanel } from "./MaintenanceCompliancePanel";
 import "./AdminMaintenancePage.css";
+import { documentSubmission, filterMaintenanceDocuments } from "./maintenanceDocuments";
 
 const DEFAULT_ROAD_TAX_INTERVAL_MONTHS = 6;
 const UK_TIME_ZONE = "Europe/London";
@@ -2229,6 +2230,59 @@ function ExcelScheduleView({ data, onOpenVehicle }) {
   return isFullscreen ? createPortal(scheduleContent, document.body) : scheduleContent;
 }
 
+function MaintenanceDocuments({ documents, loading, onOpenJob }) {
+  const [type, setType] = useState("");
+  const [assetType, setAssetType] = useState("");
+  const [search, setSearch] = useState("");
+  const types = [...new Set([...allMaintenanceItems.map((item) => item.value), ...documents.map((doc) => doc.serviceType)])].filter(Boolean);
+  const filtered = filterMaintenanceDocuments(documents, type, assetType, search);
+  return (
+    <article className="content-card maintenance-documents-vault">
+      <div className="section-head">
+        <div><span className="card-label">Documents Vault</span><h2>All Vehicle & Trailer Papers</h2></div>
+        <StatusPill tone="neutral">{filtered.length} of {documents.length} records</StatusPill>
+      </div>
+      <div className="maintenance-form-grid">
+        <Field label="Document type">
+          <select className="af-select" value={type} onChange={(e) => setType(e.target.value)}>
+            <option value="">All document types</option>
+            {types.map((value) => <option key={value} value={value}>{value}</option>)}
+          </select>
+        </Field>
+        <Field label="Asset type">
+          <select className="af-select" value={assetType} onChange={(e) => setAssetType(e.target.value)}>
+            <option value="">All vehicles & trailers</option>
+            <option value="vehicle">Vehicles</option><option value="trailer">Trailers / trolleys</option>
+          </select>
+        </Field>
+        <Field label="Search papers">
+          <input className="af-input" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Registration, fleet code or bill number" />
+        </Field>
+      </div>
+      <p className="maintenance-documents-help">Submission times use UK time. Week numbers run Monday–Sunday (ISO weeks).</p>
+      <div className="maintenance-compliance-list">
+        {filtered.map((doc) => {
+          const submitted = documentSubmission(doc.documentSubmittedAtRaw);
+          return (
+            <div className="maintenance-compliance-item" key={doc.id}>
+              <StatusPill tone={doc.billStatusTone}>{doc.billStatus}</StatusPill>
+              <strong>{doc.vehicle || doc.fleetCode || doc.jobNumber} · {doc.serviceType}</strong>
+              <span>{doc.assetType === "trailer" ? "Trailer" : "Vehicle"}{doc.fleetCode ? ` · ${doc.fleetCode}` : ""}</span>
+              <p>{doc.billNumber} · Service date: {doc.serviceDate} · {doc.billAmount}</p>
+              <p>{submitted ? `Submitted: ${submitted.dateTime} · ${submitted.weekLabel}` : doc.hasAttachment ? "Submission date, time & week not recorded for this older paper." : "No attachment uploaded."}</p>
+              <div className="finance-row-actions">
+                {doc.hasAttachment && <button className="header-action-button primary" type="button" onClick={() => openJobAttachment(doc.id)}>View paper</button>}
+                <button className="header-action-button" type="button" onClick={() => onOpenJob(doc.id)}>Job details</button>
+              </div>
+            </div>
+          );
+        })}
+        {!loading && filtered.length === 0 && <p className="finance-empty">{documents.length ? "No papers match these filters." : "Papers will appear here after upload."}</p>}
+      </div>
+    </article>
+  );
+}
+
 export function AdminMaintenancePage() {
   const navigate = useNavigate();
   const loadRequestRef = useRef(0);
@@ -2736,26 +2790,11 @@ export function AdminMaintenancePage() {
 
       {activeView === "records" && (
       <section className="content-grid">
-        <article className="content-card">
-          <div className="section-head">
-            <div>
-              <span className="card-label">Documents Vault</span>
-              <h2>Bills, Invoices And Workshop Papers</h2>
-            </div>
-            <StatusPill tone="neutral">{(data?.documentsVault || []).length} docs</StatusPill>
-          </div>
-          <div className="maintenance-compliance-list">
-            {(data?.documentsVault || []).map((doc) => (
-              <button className="maintenance-compliance-item" key={doc.id} type="button" onClick={() => setDrawerJob((data?.jobs || []).find((job) => job.id === doc.id))}>
-                <StatusPill tone={doc.billStatusTone}>{doc.billStatus}</StatusPill>
-                <strong>{doc.vehicle} · {doc.serviceType}</strong>
-                <span>{doc.billAmount}</span>
-                <p>{doc.billNumber} · {doc.billDate} · {doc.hasAttachment ? "Attachment available" : "No attachment"}</p>
-              </button>
-            ))}
-            {!loading && (data?.documentsVault || []).length === 0 && <p className="finance-empty">Bills and workshop paperwork will appear here after upload.</p>}
-          </div>
-        </article>
+        <MaintenanceDocuments
+          documents={data?.documentsVault || []}
+          loading={loading}
+          onOpenJob={(id) => setDrawerJob((data?.jobs || []).find((job) => job.id === id))}
+        />
 
         <article className="content-card">
           <div className="section-head">

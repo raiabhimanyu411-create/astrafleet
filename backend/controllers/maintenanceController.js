@@ -146,12 +146,15 @@ async function mergeExactCompletedJobDuplicates() {
              final_cost_gbp=COALESCE(final_cost_gbp, ?), completed_mileage_km=COALESCE(completed_mileage_km, ?),
              next_due_mileage_km=COALESCE(next_due_mileage_km, ?), bill_number=COALESCE(bill_number, ?),
              bill_date=COALESCE(bill_date, ?), bill_amount_gbp=COALESCE(bill_amount_gbp, ?),
-             bill_notes=COALESCE(bill_notes, ?), bill_attachment_data=COALESCE(bill_attachment_data, ?),
+             bill_notes=COALESCE(bill_notes, ?),
+             document_submitted_at=IF(bill_attachment_data IS NULL, ?, document_submitted_at),
+             bill_attachment_data=COALESCE(bill_attachment_data, ?),
+             document_content_hash=SHA2(bill_attachment_data, 256),
              completion_notes=COALESCE(completion_notes, ?)
            WHERE id=?`,
           [extra.garage_name, extra.assigned_mechanic, extra.final_cost_gbp, extra.completed_mileage_km,
             extra.next_due_mileage_km, extra.bill_number, extra.bill_date, extra.bill_amount_gbp,
-            extra.bill_notes, extra.bill_attachment_data, extra.completion_notes, keeper.id]
+            extra.bill_notes, extra.document_submitted_at, extra.bill_attachment_data, extra.completion_notes, keeper.id]
         );
         await connection.query(`UPDATE maintenance_job_notes SET job_id=? WHERE job_id=?`, [keeper.id, extra.id]);
         await connection.query(`DELETE FROM maintenance_jobs WHERE id=?`, [extra.id]);
@@ -519,6 +522,14 @@ async function syncMaintenanceSchema() {
   await addColumnIfMissing("maintenance_jobs", "bill_amount_gbp", "DECIMAL(10,2) DEFAULT NULL");
   await addColumnIfMissing("maintenance_jobs", "bill_notes", "TEXT DEFAULT NULL");
   await addColumnIfMissing("maintenance_jobs", "bill_attachment_data", "LONGTEXT DEFAULT NULL");
+  await addColumnIfMissing("maintenance_jobs", "document_submitted_at", "DATETIME DEFAULT NULL");
+  await addColumnIfMissing("maintenance_jobs", "document_content_hash", "CHAR(64) DEFAULT NULL");
+  // Legacy uploads have no trustworthy submission timestamp. Seed their hash
+  // so unrelated job edits cannot turn them into newly submitted documents.
+  await db.query(`UPDATE maintenance_jobs
+    SET document_content_hash=SHA2(bill_attachment_data, 256)
+    WHERE document_content_hash IS NULL AND bill_attachment_data IS NOT NULL`);
+
   await addColumnIfMissing("maintenance_jobs", "bill_status", "ENUM('pending','approved','rejected','paid') NOT NULL DEFAULT 'pending'");
   await addColumnIfMissing("maintenance_jobs", "bill_approved_by", "VARCHAR(120) DEFAULT NULL");
   await addColumnIfMissing("maintenance_jobs", "bill_approved_at", "DATETIME DEFAULT NULL");
@@ -1202,7 +1213,10 @@ async function mergeCompletedJobDetails(jobId, job) {
        completed_mileage_km=COALESCE(?,completed_mileage_km), next_due_mileage_km=COALESCE(?,next_due_mileage_km),
        bill_number=COALESCE(?,bill_number), bill_date=COALESCE(?,bill_date),
        bill_amount_gbp=COALESCE(?,bill_amount_gbp), bill_notes=COALESCE(?,bill_notes),
-       bill_attachment_data=COALESCE(?,bill_attachment_data), completion_notes=COALESCE(?,completion_notes)
+       bill_attachment_data=COALESCE(?,bill_attachment_data),
+             document_submitted_at=IF(NULLIF(bill_attachment_data, '') IS NULL, NULL,
+               IF(SHA2(bill_attachment_data, 256) <=> document_content_hash, document_submitted_at, UTC_TIMESTAMP())),
+             document_content_hash=SHA2(bill_attachment_data, 256), completion_notes=COALESCE(?,completion_notes)
      WHERE id=?`,
     [job.due_date || null, job.garage_name, job.assigned_mechanic, job.final_cost_gbp,
       job.completed_mileage_km, job.next_due_mileage_km, job.bill_number, job.bill_date,
@@ -2101,6 +2115,7 @@ exports.getMaintenancePortal = async (_req, res) => {
              j.estimated_cost_gbp, j.labour_cost_gbp, j.parts_cost_gbp, j.final_cost_gbp,
              j.priority, j.status, j.notes, j.parts_required, j.completion_notes,
              j.completed_at, j.created_at, j.updated_at, j.service_date,
+             DATE_FORMAT(j.document_submitted_at, '%Y-%m-%dT%H:%i:%sZ') AS document_submitted_at,
              j.road_tax_interval_months, j.completed_mileage_km, j.next_due_mileage_km,
              j.bill_number, j.bill_date, j.bill_amount_gbp, j.bill_notes, j.bill_status,
              j.bill_approved_by, j.bill_approved_at, j.bill_payment_status,
@@ -2177,6 +2192,7 @@ exports.getMaintenancePortal = async (_req, res) => {
         billAmountLabel: j.bill_amount_gbp == null ? "-" : fmtAmount(j.bill_amount_gbp),
         billNotes: j.bill_notes || "-",
         hasAttachment: Boolean(j.has_attachment),
+        documentSubmittedAtRaw: j.document_submitted_at || null,
         billStatus: j.bill_status || "pending",
         billStatusTone: { approved: "success", paid: "success", rejected: "danger", pending: "warning" }[j.bill_status || "pending"] || "neutral",
         billPaymentStatus: j.bill_payment_status || "unpaid",
@@ -2971,12 +2987,15 @@ exports.getMaintenancePortal = async (_req, res) => {
     }));
 
     const documentsVault = jobs
-      .filter((job) => job.status === "completed"
-        && (job.hasAttachment || job.billNumber || job.billNotes !== "-"))
-      .slice(0, 12)
+      .filter((job) => job.hasAttachment || job.billNumber || job.billNotes !== "-")
+      .sort((a, b) => (b.documentSubmittedAtRaw || "").localeCompare(a.documentSubmittedAtRaw || "") || b.id - a.id)
       .map((job) => ({
         id: job.id,
         jobNumber: job.jobNumber,
+        assetType: job.assetType,
+        fleetCode: job.fleetCode,
+        documentSubmittedAtRaw: job.documentSubmittedAtRaw,
+        serviceDate: job.serviceDate,
         vehicle: job.vehicle,
         serviceType: job.serviceType,
         billNumber: job.billNumber || "-",
@@ -3397,8 +3416,8 @@ exports.createJob = async (req, res) => {
          estimated_cost_gbp, labour_cost_gbp, parts_cost_gbp, final_cost_gbp, service_date, road_tax_interval_months,
          completed_mileage_km, next_due_mileage_km, bill_number, bill_date, bill_amount_gbp, bill_notes, bill_attachment_data,
          bill_status, bill_payment_status, vendor_invoice_ref,
-         priority, status, notes, parts_required, completion_notes)
-       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+         priority, status, notes, parts_required, completion_notes, document_submitted_at, document_content_hash)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?, IF(NULLIF(bill_attachment_data, '') IS NULL, NULL, UTC_TIMESTAMP()), SHA2(bill_attachment_data, 256))`,
       [
         jobNumber, job.asset_type, job.vehicle_id, job.trailer_id, job.defect_id, job.service_type, job.due_date, job.garage_name, job.assigned_mechanic,
         job.estimated_cost_gbp, job.labour_cost_gbp, job.parts_cost_gbp, job.final_cost_gbp,
@@ -3517,8 +3536,8 @@ exports.createBulkJobs = async (req, res) => {
            estimated_cost_gbp, labour_cost_gbp, parts_cost_gbp, final_cost_gbp, service_date, road_tax_interval_months,
            completed_mileage_km, next_due_mileage_km, bill_number, bill_date, bill_amount_gbp, bill_notes, bill_attachment_data,
            bill_status, bill_payment_status, vendor_invoice_ref,
-           priority, status, notes, parts_required, completion_notes)
-         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+           priority, status, notes, parts_required, completion_notes, document_submitted_at, document_content_hash)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?, IF(NULLIF(bill_attachment_data, '') IS NULL, NULL, UTC_TIMESTAMP()), SHA2(bill_attachment_data, 256))`,
         [
           jobNumber, base.asset_type, base.vehicle_id, base.trailer_id, null, serviceType, dueDate, base.garage_name, base.assigned_mechanic,
           base.estimated_cost_gbp, base.labour_cost_gbp, base.parts_cost_gbp, base.final_cost_gbp,
@@ -3646,6 +3665,9 @@ exports.updateJob = async (req, res) => {
             due_date=?, garage_name=?, assigned_mechanic=?, estimated_cost_gbp=?, labour_cost_gbp=?, parts_cost_gbp=?,
             final_cost_gbp=?, service_date=?, road_tax_interval_months=?, completed_mileage_km=?, next_due_mileage_km=?,
             bill_number=?, bill_date=?, bill_amount_gbp=?, bill_notes=?, bill_attachment_data=?,
+             document_submitted_at=IF(NULLIF(bill_attachment_data, '') IS NULL, NULL,
+               IF(SHA2(bill_attachment_data, 256) <=> document_content_hash, document_submitted_at, UTC_TIMESTAMP())),
+             document_content_hash=SHA2(bill_attachment_data, 256),
             bill_status=?, bill_payment_status=?, vendor_invoice_ref=?, priority=?, notes=?, parts_required=?, completion_notes=?
            WHERE id=?`,
           [
@@ -3733,6 +3755,9 @@ exports.updateJob = async (req, res) => {
         estimated_cost_gbp=?, labour_cost_gbp=?, parts_cost_gbp=?, final_cost_gbp=?,
         service_date=?, road_tax_interval_months=?, completed_mileage_km=?, next_due_mileage_km=?,
         bill_number=?, bill_date=?, bill_amount_gbp=?, bill_notes=?, bill_attachment_data=?,
+             document_submitted_at=IF(NULLIF(bill_attachment_data, '') IS NULL, NULL,
+               IF(SHA2(bill_attachment_data, 256) <=> document_content_hash, document_submitted_at, UTC_TIMESTAMP())),
+             document_content_hash=SHA2(bill_attachment_data, 256),
         bill_status=?, bill_payment_status=?, vendor_invoice_ref=?,
         priority=?, status=?, notes=?, parts_required=?, completion_notes=?
       WHERE id=?`,
@@ -4016,8 +4041,8 @@ exports.reportBreakdown = async (req, res) => {
       `INSERT INTO maintenance_jobs
         (job_number, asset_type, vehicle_id, trailer_id, defect_id, service_type, due_date,
          garage_name, estimated_cost_gbp, bill_attachment_data, bill_notes, bill_number, bill_amount_gbp,
-         priority, status, notes)
-       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+         priority, status, notes, document_submitted_at, document_content_hash)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?, IF(NULLIF(bill_attachment_data, '') IS NULL, NULL, UTC_TIMESTAMP()), SHA2(bill_attachment_data, 256))`,
       [
         jobNumber, assetType,
         assetType === "vehicle" ? assetNumericId : null,
@@ -4144,7 +4169,7 @@ exports.removeJobDocument = async (req, res) => {
       reason,
       req.sessionUser?.name || "Admin"
     );
-    await connection.query(`UPDATE maintenance_jobs SET bill_attachment_data=NULL WHERE id=?`, [jobId]);
+    await connection.query(`UPDATE maintenance_jobs SET bill_attachment_data=NULL, document_submitted_at=NULL, document_content_hash=NULL WHERE id=?`, [jobId]);
     await connection.commit();
 
     await logActivity(req, {
@@ -4283,7 +4308,7 @@ exports.undoCompletedEvent = async (req, res) => {
            completion_notes=NULL, final_cost_gbp=NULL,
            completed_mileage_km=NULL, next_due_mileage_km=NULL,
            recurrence_source_job_id=NULL,
-           bill_attachment_data=NULL, bill_number=NULL, bill_date=NULL,
+           bill_attachment_data=NULL, document_submitted_at=NULL, document_content_hash=NULL, bill_number=NULL, bill_date=NULL,
            bill_amount_gbp=NULL, bill_notes=NULL, vendor_invoice_ref=NULL,
            bill_status='pending', bill_payment_status='unpaid'
        WHERE id=?`,
@@ -4438,7 +4463,10 @@ exports.completeEventFromSchedule = async (req, res) => {
         await connection.query(
           `UPDATE maintenance_jobs
            SET service_date=?, due_date=COALESCE(?,due_date), garage_name=COALESCE(?,garage_name), final_cost_gbp=COALESCE(?,final_cost_gbp),
-               bill_attachment_data=COALESCE(?,bill_attachment_data), bill_notes=COALESCE(?,bill_notes),
+               bill_attachment_data=COALESCE(?,bill_attachment_data),
+             document_submitted_at=IF(NULLIF(bill_attachment_data, '') IS NULL, NULL,
+               IF(SHA2(bill_attachment_data, 256) <=> document_content_hash, document_submitted_at, UTC_TIMESTAMP())),
+             document_content_hash=SHA2(bill_attachment_data, 256), bill_notes=COALESCE(?,bill_notes),
                completion_notes=COALESCE(?,completion_notes), bill_number=COALESCE(?,bill_number),
                bill_amount_gbp=COALESCE(?,bill_amount_gbp), completed_mileage_km=COALESCE(?,completed_mileage_km),
                road_tax_interval_months=CASE WHEN service_type='Road Tax' THEN ? ELSE road_tax_interval_months END
@@ -4530,6 +4558,9 @@ exports.completeEventFromSchedule = async (req, res) => {
              due_date=COALESCE(?,due_date),
              final_cost_gbp=?,
              bill_attachment_data=COALESCE(?,bill_attachment_data),
+             document_submitted_at=IF(NULLIF(bill_attachment_data, '') IS NULL, NULL,
+               IF(SHA2(bill_attachment_data, 256) <=> document_content_hash, document_submitted_at, UTC_TIMESTAMP())),
+             document_content_hash=SHA2(bill_attachment_data, 256),
              bill_notes=COALESCE(?,bill_notes),
              completion_notes=COALESCE(?,completion_notes),
              bill_number=COALESCE(?,bill_number),
@@ -4559,6 +4590,9 @@ exports.completeEventFromSchedule = async (req, res) => {
       jobId = existing.id;
       await db.query(
         `UPDATE maintenance_jobs SET garage_name=COALESCE(?,garage_name), final_cost_gbp=?, bill_attachment_data=COALESCE(?,bill_attachment_data),
+             document_submitted_at=IF(NULLIF(bill_attachment_data, '') IS NULL, NULL,
+               IF(SHA2(bill_attachment_data, 256) <=> document_content_hash, document_submitted_at, UTC_TIMESTAMP())),
+             document_content_hash=SHA2(bill_attachment_data, 256),
          due_date=COALESCE(?,due_date), bill_notes=COALESCE(?,bill_notes), completion_notes=COALESCE(?,completion_notes), bill_number=COALESCE(?,bill_number),
          bill_amount_gbp=COALESCE(?,bill_amount_gbp), road_tax_interval_months=CASE WHEN service_type='Road Tax' THEN ? ELSE road_tax_interval_months END
          WHERE id=?`,
@@ -4571,8 +4605,8 @@ exports.completeEventFromSchedule = async (req, res) => {
         `INSERT INTO maintenance_jobs
           (job_number, asset_type, ${idField}, service_type, due_date, garage_name, final_cost_gbp,
            bill_attachment_data, bill_notes, completion_notes, bill_number, bill_amount_gbp, status, priority, service_date,
-           road_tax_interval_months)
-         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,'planned','normal',?,?)`,
+           road_tax_interval_months, document_submitted_at, document_content_hash)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,'planned','normal',?,?, IF(NULLIF(bill_attachment_data, '') IS NULL, NULL, UTC_TIMESTAMP()), SHA2(bill_attachment_data, 256))`,
         [jobNumber, assetType, assetNumericId, serviceType, scheduledDueDate, garageName, finalCostGbp,
          billAttachmentData, billNotes, completionNotes, billNumber, billAmountGbp, serviceDate, roadTaxIntervalMonths]
       );
