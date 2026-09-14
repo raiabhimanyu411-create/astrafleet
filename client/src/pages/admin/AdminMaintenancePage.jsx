@@ -2403,10 +2403,6 @@ export function AdminMaintenancePage() {
   }, []);
 
   function openVehicleDetail(row, assetType = "vehicle", preselectType = null, scheduledDueDate = "", selectionKind = "", completedJobId = null) {
-    if (["Safety inspection", "Brake test", "MOT"].includes(preselectType)) {
-      setActiveView("compliance");
-      return;
-    }
     const completedJob = completedJobId ? data?.jobs?.find((job) => Number(job.id) === Number(completedJobId)) : null;
     setVehicleDetailTarget({ vehicleId: row.vehicleId, assetType, preselectType, scheduledDueDate, selectionKind, completedJobId, completedJob });
   }
