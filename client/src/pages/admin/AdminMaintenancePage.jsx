@@ -2691,6 +2691,16 @@ export function AdminMaintenancePage() {
 
       {activeView === "records" && (
       <section className="content-grid">
+        <MaintenanceDocuments
+          documents={data?.documentsVault || []}
+          loading={loading}
+          onOpenJob={(id) => setDrawerJob((data?.jobs || []).find((job) => job.id === id))}
+        />
+      </section>
+      )}
+
+      {activeView === "records" && (
+      <section className="content-grid">
         <article className="content-card">
           <div className="section-head">
             <div>
@@ -2790,12 +2800,6 @@ export function AdminMaintenancePage() {
 
       {activeView === "records" && (
       <section className="content-grid">
-        <MaintenanceDocuments
-          documents={data?.documentsVault || []}
-          loading={loading}
-          onOpenJob={(id) => setDrawerJob((data?.jobs || []).find((job) => job.id === id))}
-        />
-
         <article className="content-card">
           <div className="section-head">
             <div>
