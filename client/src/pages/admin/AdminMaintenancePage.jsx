@@ -25,6 +25,7 @@ import { StatusPill } from "../../components/StatusPill";
 import { AdminWorkspaceLayout } from "./AdminWorkspaceLayout";
 import { MaintenanceCompliancePanel } from "./MaintenanceCompliancePanel";
 import "./AdminMaintenancePage.css";
+import { MaintenanceDocumentThumbnail } from "./MaintenanceDocumentThumbnail";
 import { documentSubmission, filterMaintenanceDocuments } from "./maintenanceDocuments";
 
 const DEFAULT_ROAD_TAX_INTERVAL_MONTHS = 6;
@@ -2264,7 +2265,14 @@ function MaintenanceDocuments({ documents, loading, onOpenJob }) {
         {filtered.map((doc) => {
           const submitted = documentSubmission(doc.documentSubmittedAtRaw);
           return (
-            <div className="maintenance-compliance-item" key={doc.id}>
+            <div className="maintenance-document-card" key={doc.id}>
+              {doc.hasAttachment && <MaintenanceDocumentThumbnail
+                jobId={doc.id}
+                version={doc.documentSubmittedAtRaw}
+                label={`${doc.vehicle || doc.fleetCode || doc.jobNumber} · ${doc.serviceType}`}
+                onOpen={() => openJobAttachment(doc.id)}
+              />}
+              <div className="maintenance-document-details">
               <strong>{doc.vehicle || doc.fleetCode || doc.jobNumber} · {doc.serviceType}</strong>
               <span>{doc.assetType === "trailer" ? "Trailer" : "Vehicle"}{doc.fleetCode ? ` · ${doc.fleetCode}` : ""}</span>
               <p>{doc.billNumber} · Service date: {doc.serviceDate} · {doc.billAmount}</p>
@@ -2272,6 +2280,7 @@ function MaintenanceDocuments({ documents, loading, onOpenJob }) {
               <div className="finance-row-actions">
                 {doc.hasAttachment && <button className="header-action-button primary" type="button" onClick={() => openJobAttachment(doc.id)}>View paper</button>}
                 <button className="header-action-button" type="button" onClick={() => onOpenJob(doc.id)}>Job details</button>
+              </div>
               </div>
             </div>
           );

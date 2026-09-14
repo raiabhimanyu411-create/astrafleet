@@ -2526,3 +2526,44 @@
 
 .maintenance-documents-vault { grid-column: 1 / -1; }
 .maintenance-documents-help { color: #64748b; font-size: 13px; margin: 12px 0; }
+
+.maintenance-document-card {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  padding: 16px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+}
+.maintenance-document-thumbnail {
+  position: relative;
+  flex: 0 0 130px;
+  width: 130px;
+  height: 164px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 6px 6px 28px;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: #f1f5f9;
+  cursor: pointer;
+}
+.maintenance-document-thumbnail:hover { border-color: #2563eb; }
+.maintenance-document-thumbnail:focus-visible { outline: 3px solid #2563eb; outline-offset: 3px; }
+.maintenance-document-thumbnail img { display: block; max-width: 100%; max-height: 100%; object-fit: contain; }
+.maintenance-thumbnail-status { color: #64748b; font-size: 12px; text-align: center; }
+.maintenance-thumbnail-caption { position: absolute; bottom: 0; left: 0; right: 0; padding: 6px; background: #e2e8f0; color: #334155; font-size: 12px; font-weight: 700; }
+.maintenance-document-details { flex: 1; min-width: 0; display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 12px; }
+.maintenance-document-details > strong { font-size: 14px; }
+.maintenance-document-details > span { font-size: 13px; font-weight: 700; }
+.maintenance-document-details > p { grid-column: 1 / -1; margin: 0; color: var(--muted); font-size: 13px; }
+.maintenance-document-details > .finance-row-actions { grid-column: 1 / -1; flex-wrap: wrap; }
+@media (max-width: 600px) {
+  .maintenance-document-card { align-items: flex-start; gap: 12px; padding: 12px; }
+  .maintenance-document-thumbnail { flex-basis: 88px; width: 88px; height: 120px; }
+  .maintenance-document-details { grid-template-columns: minmax(0, 1fr); gap: 10px; }
+  .maintenance-document-details > span { grid-column: 1; }
+}
