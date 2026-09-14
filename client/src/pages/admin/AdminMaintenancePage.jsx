@@ -1480,10 +1480,10 @@ function JobDrawer({ job, history, onClose, onEdit, onComplete, onBillStatus, sa
         <span className="card-label">Service History Timeline</span>
         <div className="maintenance-timeline">
           {vehicleHistory.map((item, index) => (
-            <div className="maintenance-timeline-item" key={`${item.source}-${index}`}>
+            <div className="maintenance-timeline-item" key={item.id || `${item.source}-${index}`}>
               <StatusPill tone={item.tone}>{item.source}</StatusPill>
               <strong>{item.title}</strong>
-              <p>{item.date} · {item.garageName} · {item.cost}</p>
+              <p>{item.source === "defect" ? "Reported date" : "Service / inspection date"}: {item.date} · {item.garageName} · {item.cost}</p>
             </div>
           ))}
           {vehicleHistory.length === 0 && <p className="finance-empty">No history yet for this vehicle.</p>}
@@ -2265,7 +2265,6 @@ function MaintenanceDocuments({ documents, loading, onOpenJob }) {
           const submitted = documentSubmission(doc.documentSubmittedAtRaw);
           return (
             <div className="maintenance-compliance-item" key={doc.id}>
-              <StatusPill tone={doc.billStatusTone}>{doc.billStatus}</StatusPill>
               <strong>{doc.vehicle || doc.fleetCode || doc.jobNumber} · {doc.serviceType}</strong>
               <span>{doc.assetType === "trailer" ? "Trailer" : "Vehicle"}{doc.fleetCode ? ` · ${doc.fleetCode}` : ""}</span>
               <p>{doc.billNumber} · Service date: {doc.serviceDate} · {doc.billAmount}</p>
@@ -2698,16 +2697,17 @@ export function AdminMaintenancePage() {
               <span className="card-label">Cost Dashboard</span>
               <h2>Maintenance Cost Per Vehicle</h2>
             </div>
-            <StatusPill tone="neutral">Actual + estimate</StatusPill>
+            <StatusPill tone="neutral">Actual / estimate</StatusPill>
           </div>
           <div className="maintenance-cost-list">
             {(data?.costByVehicle || []).slice(0, 8).map((item) => (
-              <div className="maintenance-cost-item" key={item.vehicle}>
+              <div className="maintenance-cost-item" key={item.assetId || item.vehicle}>
                 <div>
                   <strong>{item.vehicle}</strong>
-                  <p>{item.jobs} job{item.jobs === 1 ? "" : "s"}</p>
+                  <p>{item.assetType === "trailer" ? "Trailer" : "Vehicle"} · {item.completedJobs} completed · {item.openJobs} open</p>
+                  {item.unpricedJobs > 0 && <p>{item.unpricedJobs} completed job(s): cost not recorded</p>}
                 </div>
-                <span>{item.amountLabel}</span>
+                <span>Recorded actual: {item.amountLabel}<br />Open estimate: {item.estimatedLabel}</span>
               </div>
             ))}
             {!loading && (data?.costByVehicle || []).length === 0 && <p className="finance-empty">Cost trend will appear after jobs are added or completed.</p>}
@@ -2720,14 +2720,14 @@ export function AdminMaintenancePage() {
               <span className="card-label">Service History Timeline</span>
               <h2>Recent Services, Inspections And Defects</h2>
             </div>
-            <StatusPill tone="neutral">{(data?.history || []).length} events</StatusPill>
+            <StatusPill tone="neutral">{Math.min(10, (data?.history || []).length)} of {(data?.history || []).length} events</StatusPill>
           </div>
           <div className="maintenance-timeline global">
             {(data?.history || []).slice(0, 10).map((item, index) => (
-              <div className="maintenance-timeline-item" key={`${item.source}-${index}`}>
+              <div className="maintenance-timeline-item" key={item.id || `${item.source}-${index}`}>
                 <StatusPill tone={item.tone}>{item.source}</StatusPill>
                 <strong>{item.title}</strong>
-                <p>{item.date} · Vehicle #{item.vehicleId} · {item.garageName} · {item.cost}</p>
+                <p>{item.source === "defect" ? "Reported date" : "Service / inspection date"}: {item.date} · {item.assetType === "trailer" ? "Trailer" : "Vehicle"} {item.vehicle} · {item.garageName} · {item.cost}</p>
               </div>
             ))}
             {!loading && (data?.history || []).length === 0 && <p className="finance-empty">No maintenance history yet.</p>}

@@ -1,3 +1,4 @@
+const { cleanMaintenanceHistory, maintenanceCostRows } = require("../utils/maintenanceHistory");
 const db = require("../db/connection");
 const { logActivity } = require("../utils/auditLogger");
 
@@ -2866,7 +2867,9 @@ exports.getMaintenancePortal = async (_req, res) => {
     ].filter((event) => event.date);
 
     const [historyRows] = await db.query(`
-      SELECT vehicle_id, NULL AS trailer_id, service_date AS event_date,
+      SELECT events.*, COALESCE(v.registration_number, tr.registration_number) AS registration_number
+      FROM (
+      SELECT id AS event_id, vehicle_id, NULL AS trailer_id, service_date AS event_date,
              CONVERT(service_type USING utf8mb4) AS title,
              CONVERT(description USING utf8mb4) AS description,
              cost_gbp,
@@ -2874,7 +2877,7 @@ exports.getMaintenancePortal = async (_req, res) => {
              CONVERT('service' USING utf8mb4) AS source
       FROM maintenance_records
       UNION ALL
-      SELECT NULL AS vehicle_id, trailer_id, service_date AS event_date,
+      SELECT id AS event_id, NULL AS vehicle_id, trailer_id, service_date AS event_date,
              CONVERT(service_type USING utf8mb4) AS title,
              CONVERT(description USING utf8mb4) AS description,
              cost_gbp,
@@ -2882,34 +2885,39 @@ exports.getMaintenancePortal = async (_req, res) => {
              CONVERT('trailer_service' USING utf8mb4) AS source
       FROM trailer_maintenance_records
       UNION ALL
-      SELECT vehicle_id, NULL AS trailer_id, inspection_date AS event_date,
+      SELECT id AS event_id, vehicle_id, NULL AS trailer_id, inspection_date AS event_date,
              CONVERT(inspection_type USING utf8mb4) AS title,
              CONVERT(notes USING utf8mb4) AS description,
-             0 AS cost_gbp,
+             NULL AS cost_gbp,
              CONVERT(inspector_name USING utf8mb4) AS garage_name,
              CONVERT('inspection' USING utf8mb4) AS source
       FROM vehicle_inspections
       UNION ALL
-      SELECT NULL AS vehicle_id, trailer_id, inspection_date AS event_date,
+      SELECT id AS event_id, NULL AS vehicle_id, trailer_id, inspection_date AS event_date,
              CONVERT(inspection_type USING utf8mb4) AS title,
              CONVERT(notes USING utf8mb4) AS description,
-             0 AS cost_gbp,
+             NULL AS cost_gbp,
              CONVERT(inspector_name USING utf8mb4) AS garage_name,
              CONVERT('trailer_inspection' USING utf8mb4) AS source
       FROM trailer_inspections
       UNION ALL
-      SELECT vehicle_id, trailer_id, reported_at AS event_date,
+      SELECT id AS event_id, vehicle_id, trailer_id, DATE(reported_at) AS event_date,
              CONVERT(defect_type USING utf8mb4) AS title,
              CONVERT(description USING utf8mb4) AS description,
-             0 AS cost_gbp,
+             NULL AS cost_gbp,
              CONVERT(reported_by USING utf8mb4) AS garage_name,
              CONVERT('defect' USING utf8mb4) AS source
       FROM defect_reports
-      ORDER BY event_date DESC
-      LIMIT 100
-    `);
+      ) events
+      LEFT JOIN vehicles v ON v.id = events.vehicle_id
+      LEFT JOIN trailers tr ON tr.id = events.trailer_id
+      WHERE events.event_date IS NOT NULL AND events.event_date <= ?
+      ORDER BY events.event_date DESC, events.event_id DESC
+    `, [ukDateKey()]);
 
-    const history = historyRows.map((h) => ({
+    const history = cleanMaintenanceHistory(historyRows.map((h) => ({
+      id: `${h.source}-${h.event_id}`,
+      vehicle: h.registration_number || `${h.trailer_id ? "Trailer" : "Vehicle"} #${h.trailer_id || h.vehicle_id}`,
       vehicleId: h.vehicle_id,
       trailerId: h.trailer_id,
       assetType: h.trailer_id ? "trailer" : "vehicle",
@@ -2917,11 +2925,11 @@ exports.getMaintenancePortal = async (_req, res) => {
       dateRaw: rawDate(h.event_date),
       title: h.title,
       description: h.description || "-",
-      cost: fmtAmount(h.cost_gbp),
+      cost: h.cost_gbp == null ? "Cost not recorded" : fmtAmount(h.cost_gbp),
       garageName: h.garage_name || "-",
       source: h.source,
       tone: h.source === "defect" ? "danger" : ["inspection", "trailer_inspection"].includes(h.source) ? "warning" : "success"
-    }));
+    })), ukDateKey());
 
     const thisMonthKey = ukDateKey().slice(0, 7);
     const monthlySpend = jobs
@@ -2933,19 +2941,14 @@ exports.getMaintenancePortal = async (_req, res) => {
     const openEstimated = jobs
       .filter((job) => !["completed", "cancelled"].includes(job.status))
       .reduce((sum, job) => sum + Number(job.estimatedCostGbp), 0);
-    const costByVehicle = jobs.reduce((acc, job) => {
-      acc[job.vehicle] = (acc[job.vehicle] || 0) + Number(job.finalCostGbp ?? job.billAmountGbp ?? job.estimatedCostGbp);
-      return acc;
-    }, {});
-    const highestCost = Object.entries(costByVehicle).sort((a, b) => b[1] - a[1])[0];
-    const costByVehicleRows = Object.entries(costByVehicle)
-      .sort((a, b) => b[1] - a[1])
-      .map(([vehicle, amount]) => ({
-        vehicle,
-        amount,
-        amountLabel: fmtAmount(amount),
-        jobs: jobs.filter((job) => job.vehicle === vehicle).length
-      }));
+    const costByVehicleRows = maintenanceCostRows(jobs).map((row) => ({
+      ...row,
+      amount: row.actual,
+      amountLabel: fmtAmount(row.actual),
+      estimatedLabel: fmtAmount(row.estimated),
+      jobs: row.completedJobs + row.openJobs
+    }));
+    const costByVehicle = Object.fromEntries(costByVehicleRows.map((row) => [row.assetId, row.actual]));
 
     const [inventoryRows] = await db.query(`
       SELECT *
@@ -3021,7 +3024,7 @@ exports.getMaintenancePortal = async (_req, res) => {
       repeatedDefects,
       vendorSpend,
       costPerKm: vehicleProfiles.map((profile) => {
-        const total = costByVehicle[profile.vehicle] || 0;
+        const total = costByVehicle[`${profile.assetType || "vehicle"}:${profile.vehicleId}`] || 0;
         return {
           vehicle: profile.vehicle,
           currentKm: profile.currentKmLabel,
