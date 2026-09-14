@@ -20,6 +20,15 @@ export function documentSubmission(value) {
   };
 }
 
+export function formatUkDateTime(value) {
+  const date = value ? new Date(value) : null;
+  if (!date || Number.isNaN(date.getTime())) return "";
+  return new Intl.DateTimeFormat("en-GB", {
+    timeZone, day: "2-digit", month: "short", year: "numeric",
+    hour: "2-digit", minute: "2-digit", hourCycle: "h23", timeZoneName: "short"
+  }).format(date);
+}
+
 export function filterMaintenanceDocuments(documents, type, assetType, search) {
   const query = search.trim().toLowerCase();
   return documents.filter((doc) => (!type || doc.serviceType === type)

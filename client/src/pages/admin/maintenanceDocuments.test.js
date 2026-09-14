@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { documentSubmission, filterMaintenanceDocuments } from "./maintenanceDocuments.js";
+import { documentSubmission, filterMaintenanceDocuments, formatUkDateTime } from "./maintenanceDocuments.js";
 
 test("submission week uses UK midnight and ISO week year", () => {
   assert.equal(documentSubmission("2026-06-28T22:59:00Z").weekLabel, "26th week · 2026");
@@ -21,4 +21,10 @@ test("MOT filter includes all vehicles and trailers beyond twelve records", () =
   assert.equal(filterMaintenanceDocuments(documents, "MOT", "trailer", "").length, 14);
   assert.deepEqual(filterMaintenanceDocuments(documents, "MOT", "", " fleet28 ").map((d) => d.id), [28]);
   assert.equal(filterMaintenanceDocuments(documents, "MOT", "", "missing").length, 0);
+});
+
+test("all automatic timestamps render in UK time", () => {
+  assert.match(formatUkDateTime("2026-06-28T23:00:00Z"), /29 Jun 2026.*00:00.*BST/);
+  assert.match(formatUkDateTime(Date.parse("2026-12-15T12:30:00Z")), /15 Dec 2026.*12:30.*GMT/);
+  assert.equal(formatUkDateTime("invalid"), "");
 });

@@ -32,7 +32,12 @@ function clean(value) {
 function rawDate(value) {
   if (!value) return null;
   if (typeof value === "string") return value.slice(0, 10);
-  if (value instanceof Date && !Number.isNaN(value.getTime())) return value.toISOString().slice(0, 10);
+  if (value instanceof Date && !Number.isNaN(value.getTime())) {
+    const year = value.getFullYear();
+    const month = String(value.getMonth() + 1).padStart(2, "0");
+    const day = String(value.getDate()).padStart(2, "0");
+    return `${year}-${month}-${day}`;
+  }
   return null;
 }
 
@@ -173,6 +178,8 @@ async function ensureComplianceSchema() {
       INDEX idx_compliance_docs_mot (mot_test_id)
     ) ENGINE=InnoDB
   `);
+  await addColumnIfMissing("compliance_documents", "uploaded_at_utc", "DATETIME DEFAULT NULL");
+  await addColumnIfMissing("compliance_inspection_items", "repair_document_uploaded_at_utc", "DATETIME DEFAULT NULL");
 
   await db.query(`
     CREATE TABLE IF NOT EXISTS compliance_mot_tests (
@@ -249,6 +256,7 @@ async function ensureComplianceSchema() {
       UNIQUE KEY uniq_recall_asset (asset_type, asset_id, recall_reference)
     ) ENGINE=InnoDB
   `);
+  await addColumnIfMissing("compliance_recalls", "evidence_uploaded_at_utc", "DATETIME DEFAULT NULL");
 
   await db.query(`
     CREATE TABLE IF NOT EXISTS compliance_daily_checks (
@@ -458,6 +466,25 @@ exports.getCompliancePortal = async (_req, res) => {
   }
 };
 
+exports.getComplianceDocument = async (req, res) => {
+  try {
+    const id = Number(req.params.id);
+    const source = String(req.params.source || "");
+    if (!id) return res.status(400).json({ message: "Valid document id required." });
+    const queries = {
+      compliance_document: "SELECT file_data AS attachment_data FROM compliance_documents WHERE id=?",
+      repair_evidence: "SELECT repair_document AS attachment_data FROM compliance_inspection_items WHERE id=?",
+      recall_evidence: "SELECT evidence_data AS attachment_data FROM compliance_recalls WHERE id=?"
+    };
+    if (!queries[source]) return res.status(400).json({ message: "Valid document source required." });
+    const [[document]] = await db.query(queries[source], [id]);
+    if (!document?.attachment_data) return res.status(404).json({ message: "Document not found." });
+    return res.json({ attachmentData: document.attachment_data });
+  } catch (error) {
+    return res.status(500).json({ message: "Could not load compliance document.", error: error.message });
+  }
+};
+
 exports.createInspection = async (req, res) => {
   const validation = validateInspection(req.body);
   if (!validation.ok) return res.status(400).json({ message: "Complete all required inspection evidence.", errors: validation.errors });
@@ -514,8 +541,9 @@ exports.createInspection = async (req, res) => {
     ].filter(([, data]) => isDataUrl(data));
     for (const [type, data] of documents) {
       await connection.query(
-        `INSERT INTO compliance_documents (inspection_id,document_type,file_data,file_sha256,uploaded_by)
-         VALUES (?,?,?,?,?)`,
+        `INSERT INTO compliance_documents
+          (inspection_id,document_type,file_data,file_sha256,uploaded_by,uploaded_at_utc)
+         VALUES (?,?,?,?,?,UTC_TIMESTAMP())`,
         [inspectionId, type, data, documentHash(data), req.sessionUser?.name || "System"]
       );
     }
@@ -579,7 +607,8 @@ exports.repairInspectionItem = async (req, res) => {
     const value = validation.value;
     await connection.query(
       `UPDATE compliance_inspection_items SET repair_description=?,repaired_by=?,repaired_at=?,
-       verifier_name=?,verifier_signature=?,verified_at=NOW(),repair_document=?,repair_document_sha256=? WHERE id=?`,
+       verifier_name=?,verifier_signature=?,verified_at=NOW(),repair_document=?,repair_document_sha256=?,
+       repair_document_uploaded_at_utc=UTC_TIMESTAMP() WHERE id=?`,
       [value.repairDescription, value.repairedBy, value.repairedAt, value.verifierName,
         value.verifierSignature, value.repairDocument, documentHash(value.repairDocument), itemId]
     );
@@ -757,8 +786,9 @@ exports.createMotTest = async (req, res) => {
         value.odometerKm, value.retestOf, req.sessionUser?.name || "System"]
     );
     await connection.query(
-      `INSERT INTO compliance_documents (mot_test_id,document_type,file_data,file_sha256,uploaded_by)
-       VALUES (?,'mot_certificate',?,?,?)`,
+      `INSERT INTO compliance_documents
+        (mot_test_id,document_type,file_data,file_sha256,uploaded_by,uploaded_at_utc)
+       VALUES (?,'mot_certificate',?,?,?,UTC_TIMESTAMP())`,
       [inserted.insertId, value.document, documentHash(value.document), req.sessionUser?.name || "System"]
     );
     const meta = assetMeta(value.assetType);
@@ -848,6 +878,9 @@ exports.createProvider = async (req, res) => {
   if ((contractEnd && contractEnd < contractStart) || nextQualityAudit <= lastQualityAudit) {
     return res.status(400).json({ message: "Contract end cannot precede its start, and next quality audit must be after the last audit." });
   }
+  if (lastQualityAudit > ukDateKey()) {
+    return res.status(400).json({ message: "Last quality audit cannot be after today in the UK." });
+  }
   try {
     const [result] = await db.query(
       `INSERT INTO compliance_providers
@@ -873,7 +906,8 @@ exports.createRecall = async (req, res) => {
   const description = clean(req.body.description);
   const issuedDate = clean(req.body.issued_date || req.body.issuedDate);
   const dueDate = clean(req.body.due_date || req.body.dueDate);
-  if (!assetId || !reference || description.length < 3 || !validDate(issuedDate) || !validDate(dueDate) || dueDate < issuedDate) {
+  if (!assetId || !reference || description.length < 3 || !validDate(issuedDate) || !validDate(dueDate)
+      || issuedDate > ukDateKey() || dueDate < issuedDate) {
     return res.status(400).json({ message: "Asset, recall reference, description, issue date and due date are required." });
   }
   try {
@@ -902,13 +936,15 @@ exports.verifyRecall = async (req, res) => {
   const verifiedBy = clean(req.body.verified_by || req.body.verifiedBy);
   const signature = clean(req.body.verifier_signature || req.body.verifierSignature);
   const evidence = req.body.evidence;
-  if (actionDetails.length < 3 || !validDate(actionedAt) || !verifiedBy || signature.length < 2 || !isDataUrl(evidence)) {
+  if (actionDetails.length < 3 || !validDate(actionedAt) || actionedAt > ukDateKey()
+      || !verifiedBy || signature.length < 2 || !isDataUrl(evidence)) {
     return res.status(400).json({ message: "Recall action, date, verifier signature and evidence are required." });
   }
   try {
     const [result] = await db.query(
       `UPDATE compliance_recalls SET status='verified',action_details=?,actioned_at=?,verified_by=?,verifier_signature=?,
-       evidence_data=?,evidence_sha256=? WHERE id=? AND status!='verified'`,
+       evidence_data=?,evidence_sha256=?,evidence_uploaded_at_utc=UTC_TIMESTAMP()
+       WHERE id=? AND status!='verified'`,
       [actionDetails, actionedAt, verifiedBy, signature, evidence, documentHash(evidence), id]
     );
     if (!result.affectedRows) return res.status(409).json({ message: "Recall was not found or is already verified." });
@@ -930,7 +966,9 @@ exports.createDailyCheck = async (req, res) => {
   const defectDetails = clean(req.body.defect_details || req.body.defectDetails);
   const declaration = Boolean(req.body.declaration);
   const signature = clean(req.body.signature);
-  if (!assetId || !validDate(checkDate) || !driverName || !["nil_defect", "defect"].includes(result) || !declaration || signature.length < 2 || (result === "defect" && defectDetails.length < 3)) {
+  if (!assetId || !validDate(checkDate) || checkDate > ukDateKey() || !driverName
+      || !["nil_defect", "defect"].includes(result) || !declaration || signature.length < 2
+      || (result === "defect" && defectDetails.length < 3)) {
     return res.status(400).json({ message: "Asset, date, driver, result, declaration and signature are required; describe any defect." });
   }
   const connection = await db.getConnection();
@@ -976,7 +1014,7 @@ exports.recordMissedInspection = async (req, res) => {
   const dueDate = clean(req.body.due_date || req.body.dueDate);
   const reason = clean(req.body.reason);
   const correctiveAction = clean(req.body.corrective_action || req.body.correctiveAction);
-  if (!assetId || !validDate(dueDate) || reason.length < 5 || correctiveAction.length < 5) {
+  if (!assetId || !validDate(dueDate) || dueDate > ukDateKey() || reason.length < 5 || correctiveAction.length < 5) {
     return res.status(400).json({ message: "Asset, missed due date, reason and corrective action are required." });
   }
   try {

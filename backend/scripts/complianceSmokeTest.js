@@ -79,4 +79,34 @@ assert.strictEqual(validateMot({
   document: tinyPdf
 }).ok, false, "failed MOT must have failure reasons");
 
+assert.strictEqual(validateInspection({
+  ...validInspection.value,
+  asset_id: "vehicle:1",
+  inspection_date: "2999-01-01",
+  roadworthy_declared: true,
+  inspection_document: tinyPdf,
+  brake_document: tinyPdf,
+  items: vehicleItems
+}).ok, false, "future inspection dates must be rejected using the UK date");
+
+assert.strictEqual(validateRepair({
+  repair_description: "Brake chamber replaced and system retested",
+  repaired_by: "Workshop Tech",
+  repaired_at: "2999-01-01",
+  verifier_name: "Independent QA",
+  verifier_signature: "Independent QA",
+  repair_document: tinyPdf
+}).ok, false, "future repair dates must be rejected using the UK date");
+
+assert.strictEqual(validateMot({
+  asset_id: "vehicle:1",
+  test_date: "2999-01-01",
+  result: "pass",
+  certificate_number: "MOT-FUTURE",
+  expiry_date: "3000-01-01",
+  tester_name: "Tester",
+  provider_name: "Test Centre",
+  document: tinyPdf
+}).ok, false, "future MOT test dates must be rejected using the UK date");
+
 console.log("maintenance compliance smoke tests passed");

@@ -159,7 +159,7 @@ function InspectionForm({ data, onSaved }) {
             <option value="return_to_service">Return-to-service after VOR</option>
           </select>
         </Field>
-        <Field label="Inspection date"><input type="date" value={form.inspection_date} onChange={(event) => set("inspection_date", event.target.value)} required /></Field>
+        <Field label="Inspection date"><input type="date" max={todayUk()} value={form.inspection_date} onChange={(event) => set("inspection_date", event.target.value)} required /></Field>
         <Field label="Original scheduled date"><input type="date" value={form.scheduled_date} onChange={(event) => set("scheduled_date", event.target.value)} /></Field>
         <Field label="Operator name"><input value={form.operator_name} onChange={(event) => set("operator_name", event.target.value)} required /></Field>
         <Field label="Workshop / Provider"><input list="compliance-providers" value={form.provider_name} onChange={(event) => set("provider_name", event.target.value)} required /></Field>
@@ -237,7 +237,7 @@ function RepairForm({ item, onClose, onSaved }) {
       <div className="compliance-form-grid">
         <Field label="Repair details" wide><textarea value={form.repair_description} onChange={(event) => setForm({ ...form, repair_description: event.target.value })} required /></Field>
         <Field label="Repaired by"><input value={form.repaired_by} onChange={(event) => setForm({ ...form, repaired_by: event.target.value })} required /></Field>
-        <Field label="Repair date"><input type="date" value={form.repaired_at} onChange={(event) => setForm({ ...form, repaired_at: event.target.value })} required /></Field>
+        <Field label="Repair date"><input type="date" max={todayUk()} value={form.repaired_at} onChange={(event) => setForm({ ...form, repaired_at: event.target.value })} required /></Field>
         <Field label="Independent verifier"><input value={form.verifier_name} onChange={(event) => setForm({ ...form, verifier_name: event.target.value })} required /></Field>
         <Field label="Verifier signature"><input value={form.verifier_signature} onChange={(event) => setForm({ ...form, verifier_signature: event.target.value })} required /></Field>
         <Field label="Repair evidence"><input type="file" accept="image/*,.pdf" onChange={async (event) => setForm({ ...form, repair_document: await readFile(event.target.files?.[0]) })} required={!form.repair_document} /></Field>
@@ -330,7 +330,7 @@ function MotForm({ data, onSaved }) {
         <div className="compliance-card-head"><div><span>Annual test</span><h3>Record MOT Result</h3></div></div>
         <div className="compliance-form-grid">
           <Field label="Vehicle / Trailer"><select value={form.asset_id} onChange={(event) => setForm({ ...form, asset_id: event.target.value })} required><option value="">Select asset</option>{data.assets.map((asset) => <option key={asset.assetId} value={asset.assetId}>{assetLabel(asset)}</option>)}</select></Field>
-          <Field label="Test date"><input type="date" value={form.test_date} onChange={(event) => setForm({ ...form, test_date: event.target.value })} required /></Field>
+          <Field label="Test date"><input type="date" max={todayUk()} value={form.test_date} onChange={(event) => setForm({ ...form, test_date: event.target.value })} required /></Field>
           <Field label="Result"><select value={form.result} onChange={(event) => setForm({ ...form, result: event.target.value })}><option value="pass">Pass</option><option value="fail">Fail</option></select></Field>
           <Field label="Tester"><input value={form.tester_name} onChange={(event) => setForm({ ...form, tester_name: event.target.value })} required /></Field>
           <Field label="Test centre / Provider"><input value={form.provider_name} onChange={(event) => setForm({ ...form, provider_name: event.target.value })} required /></Field>

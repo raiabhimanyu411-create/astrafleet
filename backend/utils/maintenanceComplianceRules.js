@@ -33,6 +33,7 @@ const INSPECTION_KINDS = new Set(["safety", "first_use", "return_to_service"]);
 const BRAKE_METHODS = new Set(["laden_roller", "decelerometer_temperature", "ebpms"]);
 const BRAKE_RESULTS = new Set(["pass", "fail"]);
 const MOT_RESULTS = new Set(["pass", "fail"]);
+const { ukDateKey } = require("./maintenanceDates");
 
 function checklistFor(assetType) {
   return (assetType === "trailer" ? TRAILER_INSPECTION_ITEMS : VEHICLE_INSPECTION_ITEMS)
@@ -96,6 +97,7 @@ function validateInspection(body = {}) {
   if (!assetId) errors.push("A valid vehicle or trailer is required.");
   if (!INSPECTION_KINDS.has(inspectionKind)) errors.push("Select a valid inspection type.");
   if (!validDate(inspectionDate)) errors.push("A valid inspection date is required.");
+  if (validDate(inspectionDate) && inspectionDate > ukDateKey()) errors.push("Inspection date cannot be after today in the UK.");
   const scheduledDate = cleanText(body.scheduled_date || body.scheduledDate);
   if (scheduledDate && !validDate(scheduledDate)) errors.push("Scheduled date is invalid.");
   if (!operatorName) errors.push("Operator name is required.");
@@ -162,6 +164,7 @@ function validateRepair(body = {}) {
   if (repairDescription.length < 3) errors.push("Repair details are required.");
   if (!repairedBy) errors.push("Repairer name is required.");
   if (!validDate(repairedAt)) errors.push("Repair date is required.");
+  if (validDate(repairedAt) && repairedAt > ukDateKey()) errors.push("Repair date cannot be after today in the UK.");
   if (!verifierName) errors.push("Verifier name is required.");
   if (verifierSignature.length < 2) errors.push("Verifier signature is required.");
   if (repairedBy && verifierName && repairedBy.toLowerCase() === verifierName.toLowerCase()) {
@@ -188,6 +191,7 @@ function validateMot(body = {}) {
   const document = body.document;
   if (!assetId) errors.push("A valid vehicle or trailer is required.");
   if (!validDate(testDate)) errors.push("MOT test date is required.");
+  if (validDate(testDate) && testDate > ukDateKey()) errors.push("MOT test date cannot be after today in the UK.");
   if (!MOT_RESULTS.has(result)) errors.push("MOT result must be pass or fail.");
   if (!testerName) errors.push("Tester name is required.");
   if (!providerName) errors.push("Test centre or provider is required.");

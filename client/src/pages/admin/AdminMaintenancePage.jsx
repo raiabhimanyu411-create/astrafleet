@@ -8,6 +8,7 @@ import {
   createBulkMaintenanceJobs,
   createJobFromDefect,
   getJobNotes,
+  getComplianceDocument,
   getMaintenanceDocument,
   getMaintenancePortal,
   reconcileMaintenanceFleet,
@@ -26,7 +27,7 @@ import { AdminWorkspaceLayout } from "./AdminWorkspaceLayout";
 import { MaintenanceCompliancePanel } from "./MaintenanceCompliancePanel";
 import "./AdminMaintenancePage.css";
 import { MaintenanceDocumentThumbnail } from "./MaintenanceDocumentThumbnail";
-import { documentSubmission, filterMaintenanceDocuments } from "./maintenanceDocuments";
+import { documentSubmission, filterMaintenanceDocuments, formatUkDateTime } from "./maintenanceDocuments";
 
 const DEFAULT_ROAD_TAX_INTERVAL_MONTHS = 6;
 const UK_TIME_ZONE = "Europe/London";
@@ -280,8 +281,7 @@ function openAttachment(dataUrl, existingPreview = null) {
   }
 }
 
-async function openJobAttachment(jobId) {
-  if (!jobId) return;
+async function openStoredAttachment(loadDocument) {
   const preview = window.open("", "_blank");
   if (preview) {
     preview.opener = null;
@@ -289,7 +289,7 @@ async function openJobAttachment(jobId) {
     preview.document.close();
   }
   try {
-    const response = await getMaintenanceDocument(jobId);
+    const response = await loadDocument();
     openAttachment(response.data?.attachmentData, preview);
   } catch (err) {
     const message = err.response?.data?.message || "Could not load this document.";
@@ -303,6 +303,18 @@ async function openJobAttachment(jobId) {
       window.alert(message);
     }
   }
+}
+
+async function openJobAttachment(jobId) {
+  if (!jobId) return;
+  return openStoredAttachment(() => getMaintenanceDocument(jobId));
+}
+
+async function openVaultAttachment(document) {
+  if (!document?.id) return;
+  return document.source === "maintenance_job"
+    ? openJobAttachment(document.id)
+    : openStoredAttachment(() => getComplianceDocument(document.source, document.id));
 }
 
 function toJobForm(job) {
@@ -324,10 +336,10 @@ function toJobForm(job) {
     estimated_cost_gbp: job.estimatedCostGbp || "",
     labour_cost_gbp: job.labourCostGbp || "",
     parts_cost_gbp: job.partsCostGbp || "",
-    final_cost_gbp: job.finalCostGbp || "",
+    final_cost_gbp: job.finalCostGbp ?? "",
     bill_number: job.billNumber || "",
     bill_date: job.billDateRaw || "",
-    bill_amount_gbp: job.billAmountGbp || "",
+    bill_amount_gbp: job.billAmountGbp ?? "",
     bill_notes: job.billNotes === "-" ? "" : job.billNotes,
     bill_attachment_data: "",
     priority: job.priority || "normal",
@@ -422,6 +434,13 @@ function JobModal({ vehicles, defects, editingJob, initialForm, onClose, onSaved
         if (items.length === 0) {
           throw new Error("Select at least one maintenance item.");
         }
+        const hasItemSpecificDetails = Boolean(form.estimated_cost_gbp !== "" || form.labour_cost_gbp !== ""
+          || form.parts_cost_gbp !== "" || form.final_cost_gbp !== "" || form.bill_attachment_data
+          || form.bill_number || form.bill_date || form.bill_amount_gbp !== "" || form.bill_notes.trim()
+          || form.parts_required.trim() || form.notes.trim() || form.completion_notes.trim());
+        if (hasItemSpecificDetails && items.length !== 1) {
+          throw new Error("Select exactly one maintenance item when adding costs, notes, bill details, or paperwork.");
+        }
         await createBulkMaintenanceJobs({ ...form, items });
       }
       await onSaved();
@@ -467,8 +486,8 @@ function JobModal({ vehicles, defects, editingJob, initialForm, onClose, onSaved
               </select>
             </Field>
           )}
-          <Field label="Date Completed / Done">
-            <input className="af-input" type="date" value={form.service_date} onChange={(e) => set("service_date", e.target.value)} required={!editingJob} />
+          <Field label={editingJob ? "Date Completed / Done" : "Last Completed Date"}>
+            <input className="af-input" type="date" max={ukDateKey()} value={form.service_date} onChange={(e) => set("service_date", e.target.value)} required={!editingJob} />
           </Field>
           {(!editingJob || form.service_type === "Road Tax") && (
             <Field label="Road Tax Period">
@@ -569,11 +588,16 @@ function JobModal({ vehicles, defects, editingJob, initialForm, onClose, onSaved
         )}
 
         <div className="maintenance-form-grid bill">
+          {!editingJob && selectedServices.length !== 1 && (
+            <p className="maintenance-paperwork-guidance">
+              Select one maintenance item above before adding its costs, notes, bill details, or paperwork.
+            </p>
+          )}
           <Field label="Bill / Invoice Number">
             <input className="af-input" value={form.bill_number} onChange={(e) => set("bill_number", e.target.value)} placeholder="e.g. INV-9821" />
           </Field>
           <Field label="Bill Date">
-            <input className="af-input" type="date" value={form.bill_date} onChange={(e) => set("bill_date", e.target.value)} />
+            <input className="af-input" type="date" max={ukDateKey()} value={form.bill_date} onChange={(e) => set("bill_date", e.target.value)} />
           </Field>
           <Field label="Bill Amount">
             <input className="af-input" type="number" min="0" step="0.01" value={form.bill_amount_gbp} onChange={(e) => set("bill_amount_gbp", e.target.value)} />
@@ -583,6 +607,7 @@ function JobModal({ vehicles, defects, editingJob, initialForm, onClose, onSaved
               className="af-input"
               type="file"
               accept="image/*,.pdf,.doc,.docx,.xls,.xlsx"
+              disabled={!editingJob && selectedServices.length !== 1}
               onChange={(e) => readFileAsDataUrl(e.target.files?.[0], (value) => set("bill_attachment_data", value))}
             />
           </Field>
@@ -634,8 +659,10 @@ function VehicleDetailModal({ target, profiles, onClose, onSaved }) {
     final_cost_gbp: "",
     completed_mileage_km: "",
     bill_number: "",
+    bill_date: "",
     bill_amount_gbp: "",
     bill_notes: "",
+    completion_notes: "",
     bill_attachment_data: "",
     road_tax_interval_months: String(DEFAULT_ROAD_TAX_INTERVAL_MONTHS)
   });
@@ -659,8 +686,10 @@ function VehicleDetailModal({ target, profiles, onClose, onSaved }) {
       final_cost_gbp: isCompletedSelection ? (completedJob?.finalCostGbp ?? "") : "",
       completed_mileage_km: isCompletedSelection ? (completedJob?.completedMileageKm || "") : "",
       bill_number: isCompletedSelection ? (completedJob?.billNumber || "") : "",
+      bill_date: isCompletedSelection ? (completedJob?.billDateRaw || "") : "",
       bill_amount_gbp: isCompletedSelection ? (completedJob?.billAmountGbp || "") : "",
       bill_notes: isCompletedSelection && completedJob?.billNotes !== "-" ? (completedJob?.billNotes || "") : "",
+      completion_notes: isCompletedSelection && completedJob?.completionNotes !== "-" ? (completedJob?.completionNotes || "") : "",
       bill_attachment_data: "",
       road_tax_interval_months: String(normalizeRoadTaxIntervalMonths(
         completedJob?.roadTaxIntervalMonths || selectedItem?.roadTaxIntervalMonths
@@ -701,12 +730,18 @@ function VehicleDetailModal({ target, profiles, onClose, onSaved }) {
       bill_number: isSelectedCompletedEvent
         ? (completedJob?.billNumber || "")
         : isUpdatingExistingCompletion ? (item?.billNumber || "") : "",
+      bill_date: isSelectedCompletedEvent
+        ? (completedJob?.billDateRaw || "")
+        : isUpdatingExistingCompletion ? (item?.billDateRaw || "") : "",
       bill_amount_gbp: isSelectedCompletedEvent
         ? (completedJob?.billAmountGbp || "")
         : isUpdatingExistingCompletion ? (item?.billAmountGbp || "") : "",
       bill_notes: isSelectedCompletedEvent
         ? (completedJob?.billNotes !== "-" ? completedJob?.billNotes : "") || ""
         : isUpdatingExistingCompletion ? (item?.billNotes || "") : "",
+      completion_notes: isSelectedCompletedEvent
+        ? (completedJob?.completionNotes !== "-" ? completedJob?.completionNotes : "") || ""
+        : isUpdatingExistingCompletion ? (item?.completionNotes || "") : "",
       bill_attachment_data: "",
       road_tax_interval_months: String(normalizeRoadTaxIntervalMonths(
         completedJob?.roadTaxIntervalMonths || item?.roadTaxIntervalMonths
@@ -761,9 +796,10 @@ function VehicleDetailModal({ target, profiles, onClose, onSaved }) {
         final_cost_gbp: form.final_cost_gbp,
         completed_mileage_km: form.completed_mileage_km,
         bill_number: form.bill_number,
+        bill_date: form.bill_date,
         bill_amount_gbp: form.bill_amount_gbp,
         bill_notes: form.bill_notes,
-        completion_notes: form.bill_notes,
+        completion_notes: form.completion_notes,
         bill_attachment_data: form.bill_attachment_data,
         road_tax_interval_months: form.road_tax_interval_months,
         completed_job_id: isEditingCompleted
@@ -885,9 +921,9 @@ function VehicleDetailModal({ target, profiles, onClose, onSaved }) {
             const displayedDocumentJobId = isSelectedCompleted
               ? selectedCompletedJob.id
               : item.documentJobId;
-            const displayedDocumentSubmittedAt = isSelectedCompleted
-              ? (selectedCompletedJob.updatedAt || selectedCompletedJob.completedAt || "-")
-              : item.documentSubmittedAt;
+            const displayedDocumentSubmittedAt = formatUkDateTime(isSelectedCompleted
+              ? selectedCompletedJob.documentSubmittedAtRaw
+              : item.documentSubmittedAtRaw);
             const isSelectedUpcoming = activeType === item.type
               && target?.preselectType === item.type
               && Boolean(target?.scheduledDueDate)
@@ -925,7 +961,9 @@ function VehicleDetailModal({ target, profiles, onClose, onSaved }) {
                     >
                       View last document
                     </button>
-                    {displayedDocumentSubmittedAt && <small>Submitted: {displayedDocumentSubmittedAt}</small>}
+                    <small>{displayedDocumentSubmittedAt
+                      ? `Submitted: ${displayedDocumentSubmittedAt}`
+                      : "Upload time was not recorded for this older paper."}</small>
                   </div>
                 )}
               </div>
@@ -962,7 +1000,7 @@ function VehicleDetailModal({ target, profiles, onClose, onSaved }) {
             )}
             <div className="maintenance-form-grid">
               <Field label="Date Done">
-                <input className="af-input" type="date" value={form.service_date} onChange={(e) => set("service_date", e.target.value)} required />
+                <input className="af-input" type="date" max={ukDateKey()} value={form.service_date} onChange={(e) => set("service_date", e.target.value)} required />
               </Field>
               <Field label="Garage / Vendor">
                 <input className="af-input" value={form.garage_name} onChange={(e) => set("garage_name", e.target.value)} placeholder="Workshop or vendor name" />
@@ -981,12 +1019,18 @@ function VehicleDetailModal({ target, profiles, onClose, onSaved }) {
               <Field label="Bill Amount (£)">
                 <input className="af-input" type="number" min="0" step="0.01" value={form.bill_amount_gbp} onChange={(e) => set("bill_amount_gbp", e.target.value)} />
               </Field>
+              <Field label="Bill Date">
+                <input className="af-input" type="date" max={ukDateKey()} value={form.bill_date} onChange={(e) => set("bill_date", e.target.value)} />
+              </Field>
               <Field label="Attach Document / Certificate">
                 <input className="af-input" type="file" accept="image/*,.pdf,.doc,.docx,.xls,.xlsx"
                   onChange={(e) => readFileAsDataUrl(e.target.files?.[0], (v) => set("bill_attachment_data", v))} />
               </Field>
-              <Field label="Notes">
+              <Field label="Document / Bill Notes">
                 <textarea className="af-textarea" value={form.bill_notes} onChange={(e) => set("bill_notes", e.target.value)} rows={2} placeholder="Certificate number, MOT pass notes, inspector..." />
+              </Field>
+              <Field label="Completion Notes">
+                <textarea className="af-textarea" value={form.completion_notes} onChange={(e) => set("completion_notes", e.target.value)} rows={2} placeholder="Work completed, findings or follow-up..." />
               </Field>
               <div className="maintenance-rule-note">
                 <span>Document</span>
@@ -1448,7 +1492,7 @@ function JobDrawer({ job, history, onClose, onEdit, onComplete, onBillStatus, sa
             <div className="maintenance-job-note" key={note.id}>
               <div className="maintenance-job-note-header">
                 <strong>{note.author_name}</strong>
-                <span>{new Date(note.created_at).toLocaleString("en-GB", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" })}</span>
+                <span>{formatUkDateTime(note.createdAtMs)}</span>
               </div>
               <p>{note.note_text}</p>
             </div>
@@ -2267,19 +2311,27 @@ function MaintenanceDocuments({ documents, loading, onOpenJob }) {
           return (
             <div className="maintenance-document-card" key={doc.id}>
               {doc.hasAttachment && <MaintenanceDocumentThumbnail
-                jobId={doc.id}
+                documentId={doc.id}
+                source={doc.source}
                 version={doc.documentSubmittedAtRaw}
                 label={`${doc.vehicle || doc.fleetCode || doc.jobNumber} · ${doc.serviceType}`}
-                onOpen={() => openJobAttachment(doc.id)}
+                onOpen={() => openVaultAttachment(doc)}
               />}
               <div className="maintenance-document-details">
-              <strong>{doc.vehicle || doc.fleetCode || doc.jobNumber} · {doc.serviceType}</strong>
-              <span>{doc.assetType === "trailer" ? "Trailer" : "Vehicle"}{doc.fleetCode ? ` · ${doc.fleetCode}` : ""}</span>
-              <p>{doc.billNumber} · Service date: {doc.serviceDate} · {doc.billAmount}</p>
-              <p>{submitted ? `Submitted: ${submitted.dateTime} · ${submitted.weekLabel}` : doc.hasAttachment ? "Submission date, time & week not recorded for this older paper." : "No attachment uploaded."}</p>
+                <strong>{doc.vehicle || doc.fleetCode || doc.jobNumber} · {doc.serviceType}</strong>
+                <span>{doc.assetType === "trailer" ? "Trailer" : "Vehicle"}{doc.fleetCode ? ` · ${doc.fleetCode}` : ""}</span>
+                <div className="maintenance-document-facts">
+                  <span><b>Service date</b>{doc.serviceDate || "Not recorded"}</span>
+                  <span><b>Bill number</b>{doc.billNumber && doc.billNumber !== "-" ? doc.billNumber : "Not recorded"}</span>
+                  <span><b>Bill date</b>{doc.billDate && doc.billDate !== "-" ? doc.billDate : "Not recorded"}</span>
+                  <span><b>Bill amount</b>{doc.billAmount && doc.billAmount !== "-" ? doc.billAmount : "Not recorded"}</span>
+                </div>
+                <p>{submitted ? `Submitted: ${submitted.dateTime} · ${submitted.weekLabel}` : doc.hasAttachment ? "Submission date, time & week not recorded for this older paper." : "No attachment uploaded."}</p>
               <div className="finance-row-actions">
-                {doc.hasAttachment && <button className="header-action-button primary" type="button" onClick={() => openJobAttachment(doc.id)}>View paper</button>}
-                <button className="header-action-button" type="button" onClick={() => onOpenJob(doc.id)}>Job details</button>
+                {doc.hasAttachment && <button className="header-action-button primary" type="button" onClick={() => openVaultAttachment(doc)}>View paper</button>}
+                {doc.source === "maintenance_job" && (
+                  <button className="header-action-button" type="button" onClick={() => onOpenJob(doc.id)}>Job details</button>
+                )}
               </div>
               </div>
             </div>

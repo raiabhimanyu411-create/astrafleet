@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import workerUrl from "pdfjs-dist/build/pdf.worker.min.mjs?url";
-import { getMaintenanceDocument } from "../../api/maintenanceApi";
+import { getComplianceDocument, getMaintenanceDocument } from "../../api/maintenanceApi";
 
-export function MaintenanceDocumentThumbnail({ jobId, version, label, onOpen }) {
+export function MaintenanceDocumentThumbnail({ documentId, source = "maintenance_job", version, label, onOpen }) {
   const buttonRef = useRef(null);
   const [visible, setVisible] = useState(false);
   const [preview, setPreview] = useState("");
@@ -26,7 +26,9 @@ export function MaintenanceDocumentThumbnail({ jobId, version, label, onOpen }) 
     setStatus("Loading preview…");
     async function load() {
       try {
-        const response = await getMaintenanceDocument(jobId, { signal: controller.signal });
+        const response = source === "maintenance_job"
+          ? await getMaintenanceDocument(documentId, { signal: controller.signal })
+          : await getComplianceDocument(source, documentId, { signal: controller.signal });
         if (disposed) return;
         const data = response.data?.attachmentData || "";
         if (/^data:image\/(png|jpe?g|webp|gif|bmp)(;|,)/i.test(data)) {
@@ -70,7 +72,7 @@ export function MaintenanceDocumentThumbnail({ jobId, version, label, onOpen }) 
       controller.abort();
       if (pdfTask) void pdfTask.destroy();
     };
-  }, [visible, jobId, version]);
+  }, [visible, documentId, source, version]);
 
   return (
     <button ref={buttonRef} className="maintenance-document-thumbnail" type="button" onClick={onOpen} aria-label={`Open ${label}`}>

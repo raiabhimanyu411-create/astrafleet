@@ -28,6 +28,7 @@ router.post("/events/done", maintenance.completeEventFromSchedule);
 router.patch("/events/:jobId/undo", maintenance.undoCompletedEvent);
 
 router.get("/compliance", compliance.getCompliancePortal);
+router.get("/compliance/documents/:source/:id", compliance.getComplianceDocument);
 router.post("/compliance/inspections", compliance.createInspection);
 router.patch("/compliance/inspection-items/:itemId/repair", compliance.repairInspectionItem);
 router.patch("/compliance/inspections/:id/review", compliance.reviewInspection);
