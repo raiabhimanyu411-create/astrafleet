@@ -2877,43 +2877,43 @@ exports.getMaintenancePortal = async (_req, res) => {
       SELECT events.*, COALESCE(v.registration_number, tr.registration_number) AS registration_number
       FROM (
       SELECT id AS event_id, vehicle_id, NULL AS trailer_id, service_date AS event_date,
-             CONVERT(service_type USING utf8mb4) AS title,
-             CONVERT(description USING utf8mb4) AS description,
+             CONVERT(service_type USING utf8mb4) COLLATE utf8mb4_unicode_ci AS title,
+             CONVERT(description USING utf8mb4) COLLATE utf8mb4_unicode_ci AS description,
              cost_gbp,
-             CONVERT(garage_name USING utf8mb4) AS garage_name,
-             CONVERT('service' USING utf8mb4) AS source
+             CONVERT(garage_name USING utf8mb4) COLLATE utf8mb4_unicode_ci AS garage_name,
+             CONVERT('service' USING utf8mb4) COLLATE utf8mb4_unicode_ci AS source
       FROM maintenance_records
       UNION ALL
       SELECT id AS event_id, NULL AS vehicle_id, trailer_id, service_date AS event_date,
-             CONVERT(service_type USING utf8mb4) AS title,
-             CONVERT(description USING utf8mb4) AS description,
+             CONVERT(service_type USING utf8mb4) COLLATE utf8mb4_unicode_ci AS title,
+             CONVERT(description USING utf8mb4) COLLATE utf8mb4_unicode_ci AS description,
              cost_gbp,
-             CONVERT(garage_name USING utf8mb4) AS garage_name,
-             CONVERT('trailer_service' USING utf8mb4) AS source
+             CONVERT(garage_name USING utf8mb4) COLLATE utf8mb4_unicode_ci AS garage_name,
+             CONVERT('trailer_service' USING utf8mb4) COLLATE utf8mb4_unicode_ci AS source
       FROM trailer_maintenance_records
       UNION ALL
       SELECT id AS event_id, vehicle_id, NULL AS trailer_id, inspection_date AS event_date,
-             CONVERT(inspection_type USING utf8mb4) AS title,
-             CONVERT(notes USING utf8mb4) AS description,
+             CONVERT(inspection_type USING utf8mb4) COLLATE utf8mb4_unicode_ci AS title,
+             CONVERT(notes USING utf8mb4) COLLATE utf8mb4_unicode_ci AS description,
              NULL AS cost_gbp,
-             CONVERT(inspector_name USING utf8mb4) AS garage_name,
-             CONVERT('inspection' USING utf8mb4) AS source
+             CONVERT(inspector_name USING utf8mb4) COLLATE utf8mb4_unicode_ci AS garage_name,
+             CONVERT('inspection' USING utf8mb4) COLLATE utf8mb4_unicode_ci AS source
       FROM vehicle_inspections
       UNION ALL
       SELECT id AS event_id, NULL AS vehicle_id, trailer_id, inspection_date AS event_date,
-             CONVERT(inspection_type USING utf8mb4) AS title,
-             CONVERT(notes USING utf8mb4) AS description,
+             CONVERT(inspection_type USING utf8mb4) COLLATE utf8mb4_unicode_ci AS title,
+             CONVERT(notes USING utf8mb4) COLLATE utf8mb4_unicode_ci AS description,
              NULL AS cost_gbp,
-             CONVERT(inspector_name USING utf8mb4) AS garage_name,
-             CONVERT('trailer_inspection' USING utf8mb4) AS source
+             CONVERT(inspector_name USING utf8mb4) COLLATE utf8mb4_unicode_ci AS garage_name,
+             CONVERT('trailer_inspection' USING utf8mb4) COLLATE utf8mb4_unicode_ci AS source
       FROM trailer_inspections
       UNION ALL
       SELECT id AS event_id, vehicle_id, trailer_id, DATE(reported_at) AS event_date,
-             CONVERT(defect_type USING utf8mb4) AS title,
-             CONVERT(description USING utf8mb4) AS description,
+             CONVERT(defect_type USING utf8mb4) COLLATE utf8mb4_unicode_ci AS title,
+             CONVERT(description USING utf8mb4) COLLATE utf8mb4_unicode_ci AS description,
              NULL AS cost_gbp,
-             CONVERT(reported_by USING utf8mb4) AS garage_name,
-             CONVERT('defect' USING utf8mb4) AS source
+             CONVERT(reported_by USING utf8mb4) COLLATE utf8mb4_unicode_ci AS garage_name,
+             CONVERT('defect' USING utf8mb4) COLLATE utf8mb4_unicode_ci AS source
       FROM defect_reports
       ) events
       LEFT JOIN vehicles v ON v.id = events.vehicle_id
@@ -2997,19 +2997,19 @@ exports.getMaintenancePortal = async (_req, res) => {
     }));
 
     const [complianceDocumentRows] = await db.query(`
-      SELECT 'compliance_document' AS document_source, d.id AS document_id,
-             d.document_type, DATE_FORMAT(d.uploaded_at_utc, '%Y-%m-%dT%H:%i:%sZ') AS submitted_at,
-             COALESCE(i.asset_type, mt.asset_type) AS asset_type,
+      SELECT CONVERT('compliance_document' USING utf8mb4) COLLATE utf8mb4_unicode_ci AS document_source, d.id AS document_id,
+             CONVERT(d.document_type USING utf8mb4) COLLATE utf8mb4_unicode_ci AS document_type, DATE_FORMAT(d.uploaded_at_utc, '%Y-%m-%dT%H:%i:%sZ') AS submitted_at,
+             CONVERT(COALESCE(i.asset_type, mt.asset_type) USING utf8mb4) COLLATE utf8mb4_unicode_ci AS asset_type,
              COALESCE(i.asset_id, mt.asset_id) AS asset_id,
-             COALESCE(i.registration_snapshot, mt.registration_snapshot) AS registration_number,
+             CONVERT(COALESCE(i.registration_snapshot, mt.registration_snapshot) USING utf8mb4) COLLATE utf8mb4_unicode_ci AS registration_number,
              COALESCE(i.inspection_date, mt.test_date) AS service_date,
              CASE
                WHEN d.mot_test_id IS NOT NULL THEN 'MOT'
                WHEN d.document_type='brake_report' THEN 'Brake test'
                WHEN d.document_type='wheel_retorque' THEN 'Wheel retorque'
                ELSE 'Safety inspection'
-             END AS service_type,
-             COALESCE(v.fleet_code, tr.trailer_code) AS fleet_code
+             END COLLATE utf8mb4_unicode_ci AS service_type,
+             CONVERT(COALESCE(v.fleet_code, tr.trailer_code) USING utf8mb4) COLLATE utf8mb4_unicode_ci AS fleet_code
       FROM compliance_documents d
       LEFT JOIN compliance_inspections i ON i.id=d.inspection_id
       LEFT JOIN compliance_mot_tests mt ON mt.id=d.mot_test_id
@@ -3018,21 +3018,21 @@ exports.getMaintenancePortal = async (_req, res) => {
       LEFT JOIN trailers tr ON COALESCE(i.asset_type, mt.asset_type)='trailer'
         AND tr.id=COALESCE(i.asset_id, mt.asset_id)
       UNION ALL
-      SELECT 'repair_evidence', item.id, 'repair_evidence',
+      SELECT CONVERT('repair_evidence' USING utf8mb4) COLLATE utf8mb4_unicode_ci, item.id, CONVERT('repair_evidence' USING utf8mb4) COLLATE utf8mb4_unicode_ci,
              DATE_FORMAT(item.repair_document_uploaded_at_utc, '%Y-%m-%dT%H:%i:%sZ'),
-             i.asset_type, i.asset_id, i.registration_snapshot, item.repaired_at,
-             CONCAT('Repair evidence · ', item.item_label), COALESCE(v.fleet_code, tr.trailer_code)
+             CONVERT(i.asset_type USING utf8mb4) COLLATE utf8mb4_unicode_ci, i.asset_id, CONVERT(i.registration_snapshot USING utf8mb4) COLLATE utf8mb4_unicode_ci, item.repaired_at,
+             CONVERT(CONCAT('Repair evidence · ', item.item_label) USING utf8mb4) COLLATE utf8mb4_unicode_ci, CONVERT(COALESCE(v.fleet_code, tr.trailer_code) USING utf8mb4) COLLATE utf8mb4_unicode_ci
       FROM compliance_inspection_items item
       JOIN compliance_inspections i ON i.id=item.inspection_id
       LEFT JOIN vehicles v ON i.asset_type='vehicle' AND v.id=i.asset_id
       LEFT JOIN trailers tr ON i.asset_type='trailer' AND tr.id=i.asset_id
       WHERE item.repair_document IS NOT NULL AND item.repair_document != ''
       UNION ALL
-      SELECT 'recall_evidence', recall.id, 'recall_evidence',
+      SELECT CONVERT('recall_evidence' USING utf8mb4) COLLATE utf8mb4_unicode_ci, recall.id, CONVERT('recall_evidence' USING utf8mb4) COLLATE utf8mb4_unicode_ci,
              DATE_FORMAT(recall.evidence_uploaded_at_utc, '%Y-%m-%dT%H:%i:%sZ'),
-             recall.asset_type, recall.asset_id,
-             COALESCE(v.registration_number, tr.registration_number), recall.actioned_at,
-             'Recall evidence', COALESCE(v.fleet_code, tr.trailer_code)
+             CONVERT(recall.asset_type USING utf8mb4) COLLATE utf8mb4_unicode_ci, recall.asset_id,
+             CONVERT(COALESCE(v.registration_number, tr.registration_number) USING utf8mb4) COLLATE utf8mb4_unicode_ci, recall.actioned_at,
+             CONVERT('Recall evidence' USING utf8mb4) COLLATE utf8mb4_unicode_ci, CONVERT(COALESCE(v.fleet_code, tr.trailer_code) USING utf8mb4) COLLATE utf8mb4_unicode_ci
       FROM compliance_recalls recall
       LEFT JOIN vehicles v ON recall.asset_type='vehicle' AND v.id=recall.asset_id
       LEFT JOIN trailers tr ON recall.asset_type='trailer' AND tr.id=recall.asset_id
