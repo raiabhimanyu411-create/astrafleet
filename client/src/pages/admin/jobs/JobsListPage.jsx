@@ -776,7 +776,7 @@ export function JobsListPage() {
             {tabCounts.history > 0 && <span className="relay-tab-count">{tabCounts.history}</span>}
           </button>
           <div className="relay-tabs-spacer" />
-          <button className="relay-import-btn" type="button" onClick={() => setShowImport(true)}>Import CSV</button>
+          <button className="relay-import-btn" type="button" onClick={() => setShowImport(true)}>↑ Upload CSV</button>
           <button className="relay-new-btn" type="button" onClick={() => navigate("/admin/jobs/new")}>
             + New Job
           </button>
