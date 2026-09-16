@@ -9,6 +9,7 @@ import { StatusPill } from "../../../components/StatusPill";
 import { DriverChatWidget } from "../DriverChatWidget";
 import { AdminWorkspaceLayout } from "../AdminWorkspaceLayout";
 import { getAuthSession } from "../../../utils/authSession";
+import { ImportJobsModal } from "./ImportJobsModal";
 
 const STATUS_OPTIONS = [
   { value: "", label: "All Statuses" },
@@ -485,6 +486,7 @@ export function JobsListPage() {
   const [notesModalJob, setNotesModalJob] = useState(null);
   const [chatModalJob, setChatModalJob] = useState(null);
   const [chatDrivers, setChatDrivers] = useState([]);
+  const [showImport, setShowImport] = useState(false);
 
   function load() {
     setLoading(true);
@@ -774,6 +776,7 @@ export function JobsListPage() {
             {tabCounts.history > 0 && <span className="relay-tab-count">{tabCounts.history}</span>}
           </button>
           <div className="relay-tabs-spacer" />
+          <button className="relay-import-btn" type="button" onClick={() => setShowImport(true)}>Import CSV</button>
           <button className="relay-new-btn" type="button" onClick={() => navigate("/admin/jobs/new")}>
             + New Job
           </button>
@@ -1686,6 +1689,7 @@ export function JobsListPage() {
           })}
         </div>
         </section>
+        {showImport && <ImportJobsModal existingJobs={data?.jobs || []} onClose={() => setShowImport(false)} onComplete={load} />}
       </div>
 
       {/* Block modal */}
