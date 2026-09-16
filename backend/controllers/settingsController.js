@@ -26,16 +26,6 @@ async function ensureSettingsTable() {
       [key, value]
     );
   }
-  await db.query(
-    `UPDATE system_settings
-     SET setting_value = '40'
-     WHERE setting_key = 'avg_speed_mph' AND setting_value = '50'`
-  );
-  await db.query(
-    `UPDATE system_settings
-     SET setting_value = '20.00'
-     WHERE setting_key = 'driver_rate_per_hour' AND setting_value = '30.00'`
-  );
   tableReady = true;
 }
 

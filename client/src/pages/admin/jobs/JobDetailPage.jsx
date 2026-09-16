@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { addJobStop, cancelJob, deleteJobStop, getJobById, updateJobStatus } from "../../../api/jobApi";
-import { getRealtimeSocket } from "../../../api/realtime";
+import { subscribeJobUpdates } from "../../../api/realtime";
 import { DeleteReasonModal } from "../../../components/DeleteReasonModal";
 import { StateNotice } from "../../../components/StateNotice";
 import { StatusPill } from "../../../components/StatusPill";
@@ -56,34 +56,25 @@ export function JobDetailPage() {
   const [stopRemoving, setStopRemoving] = useState(null);
   const [proofPreview, setProofPreview] = useState(null);
 
-  const loadingRef = useRef(false);
+  const loadingRef = useRef(0);
 
   function load() {
-    if (loadingRef.current) return;
-    loadingRef.current = true;
-    setLoading(true);
+    const version = ++loadingRef.current;
     getJobById(id)
-      .then(r => setData(r.data))
-      .catch(() => setError("Could not load job details."))
-      .finally(() => { setLoading(false); loadingRef.current = false; });
+      .then(r => { if (version === loadingRef.current) { setData(r.data); setError(''); } })
+      .catch(() => { if (version === loadingRef.current) setError("Could not load job details."); })
+      .finally(() => { if (version === loadingRef.current) setLoading(false); });
   }
 
   useEffect(() => { load(); }, [id]);
 
   // Realtime: re-fetch when driver updates this job's status or POD is submitted
   useEffect(() => {
-    const socket = getRealtimeSocket();
     function handleJobUpdate(payload) {
       if (payload?.jobId && Number(payload.jobId) !== Number(id)) return;
       load();
     }
-    socket.connect();
-    socket.emit("admin-jobs:join");
-    socket.on("job:updated", handleJobUpdate);
-    return () => {
-      socket.off("job:updated", handleJobUpdate);
-      socket.emit("admin-jobs:leave");
-    };
+    return subscribeJobUpdates(handleJobUpdate);
   }, [id]);
 
   async function handleStatusChange(nextStatus) {

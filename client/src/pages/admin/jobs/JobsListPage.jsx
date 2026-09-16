@@ -1,7 +1,7 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { getDriverChats } from "../../../api/adminApi";
-import { getRealtimeSocket, joinAdminChatRoom, leaveAdminChatRoom } from "../../../api/realtime";
+import { getRealtimeSocket, joinAdminChatRoom, leaveAdminChatRoom, subscribeJobUpdates } from "../../../api/realtime";
 import { addJobNote, cancelJob, getJobNotes, getJobs, replaceJobVehicle, updateJobAssignment, updateJobStatus } from "../../../api/jobApi";
 import { DeleteReasonModal } from "../../../components/DeleteReasonModal";
 import { StateNotice } from "../../../components/StateNotice";
@@ -491,12 +491,13 @@ export function JobsListPage() {
   const [chatDrivers, setChatDrivers] = useState([]);
   const [showImport, setShowImport] = useState(false);
 
+  const loadVersion = useRef(0);
   function load() {
-    setLoading(true);
+    const version = ++loadVersion.current;
     return getJobs()
-      .then(r => { setData(r.data); setError(""); })
-      .catch(() => setError("Could not load jobs. Please refresh."))
-      .finally(() => setLoading(false));
+      .then(r => { if (version === loadVersion.current) { setData(r.data); setError(""); } })
+      .catch(() => { if (version === loadVersion.current) setError("Could not load jobs. Please refresh."); })
+      .finally(() => { if (version === loadVersion.current) setLoading(false); });
   }
 
   useEffect(() => { load(); }, []);
@@ -514,14 +515,12 @@ export function JobsListPage() {
     const handleJobUpdate = () => load();
     const handleDriverMessage = () => loadChatDrivers();
     socket.connect();
-    socket.emit("admin-jobs:join");
+    const unsubscribe = subscribeJobUpdates(handleJobUpdate);
     joinAdminChatRoom();
-    socket.on("job:updated", handleJobUpdate);
     socket.on("driver-chat:message", handleDriverMessage);
     return () => {
-      socket.off("job:updated", handleJobUpdate);
+      unsubscribe();
       socket.off("driver-chat:message", handleDriverMessage);
-      socket.emit("admin-jobs:leave");
       leaveAdminChatRoom();
     };
   }, []);

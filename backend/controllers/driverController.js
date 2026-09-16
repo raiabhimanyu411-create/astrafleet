@@ -2,7 +2,7 @@ const db = require("../db/connection");
 const { verifySessionToken } = require("./authController");
 const { emitDriverChatMessage, emitDriverLocationUpdate, emitJobUpdate } = require("../realtime");
 const { buildChangeSet, logActivity } = require("../utils/auditLogger");
-const { dateTimeKey, fmtUkDateTime, fmtUkTime, isDateTimeKey, ukNowDateTimeKey } = require("../utils/jobDateTimes");
+const { dateTimeKey, fmtUkDateTime, fmtUkTime, isDateTimeKey, ukNowDateTimeKey, wallMinutesBetween, addWallMinutes } = require("../utils/jobDateTimes");
 
 function fmtDate(d) {
   if (!d) return "—";
@@ -456,7 +456,7 @@ function mapDriverJob(row, stops = []) {
       navigationUrl: `https://www.google.com/maps/dir/?api=1&travelmode=driving&query=${navQuery}`
     },
     schedule: {
-      plannedDate: row.planned_departure ? new Date(row.planned_departure).toISOString().slice(0, 10) : null,
+      plannedDate: dateTimeKey(row.planned_departure).slice(0, 10) || null,
       plannedDeparture: fmtDateTime(row.planned_departure),
       eta: fmtDateTime(row.eta),
       dockWindow: row.dock_window || "—",
@@ -516,8 +516,8 @@ function combineEtaDateAndTime(value, job) {
   const timeOnlyMatch = raw.match(/^([01]\d|2[0-3]):([0-5]\d)$/);
   if (!timeOnlyMatch) return isDateTimeKey(raw) ? dateTimeKey(raw) : "";
 
-  const base = dateTimeKey(job.eta || job.planned_departure) || ukNowDateTimeKey();
-  return `${base.slice(0, 10)}T${timeOnlyMatch[1]}:${timeOnlyMatch[2]}`;
+  // A time without a date is ambiguous for overnight jobs. Require full UK input.
+  return "";
 }
 
 async function getDriverJobs(driverId) {
@@ -704,6 +704,8 @@ exports.getMyDriverPanel = async (req, res) => {
 
 // PATCH /api/drivers/me/jobs/:jobId/status
 exports.updateMyJobStatus = async (req, res) => {
+  const db = req.jobConnection;
+  const emitJobUpdate = payload => req.jobEvents.push(payload);
   try {
     await ensureDriverOpsSchema();
     const driver = await getDriverFromSession(req);
@@ -716,15 +718,16 @@ exports.updateMyJobStatus = async (req, res) => {
     }
 
     const [[job]] = await db.query(
-      `SELECT t.id, t.vehicle_id, t.driver_job_status, t.primary_drop_status, t.pickup_address, r.origin_hub
+      `SELECT t.id, t.vehicle_id, t.trailer_id, t.dispatch_status, t.driver_job_status, t.primary_drop_status, t.pickup_address, r.origin_hub
        FROM trips t
        LEFT JOIN routes r ON r.id = t.route_id
-       WHERE t.id = ? AND t.driver_id = ?`,
+       WHERE t.id = ? AND t.driver_id = ? AND t.deleted_at IS NULL`,
       [jobId, driver.id]
     );
     if (!job) return res.status(404).json({ message: "Assigned job not found." });
 
     const currentStatus = job.driver_job_status || "accepted";
+    if (['completed','blocked','cancelled','failed'].includes(job.dispatch_status)) return res.status(409).json({ message: 'This job is closed or blocked. Dispatch must reopen it.' });
     if (status === "delivered") {
       return res.status(400).json({ message: "Submit POD with signature/photo to mark the job delivered." });
     }
@@ -756,7 +759,7 @@ exports.updateMyJobStatus = async (req, res) => {
       values.push(ukNowDateTimeKey());
     }
     if (status === "arrived_drop") {
-      updates.push("primary_drop_arrived_at=COALESCE(primary_drop_arrived_at, ?)");
+      updates.push("primary_drop_arrived_at=COALESCE(primary_drop_arrived_at, ?)", "primary_drop_status=IF(primary_drop_status='completed','completed','arrived')");
       values.push(ukNowDateTimeKey());
     }
     if (status === "delivered") {
@@ -787,6 +790,7 @@ exports.updateMyJobStatus = async (req, res) => {
       const vehicleStatus = dispatchStatus === "active" ? "in_transit" : dispatchStatus === "completed" || dispatchStatus === "blocked" ? "available" : "planned";
       await db.query(`UPDATE vehicles SET status=? WHERE id=?`, [vehicleStatus, job.vehicle_id]);
     }
+    if (job.trailer_id && dispatchStatus) await db.query('UPDATE trailers SET status=? WHERE id=?', [['active','loading'].includes(dispatchStatus) ? 'in_use' : ['blocked','completed'].includes(dispatchStatus) ? 'available' : 'planned', job.trailer_id]);
 
     if (status === "failed_delivery" || status === "declined") {
       await createControlRoomAlert({
@@ -809,6 +813,8 @@ exports.updateMyJobStatus = async (req, res) => {
 
 // POST /api/drivers/me/jobs/:jobId/pod
 exports.submitMyProofOfDelivery = async (req, res) => {
+  const db = req.jobConnection;
+  const emitJobUpdate = payload => req.jobEvents.push(payload);
   try {
     await ensureDriverOpsSchema();
     const driver = await getDriverFromSession(req);
@@ -820,14 +826,14 @@ exports.submitMyProofOfDelivery = async (req, res) => {
       return res.status(400).json({ message: "POD signature or delivery photo is required." });
     }
     const [[job]] = await db.query(
-      `SELECT t.id, t.vehicle_id, t.driver_job_status, t.primary_drop_status, t.pickup_address, r.origin_hub
+      `SELECT t.id, t.vehicle_id, t.trailer_id, t.dispatch_status, t.driver_job_status, t.primary_drop_status, t.primary_drop_arrived_at, t.pickup_address, r.origin_hub
        FROM trips t
        LEFT JOIN routes r ON r.id = t.route_id
-       WHERE t.id = ? AND t.driver_id = ?`,
+       WHERE t.id = ? AND t.driver_id = ? AND t.deleted_at IS NULL`,
       [jobId, driver.id]
     );
     if (!job) return res.status(404).json({ message: "Assigned job not found." });
-    if (["failed_delivery", "declined"].includes(job.driver_job_status)) {
+    if (["failed_delivery", "declined"].includes(job.driver_job_status) || ['blocked','cancelled','failed','completed'].includes(job.dispatch_status)) {
       return res.status(409).json({ message: "POD cannot be submitted for a failed or declined job." });
     }
     const pickupPostcode = extractPostcode(job.pickup_address || job.origin_hub);
@@ -845,30 +851,24 @@ exports.submitMyProofOfDelivery = async (req, res) => {
     if (incompleteDeliveryStops.length > 0) {
       return res.status(400).json({ message: `Complete ${incompleteDeliveryStops.length} delivery stop(s) before submitting POD.` });
     }
+    if (!['arrived','completed'].includes(job.primary_drop_status)) return res.status(409).json({ message: 'Record arrival at Drop 1 before submitting POD.' });
+    if (!(await hasActiveShift(driver.id))) return res.status(409).json({ message: 'Start your shift before submitting POD.' });
     if ((job.primary_drop_status || "pending") !== "completed") {
       const completedAt = ukNowDateTimeKey();
       await db.query(
         `UPDATE trips
          SET primary_drop_status='completed',
-             primary_drop_arrived_at=COALESCE(primary_drop_arrived_at, ?),
              primary_drop_completed_at=COALESCE(primary_drop_completed_at, ?)
          WHERE id=? AND driver_id=?`,
-        [completedAt, completedAt, jobId, driver.id]
+        [completedAt, jobId, driver.id]
       );
     }
-    if (!(await hasActiveShift(driver.id))) {
-      await db.query(
-        `INSERT INTO driver_shifts (driver_id, shift_start, status, start_note) VALUES (?, NOW(), 'active', ?)`,
-        [driver.id, `Auto-started when POD was submitted for job ${jobId}.`]
-      );
-      await db.query(`UPDATE drivers SET shift_status='ready' WHERE id=?`, [driver.id]);
-    }
-
+    const [[lastArrival]] = await db.query(`SELECT actual_arrival FROM job_stops WHERE trip_id=? AND stop_type='delivery' AND status='completed' ORDER BY stop_order DESC LIMIT 1`, [jobId]);
     await db.query(
       `UPDATE trips
        SET pod_signature_data=?, pod_photo_data=?, delivery_notes=?, pod_status='uploaded', driver_job_status='delivered', dispatch_status='completed', actual_arrival=COALESCE(actual_arrival, ?)
        WHERE id=? AND driver_id=?`,
-      [signatureData || null, photoData || null, deliveryNotes || null, ukNowDateTimeKey(), jobId, driver.id]
+      [signatureData || null, photoData || null, deliveryNotes || null, lastArrival?.actual_arrival || job.primary_drop_arrived_at || null, jobId, driver.id]
     );
     if (job.driver_job_status !== "delivered") {
       await db.query(
@@ -880,6 +880,7 @@ exports.submitMyProofOfDelivery = async (req, res) => {
     if (job.vehicle_id) {
       await db.query(`UPDATE vehicles SET status='available' WHERE id=?`, [job.vehicle_id]);
     }
+    if (job.trailer_id) await db.query(`UPDATE trailers SET status='available' WHERE id=?`, [job.trailer_id]);
 
     emitJobUpdate({ jobId: Number(jobId), source: "driver-pod", status: "delivered", dispatchStatus: "completed" });
 
@@ -1091,6 +1092,8 @@ exports.logOdometer = async (req, res) => {
 
 // PATCH /api/drivers/me/jobs/:jobId/eta
 exports.updateJobEta = async (req, res) => {
+  const db = req.jobConnection;
+  const emitJobUpdate = payload => req.jobEvents.push(payload);
   try {
     await ensureDriverOpsSchema();
     const driver = await getDriverFromSession(req);
@@ -1101,13 +1104,15 @@ exports.updateJobEta = async (req, res) => {
     if (!eta) return res.status(400).json({ message: "A valid ETA is required." });
 
     const [[job]] = await db.query(
-      `SELECT id, trip_code, vehicle_id, eta, planned_departure FROM trips WHERE id=? AND driver_id=?`,
+      `SELECT id, trip_code, vehicle_id, eta, planned_departure, actual_departure, dispatch_status FROM trips WHERE id=? AND driver_id=? AND deleted_at IS NULL`,
       [jobId, driver.id]
     );
     if (!job) return res.status(404).json({ message: "Assigned job not found." });
 
     const etaDate = combineEtaDateAndTime(eta, job);
-    if (!etaDate) return res.status(400).json({ message: "A valid UK ETA is required." });
+    if (!etaDate) return res.status(400).json({ message: "Enter the full ETA date and time in UK time (GMT/BST). Clock-change ambiguous hours are not accepted." });
+    if (!['planned','loading','active'].includes(job.dispatch_status)) return res.status(409).json({ message: 'ETA can only be updated on an open job.' });
+    if (wallMinutesBetween(ukNowDateTimeKey(), etaDate) < 0 || (job.actual_departure && wallMinutesBetween(job.actual_departure, etaDate) < 0)) return res.status(400).json({ message: 'ETA cannot be in the past or before actual departure.' });
 
     await db.query(`UPDATE trips SET eta=?, eta_updated_at=? WHERE id=? AND driver_id=?`, [etaDate, ukNowDateTimeKey(), jobId, driver.id]);
 
@@ -1130,6 +1135,8 @@ exports.updateJobEta = async (req, res) => {
 
 // PATCH /api/drivers/me/jobs/:jobId/primary-drop/status
 exports.updatePrimaryDropStatus = async (req, res) => {
+  const db = req.jobConnection;
+  const emitJobUpdate = payload => req.jobEvents.push(payload);
   try {
     await ensureDriverOpsSchema();
     const driver = await getDriverFromSession(req);
@@ -1141,14 +1148,18 @@ exports.updatePrimaryDropStatus = async (req, res) => {
     if (!allowedStatuses.has(status)) return res.status(400).json({ message: "Invalid Drop 1 status." });
 
     const [[job]] = await db.query(
-      `SELECT t.id, t.driver_job_status, t.pickup_address, r.origin_hub
+      `SELECT t.id, t.driver_job_status, t.dispatch_status, t.primary_drop_status, t.pickup_address, r.origin_hub
        FROM trips t
        LEFT JOIN routes r ON r.id = t.route_id
-       WHERE t.id=? AND t.driver_id=?`,
+       WHERE t.id=? AND t.driver_id=? AND t.deleted_at IS NULL`,
       [jobId, driver.id]
     );
     if (!job) return res.status(404).json({ message: "Assigned job not found." });
 
+    if (!['in_transit','arrived_drop'].includes(job.driver_job_status) || job.dispatch_status !== 'active') return res.status(409).json({ message: 'Start transit before updating a drop; closed jobs cannot be changed.' });
+    if (!(await hasActiveShift(driver.id))) return res.status(409).json({ message: 'Start your shift before updating a drop.' });
+    if (job.primary_drop_status === 'completed' && status !== 'completed') return res.status(409).json({ message: 'A completed drop cannot return to arrived.' });
+    if (status === 'completed' && !['arrived','completed'].includes(job.primary_drop_status)) return res.status(409).json({ message: 'Record arrival before completing the drop.' });
     const pickupPostcode = extractPostcode(job.pickup_address || job.origin_hub);
     const [[lastStop]] = await db.query(
       `SELECT id, address FROM job_stops WHERE trip_id=? ORDER BY stop_order DESC LIMIT 1`,
@@ -1201,6 +1212,8 @@ exports.updatePrimaryDropStatus = async (req, res) => {
 
 // PATCH /api/drivers/me/jobs/:jobId/stops/:stopId/status
 exports.updateJobStopStatus = async (req, res) => {
+  const db = req.jobConnection;
+  const emitJobUpdate = payload => req.jobEvents.push(payload);
   try {
     await ensureDriverOpsSchema();
     const driver = await getDriverFromSession(req);
@@ -1212,20 +1225,27 @@ exports.updateJobStopStatus = async (req, res) => {
     if (!allowedStatuses.has(status)) return res.status(400).json({ message: "Invalid stop status." });
 
     const [[stop]] = await db.query(
-      `SELECT js.id, js.status, js.address, js.trip_id, t.trip_code, t.vehicle_id
+      `SELECT js.id, js.status, js.address, js.trip_id, js.stop_order, t.trip_code, t.vehicle_id, t.dispatch_status, t.primary_drop_status
        FROM job_stops js
        INNER JOIN trips t ON t.id = js.trip_id
-       WHERE js.id=? AND js.trip_id=? AND t.driver_id=?`,
+       WHERE js.id=? AND js.trip_id=? AND t.driver_id=? AND t.deleted_at IS NULL`,
       [stopId, jobId, driver.id]
     );
     if (!stop) return res.status(404).json({ message: "Assigned stop not found." });
+    if (stop.dispatch_status !== 'active') return res.status(409).json({ message: 'Stops can only be updated while the job is in transit.' });
+    if (!(await hasActiveShift(driver.id))) return res.status(409).json({ message: 'Start your shift before updating a stop.' });
+    if (['completed','skipped'].includes(stop.status) && status !== stop.status) return res.status(409).json({ message: 'Completed or skipped stops cannot be reopened by the driver.' });
+    if (status === 'pending' && stop.status !== 'pending') return res.status(409).json({ message: 'Stop progress cannot move backwards.' });
+    if (status === 'completed' && !['arrived','completed'].includes(stop.status)) return res.status(409).json({ message: 'Record arrival before completing a stop.' });
+    const [[earlier]] = await db.query(`SELECT id FROM job_stops WHERE trip_id=? AND stop_order<? AND status NOT IN ('completed','skipped') LIMIT 1`, [jobId, stop.stop_order]);
+    if (stop.primary_drop_status !== 'completed' || earlier) return res.status(409).json({ message: 'Complete the preceding drop before updating this stop.' });
 
     const statusAt = ukNowDateTimeKey();
     await db.query(
       `UPDATE job_stops
        SET status=?,
            actual_arrival=IF(? IN ('arrived','completed'), COALESCE(actual_arrival, ?), actual_arrival),
-           actual_departure=IF(? IN ('completed','skipped'), COALESCE(actual_departure, ?), actual_departure)
+           actual_departure=IF(?='completed', COALESCE(actual_departure, ?), actual_departure)
        WHERE id=? AND trip_id=?`,
       [status, status, statusAt, status, statusAt, stopId, jobId]
     );
@@ -1348,6 +1368,8 @@ exports.sendMyMessage = async (req, res) => {
 
 // POST /api/drivers/me/jobs/:jobId/reschedule
 exports.rescheduleJob = async (req, res) => {
+  const db = req.jobConnection;
+  const emitJobUpdate = payload => req.jobEvents.push(payload);
   try {
     await ensureDriverOpsSchema();
     const driver = await getDriverFromSession(req);
@@ -1355,15 +1377,23 @@ exports.rescheduleJob = async (req, res) => {
 
     const { jobId } = req.params;
     const { newDate, reason } = req.body;
-    const nextDate = new Date(newDate);
-    if (!newDate || Number.isNaN(nextDate.getTime())) return res.status(400).json({ message: "A valid new delivery date is required." });
-    if (nextDate.getTime() < Date.now() - 60000) return res.status(400).json({ message: "New delivery date cannot be in the past." });
+    if (!isDateTimeKey(newDate)) return res.status(400).json({ message: 'A full valid UK date and time is required.' });
+    const nextDate = dateTimeKey(newDate);
+    if (wallMinutesBetween(ukNowDateTimeKey(), nextDate) < 0) return res.status(400).json({ message: 'New delivery date cannot be in the past.' });
 
     const [[job]] = await db.query(
-      `SELECT id, vehicle_id FROM trips WHERE id=? AND driver_id=? AND driver_job_status='failed_delivery'`,
+      `SELECT * FROM trips WHERE id=? AND driver_id=? AND driver_job_status='failed_delivery' AND deleted_at IS NULL`,
       [jobId, driver.id]
     );
     if (!job) return res.status(404).json({ message: "Failed delivery job not found." });
+    if (job.actual_departure || job.primary_drop_arrived_at) return res.status(409).json({ message: 'This attempt has recorded actual progress. Ask dispatch to create a follow-up job so the original history is preserved.' });
+    const offset = wallMinutesBetween(job.planned_departure, nextDate);
+    if (offset == null) return res.status(409).json({ message: 'Original schedule is incomplete. Dispatch must correct the schedule.' });
+    const [scheduledStops] = await db.query('SELECT * FROM job_stops WHERE trip_id=?', [jobId]);
+    if (scheduledStops.some(stop => stop.actual_arrival || stop.actual_departure)) return res.status(409).json({ message: 'This attempt has stop history. Ask dispatch to create a follow-up job.' });
+    const shifted = value => value ? addWallMinutes(value, offset) || null : null;
+    for (const stop of scheduledStops) await db.query('UPDATE job_stops SET planned_arrival=?, planned_departure=? WHERE id=?', [shifted(stop.planned_arrival), shifted(stop.planned_departure), stop.id]);
+    await db.query('UPDATE trips SET loading_done_time=?, calculated_arrival=?, calculated_unload_end=?, delivery_deadline=?, eta=?, eta_updated_at=NULL WHERE id=?', [shifted(job.loading_done_time), shifted(job.calculated_arrival), shifted(job.calculated_unload_end), shifted(job.delivery_deadline), shifted(job.calculated_arrival), jobId]);
 
     await db.query(
       `UPDATE trips SET planned_departure=?, driver_job_status='accepted', dispatch_status='planned',
@@ -1381,11 +1411,17 @@ exports.rescheduleJob = async (req, res) => {
       vehicleId: job.vehicle_id || null
     });
 
+    emitJobUpdate({ jobId: Number(jobId), source: 'driver-reschedule' });
     res.json({ message: "Delivery rescheduled successfully." });
   } catch (err) {
     res.status(500).json({ message: "Reschedule error", error: err.message });
   }
 };
+
+const { transactionalJobAction } = require('../utils/jobTransaction');
+for (const name of ['updateMyJobStatus', 'submitMyProofOfDelivery', 'updateJobEta', 'updatePrimaryDropStatus', 'updateJobStopStatus', 'rescheduleJob']) {
+  exports[name] = transactionalJobAction(db, ensureDriverOpsSchema, emitJobUpdate, exports[name]);
+}
 
 // POST /api/drivers/me/location
 exports.updateMyLocation = async (req, res) => {

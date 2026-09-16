@@ -3,6 +3,7 @@ import { useNavigate, useParams } from "react-router-dom";
 import { createJob, estimateJobRoute, getJobById, getJobFormData, updateJob } from "../../../api/jobApi";
 import { getSettings } from "../../../api/settingsApi";
 import { AdminWorkspaceLayout } from "../AdminWorkspaceLayout";
+import { ukAddMinutes, ukInstant, ukMinutes, ukNow, formatUkWall } from '../../../utils/ukJobTime';
 
 function Field({ label, hint, required, error, children }) {
   return (
@@ -38,19 +39,18 @@ const emptyFields = {
 };
 const FLEET_COST_PER_HOUR_GBP = 12.05;
 
-function calcTiming(loadingDoneTime, distanceMiles, loadingMins, unloadingMins, avgSpeedMph) {
-  if (!loadingDoneTime || !distanceMiles) return null;
-  const departure = new Date(loadingDoneTime);
-  if (isNaN(departure.getTime())) return null;
-  const travelMins = Math.round((distanceMiles / avgSpeedMph) * 60);
-  const arrival = new Date(departure.getTime() + travelMins * 60000);
-  const unloadEnd = new Date(arrival.getTime() + (unloadingMins || 90) * 60000);
-  const totalMins = (loadingMins || 90) + travelMins + (unloadingMins || 90);
+function calcTiming(loadingDoneTime, travelMins, loadingMins, unloadingMins) {
+  if (!loadingDoneTime || travelMins == null) return null;
+  const departure = ukInstant(loadingDoneTime);
+  if (!departure) return null;
+  const arrival = new Date(departure.getTime() + Number(travelMins) * 60000);
+  const unloadEnd = new Date(arrival.getTime() + unloadingMins * 60000);
+  const totalMins = loadingMins + Number(travelMins) + unloadingMins;
   return { travelMins, arrival, unloadEnd, totalMins };
 }
 
 function calcCost(distanceMiles, totalMins, settings, tollCost = 0) {
-  if (!distanceMiles || !settings) return null;
+  if (distanceMiles == null || totalMins == null || !settings || Number(settings.mpg) <= 0 || ![settings.mpg, settings.fuel_price_per_litre, settings.driver_rate_per_hour, settings.margin_pct].every(value => Number.isFinite(Number(value)) && Number(value) >= 0)) return null;
   const fuelCostPerMile = (4.546 / settings.mpg) * settings.fuel_price_per_litre;
   const fuelCost = distanceMiles * fuelCostPerMile;
   const totalHours = (totalMins || 0) / 60;
@@ -67,7 +67,7 @@ function fmtGBP(n) {
 
 function fmtTime(date) {
   if (!date) return "—";
-  return date.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" });
+  return date.toLocaleTimeString("en-GB", { timeZone: 'Europe/London', hour: "2-digit", minute: "2-digit" });
 }
 
 function fmtMins(mins) {
@@ -227,6 +227,7 @@ export function JobFormPage() {
           }
           if (j.stops?.length > 0) {
             setStops(j.stops.map(s => ({
+              id: s.id,
               address: s.address || "",
               stop_type: s.type || "delivery",
               contact_name: s.contactName !== "—" ? s.contactName || "" : "",
@@ -359,20 +360,17 @@ export function JobFormPage() {
 
   const validStops = stops.filter(s => s.address.trim());
   const routeStartTime = fields.loading_done_time || fields.planned_departure;
-  const etaPreview = routeEstimate?.durationMins
-    ? addMinutes(routeStartTime, routeEstimate.durationMins, 0)
-    : selectedRoute
-      ? addHours(routeStartTime, selectedRoute.standard_eta_hours, validStops.length)
-      : "";
+  const firstLegMins = routeEstimate?.firstLegMins ?? (!validStops.length ? (routeEstimate?.durationMins ?? (selectedRoute ? Number(selectedRoute.standard_eta_hours) * 60 : null)) : null);
+  const etaPreview = firstLegMins == null ? '' : ukAddMinutes(routeStartTime, firstLegMins);
 
   const distanceMiles = routeEstimate?.distanceMiles || (selectedRoute ? selectedRoute.distance_km * 0.621371 : null);
   const avgSpeedMph = sysSettings?.avg_speed_mph || 40;
-  const loadingMins = parseInt(fields.loading_duration_mins) || 90;
-  const unloadingMins = parseInt(fields.unloading_duration_mins) || 90;
+  const loadingMins = ukMinutes(fields.planned_departure, fields.loading_done_time) ?? Number(fields.loading_duration_mins || 90);
+  const unloadingMins = ukMinutes(fields.delivery_arrival_time, fields.delivery_departure_time) ?? Number(fields.unloading_duration_mins || 90);
 
   const timingCalc = useMemo(
-    () => calcTiming(fields.loading_done_time, distanceMiles, loadingMins, unloadingMins, avgSpeedMph),
-    [fields.loading_done_time, distanceMiles, loadingMins, unloadingMins, avgSpeedMph]
+    () => calcTiming(fields.loading_done_time, firstLegMins, loadingMins, unloadingMins),
+    [fields.loading_done_time, firstLegMins, loadingMins, unloadingMins]
   );
   const manualDeliveryArrival = fields.delivery_arrival_time ? new Date(fields.delivery_arrival_time) : null;
   const manualDeliveryDeparture = fields.delivery_departure_time ? new Date(fields.delivery_departure_time) : null;
@@ -390,9 +388,8 @@ export function JobFormPage() {
   const manualUnloadingMins = hasManualDeliveryTimes
     ? Math.max(0, Math.round((manualDeliveryDeparture - manualDeliveryArrival) / 60000))
     : null;
-  const estimatedTotalMins = timingCalc?.totalMins
-    || (hasManualDeliveryTimes ? loadingMins + manualTravelMins + manualUnloadingMins : null)
-    || (estimatedTravelMins ? loadingMins + estimatedTravelMins + unloadingMins : null);
+  const lastDeparture = validStops.length ? validStops.at(-1).planned_departure : fields.delivery_departure_time || (timingCalc?.unloadEnd ? ukNow(timingCalc.unloadEnd) : '');
+  const estimatedTotalMins = ukMinutes(fields.planned_departure, lastDeparture);
 
   const costCalc = useMemo(
     () => calcCost(distanceMiles, estimatedTotalMins, sysSettings, selectedRoute?.toll_estimate_gbp),
@@ -400,7 +397,7 @@ export function JobFormPage() {
   );
 
   const freightValue = parseFloat(fields.freight_amount) || 0;
-  const profitLoss = costCalc ? freightValue - costCalc.totalCost : null;
+  const profitLoss = costCalc && fields.freight_amount !== '' ? freightValue - costCalc.totalCost : null;
 
   async function fetchRouteEstimate() {
     if (!fields.pickup_address.trim() || !fields.drop_address.trim()) {
@@ -456,16 +453,16 @@ export function JobFormPage() {
     const submitDistanceMiles = submitRouteEstimate?.distanceMiles || distanceMiles;
     const submitTravelMins = submitRouteEstimate?.durationMins || estimatedTravelMins;
     const submitTimingCalc = submitRouteEstimate && fields.loading_done_time
-      ? calcTiming(fields.loading_done_time, submitDistanceMiles, loadingMins, unloadingMins, avgSpeedMph)
+      ? calcTiming(fields.loading_done_time, submitRouteEstimate.firstLegMins ?? (!validStops.length ? submitTravelMins : null), loadingMins, unloadingMins)
       : timingCalc;
     const submitTotalMins = hasManualDeliveryTimes
       ? loadingMins + manualTravelMins + manualUnloadingMins
       : submitTimingCalc?.totalMins || (submitTravelMins ? loadingMins + submitTravelMins + unloadingMins : null);
     const calcArrivalStr = fields.delivery_arrival_time || (submitTimingCalc?.arrival
-      ? new Date(submitTimingCalc.arrival.getTime() - submitTimingCalc.arrival.getTimezoneOffset() * 60000).toISOString().slice(0, 16)
+      ? ukNow(submitTimingCalc.arrival)
       : null);
     const calcUnloadEndStr = fields.delivery_departure_time || (submitTimingCalc?.unloadEnd
-      ? new Date(submitTimingCalc.unloadEnd.getTime() - submitTimingCalc.unloadEnd.getTimezoneOffset() * 60000).toISOString().slice(0, 16)
+      ? ukNow(submitTimingCalc.unloadEnd)
       : null);
 
     const payload = {
@@ -494,6 +491,7 @@ export function JobFormPage() {
       calculated_unload_end: calcUnloadEndStr,
       total_job_duration_mins: submitTotalMins || null,
       stops: stops.filter(s => s.address.trim()).map(s => ({
+        id: s.id,
         address: s.address.trim(),
         stop_type: s.stop_type,
         contact_name: s.contact_name || null,
@@ -597,7 +595,7 @@ export function JobFormPage() {
                   <input className="af-input" type="datetime-local" value={fields.planned_departure} onChange={e => handleArrivalChange(e.target.value)} />
                 </Field>
                 <Field label="Collection Departure (UK Time)" hint="Same date as collection arrival. Used for ETA and estimated cost." required error={fieldErrors.loading_done_time}>
-                  <input className="af-input" type="time" value={toInputTime(fields.loading_done_time)} onChange={e => handleRouteDepartureChange(e.target.value)} />
+                  <input className="af-input" type="datetime-local" value={fields.loading_done_time} onChange={e => set("loading_done_time", e.target.value)} />
                 </Field>
                 <Field label={<>Delivery Address <span style={{ fontWeight: 700, fontSize: "0.72rem", color: "#2563eb", background: "#eff6ff", border: "1px solid #bfdbfe", borderRadius: 20, padding: "1px 8px", marginLeft: 6, verticalAlign: "middle" }}>Stop 1</span></>} required error={fieldErrors.drop_address}>
                   {dropOptions.length > 0 && (
@@ -612,7 +610,7 @@ export function JobFormPage() {
                   <input className="af-input" type="datetime-local" value={fields.delivery_arrival_time} onChange={e => set("delivery_arrival_time", e.target.value)} />
                 </Field>
                 <Field label="Delivery Departure (UK Time)" hint="Same date as delivery arrival. Auto-calculated if left blank." error={fieldErrors.delivery_departure_time}>
-                  <input className="af-input" type="time" value={toInputTime(fields.delivery_departure_time)} onChange={e => handleDeliveryDepartureChange(e.target.value)} />
+                  <input className="af-input" type="datetime-local" value={fields.delivery_departure_time} onChange={e => set("delivery_departure_time", e.target.value)} />
                 </Field>
               </div>
 
@@ -661,7 +659,7 @@ export function JobFormPage() {
                         <input className="af-input" type="datetime-local" value={stop.planned_arrival} onChange={e => updateStop(i, { planned_arrival: e.target.value })} />
                       </Field>
                       <Field label="Departure Time">
-                        <input className="af-input" type="time" value={toInputTime(stop.planned_departure)} onChange={e => handleStopDepartureChange(i, e.target.value)} />
+                        <input className="af-input" type="datetime-local" value={stop.planned_departure} onChange={e => updateStop(i, { planned_departure: e.target.value })} />
                       </Field>
                     </div>
                   </div>

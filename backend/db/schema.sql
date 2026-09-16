@@ -208,7 +208,7 @@ CREATE TABLE IF NOT EXISTS trips (
   pod_signature_data LONGTEXT DEFAULT NULL,
   pod_photo_data    LONGTEXT DEFAULT NULL,
   failed_delivery_reason TEXT DEFAULT NULL,
-  freight_amount_gbp DECIMAL(10,2) NOT NULL DEFAULT 0,
+  freight_amount_gbp DECIMAL(10,2) DEFAULT NULL,
   deleted_at        DATETIME DEFAULT NULL,
   deleted_by        INT DEFAULT NULL,
   delete_reason     TEXT DEFAULT NULL,

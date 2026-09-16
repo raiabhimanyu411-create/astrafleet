@@ -34,7 +34,7 @@ function partsToMap(parts) {
 function dateTimeKey(value) {
   if (!value) return "";
   if (typeof value === "string") {
-    const match = value.trim().match(/^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})/);
+    const match = value.trim().match(/^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})(?::[0-5]\d(?:\.\d{1,6})?)?$/);
     if (match) return `${match[1]}-${match[2]}-${match[3]}T${match[4]}:${match[5]}`;
   }
   if (value instanceof Date && !Number.isNaN(value.getTime())) {
@@ -61,7 +61,17 @@ function wallDate(value) {
 }
 
 function isDateTimeKey(value) {
-  return Boolean(wallDate(value));
+  return londonInstants(value).length === 1;
+}
+
+// UK switches between GMT and BST. Reject nonexistent or repeated local input
+// rather than silently selecting an hour at a clock-change boundary.
+function londonInstants(value) {
+  const parsed = wallDate(value);
+  if (!parsed) return [];
+  const key = dateTimeKey(value);
+  return [0, 60].map(offset => new Date(parsed.getTime() - offset * 60000))
+    .filter(instant => ukNowDateTimeKey(instant) === key);
 }
 
 function ukNowDateTimeKey(value = new Date()) {
@@ -70,17 +80,15 @@ function ukNowDateTimeKey(value = new Date()) {
 }
 
 function addWallMinutes(value, minutes) {
-  const parsed = wallDate(value);
-  if (!parsed || !Number.isFinite(Number(minutes))) return "";
-  parsed.setUTCMinutes(parsed.getUTCMinutes() + Number(minutes));
-  return parsed.toISOString().slice(0, 16);
+  const instants = londonInstants(value);
+  if (instants.length !== 1 || !Number.isFinite(Number(minutes))) return "";
+  return ukNowDateTimeKey(new Date(instants[0].getTime() + Number(minutes) * 60000));
 }
 
 function wallMinutesBetween(start, end) {
-  const startDate = wallDate(start);
-  const endDate = wallDate(end);
-  if (!startDate || !endDate) return null;
-  return Math.round((endDate.getTime() - startDate.getTime()) / 60000);
+  const starts = londonInstants(start), ends = londonInstants(end);
+  if (starts.length !== 1 || ends.length !== 1) return null;
+  return Math.round((ends[0].getTime() - starts[0].getTime()) / 60000);
 }
 
 function fmtUkDateTime(value) {

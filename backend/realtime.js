@@ -48,6 +48,15 @@ function emitJobUpdate(payload) {
     ...payload,
     emittedAt: new Date().toISOString()
   });
+  // Notify only the assigned driver (and previous driver after reassignment).
+  // Resolve assignment centrally so no mutation endpoint can omit the driver refresh.
+  if (payload?.jobId) {
+    require('./db/connection').query('SELECT driver_id FROM trips WHERE id=?', [payload.jobId])
+      .then(([rows]) => {
+        const ids = new Set([rows[0]?.driver_id, payload.driverId, payload.previousDriverId].filter(Boolean).map(Number));
+        for (const driverId of ids) io?.to(chatRoom(driverId)).emit('job:updated', { ...payload, driverId });
+      }).catch(error => console.error('[Realtime] Driver refresh failed:', error.message));
+  }
 }
 
 module.exports = {

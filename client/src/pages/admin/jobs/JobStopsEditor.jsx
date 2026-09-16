@@ -1,5 +1,6 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { updateJob } from "../../../api/jobApi";
+import { formatUkWall } from '../../../utils/ukJobTime';
 
 const clean = value => value && value !== "—" ? value : "";
 const toDraft = job => ({
@@ -11,9 +12,11 @@ const toDraft = job => ({
 });
 
 function fmt(value) {
-  if (!value) return "—";
-  const date = new Date(value);
-  return Number.isNaN(date.getTime()) ? value : date.toLocaleString("en-GB", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" });
+  return formatUkWall(value);
+}
+
+function ScheduleTime({ planned, actual, eta }) {
+  return <><strong>{fmt(actual || planned)}</strong><small>{actual ? 'Actual · UK' : 'Scheduled · UK'}</small>{actual && planned && <small>Scheduled: {fmt(planned)}</small>}{eta && <small>Driver ETA: {fmt(eta)}</small>}</>;
 }
 
 function SheetInput({ value, onChange, type = "text", ariaLabel }) {
@@ -30,6 +33,7 @@ export function JobStopsEditor({ job, drivers = [], vehicles = [], trailers = []
   const [editing, setEditing] = useState(false), [draft, setDraft] = useState(() => toDraft(job));
   const [saving, setSaving] = useState(false), [error, setError] = useState("");
   const locked = job.status !== "planned";
+  useEffect(() => { if (!editing) setDraft(toDraft(job)); }, [job, editing]);
   const driverOptions = useMemo(() => drivers.map(item => ({ id: item.id, label: `${item.full_name}${item.employee_code ? ` · ${item.employee_code}` : ""}` })), [drivers]);
   const vehicleOptions = useMemo(() => vehicles.map(item => ({ id: item.id, label: item.registration_number })), [vehicles]);
   const trailerOptions = useMemo(() => trailers.map(item => ({ id: item.id, label: item.trailer_code || item.registration_number })), [trailers]);
@@ -53,19 +57,12 @@ export function JobStopsEditor({ job, drivers = [], vehicles = [], trailers = []
     setSaving(true); setError("");
     try {
       await updateJob(job.id, {
-        customer_id: job.customerId || null, client_name: job.customer, client_phone: clean(job.customerPhone) || null,
-        route_id: job.routeId || null, pickup_address: draft.pickupAddress, drop_address: draft.dropAddress,
+        pickup_address: draft.pickupAddress, drop_address: draft.dropAddress,
         planned_departure: draft.pickupArrival, loading_done_time: draft.pickupDeparture,
         calculated_arrival: draft.dropArrival || null, calculated_unload_end: draft.dropDeparture || null,
         driver_id: draft.driverId ? Number(draft.driverId) : null, vehicle_id: draft.vehicleId ? Number(draft.vehicleId) : null, trailer_id: draft.trailerId ? Number(draft.trailerId) : null,
-        load_type: job.loadType, load_weight_kg: job.loadWeightKg || null, load_volume_cbm: job.loadVolumeCbm || null,
-        vehicle_type_requirement: clean(job.vehicleRequirement) || null, delivery_deadline: clean(job.deadlineRaw) || null,
-        load_description: clean(job.loadDescription) || null, freight_amount: job.freightValue, priority_level: job.priority,
-        special_instructions: clean(job.specialInstructions) || null, dispatcher_notes: clean(job.dispatcherNotes) || null,
-        loading_duration_mins: job.loadingDurationMins, unloading_duration_mins: job.unloadingDurationMins,
-        estimated_distance_km: job.distanceKm || null, total_job_duration_mins: job.totalJobDurationMins || null,
-        reference: job.reference || null, load_id: job.loadId || null,
-        stops: draft.stops.map(stop => ({ address: stop.address.trim(), stop_type: stop.stop_type, contact_name: stop.contact_name || null, contact_phone: stop.contact_phone || null, planned_arrival: stop.planned_arrival || null, planned_departure: stop.planned_departure || null, notes: stop.notes || null }))
+        require_planned: true,
+        stops: draft.stops.map(stop => ({ id: stop.id, address: stop.address.trim(), stop_type: stop.stop_type, contact_name: stop.contact_name || null, contact_phone: stop.contact_phone || null, planned_arrival: stop.planned_arrival || null, planned_departure: stop.planned_departure || null, notes: stop.notes || null }))
       });
       setEditing(false); await onSaved?.();
     } catch (err) { setError(err?.response?.data?.message || "Could not update this job."); }
@@ -85,9 +82,9 @@ export function JobStopsEditor({ job, drivers = [], vehicles = [], trailers = []
       {editing && <><button className="header-action-button" type="button" disabled={saving} onClick={cancel}>Cancel</button><button className="af-submit-btn" type="button" disabled={saving} onClick={save}>{saving ? "Saving…" : "Save changes"}</button></>}
     </div></div>
     <div className="job-sheet-scroll"><div className="job-sheet-grid job-sheet-head"><span>#</span><span>Stop & address</span><span>Equipment</span><span>Arrival</span><span>Departure</span><span>Contact / notes</span></div>
-      <div className="job-sheet-grid job-sheet-row"><span className="job-sheet-index collection">C</span><div>{editing ? <SheetInput ariaLabel="Collection address" value={draft.pickupAddress} onChange={value => set("pickupAddress", value)} /> : <><strong>Collection</strong><small>{job.pickupAddress}</small></>}</div><div className="job-sheet-equipment">{equipment}</div><div>{editing ? <SheetInput ariaLabel="Collection arrival" type="datetime-local" value={draft.pickupArrival} onChange={value => set("pickupArrival", value)} /> : <strong>{fmt(job.departureRaw)}</strong>}</div><div>{editing ? <SheetInput ariaLabel="Collection departure" type="datetime-local" value={draft.pickupDeparture} onChange={value => set("pickupDeparture", value)} /> : <strong>{fmt(job.loadingDoneTime)}</strong>}</div><div><small>{clean(job.specialInstructions) || "No pickup instructions"}</small></div></div>
-      <div className="job-sheet-grid job-sheet-row"><span className="job-sheet-index">1</span><div>{editing ? <SheetInput ariaLabel="Delivery address" value={draft.dropAddress} onChange={value => set("dropAddress", value)} /> : <><strong>Delivery</strong><small>{job.dropAddress}</small></>}</div><div className="job-sheet-equipment">{equipment}</div><div>{editing ? <SheetInput ariaLabel="Delivery arrival" type="datetime-local" value={draft.dropArrival} onChange={value => set("dropArrival", value)} /> : <strong>{fmt(job.calculatedArrival)}</strong>}</div><div>{editing ? <SheetInput ariaLabel="Delivery departure" type="datetime-local" value={draft.dropDeparture} onChange={value => set("dropDeparture", value)} /> : <strong>{fmt(job.calculatedUnloadEnd)}</strong>}</div><div><small>{clean(job.dispatcherNotes) || "No delivery instructions"}</small><span className="job-sheet-status">POD: {job.podStatus}</span></div></div>
-      {draft.stops.map((stop, index) => <div className="job-sheet-grid job-sheet-row" key={stop.id || index}><span className="job-sheet-index">{index + 2}</span><div>{editing ? <><SheetInput ariaLabel={`Stop ${index + 2} address`} value={stop.address} onChange={value => setStop(index, "address", value)} /><select className="job-sheet-mini-select" value={stop.stop_type} onChange={event => setStop(index, "stop_type", event.target.value)}><option value="delivery">Delivery</option><option value="pickup">Pickup</option><option value="waypoint">Waypoint</option></select></> : <><strong>{stop.stop_type}</strong><small>{stop.address}</small></>}</div><div className="job-sheet-equipment"><small>Intermediate stop</small></div><div>{editing ? <SheetInput type="datetime-local" value={stop.planned_arrival} onChange={value => setStop(index, "planned_arrival", value)} /> : <strong>{fmt(stop.planned_arrival)}</strong>}</div><div>{editing ? <SheetInput type="datetime-local" value={stop.planned_departure} onChange={value => setStop(index, "planned_departure", value)} /> : <strong>{fmt(stop.planned_departure)}</strong>}</div><div>{editing ? <><SheetInput value={stop.contact_name} onChange={value => setStop(index, "contact_name", value)} ariaLabel="Contact name" /><SheetInput value={stop.notes} onChange={value => setStop(index, "notes", value)} ariaLabel="Stop notes" /></> : <><strong>{stop.contact_name || "—"}</strong><small>{stop.notes || "No instructions"}</small></>}</div></div>)}
+      <div className="job-sheet-grid job-sheet-row"><span className="job-sheet-index collection">C</span><div>{editing ? <SheetInput ariaLabel="Collection address" value={draft.pickupAddress} onChange={value => set("pickupAddress", value)} /> : <><strong>Collection</strong><small>{job.pickupAddress}</small></>}</div><div className="job-sheet-equipment">{equipment}</div><div>{editing ? <SheetInput ariaLabel="Collection arrival" type="datetime-local" value={draft.pickupArrival} onChange={value => set("pickupArrival", value)} /> : <ScheduleTime planned={job.departureRaw} actual={job.collectionArrivedAtRaw} />}</div><div>{editing ? <SheetInput ariaLabel="Collection departure" type="datetime-local" value={draft.pickupDeparture} onChange={value => set("pickupDeparture", value)} /> : <ScheduleTime planned={job.loadingDoneTime} actual={job.actualDepartureRaw} />}</div><div><small>{clean(job.specialInstructions) || "No pickup instructions"}</small></div></div>
+      <div className="job-sheet-grid job-sheet-row"><span className="job-sheet-index">1</span><div>{editing ? <SheetInput ariaLabel="Delivery address" value={draft.dropAddress} onChange={value => set("dropAddress", value)} /> : <><strong>Delivery</strong><small>{job.dropAddress}</small></>}</div><div className="job-sheet-equipment">{equipment}</div><div>{editing ? <SheetInput ariaLabel="Delivery arrival" type="datetime-local" value={draft.dropArrival} onChange={value => set("dropArrival", value)} /> : <ScheduleTime planned={job.calculatedArrival} actual={job.primaryDropArrivedAtRaw} eta={job.hasDriverEtaUpdate ? job.etaRaw : null} />}</div><div>{editing ? <SheetInput ariaLabel="Delivery departure" type="datetime-local" value={draft.dropDeparture} onChange={value => set("dropDeparture", value)} /> : <ScheduleTime planned={job.calculatedUnloadEnd} actual={job.primaryDropCompletedAtRaw} />}</div><div><small>{clean(job.dispatcherNotes) || "No delivery instructions"}</small><span className="job-sheet-status">POD: {job.podStatus}</span></div></div>
+      {draft.stops.map((stop, index) => <div className="job-sheet-grid job-sheet-row" key={stop.id || index}><span className="job-sheet-index">{index + 2}</span><div>{editing ? <><SheetInput ariaLabel={`Stop ${index + 2} address`} value={stop.address} onChange={value => setStop(index, "address", value)} /><select className="job-sheet-mini-select" value={stop.stop_type} onChange={event => setStop(index, "stop_type", event.target.value)}><option value="delivery">Delivery</option><option value="pickup">Pickup</option><option value="waypoint">Waypoint</option></select></> : <><strong>{stop.stop_type}</strong><small>{stop.address}</small></>}</div><div className="job-sheet-equipment"><small>Intermediate stop</small></div><div>{editing ? <SheetInput type="datetime-local" value={stop.planned_arrival} onChange={value => setStop(index, "planned_arrival", value)} /> : <ScheduleTime planned={stop.planned_arrival} actual={job.stops?.find(s => s.id === stop.id)?.actualArrivalRaw} />}</div><div>{editing ? <SheetInput type="datetime-local" value={stop.planned_departure} onChange={value => setStop(index, "planned_departure", value)} /> : <ScheduleTime planned={stop.planned_departure} actual={job.stops?.find(s => s.id === stop.id)?.actualDepartureRaw} />}</div><div>{editing ? <><SheetInput value={stop.contact_name} onChange={value => setStop(index, "contact_name", value)} ariaLabel="Contact name" /><SheetInput value={stop.notes} onChange={value => setStop(index, "notes", value)} ariaLabel="Stop notes" /></> : <><strong>{stop.contact_name || "—"}</strong><small>{stop.notes || "No instructions"}</small></>}</div></div>)}
     </div>
     {locked && <div className="job-sheet-lock">This job is {job.status}; operational schedule is read-only.</div>}
   </div>;

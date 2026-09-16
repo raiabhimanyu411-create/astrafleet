@@ -427,14 +427,20 @@ export function DriverPanel() {
       loadMessages();
     }
 
+    function reconnect() { socket.emit('driver-chat:join', driverId); loadPanel(selectedJobIdRef.current); loadMessages(); }
+    function handleJobUpdated() { loadPanel(selectedJobIdRef.current); }
+    socket.on('connect', reconnect);
+    socket.on('job:updated', handleJobUpdated);
     socket.connect();
-    socket.emit("driver-chat:join", driverId);
+    if (socket.connected) reconnect();
     socket.on("driver-chat:message", handleChatMessage);
     socket.on("driver-job:assigned", handleJobAssigned);
 
     return () => {
       socket.off("driver-chat:message", handleChatMessage);
       socket.off("driver-job:assigned", handleJobAssigned);
+      socket.off('connect', reconnect);
+      socket.off('job:updated', handleJobUpdated);
       socket.emit("driver-chat:leave", driverId);
     };
   }, [data?.driver?.id]);
@@ -966,7 +972,8 @@ export function DriverPanel() {
                 <span className="card-label" style={{ alignSelf: "center" }}>Update ETA</span>
                 <input
                   className="af-input"
-                  type="time"
+                  type="datetime-local"
+                  aria-label="ETA date and time in UK time"
                   value={etaInput}
                   onChange={e => setEtaInput(e.target.value)}
                   style={{ flex: 1, minWidth: 0 }}
