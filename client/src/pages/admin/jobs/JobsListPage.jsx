@@ -10,6 +10,7 @@ import { DriverChatWidget } from "../DriverChatWidget";
 import { AdminWorkspaceLayout } from "../AdminWorkspaceLayout";
 import { getAuthSession } from "../../../utils/authSession";
 import { ImportJobsModal } from "./ImportJobsModal";
+import { JobStopsEditor } from "./JobStopsEditor";
 
 const STATUS_OPTIONS = [
   { value: "", label: "All Statuses" },
@@ -1199,8 +1200,16 @@ export function JobsListPage() {
                       </div>
                     </div>
 
-                    {/* ── Stop table ── */}
-                    <div className="relay-stop-table">
+                    <JobStopsEditor
+                      job={job}
+                      drivers={data?.drivers || []}
+                      vehicles={data?.vehicles || []}
+                      trailers={data?.trailers || []}
+                      onSaved={load}
+                    />
+
+                    {/* Legacy detail markup retained for operational reference data. */}
+                    <div className="relay-stop-table relay-stop-table-legacy" aria-hidden="true">
                       <div className="relay-stop-table-head">
                         <span>Stop</span>
                         <span>Equipment</span>
