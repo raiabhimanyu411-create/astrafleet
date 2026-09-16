@@ -1,4 +1,5 @@
 import api from "./axios";
+export const getJobRouteMap = (id, signal) => api.get(`/api/jobs/${id}/route-map`, { signal });
 
 export const getJobFormData  = ()         => api.get("/api/jobs/form-data");
 export const estimateJobRoute = (data)    => api.post("/api/jobs/estimate-route", data);

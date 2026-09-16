@@ -1127,6 +1127,47 @@ exports.updateJobAssignment = async (req, res) => {
   }
 };
 
+// Read-only route preview. Keep every stop in order, including unresolved stops.
+exports.getRouteMap = async (req, res) => {
+  try {
+    await ensureDriverOpsSchema();
+    await ensureSoftDeleteSchema();
+    const [[job]] = await db.query(
+      `SELECT t.pickup_address, t.drop_address, r.origin_hub, r.destination_hub
+       FROM trips t LEFT JOIN routes r ON r.id=t.route_id WHERE t.id=? AND t.deleted_at IS NULL`, [req.params.id]
+    );
+    if (!job) return res.status(404).json({ message: "Job not found." });
+    const [stops] = await db.query(`SELECT address, stop_type FROM job_stops WHERE trip_id=? ORDER BY stop_order, id`, [req.params.id]);
+    const locations = [
+      { address: job.pickup_address || job.origin_hub || "", label: "Collection" },
+      { address: job.drop_address || job.destination_hub || "", label: "Drop 1" },
+      ...stops.map((s, i) => ({ address: s.address, label: `${s.stop_type === "pickup" ? "Pickup" : s.stop_type === "waypoint" ? "Waypoint" : "Drop"} ${i + 2}` }))
+    ];
+    const lookups = new Map();
+    const points = await Promise.all(locations.map(async (location, index) => {
+      const postcode = extractUkPostcode(location.address);
+      if (postcode && !lookups.has(postcode)) lookups.set(postcode, lookupPostcode(postcode).catch(() => null));
+      const point = postcode ? await lookups.get(postcode) : null;
+      return { ...location, index, ...(point || {}), resolved: Boolean(point) };
+    }));
+    const legs = await Promise.all(points.slice(1).map(async (to, index) => {
+      const from = points[index];
+      const base = { from: index, to: index + 1, coordinates: [], distanceMiles: null, durationMins: null, source: "unavailable" };
+      if (!from.resolved || !to.resolved) return base;
+      try {
+        const coords = `${from.longitude},${from.latitude};${to.longitude},${to.latitude}`;
+        const data = await fetchJson(`https://router.project-osrm.org/route/v1/driving/${coords}?overview=full&geometries=geojson&steps=false`, 10000);
+        const route = data.routes?.[0];
+        if (route?.geometry?.coordinates?.length) return { ...base, coordinates: route.geometry.coordinates, distanceMiles: Math.round(route.distance / 1609.344 * 10) / 10, durationMins: Math.round(route.duration / 60), source: "road" };
+      } catch { /* Preserve the sequence when the routing service is unavailable. */ }
+      return { ...base, coordinates: [[from.longitude, from.latitude], [to.longitude, to.latitude]], source: "straight-line" };
+    }));
+    res.json({ points, legs });
+  } catch (err) {
+    res.status(500).json({ message: "Could not load route map. Please retry." });
+  }
+};
+
 // GET /api/jobs/:id
 exports.getJobById = async (req, res) => {
   try {

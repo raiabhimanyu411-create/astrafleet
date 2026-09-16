@@ -9,6 +9,7 @@ import { StatusPill } from "../../../components/StatusPill";
 import { DriverChatWidget } from "../DriverChatWidget";
 import { AdminWorkspaceLayout } from "../AdminWorkspaceLayout";
 import { getAuthSession } from "../../../utils/authSession";
+import JobRouteMapModal from "./JobRouteMapModal";
 import { ImportJobsModal } from "./ImportJobsModal";
 import { JobStopsEditor } from "./JobStopsEditor";
 
@@ -485,6 +486,7 @@ export function JobsListPage() {
   const [replaceReason, setReplaceReason] = useState("");
   const [replaceErr, setReplaceErr] = useState("");
   const [notesModalJob, setNotesModalJob] = useState(null);
+  const [routeMapJob, setRouteMapJob] = useState(null);
   const [chatModalJob, setChatModalJob] = useState(null);
   const [chatDrivers, setChatDrivers] = useState([]);
   const [showImport, setShowImport] = useState(false);
@@ -1641,8 +1643,8 @@ export function JobsListPage() {
                           </svg>
                         </button>
                         {/* 📍 details icon */}
-                        <button className="relay-bottom-icon-btn" type="button" title="View job details"
-                          onClick={() => navigate(`/admin/jobs/${job.id}`)}>
+                        <button className="relay-bottom-icon-btn" type="button" title="View route map" aria-label="View route map"
+                          onClick={() => setRouteMapJob(job)}>
                           <svg viewBox="0 0 20 20" fill="none" width="18" height="18">
                             <path d="M10 2a5.5 5.5 0 0 1 5.5 5.5c0 3.5-5.5 10-5.5 10S4.5 11 4.5 7.5A5.5 5.5 0 0 1 10 2z" stroke="currentColor" strokeWidth="1.5"/>
                             <circle cx="10" cy="7.5" r="1.8" stroke="currentColor" strokeWidth="1.5"/>
@@ -1714,6 +1716,7 @@ export function JobsListPage() {
       />
 
       {/* Job details modal (Notes / Payout / Shipment) */}
+      {routeMapJob && <JobRouteMapModal job={routeMapJob} onClose={() => setRouteMapJob(null)} />}
       {notesModalJob && (
         <JobDetailsModal job={notesModalJob} onClose={() => setNotesModalJob(null)} />
       )}
