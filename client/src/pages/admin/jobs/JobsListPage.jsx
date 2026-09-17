@@ -9,6 +9,7 @@ import { StatusPill } from "../../../components/StatusPill";
 import { DriverChatWidget } from "../DriverChatWidget";
 import { AdminWorkspaceLayout } from "../AdminWorkspaceLayout";
 import { getAuthSession } from "../../../utils/authSession";
+import { formatUkWall, ukMinutes } from "../../../utils/ukJobTime";
 import JobRouteMapModal from "./JobRouteMapModal";
 import { ImportJobsModal } from "./ImportJobsModal";
 import { JobStopsEditor } from "./JobStopsEditor";
@@ -160,25 +161,11 @@ function fmtMins(mins) {
 }
 
 function fmtTimeFull(rawStr) {
-  if (!rawStr) return "—";
-  const d = new Date(rawStr);
-  if (isNaN(d.getTime())) return "—";
-  return d.toLocaleString("en-GB", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" });
+  return formatUkWall(rawStr);
 }
 
 function fmtRouteStamp(rawStr, fallback = "") {
-  if (rawStr) {
-    const d = new Date(rawStr);
-    if (!isNaN(d.getTime())) {
-      return d.toLocaleString("en-GB", {
-        weekday: "short",
-        day: "2-digit",
-        month: "short",
-        hour: "2-digit",
-        minute: "2-digit"
-      });
-    }
-  }
+  if (rawStr) return formatUkWall(rawStr);
   return fallback && fallback !== "—" ? fallback : "TBD";
 }
 
@@ -188,10 +175,8 @@ function fmtGBP(n) {
 
 function timeLateClass(actualRaw, scheduledRaw) {
   if (!actualRaw || !scheduledRaw) return "";
-  const actual = new Date(actualRaw);
-  const scheduled = new Date(scheduledRaw);
-  if (isNaN(actual) || isNaN(scheduled)) return "";
-  const diffMins = (actual - scheduled) / 60000;
+  const diffMins = ukMinutes(scheduledRaw, actualRaw);
+  if (diffMins == null) return "";
   if (diffMins > 15) return "relay-time-late";
   if (diffMins < -5) return "relay-time-early";
   return "relay-time-ontime";
@@ -261,7 +246,7 @@ function JobDetailsModal({ job, onClose }) {
         </div>
 
         <div className="rjd-tabs">
-          <button className={tab === "payout" ? "active" : ""} type="button" onClick={() => setTab("payout")}>Estimated Payout</button>
+          <button className={tab === "payout" ? "active" : ""} type="button" onClick={() => setTab("payout")}>Cost & contribution</button>
           <button className={tab === "notes" ? "active" : ""} type="button" onClick={() => setTab("notes")}>Notes</button>
           <button className={tab === "shipment" ? "active" : ""} type="button" onClick={() => setTab("shipment")}>Shipment Details</button>
         </div>
@@ -280,13 +265,14 @@ function JobDetailsModal({ job, onClose }) {
                       <tr><td>Driver Cost</td><td>£{Number(job.economics.driverCost || 0).toFixed(2)}</td></tr>
                       <tr><td>Fleet Cost</td><td>£{Number(job.economics.fleetCost || 0).toFixed(2)}</td></tr>
                       {Number(job.economics.tollCost || 0) > 0 && <tr><td>Route Toll Estimate</td><td>£{Number(job.economics.tollCost).toFixed(2)}</td></tr>}
+                      {Number(job.economics.recordedExpenses || 0) > 0 && <tr><td>Recorded Driver Expenses</td><td>£{Number(job.economics.recordedExpenses).toFixed(2)}</td></tr>}
                       <tr className="rjd-payout-subtotal"><td><strong>Total Cost</strong></td><td><strong>£{Number(job.economics.totalCost || 0).toFixed(2)}</strong></td></tr>
                       <tr><td>Suggested Price</td><td>£{Number(job.economics.suggestedPrice || 0).toFixed(2)}</td></tr>
                       <tr><td>Freight Charged</td><td>{job.freight || "—"}</td></tr>
                     </tbody>
                   </table>
                   <div className={`rjd-payout-pl ${job.isProfitable === true ? "profit" : job.isProfitable === false ? "loss" : ""}`}>
-                    <span>{job.isProfitable === true ? "Estimated Profit" : job.isProfitable === false ? "Estimated Loss" : "P&L unavailable"}</span>
+                    <span>{job.isProfitable === true ? "Estimated Contribution Profit" : job.isProfitable === false ? "Estimated Contribution Loss" : "Contribution unavailable"}</span>
                     <strong>
                       {job.profitLossValue !== null && job.profitLossValue !== undefined
                         ? `${job.profitLossValue >= 0 ? "+" : "-"}£${Math.abs(job.profitLossValue).toFixed(2)}`
@@ -1527,6 +1513,13 @@ export function JobsListPage() {
                             <small>Estimate</small>
                           </div>
                         )}
+                        {Number(job.economics.recordedExpenses || 0) > 0 && (
+                          <div className="relay-economics-col">
+                            <span className="relay-economics-label">Recorded Expenses</span>
+                            <strong>{fmtGBP(job.economics.recordedExpenses)}</strong>
+                            <small>Driver submitted</small>
+                          </div>
+                        )}
                         <div className="relay-economics-col">
                           <span className="relay-economics-label">Total Cost</span>
                           <strong>{fmtGBP(job.economics.totalCost)}</strong>
@@ -1540,7 +1533,7 @@ export function JobsListPage() {
                           <strong>{job.freight}</strong>
                         </div>
                         <div className={`relay-economics-col profit-col ${job.isProfitable === true ? "profit" : job.isProfitable === false ? "loss" : ""}`}>
-                          <span className="relay-economics-label">{job.isProfitable ? "Estimated Profit" : job.isProfitable === false ? "Estimated Loss" : "P&L unavailable"}</span>
+                          <span className="relay-economics-label">{job.isProfitable ? "Est. Contribution Profit" : job.isProfitable === false ? "Est. Contribution Loss" : "Contribution unavailable"}</span>
                           <strong>
                             {job.profitLossValue !== null
                               ? `${job.profitLossValue >= 0 ? "+" : "-"}${fmtGBP(Math.abs(job.profitLossValue))}`

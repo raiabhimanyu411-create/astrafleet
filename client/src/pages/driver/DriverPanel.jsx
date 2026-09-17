@@ -276,6 +276,7 @@ export function DriverPanel() {
   const [breakActive,  setBreakActive]  = useState(false);
   const [breakSeconds, setBreakSeconds] = useState(0);
   const breakTimerRef = useRef(null);
+  const panelLoadVersionRef = useRef(0);
 
   // Messaging
   const [messages,    setMessages]    = useState([]);
@@ -370,16 +371,18 @@ export function DriverPanel() {
   // ── Data loading ────────────────────────────────────────────
   async function loadPanel(nextSelectedId) {
     if (!userId) return;
+    const version = ++panelLoadVersionRef.current;
     try {
-      setLoading(true);
-      setError("");
+      if (!data) setLoading(true);
       const res = await getDriverPanelData(userId);
+      if (version !== panelLoadVersionRef.current) return;
       setData(res.data);
+      setError("");
       setSelectedJobId(nextSelectedId || res.data.activeJob?.id || res.data.todayJobs?.[0]?.id || res.data.upcomingJobs?.[0]?.id || null);
     } catch (err) {
-      setError(err.response?.data?.message || "Could not load driver panel.");
+      if (version === panelLoadVersionRef.current) setError(err.response?.data?.message || "Could not load driver panel.");
     } finally {
-      setLoading(false);
+      if (version === panelLoadVersionRef.current) setLoading(false);
     }
   }
 

@@ -26,6 +26,14 @@ test("invalid calendar and clock values are rejected", () => {
   assert.equal(isDateTimeKey("2026-02-30T10:00"), false);
   assert.equal(isDateTimeKey("2026-09-14T24:00"), false);
   assert.equal(isDateTimeKey("2026-09-14T09:15"), true);
+  assert.equal(isDateTimeKey("2026-03-29T01:30"), false, "nonexistent BST spring-forward time");
+  assert.equal(isDateTimeKey("2026-10-25T01:30"), false, "ambiguous GMT/BST fall-back time");
+});
+
+test("UK elapsed minutes follow GMT and BST transitions", () => {
+  assert.equal(wallMinutesBetween("2026-03-29T00:30", "2026-03-29T02:30"), 60);
+  assert.equal(addWallMinutes("2026-03-29T00:30", 60), "2026-03-29T02:30");
+  assert.equal(wallMinutesBetween("2026-10-25T00:30", "2026-10-25T02:30"), 180);
 });
 
 test("job chronology rejects mismatched collection, delivery and stop times", () => {
@@ -47,6 +55,7 @@ test("profit inputs include toll and do not invent revenue", () => {
     mpg: 10,
     fuel_price_per_litre: 1.5,
     driver_rate_per_hour: 15,
+    fleet_cost_per_hour: 12.05,
     margin_pct: 20
   }, 0, 90, 90, 25);
   assert.equal(economics.tollCost, 25);

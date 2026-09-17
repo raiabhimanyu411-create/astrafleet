@@ -564,7 +564,7 @@ exports.getMyDriverPanel = async (req, res) => {
     }
 
     const jobs = await getDriverJobs(driver.id);
-    const todayKey = new Date().toISOString().slice(0, 10);
+    const todayKey = ukNowDateTimeKey().slice(0, 10);
     const todayJobs = jobs.filter((job) => job.schedule.plannedDate === todayKey);
     const upcomingJobs = jobs.filter((job) => {
       if (!job.schedule.plannedDate) return false;
@@ -1506,7 +1506,7 @@ exports.getMyNotifications = async (req, res) => {
     const driver = await getDriverFromSession(req);
     if (!driver) return res.status(404).json({ message: "Driver profile not linked." });
 
-    const todayKey = new Date().toISOString().slice(0, 10);
+    const todayKey = ukNowDateTimeKey().slice(0, 10);
 
     const [newJobs] = await db.query(
       `SELECT t.id, t.trip_code, r.origin_hub, r.destination_hub

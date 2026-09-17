@@ -68,7 +68,6 @@ let jobCostSchemaReady = false;
 let referenceSchemaReady = false;
 const DEFAULT_LOADING_MINS = 90;
 const DEFAULT_UNLOADING_MINS = 90;
-const FLEET_COST_PER_HOUR_GBP = 12.05;
 
 function effectiveLoadingMins(rowOrValue) {
   const value = typeof rowOrValue === "object" ? rowOrValue?.loading_duration_mins : rowOrValue;
@@ -156,6 +155,7 @@ async function ensureDriverOpsSchema() {
   await addColumnIfMissing("trips", "vehicle_type_requirement", "VARCHAR(80) DEFAULT NULL");
   await addColumnIfMissing("trips", "delivery_deadline", "DATETIME DEFAULT NULL");
   await addColumnIfMissing("trips", "dispatcher_notes", "TEXT DEFAULT NULL");
+  await addColumnIfMissing("trips", "cancellation_reason", "TEXT DEFAULT NULL");
 
   await db.query(
     `CREATE TABLE IF NOT EXISTS driver_job_status_events (
@@ -357,9 +357,9 @@ async function estimateDrivingPath(points) {
   };
 }
 
-function calcJobEconomics(distanceKm, totalJobMins, settings, fallbackTravelMins = 0, loadingMins = DEFAULT_LOADING_MINS, unloadingMins = DEFAULT_UNLOADING_MINS, tollCost = 0) {
+function calcJobEconomics(distanceKm, totalJobMins, settings, fallbackTravelMins = 0, loadingMins = DEFAULT_LOADING_MINS, unloadingMins = DEFAULT_UNLOADING_MINS, tollCost = 0, recordedExpenses = 0) {
   if (distanceKm == null || !Number.isFinite(Number(distanceKm)) || Number(distanceKm) < 0 || !settings) return null;
-  if (![settings.mpg, settings.fuel_price_per_litre, settings.driver_rate_per_hour, settings.margin_pct].every(value => Number.isFinite(Number(value)) && Number(value) >= 0) || Number(settings.mpg) <= 0) return null;
+  if (![settings.mpg, settings.fuel_price_per_litre, settings.driver_rate_per_hour, settings.fleet_cost_per_hour, settings.margin_pct].every(value => Number.isFinite(Number(value)) && Number(value) >= 0) || Number(settings.mpg) <= 0) return null;
   const distanceMiles = distanceKm * 0.621371;
   const fuelCostPerMile = (4.546 / settings.mpg) * settings.fuel_price_per_litre;
   const fuelCost = distanceMiles * fuelCostPerMile;
@@ -367,9 +367,10 @@ function calcJobEconomics(distanceKm, totalJobMins, settings, fallbackTravelMins
   const totalMinutes = Number(totalJobMins);
   const totalHours = totalMinutes / 60;
   const driverCost = totalHours * settings.driver_rate_per_hour;
-  const fleetCost = totalHours * FLEET_COST_PER_HOUR_GBP;
+  const fleetCost = totalHours * Number(settings.fleet_cost_per_hour);
   const safeTollCost = Number(tollCost || 0);
-  const totalCost = fuelCost + driverCost + fleetCost + safeTollCost;
+  const safeExpenses = Number(recordedExpenses || 0);
+  const totalCost = fuelCost + driverCost + fleetCost + safeTollCost + safeExpenses;
   const suggestedPrice = totalCost * (1 + settings.margin_pct / 100);
   return {
     distanceMiles: Math.round(distanceMiles * 10) / 10,
@@ -378,7 +379,8 @@ function calcJobEconomics(distanceKm, totalJobMins, settings, fallbackTravelMins
     driverCost: Math.round(driverCost * 100) / 100,
     fleetCost: Math.round(fleetCost * 100) / 100,
     tollCost: Math.round(safeTollCost * 100) / 100,
-    fleetCostPerHour: FLEET_COST_PER_HOUR_GBP,
+    recordedExpenses: Math.round(safeExpenses * 100) / 100,
+    fleetCostPerHour: Number(settings.fleet_cost_per_hour),
     totalCost: Math.round(totalCost * 100) / 100,
     suggestedPrice: Math.round(suggestedPrice * 100) / 100,
     totalHours: Math.round(totalHours * 100) / 100,
@@ -538,6 +540,7 @@ exports.listJobs = async (req, res) => {
       fuel_price_per_litre: parseFloat(settingsMap.fuel_price_per_litre),
       mpg: parseFloat(settingsMap.mpg),
       driver_rate_per_hour: parseFloat(settingsMap.driver_rate_per_hour),
+      fleet_cost_per_hour: parseFloat(settingsMap.fleet_cost_per_hour),
       margin_pct: parseFloat(settingsMap.margin_pct),
       avg_speed_mph: parseFloat(settingsMap.avg_speed_mph)
     };
@@ -561,6 +564,7 @@ exports.listJobs = async (req, res) => {
               v.registration_number, v.fleet_code, v.model_name, v.truck_type,
               tr.trailer_code, tr.registration_number AS trailer_registration, tr.trailer_type,
               COUNT(DISTINCT js.id) as stop_count
+              ,(SELECT COALESCE(SUM(e.amount_gbp),0) FROM driver_expenses e WHERE e.trip_id=t.id) AS recorded_expenses_gbp
        FROM trips t
        LEFT JOIN customers c  ON t.customer_id = c.id
        LEFT JOIN routes    r  ON t.route_id    = r.id
@@ -675,7 +679,7 @@ exports.listJobs = async (req, res) => {
         const fallbackTravelMins = r.standard_eta_hours ? Math.round(Number(r.standard_eta_hours) * 60) : 0;
         const loadingMins = effectiveLoadingMins(r);
         const unloadingMins = effectiveUnloadingMins(r);
-        const econ = calcJobEconomics(r.distance_km, r.total_job_duration_mins, settings, fallbackTravelMins, loadingMins, unloadingMins, r.toll_estimate_gbp);
+        const econ = calcJobEconomics(r.distance_km, r.total_job_duration_mins, settings, fallbackTravelMins, loadingMins, unloadingMins, r.toll_estimate_gbp, r.recorded_expenses_gbp);
         const totalJobDurationMins = r.total_job_duration_mins || econ?.totalMins || null;
         const freightValue = r.freight_amount_gbp == null ? null : Number(r.freight_amount_gbp);
         const profitLossValue = econ && freightValue !== null ? Math.round((freightValue - econ.totalCost) * 100) / 100 : null;
@@ -1051,6 +1055,7 @@ exports.getJobById = async (req, res) => {
       fuel_price_per_litre: parseFloat(settingsMap.fuel_price_per_litre),
       mpg: parseFloat(settingsMap.mpg),
       driver_rate_per_hour: parseFloat(settingsMap.driver_rate_per_hour),
+      fleet_cost_per_hour: parseFloat(settingsMap.fleet_cost_per_hour),
       margin_pct: parseFloat(settingsMap.margin_pct),
       avg_speed_mph: parseFloat(settingsMap.avg_speed_mph)
     };
@@ -1201,7 +1206,8 @@ exports.getJobById = async (req, res) => {
 
       economics: (() => {
         const fallbackTravelMins = j.standard_eta_hours ? Math.round(Number(j.standard_eta_hours) * 60) : 0;
-        const econ = calcJobEconomics(j.distance_km, j.total_job_duration_mins, settings, fallbackTravelMins, effectiveLoadingMins(j), effectiveUnloadingMins(j), j.toll_estimate_gbp);
+        const recordedExpenses = expenses.reduce((sum, expense) => sum + Number(expense.amount_gbp || 0), 0);
+        const econ = calcJobEconomics(j.distance_km, j.total_job_duration_mins, settings, fallbackTravelMins, effectiveLoadingMins(j), effectiveUnloadingMins(j), j.toll_estimate_gbp, recordedExpenses);
         if (!econ) return null;
         const freightValue = j.freight_amount_gbp == null ? null : Number(j.freight_amount_gbp);
         const profitLossValue = freightValue !== null ? Math.round((freightValue - econ.totalCost) * 100) / 100 : null;
@@ -1215,6 +1221,7 @@ exports.getJobById = async (req, res) => {
             fuelPricePerLitre: settings.fuel_price_per_litre,
             mpg: settings.mpg,
             driverRatePerHour: settings.driver_rate_per_hour,
+            fleetCostPerHour: settings.fleet_cost_per_hour,
             marginPct: settings.margin_pct,
             avgSpeedMph: settings.avg_speed_mph
           }
@@ -1498,6 +1505,8 @@ exports.updateJob = async (req, res) => {
     req.body = mergeJobUpdate(existing, patch, savedStops);
     const pathChanged = ['pickup_address', 'drop_address'].some(key => Object.hasOwn(patch, key) && patch[key] !== existing[key]) ||
       (Array.isArray(patch.stops) && (patch.stops.length !== savedStops.length || patch.stops.some((s, i) => s.address !== savedStops[i]?.address)));
+    const scheduleChanged = pathChanged || ['planned_departure', 'loading_done_time', 'calculated_arrival', 'calculated_unload_end']
+      .some(key => Object.hasOwn(patch, key) && dateTimeKey(patch[key]) !== dateTimeKey(existing[key]));
     if (pathChanged && !Object.hasOwn(patch, 'estimated_distance_km')) {
       req.body.estimated_distance_km = null; req.body.estimated_eta_mins = null; req.body.route_id = null;
     }
@@ -1609,7 +1618,7 @@ exports.updateJob = async (req, res) => {
       `UPDATE trips SET
          customer_id=?, client_name=?, client_phone=?, route_id=?, vehicle_id=?, trailer_id=?, driver_id=?,
          pickup_address=?, drop_address=?, priority_level=?,
-         planned_departure=?, eta=?, dock_window=?,
+         planned_departure=?, eta=?, eta_updated_at=?, dock_window=?,
          load_type=?, load_weight_kg=?, load_volume_cbm=?, vehicle_type_requirement=?, delivery_deadline=?,
          load_description=?, freight_amount_gbp=?, special_instructions=?, dispatcher_notes=?,
          driver_job_status=IF(? = 1, 'offered', driver_job_status),
@@ -1622,7 +1631,7 @@ exports.updateJob = async (req, res) => {
         vehicle_id || null, trailer_id || null, driver_id || null,
         pickup_address || null, drop_address || null,
         priority_level || "standard",
-        planned_departure || null, existing.eta_updated_at ? existing.eta : (calculated_arrival || eta), dock_window || null,
+        planned_departure || null, scheduleChanged ? (calculated_arrival || eta) : (existing.eta_updated_at ? existing.eta : (calculated_arrival || eta)), scheduleChanged ? null : existing.eta_updated_at, dock_window || null,
         valueOrExisting("load_type", "general", "general"),
         valueOrExisting("load_weight_kg", null),
         valueOrExisting("load_volume_cbm", null),
@@ -1736,8 +1745,12 @@ exports.updateJobStatus = async (req, res) => {
       return res.status(400).json({ message: "Invalid status value." });
     }
 
-    const [[job]] = await db.query(`SELECT id, dispatch_status, vehicle_id, trailer_id, actual_departure FROM trips WHERE id = ? AND deleted_at IS NULL`, [id]);
+    const [[job]] = await db.query(`SELECT id, dispatch_status, driver_job_status, vehicle_id, trailer_id, actual_departure, actual_arrival, pod_status FROM trips WHERE id = ? AND deleted_at IS NULL`, [id]);
     if (!job) return res.status(404).json({ message: "Job not found." });
+    if (job.dispatch_status === 'completed' && status !== 'completed') return res.status(409).json({ message: 'Completed jobs cannot be reopened because delivery history is final.' });
+    if (['blocked','failed','cancelled'].includes(job.dispatch_status) && status === 'planned' && (job.actual_departure || job.actual_arrival)) {
+      return res.status(409).json({ message: 'This attempt has actual progress. Create a follow-up job instead of reopening it.' });
+    }
 
     const updates = { dispatch_status: status };
     // Admin status changes do not invent operational timestamps. Actual times
@@ -1753,6 +1766,16 @@ exports.updateJobStatus = async (req, res) => {
         return res.status(400).json({ message: "Actual arrival cannot be before actual departure." });
       }
       updates.actual_arrival = dateTimeKey(actual_arrival);
+    }
+    const effectiveDeparture = updates.actual_departure || job.actual_departure;
+    const effectiveArrival = updates.actual_arrival || job.actual_arrival;
+    if (status === 'active' && !effectiveDeparture) return res.status(409).json({ message: 'Actual collection departure is required before marking a job in transit.' });
+    if (status === 'completed' && (!effectiveDeparture || !effectiveArrival)) return res.status(409).json({ message: 'Actual departure and delivery arrival are required before completion.' });
+    if (status === 'completed' && !['uploaded','verified'].includes(job.pod_status)) return res.status(409).json({ message: 'POD must be uploaded before completing the job.' });
+    if (status === 'planned' && ['blocked','failed','cancelled'].includes(job.dispatch_status)) {
+      updates.cancellation_reason = null;
+      updates.delay_reason = null;
+      updates.driver_job_status = job.driver_job_status === 'offered' ? 'offered' : 'accepted';
     }
     if (status === "blocked")   updates.cancellation_reason = reason || null;
     if (status === "failed")    updates.cancellation_reason = reason || null;

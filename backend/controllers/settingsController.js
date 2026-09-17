@@ -4,6 +4,7 @@ const DEFAULTS = {
   fuel_price_per_litre: "1.40",
   mpg: "11.5",
   driver_rate_per_hour: "20.00",
+  fleet_cost_per_hour: "12.05",
   margin_pct: "29",
   avg_speed_mph: "40"
 };
@@ -48,6 +49,7 @@ exports.getSettings = async (req, res) => {
       fuel_price_per_litre: parseFloat(map.fuel_price_per_litre),
       mpg: parseFloat(map.mpg),
       driver_rate_per_hour: parseFloat(map.driver_rate_per_hour),
+      fleet_cost_per_hour: parseFloat(map.fleet_cost_per_hour),
       margin_pct: parseFloat(map.margin_pct),
       avg_speed_mph: parseFloat(map.avg_speed_mph),
       cost_per_mile: parseFloat(costPerMile)
@@ -61,7 +63,7 @@ exports.getSettings = async (req, res) => {
 exports.updateSettings = async (req, res) => {
   try {
     await ensureSettingsTable();
-    const allowed = ["fuel_price_per_litre", "mpg", "driver_rate_per_hour", "margin_pct", "avg_speed_mph"];
+    const allowed = ["fuel_price_per_litre", "mpg", "driver_rate_per_hour", "fleet_cost_per_hour", "margin_pct", "avg_speed_mph"];
     for (const key of allowed) {
       if (Object.prototype.hasOwnProperty.call(req.body, key)) {
         const val = String(req.body[key]);
