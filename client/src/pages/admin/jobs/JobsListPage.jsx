@@ -1479,7 +1479,7 @@ export function JobsListPage() {
                           <strong>{fmtMins(job.totalJobDurationMins)}</strong>
                         </div>
                         {job.economics?.distanceMiles && (routeStops.length + 1) > 0 && (
-                          <div className="relay-time-calc-item" style={{ marginLeft: 16, borderLeft: "1px solid #e2e8f0", paddingLeft: 16 }}>
+                          <div className="relay-time-calc-item relay-time-calc-per-drop">
                             <span className="relay-time-calc-label">Per Drop</span>
                             <strong>{(job.economics.distanceMiles / (routeStops.length + 1)).toFixed(1)} mi</strong>
                             <small>{routeStops.length + 1} drop{routeStops.length + 1 > 1 ? "s" : ""}</small>

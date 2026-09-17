@@ -3740,10 +3740,10 @@ p.lp-success {
 /* ── Collapsed header ── */
 .relay-job-header {
   display: grid;
-  grid-template-columns: 14px 104px 214px minmax(250px, 1fr) 124px 132px 34px 118px 142px 34px 116px;
+  grid-template-columns: 16px minmax(100px, .7fr) minmax(170px, 1.15fr) minmax(330px, 2.6fr) minmax(105px, .8fr) minmax(120px, .9fr) 38px minmax(125px, 1fr) minmax(130px, 1fr) 38px minmax(120px, .85fr);
   align-items: center;
-  gap: 10px;
-  padding: 11px 14px;
+  gap: 12px;
+  padding: 12px 16px;
   cursor: pointer;
   user-select: none;
   transition: background 0.12s;
@@ -4078,7 +4078,7 @@ p.lp-success {
 .relay-driver-progress {
   border-bottom: 1px solid var(--border);
   background: #fff;
-  padding: 12px 16px 14px;
+  padding: 12px 16px;
 }
 
 .relay-driver-progress-head {
@@ -4094,7 +4094,7 @@ p.lp-success {
   align-items: stretch;
   gap: 10px;
   overflow-x: auto;
-  padding-bottom: 2px;
+  padding-bottom: 0;
   scrollbar-width: thin;
 }
 
@@ -4103,7 +4103,8 @@ p.lp-success {
   display: grid;
   grid-template-columns: 18px minmax(116px, 1fr);
   gap: 8px;
-  min-width: 165px;
+  width: 210px;
+  min-width: 210px;
   padding: 9px 10px;
   border: 1px solid var(--border);
   border-radius: 8px;
@@ -4156,7 +4157,7 @@ p.lp-success {
 
 /* Editable spreadsheet-style stop schedule */
 .job-sheet {
-  margin: 14px 16px;
+  margin: 16px;
   border: 1px solid #cbd5e1;
   border-radius: 10px;
   background: #fff;
@@ -4189,6 +4190,7 @@ p.lp-success {
 .job-sheet-row > * { min-width: 0; padding: 10px; border-right: 1px solid #e2e8f0; }
 .job-sheet-row > *:last-child { border-right: 0; }
 .job-sheet-row > div { display: flex; flex-direction: column; gap: 4px; color: #334155; font-size: 0.78rem; }
+.job-sheet-row > div:not(.job-sheet-index) { justify-content: center; }
 .job-sheet-row strong { color: #172033; font-size: 0.79rem; }
 .job-sheet-row small { color: #718198; font-size: 0.72rem; line-height: 1.4; }
 .job-sheet-index { display: flex; align-items: center; justify-content: center; align-self: stretch; background: #f8fafc; color: #334155; font-weight: 800; }
@@ -4378,7 +4380,7 @@ p.lp-success {
 
 /* ── Dispatch controls ── */
 .relay-dispatch-controls {
-  padding: 12px 16px;
+  padding: 16px;
   border-bottom: 1px solid var(--border);
   background: var(--surface);
 }
@@ -4393,17 +4395,16 @@ p.lp-success {
 }
 
 .relay-dispatch-selects {
-  display: flex;
-  gap: 10px;
-  flex-wrap: wrap;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
 }
 
 .relay-dispatch-field {
   display: flex;
   flex-direction: column;
   gap: 4px;
-  flex: 1;
-  min-width: 150px;
+  min-width: 0;
 }
 
 .relay-dispatch-field label {
@@ -10571,21 +10572,22 @@ p.lp-success {
    TIME CALCULATION STRIP (in expanded job body)
 ═══════════════════════════════════════════════════════ */
 .relay-time-calc-strip {
-  display: flex;
+  display: grid;
+  grid-template-columns: minmax(145px, 1.2fr) 24px minmax(95px, .7fr) 24px minmax(145px, 1.2fr) 24px minmax(165px, 1.25fr) minmax(112px, .75fr) minmax(105px, .75fr);
   align-items: center;
-  gap: 6px;
-  padding: 12px 16px;
+  gap: 8px;
+  padding: 14px 16px;
   background: #f0f9ff;
   border: 1px solid #bae6fd;
   border-radius: 10px;
-  margin-bottom: 10px;
-  flex-wrap: wrap;
+  margin: 0 16px 12px;
 }
 .relay-time-calc-item {
   display: flex;
   flex-direction: column;
   align-items: center;
-  min-width: 90px;
+  min-width: 0;
+  text-align: center;
 }
 .relay-time-calc-item strong {
   font-size: 0.88rem;
@@ -10617,30 +10619,42 @@ p.lp-success {
   padding: 6px 14px;
   background: #0ea5e9;
   border-radius: 8px;
-  margin-left: 6px;
+  margin-left: 2px;
+  min-height: 58px;
+  justify-content: center;
 }
 .relay-time-calc-total .relay-time-calc-label { color: #e0f2fe; }
 .relay-time-calc-total strong { font-size: 0.92rem; color: #fff; font-weight: 800; }
+.relay-time-calc-per-drop {
+  align-self: stretch;
+  justify-content: center;
+  border-left: 1px solid #bae6fd;
+  padding-left: 12px;
+}
 
 /* ═══════════════════════════════════════════════════════
    JOB ECONOMICS STRIP (in expanded job body)
 ═══════════════════════════════════════════════════════ */
 .relay-economics-strip {
-  display: flex;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
   gap: 0;
   border: 1px solid var(--border);
   border-radius: 10px;
   overflow: hidden;
-  margin-bottom: 10px;
+  margin: 0 16px 12px;
 }
 .relay-economics-col {
-  flex: 1;
   display: flex;
   flex-direction: column;
   align-items: center;
   padding: 10px 12px;
   border-right: 1px solid var(--border);
   background: var(--surface-2);
+  min-width: 0;
+  justify-content: center;
+  min-height: 82px;
+  text-align: center;
 }
 .relay-economics-col:last-child { border-right: none; }
 .relay-economics-col strong {
@@ -10670,6 +10684,33 @@ p.lp-success {
 }
 .relay-economics-col.profit-col.loss strong { color: var(--danger-text); }
 .relay-economics-col.profit-col.loss .relay-economics-label { color: var(--danger-text); }
+
+@media (max-width: 1650px) {
+  .relay-job-header {
+    grid-template-columns: 16px 100px 155px minmax(300px, 2.5fr) 100px 110px 36px 115px 125px 36px 112px;
+    gap: 8px;
+  }
+  .relay-time-calc-strip { grid-template-columns: repeat(4, minmax(130px, 1fr)); }
+  .relay-time-calc-arrow { display: none; }
+  .relay-time-calc-total { margin-left: 0; }
+}
+
+@media (max-width: 1200px) {
+  .relay-job-header { min-width: 1120px; }
+  .relay-job-card { overflow-x: auto; }
+  .relay-job-body { min-width: 0; }
+  .relay-time-calc-strip { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .relay-dispatch-selects { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .relay-economics-strip { grid-template-columns: repeat(3, minmax(150px, 1fr)); }
+  .relay-economics-col { border-bottom: 1px solid var(--border); }
+}
+
+@media (max-width: 700px) {
+  .relay-time-calc-strip,
+  .relay-economics-strip { margin-left: 8px; margin-right: 8px; grid-template-columns: 1fr; }
+  .relay-time-calc-per-drop { border-left: 0; border-top: 1px solid #bae6fd; padding: 10px 0 0; }
+  .relay-dispatch-selects { grid-template-columns: 1fr; }
+}
 
 /* ═══════════════════════════════════════════════════════
    JOB FORM — TIMING CARD & ECONOMICS CARD
