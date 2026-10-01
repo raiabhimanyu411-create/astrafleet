@@ -157,6 +157,120 @@ function daysFromToday(value) {
   return Math.round((date - today) / (1000 * 60 * 60 * 24));
 }
 
+const TYRE_AXLES = [
+  { key: "front", label: "Front / steer axle", shortLabel: "FRONT", target: "105–125 psi", left: "Front left", right: "Front right" },
+  { key: "middle", label: "Middle / drive axle", shortLabel: "DRIVE", target: "90–115 psi", left: "Axle 2 left", right: "Axle 2 right" },
+  { key: "rear", label: "Rear axle", shortLabel: "REAR", target: "90–115 psi", left: "Rear left", right: "Rear right" }
+];
+
+function tyrePressureValue(tyre) {
+  const value = Number.parseFloat(tyre?.pressure);
+  return Number.isFinite(value) ? value : null;
+}
+
+function tyreVisualState(tyre, axleKey) {
+  if (!tyre || tyre.status === "replace") return "danger";
+  if (tyre.status === "monitor") return "warning";
+  const pressure = tyrePressureValue(tyre);
+  if (pressure == null) return "unknown";
+  const [minimum, maximum] = axleKey === "front" ? [105, 125] : [90, 115];
+  if (pressure < minimum - 5 || pressure > maximum + 5) return "danger";
+  if (pressure < minimum || pressure > maximum) return "warning";
+  return "good";
+}
+
+function DigitalTyreMonitor({ tyres = [] }) {
+  const vehicles = useMemo(
+    () => [...new Set(tyres.map((tyre) => tyre.vehicle).filter(Boolean))],
+    [tyres]
+  );
+  const [selectedVehicle, setSelectedVehicle] = useState(vehicles[0] || "");
+
+  useEffect(() => {
+    if (!vehicles.includes(selectedVehicle)) setSelectedVehicle(vehicles[0] || "");
+  }, [selectedVehicle, vehicles]);
+
+  const vehicleTyres = tyres.filter((tyre) => tyre.vehicle === selectedVehicle);
+  const byPosition = new Map(vehicleTyres.map((tyre) => [tyre.position.toLowerCase(), tyre]));
+  const findTyre = (position) => byPosition.get(position.toLowerCase());
+  const healthyCount = vehicleTyres.filter((tyre) => tyreVisualState(
+    tyre,
+    tyre.position.toLowerCase().includes("front") ? "front" : tyre.position.toLowerCase().includes("rear") ? "rear" : "middle"
+  ) === "good").length;
+
+  return (
+    <div className="digital-tyre-monitor">
+      <div className="digital-tyre-toolbar">
+        <div>
+          <span className="digital-live"><i /> LIVE TYRE TELEMETRY</span>
+          <strong>{selectedVehicle || "No vehicle selected"}</strong>
+          <small>{healthyCount}/{vehicleTyres.length || 6} tyres within fleet target</small>
+        </div>
+        <label>
+          <span>Vehicle</span>
+          <select value={selectedVehicle} onChange={(event) => setSelectedVehicle(event.target.value)} disabled={!vehicles.length}>
+            {vehicles.map((vehicle) => <option key={vehicle} value={vehicle}>{vehicle}</option>)}
+          </select>
+        </label>
+      </div>
+
+      <div className="digital-tyre-stage">
+        <div className="truck-digital-visual" aria-hidden="true">
+          <div className="truck-scan-line" />
+          <svg viewBox="0 0 260 540" role="img">
+            <defs>
+              <linearGradient id="truckCab" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stopColor="#2dd4bf" /><stop offset="1" stopColor="#087ea4" /></linearGradient>
+              <linearGradient id="truckBody" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stopColor="#ecfeff" /><stop offset="1" stopColor="#c8eef2" /></linearGradient>
+            </defs>
+            <path className="truck-shadow" d="M69 500h122l15 18H54z" />
+            <rect className="truck-trailer" x="67" y="171" width="126" height="317" rx="18" fill="url(#truckBody)" />
+            <path className="truck-cab" d="M77 162V80l24-49h58l24 49v82z" fill="url(#truckCab)" />
+            <path className="truck-glass" d="M96 76l14-29h40l14 29z" />
+            <rect className="truck-grille" x="100" y="124" width="60" height="17" rx="5" />
+            <path className="truck-spine" d="M130 185v278" />
+            <path className="truck-detail" d="M82 211h96M82 373h96M82 454h96" />
+            <circle className="truck-beacon" cx="130" cy="105" r="7" />
+          </svg>
+          <span className="truck-visual-label">UK HGV · 3 AXLE</span>
+        </div>
+
+        <div className="digital-axle-list">
+          {TYRE_AXLES.map((axle) => (
+            <div className="digital-axle" key={axle.key}>
+              <div className="digital-axle-heading">
+                <span>{axle.shortLabel}</span>
+                <div><strong>{axle.label}</strong><small>Target {axle.target}</small></div>
+              </div>
+              <div className="digital-tyre-pair">
+                {[axle.left, axle.right].map((position) => {
+                  const tyre = findTyre(position);
+                  const pressure = tyrePressureValue(tyre);
+                  const state = tyreVisualState(tyre, axle.key);
+                  return (
+                    <div className={`digital-tyre-card ${state}`} key={position}>
+                      <div className="digital-wheel"><span /></div>
+                      <div>
+                        <small>{position.endsWith("left") ? "LEFT" : "RIGHT"}</small>
+                        <strong>{pressure == null ? "—" : pressure.toFixed(0)} <em>PSI</em></strong>
+                        <p>{tyre?.treadDepth || "No reading"} tread</p>
+                      </div>
+                      <span className="digital-state-dot" title={state} />
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+      <div className="digital-tyre-footer">
+        <span><i className="good" /> In range</span><span><i className="warning" /> Check pressure</span><span><i className="danger" /> Action needed</span>
+        <p>Reference bands are typical fleet targets only. Always use the vehicle placard, tyre maker load table and actual axle load.</p>
+      </div>
+    </div>
+  );
+}
+
 // Kept in sync with backend calculateNextDueDate: the completion ISO week is
 // Week 1, so the next 6-week due bucket starts five calendar weeks later.
 function normalizeRoadTaxIntervalMonths(value) {
@@ -2838,19 +2952,9 @@ export function AdminMaintenancePage() {
             </div>
             <StatusPill tone={(data?.tyres || []).some((tyre) => tyre.status === "replace") ? "danger" : "neutral"}>{(data?.tyres || []).length} tyres</StatusPill>
           </div>
-          <div className="maintenance-inventory-list">
-            {(data?.tyres || []).slice(0, 8).map((tyre) => (
-              <div className="maintenance-inventory-item" key={tyre.id}>
-                <div>
-                  <strong>{tyre.vehicle} · {tyre.position}</strong>
-                  <p>{tyre.brand} · {tyre.treadDepth} · {tyre.pressure}</p>
-                </div>
-                <span>{tyre.replacementDue}</span>
-                <StatusPill tone={tyre.tone}>{tyre.status}</StatusPill>
-              </div>
-            ))}
-            {!loading && (data?.tyres || []).length === 0 && <p className="finance-empty">Tyre positions will appear after tyre records are added.</p>}
-          </div>
+          {(data?.tyres || []).length > 0
+            ? <DigitalTyreMonitor tyres={data.tyres} />
+            : !loading && <p className="finance-empty">Tyre positions will appear after tyre records are added.</p>}
         </article>
       </section>
       )}

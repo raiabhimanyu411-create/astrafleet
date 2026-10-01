@@ -1093,6 +1093,221 @@
   text-align: right;
 }
 
+.digital-tyre-monitor {
+  overflow: hidden;
+  border: 1px solid #bfe3e7;
+  border-radius: 18px;
+  background: linear-gradient(145deg, #f8ffff 0%, #eefafa 52%, #f8fbff 100%);
+  box-shadow: inset 0 1px 0 #fff, 0 12px 32px rgba(8, 126, 164, 0.09);
+}
+
+.digital-tyre-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 16px 18px;
+  border-bottom: 1px solid rgba(125, 211, 218, 0.45);
+  background: rgba(255, 255, 255, 0.72);
+}
+
+.digital-tyre-toolbar > div { display: grid; gap: 2px; }
+.digital-tyre-toolbar > div > strong { color: #102c3c; font-size: 1.12rem; }
+.digital-tyre-toolbar > div > small { color: #648091; font-size: 0.72rem; font-weight: 700; }
+
+.digital-live {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  color: #07836f;
+  font-size: 0.63rem;
+  font-weight: 900;
+  letter-spacing: 0.12em;
+}
+
+.digital-live i {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #10b981;
+  box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.42);
+  animation: tyre-live-pulse 1.8s infinite;
+}
+
+.digital-tyre-toolbar label { display: grid; gap: 4px; min-width: 150px; }
+.digital-tyre-toolbar label span { color: #648091; font-size: 0.62rem; font-weight: 900; text-transform: uppercase; letter-spacing: .08em; }
+.digital-tyre-toolbar select {
+  height: 38px;
+  padding: 0 34px 0 11px;
+  border: 1px solid #b8dadd;
+  border-radius: 9px;
+  outline: none;
+  background: #fff;
+  color: #102c3c;
+  font: inherit;
+  font-size: .82rem;
+  font-weight: 800;
+}
+
+.digital-tyre-toolbar select:focus { border-color: #0d9488; box-shadow: 0 0 0 3px rgba(13,148,136,.12); }
+
+.digital-tyre-stage {
+  display: grid;
+  grid-template-columns: minmax(170px, .72fr) minmax(360px, 1.55fr);
+  gap: 20px;
+  padding: 20px;
+}
+
+.truck-digital-visual {
+  position: relative;
+  display: grid;
+  place-items: center;
+  min-height: 420px;
+  overflow: hidden;
+  border: 1px solid rgba(42, 185, 181, .3);
+  border-radius: 15px;
+  background-color: #082f3c;
+  background-image: linear-gradient(rgba(45,212,191,.06) 1px, transparent 1px), linear-gradient(90deg, rgba(45,212,191,.06) 1px, transparent 1px);
+  background-size: 22px 22px;
+  box-shadow: inset 0 0 45px rgba(20,184,166,.14);
+}
+
+.truck-digital-visual::before {
+  content: "";
+  position: absolute;
+  width: 170px;
+  height: 360px;
+  border: 1px solid rgba(94,234,212,.22);
+  border-radius: 50%;
+  box-shadow: 0 0 50px rgba(45,212,191,.12);
+  animation: truck-halo 3.5s ease-in-out infinite;
+}
+
+.truck-digital-visual svg { position: relative; z-index: 2; width: 155px; height: 360px; filter: drop-shadow(0 14px 12px rgba(0,0,0,.3)); }
+.truck-shadow { fill: rgba(0,0,0,.36); }
+.truck-trailer { stroke: #5eead4; stroke-width: 2; }
+.truck-cab { stroke: #99f6e4; stroke-width: 2; }
+.truck-glass { fill: #103f52; stroke: #67e8f9; stroke-width: 2; }
+.truck-grille { fill: #0f5f72; }
+.truck-spine, .truck-detail { fill: none; stroke: rgba(8,126,164,.28); stroke-width: 3; stroke-dasharray: 7 6; }
+.truck-beacon { fill: #5eead4; filter: drop-shadow(0 0 8px #2dd4bf); animation: truck-beacon 1.3s ease-in-out infinite; }
+
+.truck-scan-line {
+  position: absolute;
+  z-index: 3;
+  top: 10%;
+  left: 8%;
+  right: 8%;
+  height: 2px;
+  background: linear-gradient(90deg, transparent, #5eead4, transparent);
+  box-shadow: 0 0 10px #2dd4bf;
+  animation: truck-scan 4s linear infinite;
+}
+
+.truck-visual-label {
+  position: absolute;
+  z-index: 4;
+  bottom: 12px;
+  padding: 5px 9px;
+  border: 1px solid rgba(94,234,212,.25);
+  border-radius: 20px;
+  background: rgba(6,44,57,.84);
+  color: #99f6e4;
+  font-size: .59rem;
+  font-weight: 900;
+  letter-spacing: .12em;
+}
+
+.digital-axle-list { display: grid; gap: 12px; }
+.digital-axle {
+  padding: 13px;
+  border: 1px solid rgba(184, 218, 221, .8);
+  border-radius: 13px;
+  background: rgba(255,255,255,.72);
+  box-shadow: 0 5px 16px rgba(15, 75, 89, .045);
+}
+
+.digital-axle-heading { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
+.digital-axle-heading > span {
+  min-width: 48px;
+  padding: 5px 6px;
+  border-radius: 6px;
+  background: #dff7f5;
+  color: #087b72;
+  font-size: .58rem;
+  font-weight: 900;
+  text-align: center;
+  letter-spacing: .08em;
+}
+.digital-axle-heading div { display: grid; }
+.digital-axle-heading strong { color: #17394a; font-size: .78rem; }
+.digital-axle-heading small { color: #72909f; font-size: .65rem; font-weight: 700; }
+.digital-tyre-pair { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 9px; }
+
+.digital-tyre-card {
+  --tyre-state: #94a3b8;
+  position: relative;
+  display: grid;
+  grid-template-columns: 38px 1fr auto;
+  align-items: center;
+  gap: 9px;
+  min-width: 0;
+  padding: 10px;
+  border: 1px solid color-mix(in srgb, var(--tyre-state) 35%, #dbe7eb);
+  border-radius: 10px;
+  background: #fff;
+}
+.digital-tyre-card.good { --tyre-state: #10b981; }
+.digital-tyre-card.warning { --tyre-state: #f59e0b; }
+.digital-tyre-card.danger { --tyre-state: #ef4444; }
+.digital-wheel { display: grid; place-items: center; width: 27px; height: 39px; border: 4px solid #203641; border-radius: 9px; background: #0d2029; box-shadow: inset 0 0 0 2px #45616d, 0 0 0 2px color-mix(in srgb, var(--tyre-state) 25%, transparent); animation: wheel-breathe 2.4s ease-in-out infinite; }
+.digital-wheel span { width: 7px; height: 17px; border-radius: 3px; background: var(--tyre-state); box-shadow: 0 0 8px var(--tyre-state); }
+.digital-tyre-card small { display: block; color: #7b929e; font-size: .55rem; font-weight: 900; letter-spacing: .1em; }
+.digital-tyre-card strong { display: block; color: #102c3c; font-size: 1.08rem; line-height: 1.1; }
+.digital-tyre-card strong em { color: #6f8996; font-size: .56rem; font-style: normal; }
+.digital-tyre-card p { margin: 3px 0 0; color: #72909f; font-size: .62rem; font-weight: 700; }
+.digital-state-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--tyre-state); box-shadow: 0 0 7px color-mix(in srgb, var(--tyre-state) 75%, transparent); }
+
+.digital-tyre-footer { display: flex; align-items: center; gap: 13px; padding: 10px 18px; border-top: 1px solid rgba(125,211,218,.4); background: rgba(255,255,255,.6); }
+.digital-tyre-footer > span { display: flex; align-items: center; gap: 5px; color: #54717e; font-size: .61rem; font-weight: 800; white-space: nowrap; }
+.digital-tyre-footer i { width: 7px; height: 7px; border-radius: 50%; }
+.digital-tyre-footer i.good { background: #10b981; }
+.digital-tyre-footer i.warning { background: #f59e0b; }
+.digital-tyre-footer i.danger { background: #ef4444; }
+.digital-tyre-footer p { margin: 0 0 0 auto; max-width: 390px; color: #6d8793; font-size: .58rem; line-height: 1.4; text-align: right; }
+
+@keyframes tyre-live-pulse { 70% { box-shadow: 0 0 0 7px rgba(16,185,129,0); } 100% { box-shadow: 0 0 0 0 rgba(16,185,129,0); } }
+@keyframes truck-scan { 0% { transform: translateY(0); opacity: 0; } 10% { opacity: 1; } 90% { opacity: 1; } 100% { transform: translateY(330px); opacity: 0; } }
+@keyframes truck-halo { 50% { transform: scale(1.04); opacity: .65; } }
+@keyframes truck-beacon { 50% { opacity: .35; } }
+@keyframes wheel-breathe { 50% { filter: brightness(1.16); } }
+
+@media (max-width: 1080px) {
+  .digital-tyre-stage { grid-template-columns: 1fr; }
+  .truck-digital-visual { min-height: 260px; }
+  .truck-digital-visual svg { width: 116px; height: 245px; }
+  .truck-digital-visual::before { width: 135px; height: 220px; }
+  .truck-scan-line { display: none; }
+}
+
+@media (max-width: 600px) {
+  .digital-tyre-toolbar { align-items: stretch; flex-direction: column; }
+  .digital-tyre-toolbar label { width: 100%; }
+  .digital-tyre-stage { gap: 12px; padding: 12px; }
+  .truck-digital-visual { min-height: 225px; }
+  .digital-tyre-pair { grid-template-columns: 1fr; }
+  .digital-tyre-footer { align-items: flex-start; flex-wrap: wrap; }
+  .digital-tyre-footer p { flex-basis: 100%; margin-left: 0; text-align: left; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .digital-live i,
+  .truck-digital-visual::before,
+  .truck-scan-line,
+  .truck-beacon,
+  .digital-wheel { animation: none; }
+}
+
 .maintenance-analytics-grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
