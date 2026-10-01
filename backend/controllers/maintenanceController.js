@@ -580,15 +580,24 @@ async function syncMaintenanceSchema() {
   `);
 
   await db.query(`
-    INSERT INTO maintenance_inventory (part_name, category, stock_qty, reorder_level, unit_cost_gbp, supplier)
-    VALUES
-      ('Tyre 315/70 R22.5', 'Tyres', 8, 4, 245.00, 'Fleet Tyres UK'),
-      ('Brake pads axle set', 'Brakes', 5, 3, 180.00, 'BrakeLine Parts'),
-      ('Engine oil 20L', 'Service', 12, 6, 72.00, 'Workshop Supplies'),
-      ('Oil filter', 'Service', 10, 5, 22.00, 'Workshop Supplies'),
-      ('Headlamp bulb', 'Electrical', 14, 6, 9.50, 'Parts Desk')
-    ON DUPLICATE KEY UPDATE part_name = VALUES(part_name)
+    CREATE TABLE IF NOT EXISTS maintenance_data_migrations (
+      migration_key VARCHAR(100) PRIMARY KEY,
+      applied_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    ) ENGINE=InnoDB
   `);
+  const [inventoryCleanup] = await db.query(
+    `INSERT IGNORE INTO maintenance_data_migrations (migration_key) VALUES ('remove_demo_inventory_v1')`
+  );
+  if (inventoryCleanup.affectedRows) {
+    await db.query(`
+      DELETE FROM maintenance_inventory
+      WHERE (part_name='Tyre 315/70 R22.5' AND supplier='Fleet Tyres UK')
+         OR (part_name='Brake pads axle set' AND supplier='BrakeLine Parts')
+         OR (part_name='Engine oil 20L' AND supplier='Workshop Supplies')
+         OR (part_name='Oil filter' AND supplier='Workshop Supplies')
+         OR (part_name='Headlamp bulb' AND supplier='Parts Desk')
+    `);
+  }
 
   await db.query(`
     CREATE TABLE IF NOT EXISTS vehicle_tyres (
@@ -2969,9 +2978,14 @@ exports.getMaintenancePortal = async (_req, res) => {
       stockQty: Number(part.stock_qty || 0),
       reorderLevel: Number(part.reorder_level || 0),
       unitCost: fmtAmount(part.unit_cost_gbp),
+      unitCostGbp: Number(part.unit_cost_gbp || 0),
       supplier: part.supplier || "-",
-      status: Number(part.stock_qty || 0) <= Number(part.reorder_level || 0) ? "Reorder" : "In stock",
-      tone: Number(part.stock_qty || 0) <= Number(part.reorder_level || 0) ? "warning" : "success"
+      status: Number(part.stock_qty || 0) === 0
+        ? "Out of stock"
+        : Number(part.stock_qty || 0) <= Number(part.reorder_level || 0) ? "Low stock" : "In stock",
+      tone: Number(part.stock_qty || 0) === 0
+        ? "danger"
+        : Number(part.stock_qty || 0) <= Number(part.reorder_level || 0) ? "warning" : "success"
     }));
 
     const [tyreRows] = await db.query(`
@@ -3417,6 +3431,82 @@ exports.autoPlanDueWork = async (_req, res) => {
     });
   } catch (err) {
     res.status(500).json({ message: "Maintenance automation error", error: err.message });
+  }
+};
+
+function cleanInventoryPayload(body = {}) {
+  const stockQty = Number(body.stock_qty ?? body.stockQty ?? 0);
+  const reorderLevel = Number(body.reorder_level ?? body.reorderLevel ?? 0);
+  const unitCost = Number(body.unit_cost_gbp ?? body.unitCostGbp ?? 0);
+  return {
+    partName: String(body.part_name ?? body.partName ?? "").trim(),
+    category: String(body.category ?? "General").trim() || "General",
+    stockQty,
+    reorderLevel,
+    unitCost,
+    supplier: String(body.supplier ?? "").trim() || null
+  };
+}
+
+function inventoryPayloadError(item) {
+  if (!item.partName) return "Item name is required.";
+  if (item.partName.length > 120) return "Item name must be 120 characters or fewer.";
+  if (item.category.length > 80) return "Category must be 80 characters or fewer.";
+  if (item.supplier && item.supplier.length > 120) return "Supplier must be 120 characters or fewer.";
+  if (!Number.isInteger(item.stockQty) || item.stockQty < 0) return "Stock quantity must be a whole number of zero or more.";
+  if (!Number.isInteger(item.reorderLevel) || item.reorderLevel < 0) return "Reorder level must be a whole number of zero or more.";
+  if (!Number.isFinite(item.unitCost) || item.unitCost < 0) return "Unit cost must be zero or more.";
+  return "";
+}
+
+exports.createInventoryItem = async (req, res) => {
+  try {
+    const item = cleanInventoryPayload(req.body);
+    const validationError = inventoryPayloadError(item);
+    if (validationError) return res.status(400).json({ message: validationError });
+    const [result] = await db.query(
+      `INSERT INTO maintenance_inventory
+        (part_name, category, stock_qty, reorder_level, unit_cost_gbp, supplier)
+       VALUES (?, ?, ?, ?, ?, ?)`,
+      [item.partName, item.category, item.stockQty, item.reorderLevel, item.unitCost, item.supplier]
+    );
+    res.status(201).json({ message: "Inventory item added.", id: result.insertId });
+  } catch (err) {
+    if (err.code === "ER_DUP_ENTRY") return res.status(409).json({ message: "An inventory item with this name already exists." });
+    res.status(500).json({ message: "Could not add inventory item.", error: err.message });
+  }
+};
+
+exports.updateInventoryItem = async (req, res) => {
+  try {
+    const id = Number(req.params.id);
+    if (!id) return res.status(400).json({ message: "Valid inventory item is required." });
+    const item = cleanInventoryPayload(req.body);
+    const validationError = inventoryPayloadError(item);
+    if (validationError) return res.status(400).json({ message: validationError });
+    const [result] = await db.query(
+      `UPDATE maintenance_inventory
+       SET part_name=?, category=?, stock_qty=?, reorder_level=?, unit_cost_gbp=?, supplier=?
+       WHERE id=?`,
+      [item.partName, item.category, item.stockQty, item.reorderLevel, item.unitCost, item.supplier, id]
+    );
+    if (!result.affectedRows) return res.status(404).json({ message: "Inventory item was not found." });
+    res.json({ message: "Inventory item updated." });
+  } catch (err) {
+    if (err.code === "ER_DUP_ENTRY") return res.status(409).json({ message: "An inventory item with this name already exists." });
+    res.status(500).json({ message: "Could not update inventory item.", error: err.message });
+  }
+};
+
+exports.deleteInventoryItem = async (req, res) => {
+  try {
+    const id = Number(req.params.id);
+    if (!id) return res.status(400).json({ message: "Valid inventory item is required." });
+    const [result] = await db.query(`DELETE FROM maintenance_inventory WHERE id=?`, [id]);
+    if (!result.affectedRows) return res.status(404).json({ message: "Inventory item was not found." });
+    res.json({ message: "Inventory item deleted." });
+  } catch (err) {
+    res.status(500).json({ message: "Could not delete inventory item.", error: err.message });
   }
 };
 

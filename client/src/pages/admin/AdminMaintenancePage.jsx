@@ -5,6 +5,7 @@ import {
   addJobNote,
   completeEventFromSchedule,
   completeMaintenanceJob,
+  createInventoryItem,
   createBulkMaintenanceJobs,
   createJobFromDefect,
   getJobNotes,
@@ -14,10 +15,12 @@ import {
   reconcileMaintenanceFleet,
   removeMaintenanceDocument,
   reportBreakdown,
+  deleteInventoryItem,
   setVorStatus,
   undoCompletedMaintenanceEvent,
   updateDefectWorkflow,
   updateMaintenanceBill,
+  updateInventoryItem,
   updateMaintenanceJob
 } from "../../api/maintenanceApi";
 import { getAuthSession } from "../../utils/authSession";
@@ -276,6 +279,151 @@ function DigitalTyreMonitor({ tyres = [] }) {
       <div className="digital-tyre-footer">
         <span><i className="good" /> In range</span><span><i className="warning" /> Check pressure</span><span><i className="danger" /> Action needed</span>
         <p>Reference bands are typical fleet targets only. Always use the vehicle placard, tyre maker load table and actual axle load.</p>
+      </div>
+    </div>
+  );
+}
+
+const emptyInventoryItem = {
+  partName: "",
+  category: "",
+  stockQty: "0",
+  reorderLevel: "0",
+  unitCostGbp: "",
+  supplier: ""
+};
+
+function InventoryManager({ items = [], onChanged, onError }) {
+  const [formOpen, setFormOpen] = useState(false);
+  const [editingId, setEditingId] = useState(null);
+  const [form, setForm] = useState(emptyInventoryItem);
+  const [saving, setSaving] = useState("");
+
+  const openNew = () => {
+    setEditingId(null);
+    setForm(emptyInventoryItem);
+    setFormOpen(true);
+  };
+
+  const openEdit = (item) => {
+    setEditingId(item.id);
+    setForm({
+      partName: item.partName,
+      category: item.category || "",
+      stockQty: String(item.stockQty ?? 0),
+      reorderLevel: String(item.reorderLevel ?? 0),
+      unitCostGbp: item.unitCostGbp ?? "",
+      supplier: item.supplier === "-" ? "" : item.supplier || ""
+    });
+    setFormOpen(true);
+  };
+
+  const payloadFor = (item, stockQty = item.stockQty) => ({
+    part_name: item.partName,
+    category: item.category || "General",
+    stock_qty: Number(stockQty),
+    reorder_level: Number(item.reorderLevel || 0),
+    unit_cost_gbp: Number(item.unitCostGbp || 0),
+    supplier: item.supplier === "-" ? "" : item.supplier || ""
+  });
+
+  async function saveItem(event) {
+    event.preventDefault();
+    setSaving("form");
+    try {
+      if (editingId) await updateInventoryItem(editingId, payloadFor(form));
+      else await createInventoryItem(payloadFor(form));
+      setFormOpen(false);
+      setEditingId(null);
+      setForm(emptyInventoryItem);
+      await onChanged();
+    } catch (err) {
+      onError(err.response?.data?.message || "Could not save inventory item.");
+    } finally {
+      setSaving("");
+    }
+  }
+
+  async function adjustStock(item, change) {
+    const nextQuantity = Math.max(0, Number(item.stockQty || 0) + change);
+    setSaving(`qty-${item.id}`);
+    try {
+      await updateInventoryItem(item.id, payloadFor(item, nextQuantity));
+      await onChanged();
+    } catch (err) {
+      onError(err.response?.data?.message || "Could not update stock quantity.");
+    } finally {
+      setSaving("");
+    }
+  }
+
+  async function removeItem(item) {
+    if (!window.confirm(`Delete ${item.partName} from inventory?`)) return;
+    setSaving(`delete-${item.id}`);
+    try {
+      await deleteInventoryItem(item.id);
+      await onChanged();
+    } catch (err) {
+      onError(err.response?.data?.message || "Could not delete inventory item.");
+    } finally {
+      setSaving("");
+    }
+  }
+
+  return (
+    <div className="inventory-manager">
+      <div className="inventory-summary-bar">
+        <div>
+          <span><b>{items.filter((item) => item.status === "In stock").length}</b> In stock</span>
+          <span className="warning"><b>{items.filter((item) => item.status === "Low stock").length}</b> Low stock</span>
+          <span className="danger"><b>{items.filter((item) => item.status === "Out of stock").length}</b> Out of stock</span>
+        </div>
+        <button type="button" className="inventory-add-button" onClick={openNew}>+ Add item</button>
+      </div>
+
+      {formOpen && (
+        <form className="inventory-editor" onSubmit={saveItem}>
+          <div className="inventory-editor-head">
+            <strong>{editingId ? "Edit inventory item" : "Add inventory item"}</strong>
+            <button type="button" onClick={() => setFormOpen(false)} aria-label="Close inventory form">×</button>
+          </div>
+          <div className="inventory-form-grid">
+            <label><span>Item name *</span><input required maxLength="120" value={form.partName} onChange={(e) => setForm({ ...form, partName: e.target.value })} placeholder="e.g. Air filter" /></label>
+            <label><span>Category</span><input maxLength="80" value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })} placeholder="Service parts" /></label>
+            <label><span>Current stock</span><input required min="0" step="1" type="number" value={form.stockQty} onChange={(e) => setForm({ ...form, stockQty: e.target.value })} /></label>
+            <label><span>Low-stock alert at</span><input required min="0" step="1" type="number" value={form.reorderLevel} onChange={(e) => setForm({ ...form, reorderLevel: e.target.value })} /></label>
+            <label><span>Unit cost (£)</span><input min="0" step="0.01" type="number" value={form.unitCostGbp} onChange={(e) => setForm({ ...form, unitCostGbp: e.target.value })} placeholder="0.00" /></label>
+            <label><span>Supplier</span><input maxLength="120" value={form.supplier} onChange={(e) => setForm({ ...form, supplier: e.target.value })} placeholder="Supplier name" /></label>
+          </div>
+          <div className="inventory-form-actions">
+            <button type="button" onClick={() => setFormOpen(false)}>Cancel</button>
+            <button type="submit" disabled={saving === "form"}>{saving === "form" ? "Saving…" : editingId ? "Save changes" : "Add to stock"}</button>
+          </div>
+        </form>
+      )}
+
+      <div className="inventory-list">
+        {items.map((item) => (
+          <div className={`inventory-row ${item.tone}`} key={item.id}>
+            <div className="inventory-item-main">
+              <span className="inventory-item-icon">{(item.category || "P").slice(0, 1).toUpperCase()}</span>
+              <div><strong>{item.partName}</strong><p>{item.category} · {item.supplier}</p></div>
+            </div>
+            <div className="inventory-level">
+              <small>AVAILABLE</small><strong>{item.stockQty}</strong><span>Reorder at {item.reorderLevel}</span>
+            </div>
+            <StatusPill tone={item.tone}>{item.status}</StatusPill>
+            <div className="inventory-row-actions">
+              <button type="button" title="Remove one" disabled={saving || item.stockQty === 0} onClick={() => adjustStock(item, -1)}>−</button>
+              <button type="button" title="Add one" disabled={saving} onClick={() => adjustStock(item, 1)}>+</button>
+              <button type="button" className="edit" disabled={saving} onClick={() => openEdit(item)}>Edit</button>
+              <button type="button" className="delete" disabled={saving} onClick={() => removeItem(item)}>Delete</button>
+            </div>
+          </div>
+        ))}
+        {!items.length && !formOpen && (
+          <div className="inventory-empty"><span>□</span><strong>No stock items yet</strong><p>Add your first part to start tracking quantities and reorder alerts.</p><button type="button" onClick={openNew}>Add first item</button></div>
+        )}
       </div>
     </div>
   );
@@ -2935,23 +3083,19 @@ export function AdminMaintenancePage() {
               <span className="card-label">Parts Inventory</span>
               <h2>Stock And Reorder Watch</h2>
             </div>
-            <StatusPill tone={(data?.inventory || []).some((item) => item.tone === "warning") ? "warning" : "success"}>
+            <StatusPill tone={(data?.inventory || []).some((item) => item.tone === "danger")
+              ? "danger"
+              : (data?.inventory || []).some((item) => item.tone === "warning") ? "warning" : "success"}>
               {(data?.inventory || []).length} parts
             </StatusPill>
           </div>
-          <div className="maintenance-inventory-list">
-            {(data?.inventory || []).slice(0, 8).map((part) => (
-              <div className="maintenance-inventory-item" key={part.id}>
-                <div>
-                  <strong>{part.partName}</strong>
-                  <p>{part.category} · {part.supplier}</p>
-                </div>
-                <span>{part.stockQty} in stock</span>
-                <StatusPill tone={part.tone}>{part.status}</StatusPill>
-              </div>
-            ))}
-            {!loading && (data?.inventory || []).length === 0 && <p className="finance-empty">No inventory parts configured.</p>}
-          </div>
+          {!loading && (
+            <InventoryManager
+              items={data?.inventory || []}
+              onChanged={load}
+              onError={setError}
+            />
+          )}
         </article>
 
         <article className="content-card">

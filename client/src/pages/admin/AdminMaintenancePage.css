@@ -1093,6 +1093,55 @@
   text-align: right;
 }
 
+.inventory-manager { display: grid; gap: 12px; }
+.inventory-summary-bar { display: flex; align-items: center; justify-content: space-between; gap: 14px; padding: 12px 14px; border: 1px solid #d9e4e8; border-radius: 12px; background: #f8fbfc; }
+.inventory-summary-bar > div { display: flex; gap: 18px; flex-wrap: wrap; }
+.inventory-summary-bar span { color: #56717e; font-size: .7rem; font-weight: 800; }
+.inventory-summary-bar span b { margin-right: 4px; color: #0f766e; font-size: .88rem; }
+.inventory-summary-bar span.warning b { color: #b45309; }
+.inventory-summary-bar span.danger b { color: #dc2626; }
+.inventory-add-button { min-height: 38px; padding: 0 15px; border: 0; border-radius: 9px; background: #0f766e; color: #fff; font: inherit; font-size: .76rem; font-weight: 900; cursor: pointer; box-shadow: 0 5px 12px rgba(15,118,110,.2); }
+.inventory-add-button:hover { background: #0b665f; }
+
+.inventory-editor { padding: 15px; border: 1px solid #9fd6d1; border-radius: 13px; background: linear-gradient(145deg, #f7fffe, #f4f9fa); box-shadow: 0 10px 25px rgba(15,118,110,.08); }
+.inventory-editor-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 13px; }
+.inventory-editor-head strong { color: #173947; font-size: .9rem; }
+.inventory-editor-head button { width: 28px; height: 28px; border: 0; border-radius: 7px; background: #e7f1f2; color: #53707b; font-size: 1.15rem; cursor: pointer; }
+.inventory-form-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 11px; }
+.inventory-form-grid label { display: grid; gap: 5px; }
+.inventory-form-grid label span { color: #607986; font-size: .64rem; font-weight: 900; letter-spacing: .03em; }
+.inventory-form-grid input { width: 100%; min-width: 0; height: 39px; padding: 0 10px; border: 1px solid #cadcdf; border-radius: 8px; outline: none; background: #fff; color: #102c3c; font: inherit; font-size: .78rem; box-sizing: border-box; }
+.inventory-form-grid input:focus { border-color: #0d9488; box-shadow: 0 0 0 3px rgba(13,148,136,.1); }
+.inventory-form-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 13px; }
+.inventory-form-actions button { min-height: 36px; padding: 0 14px; border: 1px solid #cadcdf; border-radius: 8px; background: #fff; color: #526d79; font: inherit; font-size: .72rem; font-weight: 900; cursor: pointer; }
+.inventory-form-actions button[type="submit"] { border-color: #0f766e; background: #0f766e; color: #fff; }
+.inventory-form-actions button:disabled { cursor: wait; opacity: .65; }
+
+.inventory-list { display: grid; gap: 8px; }
+.inventory-row { display: grid; grid-template-columns: minmax(190px, 1fr) 105px auto auto; align-items: center; gap: 12px; min-height: 66px; padding: 10px 12px; border: 1px solid #dae4e8; border-left: 3px solid #10b981; border-radius: 10px; background: #fff; }
+.inventory-row.warning { border-left-color: #f59e0b; background: linear-gradient(90deg, #fffbeb 0, #fff 14%); }
+.inventory-row.danger { border-left-color: #ef4444; background: linear-gradient(90deg, #fff1f2 0, #fff 14%); }
+.inventory-item-main { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.inventory-item-icon { display: grid; place-items: center; flex: 0 0 36px; width: 36px; height: 36px; border-radius: 9px; background: #e7f5f3; color: #0f766e; font-size: .75rem; font-weight: 900; }
+.inventory-row.warning .inventory-item-icon { background: #fef3c7; color: #b45309; }
+.inventory-row.danger .inventory-item-icon { background: #fee2e2; color: #dc2626; }
+.inventory-item-main strong { display: block; overflow: hidden; color: #142d3a; font-size: .82rem; text-overflow: ellipsis; white-space: nowrap; }
+.inventory-item-main p { margin: 3px 0 0; overflow: hidden; color: #718895; font-size: .65rem; text-overflow: ellipsis; white-space: nowrap; }
+.inventory-level { display: grid; justify-items: end; }
+.inventory-level small { color: #8499a3; font-size: .5rem; font-weight: 900; letter-spacing: .08em; }
+.inventory-level strong { color: #153441; font-size: 1.12rem; line-height: 1; }
+.inventory-level span { color: #81949d; font-size: .55rem; font-weight: 700; }
+.inventory-row-actions { display: flex; align-items: center; gap: 4px; }
+.inventory-row-actions button { height: 30px; min-width: 30px; padding: 0 8px; border: 1px solid #d4e0e4; border-radius: 7px; background: #f8fbfc; color: #496673; font: inherit; font-size: .68rem; font-weight: 900; cursor: pointer; }
+.inventory-row-actions button:hover { border-color: #8fc5c1; background: #effaf8; color: #0f766e; }
+.inventory-row-actions button.delete:hover { border-color: #fecaca; background: #fff1f2; color: #dc2626; }
+.inventory-row-actions button:disabled { cursor: not-allowed; opacity: .45; }
+.inventory-empty { display: grid; justify-items: center; padding: 34px 20px; border: 1px dashed #bfd1d6; border-radius: 12px; background: #fafcfd; text-align: center; }
+.inventory-empty > span { display: grid; place-items: center; width: 42px; height: 42px; margin-bottom: 9px; border-radius: 11px; background: #e8f2f3; color: #66818d; font-size: 1.2rem; }
+.inventory-empty strong { color: #183744; font-size: .86rem; }
+.inventory-empty p { margin: 4px 0 13px; color: #78909b; font-size: .7rem; }
+.inventory-empty button { min-height: 34px; padding: 0 13px; border: 0; border-radius: 8px; background: #0f766e; color: #fff; font: inherit; font-size: .7rem; font-weight: 900; cursor: pointer; }
+
 .digital-tyre-monitor {
   overflow: hidden;
   border: 1px solid #bfe3e7;
@@ -1278,6 +1327,15 @@
 }
 
 @media (max-width: 600px) {
+  .inventory-summary-bar { align-items: stretch; flex-direction: column; }
+  .inventory-add-button { width: 100%; }
+  .inventory-form-grid { grid-template-columns: 1fr; }
+  .inventory-row { grid-template-columns: minmax(0, 1fr) auto; }
+  .inventory-level { justify-items: end; }
+  .inventory-row > .status-pill { justify-self: start; }
+  .inventory-row-actions { justify-content: flex-end; }
+  .inventory-row-actions .edit,
+  .inventory-row-actions .delete { flex: 1; }
   .digital-tyre-toolbar { align-items: stretch; flex-direction: column; }
   .digital-tyre-toolbar label { width: 100%; }
   .digital-tyre-stage { gap: 12px; padding: 12px; }
