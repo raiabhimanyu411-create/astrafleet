@@ -12,9 +12,9 @@ function BellIcon() {
 }
 
 const toneStyle = {
-  danger: { bg: "#fee2e2", bar: "#dc2626", text: "#b91c1c" },
-  warning: { bg: "#fef3c7", bar: "#d97706", text: "#92400e" },
-  info: { bg: "#eff6ff", bar: "#2563eb", text: "#1d4ed8" }
+  danger: { bg: "#FCEAEA", bar: "#C20404", text: "#920303" },
+  warning: { bg: "#FFF5EA", bar: "#ECAC69", text: "#9A5513" },
+  info: { bg: "#EAF4FD", bar: "#237FDA", text: "#196DBD" }
 };
 
 export function NotificationBell({ fetchUrl, paramKey, paramValue, viewAllTo }) {

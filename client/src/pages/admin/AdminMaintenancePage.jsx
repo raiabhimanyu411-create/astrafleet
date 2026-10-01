@@ -478,7 +478,7 @@ function writeAttachmentPreview(blobUrl, mime, existingPreview = null) {
       html, body { height: 100%; margin: 0; background: #0f172a; font-family: system-ui, sans-serif; }
       header { height: 48px; display: flex; align-items: center; justify-content: space-between; padding: 0 14px; background: #fff; color: #0f172a; border-bottom: 1px solid #cbd5e1; box-sizing: border-box; }
       strong { font-size: 14px; }
-      a { display: inline-flex; padding: 8px 10px; border-radius: 6px; background: #2563eb; color: #fff; font-size: 13px; font-weight: 800; text-decoration: none; }
+      a { display: inline-flex; padding: 8px 10px; border-radius: 6px; background: #237FDA; color: #fff; font-size: 13px; font-weight: 800; text-decoration: none; }
       iframe { width: 100%; height: calc(100% - 48px); border: 0; background: #fff; }
       img { display: block; max-width: 100%; max-height: calc(100% - 48px); margin: 0 auto; object-fit: contain; background: #fff; }
     </style>
@@ -530,7 +530,7 @@ function openAttachment(dataUrl, existingPreview = null) {
             main { max-width: 520px; padding: 28px; border: 1px solid #cbd5e1; border-radius: 8px; background: #fff; box-shadow: 0 18px 50px rgba(15,23,42,.12); }
             h1 { margin: 0 0 8px; font-size: 22px; }
             p { margin: 0 0 18px; color: #475569; line-height: 1.5; }
-            a { display: inline-flex; padding: 10px 14px; border-radius: 6px; background: #2563eb; color: #fff; font-weight: 800; text-decoration: none; }
+            a { display: inline-flex; padding: 10px 14px; border-radius: 6px; background: #237FDA; color: #fff; font-weight: 800; text-decoration: none; }
           </style>
           <main>
             <h1>Document ready</h1>
@@ -1825,16 +1825,16 @@ const EVENT_COLORS = {
 // remain clearly visible without relying on a faded/transparent treatment.
 const FORECAST_EVENT_COLORS = {
   TAX: { bg: "#c2410c", text: "#fff" },
-  IB:  { bg: "#1d4ed8", text: "#fff" },
+  IB:  { bg: "#196DBD", text: "#fff" },
   BT:  { bg: "#115e59", text: "#fff" },
   MOT: { bg: "#a16207", text: "#fff" },
   VOR: { bg: "#0f766e", text: "#fff" },
-  INS: { bg: "#15803d", text: "#fff" },
+  INS: { bg: "#08765B", text: "#fff" },
   T:   { bg: "#7e22ce", text: "#fff" },
   SRV: { bg: "#475569", text: "#fff" }
 };
 
-const URGENT_RED = "#dc2626";
+const URGENT_RED = "#C20404";
 const URGENCY_WINDOW_DAYS = 30;
 
 function hexToRgb(hex) {
@@ -2115,8 +2115,8 @@ function ExcelScheduleView({ data, onOpenVehicle }) {
   }
 
   const legendChips = [
-    <span key="upcoming" className="excel-legend-chip" style={{ background: "#dc2626", color: "#fff" }}>UPCOMING</span>,
-    <span key="completed" className="excel-legend-chip" style={{ background: "#16a34a", color: "#fff" }}>DONE</span>,
+    <span key="upcoming" className="excel-legend-chip" style={{ background: "#C20404", color: "#fff" }}>UPCOMING</span>,
+    <span key="completed" className="excel-legend-chip" style={{ background: "#1CB48C", color: "#fff" }}>DONE</span>,
     <span key="forecast" className="excel-legend-chip forecast">FORECAST</span>,
     ...Object.entries(EVENT_COLORS).map(([code, { bg, text, label }]) => (
       <span key={code} className="excel-legend-chip" style={{ background: bg, color: text }} title={label}>{code}</span>
@@ -2306,7 +2306,7 @@ function ExcelScheduleView({ data, onOpenVehicle }) {
                               <button
                                 key={ev.id}
                                 className="excel-event-chip completed"
-                                style={{ background: "#16a34a", color: "#fff" }}
+                                style={{ background: "#1CB48C", color: "#fff" }}
                                 title="Click to open vehicle details"
                                 onMouseEnter={(e) => {
                                   clearTimeout(popoverTimer.current);
@@ -2354,10 +2354,10 @@ function ExcelScheduleView({ data, onOpenVehicle }) {
                           const isCompleted = ev.kind === "completed";
                           const isForecast = ev.kind === "forecast";
                           const color = isCompleted
-                            ? { bg: "#16a34a", text: "#fff" }
+                            ? { bg: "#1CB48C", text: "#fff" }
                             : isForecast
                               ? (FORECAST_EVENT_COLORS[ev.code] || { bg: "#991b1b", text: "#fff" })
-                              : urgencyColor(EVENT_COLORS[ev.code] || { bg: "#dc2626", text: "#fff" }, daysFromToday(ev.dueDateRaw));
+                              : urgencyColor(EVENT_COLORS[ev.code] || { bg: "#C20404", text: "#fff" }, daysFromToday(ev.dueDateRaw));
                           const chipDateRaw = isCompleted ? (ev.completedDateRaw || ev.dueDateRaw) : ev.dueDateRaw;
                           const day = chipDateRaw?.slice(8, 10);
                           const mon = chipDateRaw?.slice(5, 7);
@@ -2434,7 +2434,7 @@ function ExcelScheduleView({ data, onOpenVehicle }) {
             {popover.group.map((ev) => (
               <div className="ccp-group-item" key={ev.id}>
                 <div className="ccp-row">
-                  <span className="ccp-badge" style={{ background: EVENT_COLORS[ev.code]?.bg || "#16a34a" }}>
+                  <span className="ccp-badge" style={{ background: EVENT_COLORS[ev.code]?.bg || "#1CB48C" }}>
                     {ev.code}
                   </span>
                   <span className="ccp-value">{ev.type}</span>
@@ -2491,7 +2491,7 @@ function ExcelScheduleView({ data, onOpenVehicle }) {
         ) : (
           <>
             <div className="ccp-header">
-              <span className="ccp-badge" style={{ background: EVENT_COLORS[popover.ev.code]?.bg || "#16a34a" }}>
+              <span className="ccp-badge" style={{ background: EVENT_COLORS[popover.ev.code]?.bg || "#1CB48C" }}>
                 {popover.ev.code}
               </span>
               <strong className="ccp-title">{popover.ev.type}</strong>

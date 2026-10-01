@@ -7,7 +7,7 @@ function Field({ label, hint, required, children }) {
   return (
     <div className="af-field">
       <label className="af-label">
-        {label}{required && <span style={{ color: "#dc2626" }}> *</span>}
+        {label}{required && <span style={{ color: "#C20404" }}> *</span>}
       </label>
       {children}
       {hint && <p className="af-hint">{hint}</p>}

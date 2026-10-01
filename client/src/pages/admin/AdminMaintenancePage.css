@@ -99,9 +99,9 @@
 }
 
 .maintenance-view-tabs button.active {
-  background: linear-gradient(135deg, #0f4fc5, #1678d3);
+  background: var(--primary);
   color: #fff;
-  box-shadow: 0 5px 14px rgba(37, 99, 235, 0.22);
+  box-shadow: 0 5px 14px var(--primary-ring);
 }
 
 .maintenance-command-bar ~ .content-card,
@@ -1046,7 +1046,7 @@
   font-size: 0.68rem;
   font-weight: 800;
   font-family: inherit;
-  color: var(--primary, #2563eb);
+  color: var(--primary, #237FDA);
   text-decoration: underline;
   cursor: pointer;
 }
@@ -1097,11 +1097,11 @@
 .inventory-summary-bar { display: flex; align-items: center; justify-content: space-between; gap: 14px; padding: 12px 14px; border: 1px solid #d9e4e8; border-radius: 12px; background: #f8fbfc; }
 .inventory-summary-bar > div { display: flex; gap: 18px; flex-wrap: wrap; }
 .inventory-summary-bar span { color: #56717e; font-size: .7rem; font-weight: 800; }
-.inventory-summary-bar span b { margin-right: 4px; color: #0f766e; font-size: .88rem; }
-.inventory-summary-bar span.warning b { color: #b45309; }
-.inventory-summary-bar span.danger b { color: #dc2626; }
-.inventory-add-button { min-height: 38px; padding: 0 15px; border: 0; border-radius: 9px; background: #0f766e; color: #fff; font: inherit; font-size: .76rem; font-weight: 900; cursor: pointer; box-shadow: 0 5px 12px rgba(15,118,110,.2); }
-.inventory-add-button:hover { background: #0b665f; }
+.inventory-summary-bar span b { margin-right: 4px; color: var(--success-text); font-size: .88rem; }
+.inventory-summary-bar span.warning b { color: var(--warning-text); }
+.inventory-summary-bar span.danger b { color: var(--danger); }
+.inventory-add-button { min-height: 38px; padding: 0 15px; border: 0; border-radius: 9px; background: var(--primary); color: #fff; font: inherit; font-size: .76rem; font-weight: 900; cursor: pointer; box-shadow: 0 5px 12px var(--primary-ring); }
+.inventory-add-button:hover { background: var(--primary-hover); }
 
 .inventory-editor { padding: 15px; border: 1px solid #9fd6d1; border-radius: 13px; background: linear-gradient(145deg, #f7fffe, #f4f9fa); box-shadow: 0 10px 25px rgba(15,118,110,.08); }
 .inventory-editor-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 13px; }
@@ -1118,13 +1118,13 @@
 .inventory-form-actions button:disabled { cursor: wait; opacity: .65; }
 
 .inventory-list { display: grid; gap: 8px; }
-.inventory-row { display: grid; grid-template-columns: minmax(190px, 1fr) 105px auto auto; align-items: center; gap: 12px; min-height: 66px; padding: 10px 12px; border: 1px solid #dae4e8; border-left: 3px solid #10b981; border-radius: 10px; background: #fff; }
-.inventory-row.warning { border-left-color: #f59e0b; background: linear-gradient(90deg, #fffbeb 0, #fff 14%); }
-.inventory-row.danger { border-left-color: #ef4444; background: linear-gradient(90deg, #fff1f2 0, #fff 14%); }
+.inventory-row { display: grid; grid-template-columns: minmax(190px, 1fr) 105px auto auto; align-items: center; gap: 12px; min-height: 66px; padding: 10px 12px; border: 1px solid #dae4e8; border-left: 3px solid var(--success); border-radius: 10px; background: #fff; }
+.inventory-row.warning { border-left-color: var(--warning); background: linear-gradient(90deg, var(--warning-soft) 0, #fff 14%); }
+.inventory-row.danger { border-left-color: var(--danger); background: linear-gradient(90deg, var(--danger-soft) 0, #fff 14%); }
 .inventory-item-main { display: flex; align-items: center; gap: 10px; min-width: 0; }
 .inventory-item-icon { display: grid; place-items: center; flex: 0 0 36px; width: 36px; height: 36px; border-radius: 9px; background: #e7f5f3; color: #0f766e; font-size: .75rem; font-weight: 900; }
 .inventory-row.warning .inventory-item-icon { background: #fef3c7; color: #b45309; }
-.inventory-row.danger .inventory-item-icon { background: #fee2e2; color: #dc2626; }
+.inventory-row.danger .inventory-item-icon { background: var(--danger-soft); color: var(--danger); }
 .inventory-item-main strong { display: block; overflow: hidden; color: #142d3a; font-size: .82rem; text-overflow: ellipsis; white-space: nowrap; }
 .inventory-item-main p { margin: 3px 0 0; overflow: hidden; color: #718895; font-size: .65rem; text-overflow: ellipsis; white-space: nowrap; }
 .inventory-level { display: grid; justify-items: end; }
@@ -1134,7 +1134,7 @@
 .inventory-row-actions { display: flex; align-items: center; gap: 4px; }
 .inventory-row-actions button { height: 30px; min-width: 30px; padding: 0 8px; border: 1px solid #d4e0e4; border-radius: 7px; background: #f8fbfc; color: #496673; font: inherit; font-size: .68rem; font-weight: 900; cursor: pointer; }
 .inventory-row-actions button:hover { border-color: #8fc5c1; background: #effaf8; color: #0f766e; }
-.inventory-row-actions button.delete:hover { border-color: #fecaca; background: #fff1f2; color: #dc2626; }
+.inventory-row-actions button.delete:hover { border-color: var(--danger-ring); background: var(--danger-soft); color: var(--danger); }
 .inventory-row-actions button:disabled { cursor: not-allowed; opacity: .45; }
 .inventory-empty { display: grid; justify-items: center; padding: 34px 20px; border: 1px dashed #bfd1d6; border-radius: 12px; background: #fafcfd; text-align: center; }
 .inventory-empty > span { display: grid; place-items: center; width: 42px; height: 42px; margin-bottom: 9px; border-radius: 11px; background: #e8f2f3; color: #66818d; font-size: 1.2rem; }
@@ -1178,8 +1178,8 @@
   width: 7px;
   height: 7px;
   border-radius: 50%;
-  background: #10b981;
-  box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.42);
+  background: var(--success);
+  box-shadow: 0 0 0 0 rgba(28, 180, 140, 0.42);
   animation: tyre-live-pulse 1.8s infinite;
 }
 
@@ -1297,9 +1297,9 @@
   border-radius: 10px;
   background: #fff;
 }
-.digital-tyre-card.good { --tyre-state: #10b981; }
-.digital-tyre-card.warning { --tyre-state: #f59e0b; }
-.digital-tyre-card.danger { --tyre-state: #ef4444; }
+.digital-tyre-card.good { --tyre-state: var(--success); }
+.digital-tyre-card.warning { --tyre-state: var(--warning); }
+.digital-tyre-card.danger { --tyre-state: var(--danger); }
 .digital-wheel { display: grid; place-items: center; width: 27px; height: 39px; border: 4px solid #203641; border-radius: 9px; background: #0d2029; box-shadow: inset 0 0 0 2px #45616d, 0 0 0 2px color-mix(in srgb, var(--tyre-state) 25%, transparent); animation: wheel-breathe 2.4s ease-in-out infinite; }
 .digital-wheel span { width: 7px; height: 17px; border-radius: 3px; background: var(--tyre-state); box-shadow: 0 0 8px var(--tyre-state); }
 .digital-tyre-card small { display: block; color: #7b929e; font-size: .55rem; font-weight: 900; letter-spacing: .1em; }
@@ -1311,9 +1311,9 @@
 .digital-tyre-footer { display: flex; align-items: center; gap: 13px; padding: 10px 18px; border-top: 1px solid rgba(125,211,218,.4); background: rgba(255,255,255,.6); }
 .digital-tyre-footer > span { display: flex; align-items: center; gap: 5px; color: #54717e; font-size: .61rem; font-weight: 800; white-space: nowrap; }
 .digital-tyre-footer i { width: 7px; height: 7px; border-radius: 50%; }
-.digital-tyre-footer i.good { background: #10b981; }
-.digital-tyre-footer i.warning { background: #f59e0b; }
-.digital-tyre-footer i.danger { background: #ef4444; }
+.digital-tyre-footer i.good { background: var(--success); }
+.digital-tyre-footer i.warning { background: var(--warning); }
+.digital-tyre-footer i.danger { background: var(--danger); }
 .digital-tyre-footer p { margin: 0 0 0 auto; max-width: 390px; color: #6d8793; font-size: .58rem; line-height: 1.4; text-align: right; }
 
 @keyframes tyre-live-pulse { 70% { box-shadow: 0 0 0 7px rgba(16,185,129,0); } 100% { box-shadow: 0 0 0 0 rgba(16,185,129,0); } }
@@ -2142,7 +2142,7 @@
 }
 
 .schedule-week-summary span {
-  color: #1d4ed8;
+  color: var(--primary-hover);
   font-size: 0.74rem;
   font-weight: 800;
 }
@@ -2194,7 +2194,7 @@
   min-width: 30px;
   height: 20px;
   border-radius: 4px;
-  background: #1d4ed8;
+  background: var(--primary-hover);
   color: #fff !important;
   font-size: 0.62rem !important;
   font-weight: 900 !important;
@@ -2334,7 +2334,7 @@
 .excel-week-head {
   top: calc(var(--excel-month-row-h) + var(--excel-date-row-h));
   background: #eff6ff;
-  color: #1d4ed8;
+  color: var(--primary-hover);
   padding: 4px 2px;
   font-size: 0.64rem;
   font-weight: 1000;
@@ -2597,9 +2597,9 @@
 
 /* ── Completed event chip (bright green, shown in the week it was done) ── */
 .excel-event-chip.completed {
-  background: #16a34a !important;
+  background: var(--success) !important;
   color: #fff !important;
-  border: 1px solid #15803d;
+  border: 1px solid var(--success-text);
   box-shadow: 0 1px 3px rgba(22,163,74,0.3);
 }
 
@@ -2626,7 +2626,7 @@
   transform: translateX(-50%) translateY(-100%);
   z-index: 9999;
   background: #fff;
-  border: 1.5px solid #16a34a;
+  border: 1.5px solid var(--success);
   border-radius: 8px;
   padding: 10px 13px 12px;
   min-width: 210px;
@@ -2674,7 +2674,7 @@
 .ccp-value {
   font-size: 0.78rem;
   font-weight: 700;
-  color: #16a34a;
+  color: var(--success);
 }
 .ccp-group-item {
   margin-bottom: 6px;
@@ -2715,8 +2715,8 @@
   width: 12px;
   height: 12px;
   background: #fff;
-  border-right: 1.5px solid #16a34a;
-  border-bottom: 1.5px solid #16a34a;
+  border-right: 1.5px solid var(--success);
+  border-bottom: 1.5px solid var(--success);
   transform: translateX(-50%) rotate(45deg);
 }
 
@@ -2773,11 +2773,11 @@
 
 /* ── Report Breakdown button (danger style) ── */
 .header-action-button.danger {
-  border-color: #dc2626;
-  color: #dc2626;
+  border-color: var(--danger);
+  color: var(--danger);
 }
 .header-action-button.danger:hover {
-  background: #dc2626;
+  background: var(--danger);
   color: #fff;
 }
 
@@ -2808,8 +2808,8 @@
   background: #f1f5f9;
   cursor: pointer;
 }
-.maintenance-document-thumbnail:hover { border-color: #2563eb; }
-.maintenance-document-thumbnail:focus-visible { outline: 3px solid #2563eb; outline-offset: 3px; }
+.maintenance-document-thumbnail:hover { border-color: var(--primary); }
+.maintenance-document-thumbnail:focus-visible { outline: 3px solid var(--primary); outline-offset: 3px; }
 .maintenance-document-thumbnail img { display: block; max-width: 100%; max-height: 100%; object-fit: contain; }
 .maintenance-thumbnail-status { color: #64748b; font-size: 12px; text-align: center; }
 .maintenance-thumbnail-caption { position: absolute; bottom: 0; left: 0; right: 0; padding: 6px; background: #e2e8f0; color: #334155; font-size: 12px; font-weight: 700; }

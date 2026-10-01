@@ -591,13 +591,13 @@ export function HomePage() {
 
               {error && (
                 <div className="lp-alert lp-error" role="alert">
-                  <IconAlertCircle color="#b91c1c" />
+                  <IconAlertCircle color="#920303" />
                   <span>{error}</span>
                 </div>
               )}
               {success && (
                 <div className="lp-alert lp-success" role="status">
-                  <IconCheckCircle color="#15803d" />
+                  <IconCheckCircle color="#08765B" />
                   <span>{success}</span>
                 </div>
               )}

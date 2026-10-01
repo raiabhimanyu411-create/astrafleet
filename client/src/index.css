@@ -2,13 +2,14 @@
   color-scheme: light;
 
   /* Brand */
-  --primary:        #2563eb;
-  --primary-hover:  #1d4ed8;
-  --primary-soft:   #eff6ff;
-  --primary-ring:   rgba(37, 99, 235, 0.18);
+  --brand-navy:     #102A43;
+  --primary:        #237FDA;
+  --primary-hover:  #196DBD;
+  --primary-soft:   #EAF4FD;
+  --primary-ring:   rgba(35, 127, 218, 0.22);
 
   /* Surface */
-  --bg:             #f0f4f9;
+  --bg:             #F4F6F9;
   --surface:        #ffffff;
   --surface-2:      #f8fafc;
   --surface-3:      #f1f5f9;
@@ -24,20 +25,20 @@
   --border-strong:  #cbd5e1;
 
   /* Semantic */
-  --success:        #16a34a;
-  --success-soft:   #dcfce7;
-  --success-ring:   #86efac;
-  --success-text:   #15803d;
+  --success:        #1CB48C;
+  --success-soft:   #E7F8F3;
+  --success-ring:   #8DDBC6;
+  --success-text:   #08765B;
 
-  --warning:        #d97706;
-  --warning-soft:   #fef3c7;
-  --warning-ring:   #fde68a;
-  --warning-text:   #b45309;
+  --warning:        #ECAC69;
+  --warning-soft:   #FFF5EA;
+  --warning-ring:   #F2C99E;
+  --warning-text:   #9A5513;
 
-  --danger:         #dc2626;
-  --danger-soft:    #fee2e2;
-  --danger-ring:    #fca5a5;
-  --danger-text:    #b91c1c;
+  --danger:         #C20404;
+  --danger-soft:    #FCEAEA;
+  --danger-ring:    #E9A1A1;
+  --danger-text:    #920303;
 
   --neutral-soft:   #f1f5f9;
   --neutral-text:   #475569;

@@ -1,14 +1,14 @@
 .job-route-backdrop { position: fixed; inset: 0; z-index: 2000; background: #0f172aa8; display: grid; place-items: center; padding: 24px; }
 .job-route-dialog { width: min(1500px, 100%); height: min(850px, 92vh); background: white; border-radius: 16px; overflow: hidden; display: flex; flex-direction: column; box-shadow: 0 24px 90px #0005; }
 .job-route-dialog > header { padding: 16px 22px; display: flex; justify-content: space-between; align-items: center; gap: 12px; border-bottom: 1px solid #e2e8f0; }
-.job-route-dialog header span { color: #2563eb; font-size: 10px; font-weight: 800; letter-spacing: .1em; }
+.job-route-dialog header span { color: var(--primary); font-size: 10px; font-weight: 800; letter-spacing: .1em; }
 .job-route-dialog h2 { margin: 4px 0 0; font-size: 20px; }
 .job-route-body { display: grid; grid-template-columns: 340px minmax(0, 1fr); flex: 1; min-height: 0; }
 .job-route-body aside { padding: 20px; overflow: auto; background: #f8fafc; border-right: 1px solid #e2e8f0; }
 .job-route-body h3 { font-size: 14px; margin: 0 0 8px; }
 .job-route-body p { font-size: 12px; color: #64748b; margin-bottom: 16px; line-height: 1.6; }
 .job-route-leg { display: flex; flex-direction: column; gap: 9px; width: 100%; text-align: left; margin-top: 14px; border: 1px solid #dbe3ef; border-left: 4px solid var(--leg-color); border-radius: 8px; padding: 14px; background: white; cursor: pointer; }
-.job-route-leg.selected { border-color: var(--leg-color); background: #eff6ff; box-shadow: 0 2px 10px #2563eb18; }
+.job-route-leg.selected { border-color: var(--leg-color); background: var(--primary-soft); box-shadow: 0 2px 10px var(--primary-ring); }
 .job-route-leg strong { font-size: 12px; color: var(--leg-color); }
 .job-route-leg span { font-size: 12px; line-height: 1.5; color: #334155; }
 .job-route-leg span b { display: block; text-transform: uppercase; color: #64748b; font-size: 9px; }

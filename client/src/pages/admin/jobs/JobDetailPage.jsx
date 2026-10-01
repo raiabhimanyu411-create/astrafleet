@@ -212,17 +212,17 @@ export function JobDetailPage() {
                       <div key={s} style={{ display: "flex", alignItems: "center", gap: 4 }}>
                         <div style={{
                           width: 28, height: 28, borderRadius: "50%",
-                          background: done ? "#16a34a" : current ? "#2563eb" : "#e2e8f0",
+                          background: done ? "#1CB48C" : current ? "#237FDA" : "#e2e8f0",
                           color: done || current ? "#fff" : "#94a3b8",
                           display: "flex", alignItems: "center", justifyContent: "center",
                           fontSize: "0.7rem", fontWeight: 700
                         }}>
                           {done ? "✓" : stepIdx + 1}
                         </div>
-                        <span style={{ fontSize: "0.72rem", color: current ? "#2563eb" : done ? "#16a34a" : "#94a3b8", fontWeight: current || done ? 700 : 400, textTransform: "capitalize" }}>
+                        <span style={{ fontSize: "0.72rem", color: current ? "#237FDA" : done ? "#1CB48C" : "#94a3b8", fontWeight: current || done ? 700 : 400, textTransform: "capitalize" }}>
                           {s}
                         </span>
-                        {i < arr.length - 1 && <div style={{ width: 20, height: 2, background: done ? "#16a34a" : "#e2e8f0", borderRadius: 2, marginLeft: 2 }} />}
+                        {i < arr.length - 1 && <div style={{ width: 20, height: 2, background: done ? "#1CB48C" : "#e2e8f0", borderRadius: 2, marginLeft: 2 }} />}
                       </div>
                     );
                   })}
@@ -236,7 +236,7 @@ export function JobDetailPage() {
                     className="af-submit-btn"
                     type="button"
                     disabled={updating}
-                    style={{ background: nextStep.tone === "success" ? "#15803d" : "#d97706" }}
+                    style={{ background: nextStep.tone === "success" ? "#08765B" : "#ECAC69" }}
                     onClick={() => handleStatusChange(nextStep.next)}
                   >
                     {updating ? "Updating..." : nextStep.action + " →"}
@@ -253,7 +253,7 @@ export function JobDetailPage() {
             {/* Block reason input */}
             {showBlockInput && (
               <div style={{ background: "#fff8f8", border: "1px solid rgba(220,38,38,0.2)", borderRadius: 12, padding: "16px 20px", marginBottom: 14 }}>
-                <p style={{ margin: "0 0 10px", fontSize: "0.86rem", fontWeight: 600, color: "#b91c1c" }}>Block Reason</p>
+                <p style={{ margin: "0 0 10px", fontSize: "0.86rem", fontWeight: 600, color: "#920303" }}>Block Reason</p>
                 <div style={{ display: "flex", gap: 8 }}>
                   <input
                     className="af-input"
@@ -276,7 +276,7 @@ export function JobDetailPage() {
             {/* Cancellation / block reason notice */}
             {(data.cancellationReason || data.delayReason || data.failedDeliveryReason) && (
               <div style={{ background: "#fff8f8", border: "1px solid rgba(220,38,38,0.2)", borderRadius: 12, padding: "14px 18px", marginBottom: 14 }}>
-                <strong style={{ fontSize: "0.84rem", color: "#b91c1c" }}>
+                <strong style={{ fontSize: "0.84rem", color: "#920303" }}>
                   {data.failedDeliveryReason ? "Failed Delivery Reason" : data.cancellationReason ? "Cancellation Reason" : "Delay Reason"}:
                 </strong>
                 <span style={{ fontSize: "0.84rem", color: "#334155", marginLeft: 8 }}>
@@ -535,7 +535,7 @@ export function JobDetailPage() {
                       <input className="af-input" style={{ margin: 0 }} type="datetime-local" value={newStop.planned_arrival} onChange={e => setNewStop(p => ({ ...p, planned_arrival: e.target.value }))} />
                     </div>
                     <div style={{ gridColumn: "1 / -1" }}>
-                      <label style={{ fontSize: "0.72rem", fontWeight: 700, color: "#64748b", textTransform: "uppercase", display: "block", marginBottom: 4 }}>Address <span style={{ color: "#dc2626" }}>*</span></label>
+                      <label style={{ fontSize: "0.72rem", fontWeight: 700, color: "#64748b", textTransform: "uppercase", display: "block", marginBottom: 4 }}>Address <span style={{ color: "#C20404" }}>*</span></label>
                       <textarea className="af-input" style={{ margin: 0, minHeight: 60, resize: "vertical" }} placeholder="Full address for this stop" required value={newStop.address} onChange={e => setNewStop(p => ({ ...p, address: e.target.value }))} />
                     </div>
                     <div>
@@ -553,7 +553,7 @@ export function JobDetailPage() {
                   </div>
                   <div style={{ display: "flex", gap: 8, justifyContent: "flex-end", marginTop: 12 }}>
                     <button type="button" className="header-action-button" onClick={() => setShowAddStop(false)}>Cancel</button>
-                    <button type="submit" className="af-submit-btn" disabled={stopSaving} style={{ background: "#2563eb" }}>
+                    <button type="submit" className="af-submit-btn" disabled={stopSaving} style={{ background: "#237FDA" }}>
                       {stopSaving ? "Saving..." : "Add Stop →"}
                     </button>
                   </div>

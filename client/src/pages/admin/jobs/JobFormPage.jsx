@@ -8,7 +8,7 @@ import { ukAddMinutes, ukInstant, ukMinutes, ukNow, formatUkWall } from '../../.
 function Field({ label, hint, required, error, children }) {
   return (
     <div className="af-field">
-      <label className="af-label">{label}{required && <span style={{ color: "#dc2626" }}> *</span>}</label>
+      <label className="af-label">{label}{required && <span style={{ color: "#C20404" }}> *</span>}</label>
       {children}
       {error && <p className="af-field-error">{error}</p>}
       {hint && <p className="af-hint">{hint}</p>}
@@ -499,7 +499,7 @@ export function JobFormPage() {
                 <Field label="Collection Departure (UK Time)" hint="Same date as collection arrival. Used for ETA and estimated cost." required error={fieldErrors.loading_done_time}>
                   <input className="af-input" type="datetime-local" value={fields.loading_done_time} onChange={e => set("loading_done_time", e.target.value)} />
                 </Field>
-                <Field label={<>Delivery Address <span style={{ fontWeight: 700, fontSize: "0.72rem", color: "#2563eb", background: "#eff6ff", border: "1px solid #bfdbfe", borderRadius: 20, padding: "1px 8px", marginLeft: 6, verticalAlign: "middle" }}>Stop 1</span></>} required error={fieldErrors.drop_address}>
+                <Field label={<>Delivery Address <span style={{ fontWeight: 700, fontSize: "0.72rem", color: "#237FDA", background: "#EAF4FD", border: "1px solid #A8D2F4", borderRadius: 20, padding: "1px 8px", marginLeft: 6, verticalAlign: "middle" }}>Stop 1</span></>} required error={fieldErrors.drop_address}>
                   {dropOptions.length > 0 && (
                     <select className="af-select" style={{ marginBottom: 8 }} value="" onChange={e => e.target.value && set("drop_address", e.target.value)}>
                       <option value="">Choose Saved Delivery Address</option>
@@ -521,7 +521,7 @@ export function JobFormPage() {
                   <p className="af-section-title" style={{ margin: 0 }}>
                     Intermediate Stops
                     {validStops.length > 0 && (
-                      <span style={{ marginLeft: 8, fontSize: "0.75rem", fontWeight: 600, color: "#2563eb", background: "#eff6ff", borderRadius: 20, padding: "2px 8px" }}>
+                      <span style={{ marginLeft: 8, fontSize: "0.75rem", fontWeight: 600, color: "#237FDA", background: "#EAF4FD", borderRadius: 20, padding: "2px 8px" }}>
                         {validStops.length} stop{validStops.length > 1 ? "s" : ""} · calculate route for exact miles
                       </span>
                     )}
@@ -610,7 +610,7 @@ export function JobFormPage() {
                         {routeEstimate.pickupPostcode} → {routeEstimate.stopPostcodes?.length ? `${routeEstimate.stopPostcodes.join(" → ")} → ` : ""}{routeEstimate.dropPostcode}
                       </span>
                     )}
-                    {estimateErr && <span style={{ color: "#b91c1c", fontSize: "0.84rem", fontWeight: 700 }}>{estimateErr}</span>}
+                    {estimateErr && <span style={{ color: "#920303", fontSize: "0.84rem", fontWeight: 700 }}>{estimateErr}</span>}
                   </div>
                 )}
               </div>
