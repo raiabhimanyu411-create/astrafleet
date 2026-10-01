@@ -156,6 +156,57 @@ function expiryTone(dateStr) {
   return "success";
 }
 
+function vehicleComplianceAssessment(vehicle) {
+  const datedChecks = [
+    ["MOT", vehicle.mot_effective_due, true],
+    ["Insurance", vehicle.insurance_effective_due, true],
+    ["Road tax", vehicle.road_tax_effective_due, true],
+    ["International permit", vehicle.permit_expiry, false],
+    ["Reduced pollution certificate", vehicle.pollution_expiry, false],
+    ["Additional fitness certificate", vehicle.fitness_expiry, false]
+  ];
+  const reasons = [];
+  let tone = "success";
+
+  for (const [label, date, required] of datedChecks) {
+    if (!date) {
+      if (required) {
+        tone = "danger";
+        reasons.push(`${label} record missing`);
+      }
+      continue;
+    }
+    const days = daysUntil(date);
+    if (days < 0) {
+      tone = "danger";
+      reasons.push(`${label} expired`);
+    } else if (days <= 30) {
+      if (tone !== "danger") tone = "warning";
+      reasons.push(`${label} due within 30 days`);
+    } else if (days < 90) {
+      if (tone === "success") tone = "warning";
+      reasons.push(`${label} due within 90 days`);
+    }
+  }
+
+  const criticalDefects = Number(vehicle.critical_defects || 0);
+  const openDefects = Number(vehicle.open_defects || 0);
+  if (criticalDefects > 0) {
+    tone = "danger";
+    reasons.push(`${criticalDefects} high/critical defect${criticalDefects === 1 ? "" : "s"}`);
+  } else if (openDefects > 0) {
+    if (tone === "success") tone = "warning";
+    reasons.push(`${openDefects} open defect${openDefects === 1 ? "" : "s"}`);
+  }
+
+  const hasExpired = reasons.some((reason) => reason.endsWith("expired"));
+  const hasMissing = reasons.some((reason) => reason.endsWith("missing"));
+  const status = tone === "danger"
+    ? hasExpired || criticalDefects > 0 ? "Do not dispatch" : hasMissing ? "Record missing" : "Action now"
+    : tone === "warning" ? "Review due" : "Clear";
+  return { tone, status, reasons };
+}
+
 function splitVehicleModelName(modelName = "") {
   const [make = "", ...modelParts] = String(modelName || "").trim().split(/\s+/);
   return { make, model: modelParts.join(" ") };
@@ -269,6 +320,9 @@ exports.listVehicles = async (req, res) => {
     };
 
     const [trailerRows] = await db.query(`SELECT * FROM trailers ORDER BY created_at DESC`);
+    const complianceAssessments = rows.map(vehicleComplianceAssessment);
+    const blockedVehicles = complianceAssessments.filter((assessment) => assessment.tone === "danger").length;
+    const reviewVehicles = complianceAssessments.filter((assessment) => assessment.tone === "warning").length;
 
     res.json({
       stats: [
@@ -278,8 +332,8 @@ exports.listVehicles = async (req, res) => {
         { label: "Maintenance", value: Number(counts.maintenance) + Number(counts.stopped), description: "Unavailable or stopped.", change: "Workshop queue", tone: "danger" }
       ],
       fleetHealth: [
-        { label: "Expired items", value: counts.expired_items, description: "Compliance or service overdue.", change: "Stop dispatch", tone: counts.expired_items ? "danger" : "success" },
-        { label: "Expiring soon", value: counts.expiring_items, description: "Due within 90 days.", change: "Renewal queue", tone: counts.expiring_items ? "warning" : "success" },
+        { label: "Blocked compliance", value: blockedVehicles, description: "Expired, missing core records, or critical defects.", change: "Do not dispatch", tone: blockedVehicles ? "danger" : "success" },
+        { label: "Compliance review", value: reviewVehicles, description: "Due within 90 days or open defects.", change: "Renewal queue", tone: reviewVehicles ? "warning" : "success" },
         { label: "Open defects", value: rows.reduce((sum, v) => sum + Number(v.open_defects || 0), 0), description: "Unresolved defect reports.", change: "Workshop", tone: rows.some(v => Number(v.open_defects || 0) > 0) ? "danger" : "success" },
         { label: "Open trips", value: rows.reduce((sum, v) => sum + Number(v.open_trips || 0), 0), description: "Planned, loading, or active trips.", change: "Dispatch", tone: "neutral" }
       ],
@@ -293,7 +347,9 @@ exports.listVehicles = async (req, res) => {
         currentLocation: t.current_location || "—",
         since: fmtDate(t.created_at)
       })),
-      vehicles: rows.map(v => ({
+      vehicles: rows.map(v => {
+        const compliance = vehicleComplianceAssessment(v);
+        return {
         id: v.id,
         registrationNumber: v.registration_number,
         fleetCode: v.fleet_code,
@@ -331,10 +387,13 @@ exports.listVehicles = async (req, res) => {
         permitExpiryTone: expiryTone(v.permit_expiry),
         pollutionExpiry: fmtDate(v.pollution_expiry),
         pollutionExpiryRaw: rawDate(v.pollution_expiry),
+        pollutionDaysLeft: daysUntil(v.pollution_expiry),
         pollutionExpiryTone: expiryTone(v.pollution_expiry),
         fitnessExpiry: fmtDate(v.fitness_expiry),
         fitnessExpiryRaw: rawDate(v.fitness_expiry),
+        fitnessDaysLeft: daysUntil(v.fitness_expiry),
         fitnessExpiryTone: expiryTone(v.fitness_expiry),
+        permitDaysLeft: daysUntil(v.permit_expiry),
         odometerReading: v.odometer_reading ? `${Number(v.odometer_reading).toLocaleString("en-GB")} km` : "—",
         odometerReadingRaw: v.odometer_reading ?? "",
         nextServiceDue: fmtDate(v.service_effective_due),
@@ -347,12 +406,12 @@ exports.listVehicles = async (req, res) => {
         openDefects: Number(v.open_defects || 0),
         criticalDefects: Number(v.critical_defects || 0),
         lastActivity: fmtDate(v.last_trip_at || v.created_at),
-        complianceRisk: [v.mot_effective_due, v.insurance_effective_due, v.road_tax_effective_due, v.permit_expiry, v.pollution_expiry, v.fitness_expiry, v.service_effective_due].some(date => {
-          const days = daysUntil(date);
-          return days !== null && days < 90;
-        }) || Number(v.open_defects || 0) > 0,
+        complianceRisk: compliance.tone !== "success",
+        complianceTone: compliance.tone,
+        complianceStatus: compliance.status,
+        complianceReasons: compliance.reasons,
         since: fmtDate(v.created_at)
-      }))
+      }})
     });
   } catch (err) {
     res.status(500).json({ message: "Vehicle list error", error: err.message });

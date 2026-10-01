@@ -29,16 +29,17 @@ const TYPE_OPTIONS = [
 
 const TROLLEY_TYPES = ["Curtain side", "Box", "Flatbed", "Refrigerated", "Low loader", "Tanker", "Other"];
 
-function ComplianceDateCell({ lastDone, nextDue, tone = "neutral", source = "Maintenance synced" }) {
+function ComplianceDateCell({ lastDone, nextDue, daysLeft, tone = "neutral", source = "Internal record · verify externally" }) {
   const hasCompletedRecord = Boolean(lastDone && lastDone !== "—");
+  const dueLabel = daysLeft == null ? "Next due" : daysLeft < 0 ? "Expired" : daysLeft === 0 ? "Due today" : "Next due";
   return (
     <div className="vehicle-compliance-date">
       <div className={`vehicle-compliance-line done${hasCompletedRecord ? "" : " empty"}`}>
-        <span>Done</span>
+        <span>Last recorded</span>
         <strong>{hasCompletedRecord ? lastDone : "No record"}</strong>
       </div>
       <div className={`vehicle-compliance-line due ${tone}`}>
-        <span>Next due</span>
+        <span>{dueLabel}</span>
         <strong>{nextDue || "—"}</strong>
       </div>
       <small>{source}</small>
@@ -398,6 +399,7 @@ export function VehiclesListPage() {
           <div>
             <span className="card-label">Fleet Register</span>
             <h2>{view === "fleet" ? "Fleet List" : view === "compliance" ? "Compliance Dates" : "Workshop View"}</h2>
+            {view === "compliance" && <p className="vehicle-compliance-disclaimer">Internal fleet records—not live DVLA, DVSA or askMID verification. Confirm official status before dispatch.</p>}
           </div>
           <div className="vehicle-register-status">
             {savingCell && <span className="vehicle-inline-saving">Saving changes…</span>}
@@ -430,9 +432,9 @@ export function VehiclesListPage() {
                 <th>MOT</th>
                 <th>Insurance</th>
                 <th>Road Tax</th>
-                <th>Permit</th>
-                <th>Pollution</th>
-                <th>Fitness</th>
+                <th>Intl. permit <small>If applicable</small></th>
+                <th>RPC / emissions <small>If applicable</small></th>
+                <th>Additional cert. <small>If applicable</small></th>
                 <th>Risk</th>
                 <th>Actions</th>
               </tr>
@@ -523,28 +525,32 @@ export function VehiclesListPage() {
                     <small>{v.truckType}</small>
                   </td>
                   <td>
-                    <ComplianceDateCell lastDone={v.motLastDone} nextDue={v.motExpiry} tone={v.motExpiryTone} />
+                    <ComplianceDateCell lastDone={v.motLastDone} nextDue={v.motExpiry} daysLeft={v.motDaysLeft} tone={v.motExpiryTone} />
                   </td>
                   <td>
-                    <ComplianceDateCell lastDone={v.insuranceLastDone} nextDue={v.insuranceExpiry} tone={v.insuranceExpiryTone} />
+                    <ComplianceDateCell lastDone={v.insuranceLastDone} nextDue={v.insuranceExpiry} daysLeft={v.insuranceDaysLeft} tone={v.insuranceExpiryTone} />
                   </td>
                   <td>
-                    <ComplianceDateCell lastDone={v.roadTaxLastDone} nextDue={v.roadTaxExpiry} tone={v.roadTaxExpiryTone} />
+                    <ComplianceDateCell lastDone={v.roadTaxLastDone} nextDue={v.roadTaxExpiry} daysLeft={v.roadTaxDaysLeft} tone={v.roadTaxExpiryTone} />
                   </td>
                   <td>
                     <input className={`vehicle-table-input date ${dateClass(v.permitExpiryTone)}`} type="date" defaultValue={v.permitExpiryRaw || ""} onBlur={saveOnBlur(v, "permitExpiry", v.permitExpiryRaw || "")} />
-                    <small>{v.permitExpiry}</small>
+                    <small>{v.permitExpiryRaw ? v.permitExpiry : "Optional · not recorded"}</small>
                   </td>
                   <td>
                     <input className={`vehicle-table-input date ${dateClass(v.pollutionExpiryTone)}`} type="date" defaultValue={v.pollutionExpiryRaw || ""} onBlur={saveOnBlur(v, "pollutionExpiry", v.pollutionExpiryRaw || "")} />
-                    <small>{v.pollutionExpiry}</small>
+                    <small>{v.pollutionExpiryRaw ? v.pollutionExpiry : "Optional · not recorded"}</small>
                   </td>
                   <td>
                     <input className={`vehicle-table-input date ${dateClass(v.fitnessExpiryTone)}`} type="date" defaultValue={v.fitnessExpiryRaw || ""} onBlur={saveOnBlur(v, "fitnessExpiry", v.fitnessExpiryRaw || "")} />
-                    <small>{v.fitnessExpiry}</small>
+                    <small>{v.fitnessExpiryRaw ? v.fitnessExpiry : "Optional · not recorded"}</small>
                   </td>
                   <td>
-                    <StatusPill tone={v.complianceRisk ? "warning" : "success"}>{v.complianceRisk ? "Review" : "Clear"}</StatusPill>
+                    <div className="vehicle-compliance-risk" title={(v.complianceReasons || []).join(" · ")}>
+                      <StatusPill tone={v.complianceTone || (v.complianceRisk ? "warning" : "success")}>{v.complianceStatus || (v.complianceRisk ? "Review" : "Clear")}</StatusPill>
+                      {(v.complianceReasons || []).slice(0, 2).map((reason) => <small key={reason}>{reason}</small>)}
+                      {(v.complianceReasons || []).length > 2 && <small>+{v.complianceReasons.length - 2} more</small>}
+                    </div>
                   </td>
                   <td>
                     <div className="vehicle-table-actions">

@@ -6560,6 +6560,16 @@ p.lp-success {
   letter-spacing: 0.035em;
 }
 
+.vehicle-edit-table th small {
+  display: block;
+  margin-top: 2px;
+  color: var(--subtle);
+  font-size: 0.52rem;
+  font-weight: 750;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
 .vehicle-edit-table.fleet th:nth-child(1) { width: 150px; }
 .vehicle-edit-table.fleet th:nth-child(2) { width: 115px; }
 .vehicle-edit-table.fleet th:nth-child(3) { width: 230px; }
@@ -6644,6 +6654,28 @@ p.lp-success {
   gap: 9px;
 }
 
+.vehicle-compliance-disclaimer {
+  max-width: 720px;
+  margin: 5px 0 0;
+  color: var(--muted);
+  font-size: 0.68rem;
+  line-height: 1.45;
+}
+
+.vehicle-compliance-risk {
+  display: grid;
+  justify-items: start;
+  gap: 4px;
+}
+
+.vehicle-compliance-risk > small {
+  max-width: 115px;
+  margin: 0 !important;
+  color: var(--muted) !important;
+  font-size: 0.57rem !important;
+  line-height: 1.25;
+}
+
 .vehicle-inline-saving {
   color: var(--primary);
   font-size: 0.7rem;
@@ -6680,8 +6712,8 @@ p.lp-success {
 }
 
 .vehicle-compliance-line.done {
-  border: 1px solid #bbf7d0;
-  background: #f0fdf4;
+  border: 1px solid var(--success-ring);
+  background: var(--success-soft);
   color: var(--success-text);
 }
 
@@ -6692,8 +6724,8 @@ p.lp-success {
 }
 
 .vehicle-compliance-line.due {
-  border: 1px solid #dbeafe;
-  background: #eff6ff;
+  border: 1px solid var(--primary-ring);
+  background: var(--primary-soft);
   color: var(--primary);
 }
 
