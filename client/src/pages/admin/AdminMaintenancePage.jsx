@@ -216,22 +216,32 @@ function DigitalTyreMonitor({ tyres = [] }) {
 
       <div className="digital-tyre-stage">
         <div className="truck-digital-visual" aria-hidden="true">
-          <div className="truck-scan-line" />
           <svg viewBox="0 0 260 540" role="img">
             <defs>
               <linearGradient id="truckCab" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stopColor="#2dd4bf" /><stop offset="1" stopColor="#087ea4" /></linearGradient>
               <linearGradient id="truckBody" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stopColor="#ecfeff" /><stop offset="1" stopColor="#c8eef2" /></linearGradient>
             </defs>
-            <path className="truck-shadow" d="M69 500h122l15 18H54z" />
-            <rect className="truck-trailer" x="67" y="171" width="126" height="317" rx="18" fill="url(#truckBody)" />
-            <path className="truck-cab" d="M77 162V80l24-49h58l24 49v82z" fill="url(#truckCab)" />
-            <path className="truck-glass" d="M96 76l14-29h40l14 29z" />
-            <rect className="truck-grille" x="100" y="124" width="60" height="17" rx="5" />
-            <path className="truck-spine" d="M130 185v278" />
-            <path className="truck-detail" d="M82 211h96M82 373h96M82 454h96" />
-            <circle className="truck-beacon" cx="130" cy="105" r="7" />
+            <ellipse className="truck-shadow" cx="130" cy="503" rx="91" ry="12" />
+            <rect className="truck-chassis" x="116" y="139" width="28" height="346" rx="8" />
+            <rect className="truck-trailer" x="65" y="171" width="130" height="310" rx="10" fill="url(#truckBody)" />
+            <path className="truck-cab" d="M73 160V82l25-51h64l25 51v78z" fill="url(#truckCab)" />
+            <path className="truck-glass" d="M94 78l16-32h40l16 32z" />
+            <path className="truck-window" d="M87 88h27v31H83V99zm59 0h27l4 11v20h-31z" />
+            <rect className="truck-grille" x="99" y="129" width="62" height="14" rx="3" />
+            <circle className="truck-light" cx="87" cy="139" r="5" /><circle className="truck-light" cx="173" cy="139" r="5" />
+            <path className="truck-spine" d="M130 190v265" />
+            <path className="truck-detail" d="M79 207h102M79 358h102M79 447h102" />
+            <g className="truck-tyres">
+              <g><rect x="45" y="118" width="24" height="58" rx="9" /><path d="M51 128v38m6-38v38m6-38v38" /></g>
+              <g><rect x="191" y="118" width="24" height="58" rx="9" /><path d="M197 128v38m6-38v38m6-38v38" /></g>
+              <g><rect x="43" y="333" width="26" height="62" rx="9" /><path d="M49 343v42m7-42v42m7-42v42" /></g>
+              <g><rect x="191" y="333" width="26" height="62" rx="9" /><path d="M197 343v42m7-42v42m7-42v42" /></g>
+              <g><rect x="43" y="423" width="26" height="62" rx="9" /><path d="M49 433v42m7-42v42m7-42v42" /></g>
+              <g><rect x="191" y="423" width="26" height="62" rx="9" /><path d="M197 433v42m7-42v42m7-42v42" /></g>
+            </g>
+            <g className="truck-axle-lines"><path d="M69 147h122" /><path d="M69 364h122" /><path d="M69 454h122" /></g>
           </svg>
-          <span className="truck-visual-label">UK HGV · 3 AXLE</span>
+          <span className="truck-visual-label">3-AXLE HGV CONFIGURATION</span>
         </div>
 
         <div className="digital-axle-list">

@@ -1166,43 +1166,34 @@
   overflow: hidden;
   border: 1px solid rgba(42, 185, 181, .3);
   border-radius: 15px;
-  background-color: #082f3c;
-  background-image: linear-gradient(rgba(45,212,191,.06) 1px, transparent 1px), linear-gradient(90deg, rgba(45,212,191,.06) 1px, transparent 1px);
-  background-size: 22px 22px;
-  box-shadow: inset 0 0 45px rgba(20,184,166,.14);
+  background: linear-gradient(155deg, #0d2934, #0a2029);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.06);
 }
 
 .truck-digital-visual::before {
   content: "";
   position: absolute;
-  width: 170px;
-  height: 360px;
-  border: 1px solid rgba(94,234,212,.22);
-  border-radius: 50%;
-  box-shadow: 0 0 50px rgba(45,212,191,.12);
-  animation: truck-halo 3.5s ease-in-out infinite;
+  inset: 16px;
+  width: auto;
+  height: auto;
+  border: 1px solid rgba(148, 196, 203, .14);
+  border-radius: 10px;
+  background: linear-gradient(rgba(125, 211, 218, .035) 1px, transparent 1px), linear-gradient(90deg, rgba(125, 211, 218, .035) 1px, transparent 1px);
+  background-size: 28px 28px;
 }
 
 .truck-digital-visual svg { position: relative; z-index: 2; width: 155px; height: 360px; filter: drop-shadow(0 14px 12px rgba(0,0,0,.3)); }
-.truck-shadow { fill: rgba(0,0,0,.36); }
-.truck-trailer { stroke: #5eead4; stroke-width: 2; }
-.truck-cab { stroke: #99f6e4; stroke-width: 2; }
-.truck-glass { fill: #103f52; stroke: #67e8f9; stroke-width: 2; }
-.truck-grille { fill: #0f5f72; }
-.truck-spine, .truck-detail { fill: none; stroke: rgba(8,126,164,.28); stroke-width: 3; stroke-dasharray: 7 6; }
-.truck-beacon { fill: #5eead4; filter: drop-shadow(0 0 8px #2dd4bf); animation: truck-beacon 1.3s ease-in-out infinite; }
-
-.truck-scan-line {
-  position: absolute;
-  z-index: 3;
-  top: 10%;
-  left: 8%;
-  right: 8%;
-  height: 2px;
-  background: linear-gradient(90deg, transparent, #5eead4, transparent);
-  box-shadow: 0 0 10px #2dd4bf;
-  animation: truck-scan 4s linear infinite;
-}
+.truck-shadow { fill: rgba(0,0,0,.42); }
+.truck-chassis { fill: #263b44; }
+.truck-trailer { stroke: #85aeb5; stroke-width: 2; }
+.truck-cab { stroke: #9ad5d2; stroke-width: 2; }
+.truck-glass, .truck-window { fill: #122f3b; stroke: #638e98; stroke-width: 1.5; }
+.truck-grille { fill: #193f4b; }
+.truck-light { fill: #dffdf8; }
+.truck-spine, .truck-detail { fill: none; stroke: rgba(36, 121, 137, .32); stroke-width: 2; }
+.truck-tyres rect { fill: #080e12; stroke: #526872; stroke-width: 2; }
+.truck-tyres path { fill: none; stroke: #334953; stroke-width: 2; }
+.truck-axle-lines path { fill: none; stroke: #253e49; stroke-width: 5; }
 
 .truck-visual-label {
   position: absolute;
@@ -1277,9 +1268,6 @@
 .digital-tyre-footer p { margin: 0 0 0 auto; max-width: 390px; color: #6d8793; font-size: .58rem; line-height: 1.4; text-align: right; }
 
 @keyframes tyre-live-pulse { 70% { box-shadow: 0 0 0 7px rgba(16,185,129,0); } 100% { box-shadow: 0 0 0 0 rgba(16,185,129,0); } }
-@keyframes truck-scan { 0% { transform: translateY(0); opacity: 0; } 10% { opacity: 1; } 90% { opacity: 1; } 100% { transform: translateY(330px); opacity: 0; } }
-@keyframes truck-halo { 50% { transform: scale(1.04); opacity: .65; } }
-@keyframes truck-beacon { 50% { opacity: .35; } }
 @keyframes wheel-breathe { 50% { filter: brightness(1.16); } }
 
 @media (max-width: 1080px) {
@@ -1287,7 +1275,6 @@
   .truck-digital-visual { min-height: 260px; }
   .truck-digital-visual svg { width: 116px; height: 245px; }
   .truck-digital-visual::before { width: 135px; height: 220px; }
-  .truck-scan-line { display: none; }
 }
 
 @media (max-width: 600px) {
@@ -1302,9 +1289,6 @@
 
 @media (prefers-reduced-motion: reduce) {
   .digital-live i,
-  .truck-digital-visual::before,
-  .truck-scan-line,
-  .truck-beacon,
   .digital-wheel { animation: none; }
 }
 
