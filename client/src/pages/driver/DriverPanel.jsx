@@ -65,7 +65,7 @@ const driverWorkspaces = [
 ];
 
 const allowedStatusTransitions = {
-  offered: ["accepted", "declined"],
+  offered: ["arrived_pickup", "failed_delivery"],
   accepted: ["arrived_pickup", "failed_delivery"],
   arrived_pickup: ["loaded", "failed_delivery"],
   loaded: ["in_transit", "failed_delivery"],
@@ -518,8 +518,8 @@ export function DriverPanel() {
   function handleStatus(status) {
     if (!selectedJob) return;
     let reason = "";
-    if (status === "failed_delivery" || status === "declined") {
-      reason = window.prompt(status === "declined" ? "Reason for declining this job?" : "Reason for failed delivery?");
+    if (status === "failed_delivery") {
+      reason = window.prompt("Reason for failed delivery?");
       if (reason === null) return;
       if (status === "failed_delivery") setReschedule(r => ({ ...r, visible: true }));
     }
@@ -1035,16 +1035,7 @@ export function DriverPanel() {
           </div>
           <StatusPill tone="neutral">Dispatch Sync</StatusPill>
         </div>
-        {selectedJob?.status === "offered" ? (
-          <div className="driver-status-grid">
-            <button className="driver-status-button active" disabled={Boolean(busy)} onClick={() => handleStatus("accepted")} type="button">
-              {busy === "accepted" ? "Accepting..." : "Accept Job"}
-            </button>
-            <button className="driver-status-button" disabled={Boolean(busy)} onClick={() => handleStatus("declined")} type="button">
-              {busy === "declined" ? "Declining..." : "Decline Job"}
-            </button>
-          </div>
-        ) : (
+        {(
           <>
             <div className="driver-stepper" aria-label="Selected job progress">
               {deliveryFlow.map((status, index) => (

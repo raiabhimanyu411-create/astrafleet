@@ -1,6 +1,8 @@
 const express = require("express");
 const router  = express.Router();
 const d       = require("../controllers/driverController");
+const push    = require("../controllers/driverPushController");
+const geofence = require("../controllers/driverGeofenceController");
 const { requireModuleAccess } = require("../middleware/accessControl");
 
 router.get("/me/panel",                    d.getMyDriverPanel);
@@ -11,15 +13,19 @@ router.patch("/me/jobs/:jobId/primary-drop/status", d.updatePrimaryDropStatus);
 router.patch("/me/jobs/:jobId/stops/:stopId/status", d.updateJobStopStatus);
 router.post("/me/jobs/:jobId/pod",         d.submitMyProofOfDelivery);
 router.post("/me/jobs/:jobId/reschedule",  d.rescheduleJob);
+router.post("/me/jobs/:jobId/geofence-events", geofence.recordGeofenceEvent);
 router.post("/me/shift/start",             d.startMyShift);
 router.post("/me/shift/end",               d.endMyShift);
 router.post("/me/expenses",                d.createMyExpense);
 router.post("/me/defects",                 d.createMyDefectReport);
 router.post("/me/walkaround",              d.submitWalkaround);
 router.post("/me/odometer",               d.logOdometer);
+router.get("/me/messages/unread-count",    d.getMyUnreadMessageCount);
 router.get("/me/messages",                 d.getMyMessages);
 router.post("/me/messages",                d.sendMyMessage);
 router.post("/me/location",                d.updateMyLocation);
+router.post("/me/push-token",              push.registerMyPushToken);
+router.delete("/me/push-token",            push.removeMyPushToken);
 
 router.get("/",                          requireModuleAccess("drivers"), d.listDrivers);
 router.get("/:id",                       requireModuleAccess("drivers"), d.getDriverById);

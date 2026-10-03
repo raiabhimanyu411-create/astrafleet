@@ -2,6 +2,7 @@ const db = require("../db/connection");
 const { verifySessionToken } = require("./authController");
 const { emitDriverChatMessage, emitDriverLocationUpdate, emitJobUpdate } = require("../realtime");
 const { buildChangeSet, logActivity } = require("../utils/auditLogger");
+const { attachJobCoordinates } = require("../utils/postcodeGeo");
 const { dateTimeKey, fmtUkDateTime, fmtUkTime, isDateTimeKey, ukNowDateTimeKey, wallMinutesBetween, addWallMinutes } = require("../utils/jobDateTimes");
 
 function fmtDate(d) {
@@ -57,9 +58,10 @@ const driverStatusFlow = [
   "declined"
 ];
 
+// Drivers cannot accept or decline: an assigned job is ready to start. "offered" only survives on jobs assigned before this change.
 const driverStatusLabel = {
-  offered: "Offered",
-  accepted: "Accepted",
+  offered: "Assigned",
+  accepted: "Assigned",
   arrived_pickup: "Arrived at pickup",
   loaded: "Loaded",
   in_transit: "In transit",
@@ -104,8 +106,8 @@ const tripColumnDefinitions = {
 };
 
 const statusTransitions = {
-  offered: new Set(["accepted", "declined"]),
-  accepted: new Set(["arrived_pickup", "failed_delivery", "declined"]),
+  offered: new Set(["accepted", "arrived_pickup", "failed_delivery"]),
+  accepted: new Set(["arrived_pickup", "failed_delivery"]),
   arrived_pickup: new Set(["loaded", "failed_delivery"]),
   loaded: new Set(["in_transit", "failed_delivery"]),
   in_transit: new Set(["arrived_drop", "failed_delivery"]),
@@ -370,7 +372,7 @@ async function getDriverFromSession(req) {
 }
 
 function mapDriverJob(row, stops = []) {
-  const status = row.driver_job_status || "accepted";
+  const status = !row.driver_job_status || row.driver_job_status === "offered" ? "accepted" : row.driver_job_status;
   const primaryDropStatus = row.primary_drop_status || (status === "delivered" ? "completed" : "pending");
   const pickup = row.pickup_address || row.origin_hub || "Pickup TBD";
   const drop = row.drop_address || row.destination_hub || "Drop TBD";
@@ -393,8 +395,8 @@ function mapDriverJob(row, stops = []) {
       type: "pickup",
       label: "Pickup",
       address: pickup,
-      arrival: fmtDateTime(row.planned_departure),
-      departure: fmtDateTime(row.loading_done_time || row.planned_departure),
+      arrival: fmtDateTime(row.pickup_arrived_at || row.planned_departure),
+      departure: fmtDateTime(row.actual_departure || row.loading_done_time || row.planned_departure),
       status: jobIsPastPickup ? "completed" : ["arrived_pickup", "loaded"].includes(status) ? "arrived" : "pending",
       statusLabel: jobIsPastPickup ? "Completed" : ["arrived_pickup", "loaded"].includes(status) ? "At pickup" : "Pending",
       contactName: row.cust_contact || "—",
@@ -407,7 +409,7 @@ function mapDriverJob(row, stops = []) {
       label: "Drop 1",
       address: drop,
       arrival: fmtDateTime(row.primary_drop_arrived_at || row.calculated_arrival || row.eta),
-      departure: primaryDropDone ? fmtDateTime(row.primary_drop_completed_at || row.calculated_unload_end) : fmtDateTime(row.calculated_unload_end),
+      departure: fmtDateTime(row.primary_drop_departed_at || (primaryDropDone ? row.primary_drop_completed_at || row.calculated_unload_end : row.calculated_unload_end)),
       status: primaryDropDone ? "completed" : jobIsAtDrop ? "arrived" : "pending",
       statusLabel: primaryDropDone ? "Completed" : jobIsAtDrop ? "At drop" : "Pending",
       isPrimaryDrop: true,
@@ -563,7 +565,7 @@ exports.getMyDriverPanel = async (req, res) => {
       return res.status(404).json({ message: "Driver profile not linked to this login." });
     }
 
-    const jobs = await getDriverJobs(driver.id);
+    const jobs = await attachJobCoordinates(await getDriverJobs(driver.id));
     const todayKey = ukNowDateTimeKey().slice(0, 10);
     const todayJobs = jobs.filter((job) => job.schedule.plannedDate === todayKey);
     const upcomingJobs = jobs.filter((job) => {
@@ -715,6 +717,9 @@ exports.updateMyJobStatus = async (req, res) => {
     const { status, reason } = req.body;
     if (!driverStatusFlow.includes(status)) {
       return res.status(400).json({ message: "Invalid driver job status." });
+    }
+    if (status === "declined") {
+      return res.status(409).json({ message: "Assigned jobs cannot be declined. Message dispatch if you cannot do this job." });
     }
 
     const [[job]] = await db.query(
@@ -988,18 +993,27 @@ exports.createMyDefectReport = async (req, res) => {
     const driver = await getDriverFromSession(req);
     if (!driver) return res.status(404).json({ message: "Driver profile not linked to this login." });
 
-    const { vehicleId, defectType, severity, description } = req.body;
+    const { vehicleId, tripId, defectType, severity, description } = req.body;
     const allowedSeverity = ["low", "medium", "high", "critical"].includes(severity) ? severity : "medium";
     let targetVehicleId = vehicleId || null;
     let targetTripId = null;
+    if (!targetVehicleId && tripId) {
+      // The mobile app sends the job it is on; only trust it when that job belongs to this driver.
+      const [[ownJob]] = await db.query(
+        `SELECT id, vehicle_id FROM trips WHERE id=? AND driver_id=? AND vehicle_id IS NOT NULL AND deleted_at IS NULL`,
+        [tripId, driver.id]
+      );
+      targetVehicleId = ownJob?.vehicle_id || null;
+      targetTripId = ownJob?.id || null;
+    }
     if (!targetVehicleId) {
       const [[activeJob]] = await db.query(
         `SELECT id, vehicle_id FROM trips
-         WHERE driver_id=? AND vehicle_id IS NOT NULL AND driver_job_status IN ('accepted','arrived_pickup','loaded','in_transit','arrived_drop')
+         WHERE driver_id=? AND vehicle_id IS NOT NULL AND deleted_at IS NULL AND driver_job_status IN ('offered','accepted','arrived_pickup','loaded','in_transit','arrived_drop')
          ORDER BY COALESCE(planned_departure, created_at) ASC LIMIT 1`,
         [driver.id]
       );
-      targetVehicleId = activeJob?.vehicle_id || null;
+      targetVehicleId = activeJob?.vehicle_id || driver.assigned_vehicle_id || null;
       targetTripId = activeJob?.id || null;
     }
     let defectId = null;
@@ -2132,5 +2146,24 @@ exports.deleteDocument = async (req, res) => {
     res.json({ message: "Document removed." });
   } catch (err) {
     res.status(500).json({ message: "Document delete error", error: err.message });
+  }
+};
+
+// Shared with driverPushController so push-token routes resolve the driver exactly like every other /me route.
+exports.getDriverFromSession = getDriverFromSession;
+
+// GET /api/drivers/me/messages/unread-count — read-only, unlike GET /me/messages which marks everything read.
+exports.getMyUnreadMessageCount = async (req, res) => {
+  try {
+    await ensureDriverOpsSchema();
+    const driver = await getDriverFromSession(req);
+    if (!driver) return res.status(404).json({ message: "Driver profile not linked." });
+    const [[row]] = await db.query(
+      `SELECT COUNT(*) AS unread FROM driver_messages WHERE driver_id=? AND sender_role <> 'driver' AND is_read=0`,
+      [driver.id]
+    );
+    res.json({ unreadCount: Number(row?.unread || 0) });
+  } catch (err) {
+    res.status(500).json({ message: "Unread count error", error: err.message });
   }
 };

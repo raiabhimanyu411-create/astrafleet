@@ -40,6 +40,110 @@ const STATUS_FLOW = [
 const LOAD_ICONS = { general: "📦", hazardous: "⚠️", refrigerated: "❄️", oversized: "🔩", fragile: "🫙" };
 const STOP_TYPE_ICON = { pickup: "↑", delivery: "↓", waypoint: "●" };
 
+const progressCell = { padding: "9px 10px", borderBottom: "1px solid #e2e8f0", fontSize: "0.84rem", color: "#334155", verticalAlign: "top", whiteSpace: "nowrap" };
+const progressHead = { ...progressCell, fontSize: "0.7rem", fontWeight: 800, color: "#64748b", textTransform: "uppercase", textAlign: "left", background: "#f8fafc" };
+
+function TimeWithSource({ value, source }) {
+  if (!value || value === "—") return <span style={{ color: "#94a3b8" }}>—</span>;
+  const gps = source === "GPS";
+  return (
+    <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+      <strong style={{ color: "#0f172a" }}>{value}</strong>
+      <span
+        title={gps ? "Recorded automatically by the driver app geofence" : "Recorded when the driver tapped the status in the app"}
+        style={{ fontSize: "0.62rem", fontWeight: 800, padding: "2px 6px", borderRadius: 6, background: gps ? "#dcfce7" : "#e0f2fe", color: gps ? "#15803d" : "#0369a1" }}
+      >
+        {gps ? "GPS" : "DRIVER"}
+      </span>
+    </span>
+  );
+}
+
+// Planned vs actual arrival/departure at every point, filled live from the driver app (taps and geofences).
+function RouteProgressCard({ points, events }) {
+  const [showLog, setShowLog] = useState(false);
+  if (!points?.length) return null;
+  const done = points.filter(p => p.status === "completed").length;
+  return (
+    <div className="content-card" style={{ marginTop: 14 }}>
+      <div className="section-head">
+        <div>
+          <span className="card-label">Driver App · Live</span>
+          <h2 style={{ margin: "4px 0 0", fontSize: "1rem" }}>Route Progress — Arrival &amp; Departure</h2>
+        </div>
+        <StatusPill tone={done === points.length ? "success" : "neutral"}>{done}/{points.length} completed</StatusPill>
+      </div>
+      <div style={{ overflowX: "auto" }}>
+        <table style={{ width: "100%", borderCollapse: "collapse" }}>
+          <thead>
+            <tr>
+              <th style={progressHead}>#</th>
+              <th style={progressHead}>Point</th>
+              <th style={progressHead}>Status</th>
+              <th style={progressHead}>Planned Arrival</th>
+              <th style={progressHead}>Actual Arrival</th>
+              <th style={progressHead}>Planned Departure</th>
+              <th style={progressHead}>Actual Departure</th>
+            </tr>
+          </thead>
+          <tbody>
+            {points.map((point, index) => (
+              <tr key={point.key}>
+                <td style={progressCell}><strong>{index + 1}</strong></td>
+                <td style={{ ...progressCell, whiteSpace: "normal", minWidth: 200 }}>
+                  <strong style={{ color: "#0f172a" }}>{point.label}</strong>
+                  <div style={{ color: "#64748b", fontSize: "0.78rem", marginTop: 2 }}>{point.address}</div>
+                </td>
+                <td style={progressCell}><StatusPill tone={point.tone}>{point.statusLabel}</StatusPill></td>
+                <td style={progressCell}>{point.plannedArrival}</td>
+                <td style={progressCell}><TimeWithSource value={point.actualArrival} source={point.arrivalSource} /></td>
+                <td style={progressCell}>{point.plannedDeparture}</td>
+                <td style={progressCell}><TimeWithSource value={point.actualDeparture} source={point.departureSource} /></td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <p style={{ color: "#64748b", fontSize: "0.78rem", margin: "10px 0 0" }}>
+        All times UK (GMT/BST). <strong>GPS</strong> = recorded automatically when the vehicle entered or left the stop area; <strong>DRIVER</strong> = recorded when the driver confirmed in the app.
+      </p>
+      {events?.length > 0 && (
+        <div style={{ marginTop: 10 }}>
+          <button className="header-action-button" type="button" onClick={() => setShowLog(v => !v)}>
+            {showLog ? "Hide GPS log" : `Show GPS log (${events.length})`}
+          </button>
+          {showLog && (
+            <div style={{ overflowX: "auto", marginTop: 8 }}>
+              <table style={{ width: "100%", borderCollapse: "collapse" }}>
+                <thead>
+                  <tr>
+                    <th style={progressHead}>Time (UK)</th>
+                    <th style={progressHead}>Point</th>
+                    <th style={progressHead}>Event</th>
+                    <th style={progressHead}>Result</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {events.map((event, index) => (
+                    <tr key={index}>
+                      <td style={progressCell}>{event.at}</td>
+                      <td style={progressCell}>{event.point}</td>
+                      <td style={progressCell}>{event.event}</td>
+                      <td style={{ ...progressCell, whiteSpace: "normal", color: event.applied ? "#15803d" : "#64748b" }}>
+                        {event.applied ? `Recorded · ${event.note}` : `Ignored · ${event.note}`}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function JobDetailPage() {
   const { id } = useParams();
   const navigate = useNavigate();
@@ -496,6 +600,8 @@ export function JobDetailPage() {
                 </div>
               </SectionCard>
             </div>
+
+            <RouteProgressCard points={data.routeProgress} events={data.geofenceEvents} />
 
             {/* Stops timeline */}
             <div className="content-card" style={{ marginTop: 14 }}>

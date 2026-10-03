@@ -1,4 +1,15 @@
+const driverPush = require("./utils/driverPush");
+
 let io = null;
+
+// Mobile push is a side channel: it must never interrupt the socket event or the request.
+function safePush(send, payload) {
+  try {
+    send(payload);
+  } catch (error) {
+    console.error("[Push] Skipped:", error.message);
+  }
+}
 
 function setRealtimeServer(server) {
   io = server;
@@ -21,6 +32,7 @@ function chatRoom(driverId) {
 }
 
 function emitDriverChatMessage(message) {
+  safePush(driverPush.notifyChatMessage, message);
   if (!io || !message?.driverId) return;
   io.to("admin-chat").emit("driver-chat:message", message);
   io.to(chatRoom(message.driverId)).emit("driver-chat:message", message);
@@ -43,6 +55,7 @@ function emitAdminAuditEvent(payload) {
 }
 
 function emitJobUpdate(payload) {
+  safePush(driverPush.notifyJobEvent, payload);
   if (!io) return;
   io.to("admin-jobs").emit("job:updated", {
     ...payload,
