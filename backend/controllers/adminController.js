@@ -2199,7 +2199,7 @@ exports.createTrip = async (req, res) => {
       `INSERT INTO trips
          (trip_code, route_id, vehicle_id, trailer_id, driver_id, client_name, dispatch_status,
           priority_level, planned_departure, eta, dock_window, pod_status, freight_amount_gbp, dispatcher_notes, driver_job_status)
-       VALUES (?, ?, ?, ?, ?, ?, 'planned', ?, ?, ?, ?, 'pending', ?, ?, 'offered')`,
+       VALUES (?, ?, ?, ?, ?, ?, 'planned', ?, ?, ?, ?, 'pending', ?, ?, 'accepted')`,
       [
         tripCode, route_id, vehicle_id, trailer_id, driver_id,
         client_name || "Internal dispatch",
@@ -2295,7 +2295,7 @@ exports.updateTrip = async (req, res) => {
       `UPDATE trips SET
          route_id=?, vehicle_id=?, trailer_id=?, driver_id=?, client_name=?, priority_level=?,
          planned_departure=?, eta=?, dock_window=?, freight_amount_gbp=?, dispatcher_notes=?,
-         driver_job_status=IF(? = 1, 'offered', driver_job_status)
+         driver_job_status=IF(? = 1, 'accepted', driver_job_status)
        WHERE id=? AND deleted_at IS NULL`,
       [
         route_id,

@@ -2,6 +2,7 @@ const db = require("../db/connection");
 const { validateSchedule, normalisePlan, mergeJobUpdate } = require('../utils/jobPlanning');
 const { emitDriverChatMessage, emitDriverJobAssigned, emitJobUpdate } = require("../realtime");
 const { logActivity, requireDeleteReason } = require("../utils/auditLogger");
+const { buildRouteProgress } = require("../utils/routeProgress");
 const { getSettingsMap } = require("./settingsController");
 const maintenanceController = require("./maintenanceController");
 const {
@@ -888,7 +889,7 @@ exports.updateJobAssignment = async (req, res) => {
     if (Object.prototype.hasOwnProperty.call(req.body, "driver_id") || Object.prototype.hasOwnProperty.call(req.body, "driverId")) {
       updates.push("driver_id = ?");
       values.push(driverId || null);
-      updates.push("driver_job_status = IF(? = 1 AND ? IS NOT NULL, 'offered', driver_job_status)");
+      updates.push("driver_job_status = IF(? = 1 AND ? IS NOT NULL, 'accepted', driver_job_status)");
       values.push(driverChanged ? 1 : 0, driverId || null);
     }
     if (Object.prototype.hasOwnProperty.call(req.body, "vehicle_id") || Object.prototype.hasOwnProperty.call(req.body, "vehicleId")) {
@@ -930,7 +931,7 @@ exports.updateJobAssignment = async (req, res) => {
     if (driverChanged && driverId) {
       await db.query(
         `INSERT INTO driver_job_status_events (trip_id, driver_id, status, reason, source, created_at)
-         VALUES (?, ?, 'offered', 'Job offered by dispatch', 'dispatch', ?)`,
+         VALUES (?, ?, 'accepted', 'Job assigned by dispatch', 'dispatch', ?)`,
         [id, driverId, ukNowDateTimeKey()]
       );
 
@@ -947,7 +948,7 @@ exports.updateJobAssignment = async (req, res) => {
          WHERE t.id = ?`,
         [id]
       );
-      const body = `New job assigned: ${assignedJob?.trip_code || job.trip_code}. ${assignedJob?.customer_name || "Customer TBD"} · ${assignedJob?.pickup_label || "Pickup TBD"} to ${assignedJob?.drop_label || "Drop TBD"}. Please open Driver Panel and accept/start the job.`;
+      const body = `New job assigned: ${assignedJob?.trip_code || job.trip_code}. ${assignedJob?.customer_name || "Customer TBD"} · ${assignedJob?.pickup_label || "Pickup TBD"} to ${assignedJob?.drop_label || "Drop TBD"}. Please open the driver app to start the job.`;
       const [messageResult] = await db.query(
         `INSERT INTO driver_messages (driver_id, sender_role, sender_name, body, trip_id)
          VALUES (?, 'dispatch', 'Dispatch', ?, ?)`,
@@ -1114,6 +1115,7 @@ exports.getJobById = async (req, res) => {
 
     const stopStatusTone = { pending: "neutral", arrived: "warning", completed: "success", skipped: "danger" };
     const driverStatus = hydratedJob.driver_job_status || "accepted";
+    const progress = await buildRouteProgress(j, stops, actualEvidence.collection_arrived_at);
 
     res.json({
       id: hydratedJob.id,
@@ -1171,7 +1173,7 @@ exports.getJobById = async (req, res) => {
 
       schedule: {
         collectionArrival: fmtDateTime(j.planned_departure),
-        actualCollectionArrival: fmtDateTime(actualEvidence.collection_arrived_at),
+        actualCollectionArrival: fmtDateTime(j.pickup_arrived_at || actualEvidence.collection_arrived_at),
         collectionDeparture: fmtDateTime(j.loading_done_time),
         plannedDeliveryArrival: fmtDateTime(j.calculated_arrival || j.eta),
         plannedDeliveryDeparture: fmtDateTime(j.calculated_unload_end),
@@ -1270,6 +1272,9 @@ exports.getJobById = async (req, res) => {
         tone: stopStatusTone[s.status] || "neutral",
         notes: s.notes || "—"
       })),
+
+      routeProgress: progress.routeProgress,
+      geofenceEvents: progress.geofenceEvents,
 
       driverExpenses: expenses.map(e => ({
         id: e.id,
@@ -1421,7 +1426,7 @@ exports.createJob = async (req, res) => {
         optionalNonNegativeNumber(freight_amount),
         special_instructions || null,
         dispatcher_notes || null,
-        driver_id ? "offered" : null,
+        driver_id ? "accepted" : null,
         loading_done_time || null,
         loading_duration_mins != null ? Number(loading_duration_mins) : DEFAULT_LOADING_MINS,
         unloading_duration_mins != null ? Number(unloading_duration_mins) : DEFAULT_UNLOADING_MINS,
@@ -1621,7 +1626,7 @@ exports.updateJob = async (req, res) => {
          planned_departure=?, eta=?, eta_updated_at=?, dock_window=?,
          load_type=?, load_weight_kg=?, load_volume_cbm=?, vehicle_type_requirement=?, delivery_deadline=?,
          load_description=?, freight_amount_gbp=?, special_instructions=?, dispatcher_notes=?,
-         driver_job_status=IF(? = 1, 'offered', driver_job_status),
+         driver_job_status=IF(? = 1, 'accepted', driver_job_status),
          loading_done_time=?, loading_duration_mins=?, unloading_duration_mins=?, estimated_distance_km=?, estimated_eta_mins=?,
          calculated_arrival=?, calculated_unload_end=?, total_job_duration_mins=?,
          reference=?, load_id=?
