@@ -1,6 +1,7 @@
 const db = require("../db/connection");
 const crypto = require("crypto");
 const { emitAdminAuditEvent } = require("../realtime");
+const { ukNowDateTimeKey } = require("./jobDateTimes");
 
 let schemaReady = false;
 let sessionSchemaReady = false;
@@ -234,8 +235,8 @@ async function logActivity(req, entry, connection = db) {
     const [result] = await connection.query(
       `INSERT INTO activity_logs
         (actor_user_id, actor_name, actor_role, module_key, action_key, entity_type,
-         entity_id, entity_label, reason, reason_category, details, previous_hash, entry_hash, ip_address, user_agent)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         entity_id, entity_label, reason, reason_category, details, previous_hash, entry_hash, ip_address, user_agent, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         actor.id,
         actor.name,
@@ -251,7 +252,9 @@ async function logActivity(req, entry, connection = db) {
         previousHash,
         entryHash,
         meta.ip,
-        meta.userAgent
+        meta.userAgent,
+        // UK wall-clock like every other operational time; the MySQL server clock may be in any timezone.
+        ukNowDateTimeKey()
       ]
     );
     emitAdminAuditEvent(publicActivityPayload({

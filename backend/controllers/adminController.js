@@ -2668,7 +2668,7 @@ exports.getNotifications = async (req, res) => {
         type: "danger",
         title: `${r.actor_name || "Employee"} deleted ${r.entity_type || "record"}`,
         body: `${r.entity_label || r.module_key} removed from ${r.module_key}. Reason: ${r.reason || "No reason recorded"}.`,
-        link: "/admin/activity",
+        link: `/admin/activity?event=${r.id}`,
         source: "Audit log",
         createdAt: isoDateTime(r.created_at)
       }))
@@ -2794,9 +2794,15 @@ exports.getActivityReport = async (req, res) => {
   try {
     await ensureActivitySchema();
     await ensureSessionSchema();
-    const { employeeId, module, action, from, to } = req.query;
+    const { employeeId, module, action, from, to, eventId } = req.query;
     const where = [];
     const params = [];
+
+    // Opened from a notification: show exactly that event, whatever its date.
+    if (eventId) {
+      where.push("id = ?");
+      params.push(eventId);
+    }
 
     if (employeeId) {
       where.push("actor_user_id = ?");
@@ -2826,7 +2832,7 @@ exports.getActivityReport = async (req, res) => {
               previous_hash, entry_hash, ip_address, created_at
        FROM activity_logs
        ${clause}
-       ORDER BY created_at DESC
+       ORDER BY id DESC
        LIMIT 300`,
       params
     );
@@ -2888,7 +2894,7 @@ exports.getActivityReport = async (req, res) => {
         hashVerified: Boolean(row.entry_hash),
         entryHash: row.entry_hash || "",
         previousHash: row.previous_hash || "",
-        canRestore: row.action_key === "delete" && ["invoice", "payout", "trip"].includes(row.entity_type),
+        canRestore: row.action_key === "delete" && ["invoice", "payout", "trip", "job"].includes(row.entity_type),
         ipAddress: row.ip_address || "—",
         at: fmtDateTime(row.created_at),
         atRaw: row.created_at
@@ -2917,12 +2923,13 @@ exports.restoreActivityRecord = async (req, res) => {
     const tableByType = {
       invoice: "invoices",
       payout: "vendor_payouts",
-      trip: "trips"
+      trip: "trips",
+      job: "trips"
     };
     const table = tableByType[log.entity_type];
     if (!table) return res.status(400).json({ message: "This record type cannot be restored." });
 
-    if (log.entity_type === "trip") {
+    if (log.entity_type === "trip" || log.entity_type === "job") {
       const [[trip]] = await db.query(
         "SELECT id, vehicle_id, trailer_id FROM trips WHERE id=? AND deleted_at IS NOT NULL",
         [log.entity_id]
@@ -2959,16 +2966,32 @@ exports.restoreActivityRecord = async (req, res) => {
       return res.status(409).json({ message: "Record is already active or no longer exists." });
     }
 
+    // A job deleted from the Jobs page took its invoices with it; bring those back together with the job.
+    let restoredInvoices = [];
+    if (log.entity_type === "job") {
+      const marker = `%(deleted with job ${log.entity_label})`;
+      const [invoiceRows] = await db.query("SELECT id, invoice_no FROM invoices WHERE trip_id=? AND deleted_at IS NOT NULL AND delete_reason LIKE ?", [log.entity_id, marker]);
+      if (invoiceRows.length) {
+        await db.query("UPDATE invoices SET deleted_at=NULL, deleted_by=NULL, delete_reason=NULL WHERE id IN (?)", [invoiceRows.map(row => row.id)]);
+        restoredInvoices = invoiceRows.map(row => row.invoice_no);
+      }
+      const [[trip]] = await db.query("SELECT dispatch_status, vehicle_id, trailer_id FROM trips WHERE id=?", [log.entity_id]);
+      if (trip?.dispatch_status === "planned") {
+        if (trip.vehicle_id) await db.query("UPDATE vehicles SET status='planned' WHERE id=? AND status='available'", [trip.vehicle_id]);
+        if (trip.trailer_id) await db.query("UPDATE trailers SET status='planned' WHERE id=? AND status='available'", [trip.trailer_id]);
+      }
+    }
+
     await logActivity(req, {
       module: "activity",
       action: "restore",
       entityType: log.entity_type,
       entityId: log.entity_id,
       entityLabel: log.entity_label,
-      details: { restoredFromLogId: log.id }
+      details: { restoredFromLogId: log.id, ...(restoredInvoices.length ? { restoredInvoices } : {}) }
     });
 
-    res.json({ message: "Record restored." });
+    res.json({ message: restoredInvoices.length ? `Job restored with invoice ${restoredInvoices.join(", ")}.` : "Record restored." });
   } catch (error) {
     res.status(500).json({ message: "Restore error", error: error.message });
   }

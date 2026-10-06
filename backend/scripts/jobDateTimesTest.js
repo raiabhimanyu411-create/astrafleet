@@ -50,14 +50,56 @@ test("job chronology rejects mismatched collection, delivery and stop times", ()
   }), /Stop 2 departure/);
 });
 
-test("profit inputs include toll and do not invent revenue", () => {
-  const economics = __test.calcJobEconomics(160.934, 300, {
-    mpg: 10,
-    fuel_price_per_litre: 1.5,
-    driver_rate_per_hour: 15,
-    fleet_cost_per_hour: 12.05,
-    margin_pct: 20
-  }, 0, 90, 90, 25);
-  assert.equal(economics.tollCost, 25);
-  assert.equal(economics.totalCost, 228.44);
+const COST_SETTINGS = { mpg: 10, fuel_price_per_litre: 1.5, driver_rate_per_hour: 15, fleet_cost_per_hour: 12.05, margin_pct: 20 };
+
+test("profit: fuel receipts replace the mileage estimate and tolls are never counted", () => {
+  const estimate = __test.calcJobEconomics({ distanceKm: 160.934, plannedMins: 300, settings: COST_SETTINGS });
+  assert.equal(estimate.fuelSource, "estimate");
+  assert.equal(estimate.fuelCost, 68.19);
+  assert.equal(estimate.totalCost, 203.44);
+  assert.equal(estimate.tollCost, undefined);
+
+  const withReceipt = __test.calcJobEconomics({ distanceKm: 160.934, plannedMins: 300, settings: COST_SETTINGS, fuelExpenses: 80 });
+  assert.equal(withReceipt.fuelSource, "receipts");
+  assert.equal(withReceipt.fuelCost, 80);
+  assert.equal(withReceipt.totalCost, 215.25);
+});
+
+test("profit: completed jobs use actual time, no truck means no fleet cost, missing plan falls back", () => {
+  const actual = __test.calcJobEconomics({ distanceKm: 100, plannedMins: 300, actualMins: 420, settings: COST_SETTINGS, hasVehicle: false });
+  assert.equal(actual.basis, "actual");
+  assert.equal(actual.driverCost, 105);
+  assert.equal(actual.fleetCost, 0);
+
+  const fallback = __test.calcJobEconomics({ distanceKm: 100, plannedMins: null, fallbackMins: 360, settings: COST_SETTINGS });
+  assert.equal(fallback.durationSource, "fallback");
+  assert.equal(fallback.totalMins, 360);
+});
+
+const { assessPunctuality, buildJobPoints } = require("../utils/jobPunctuality");
+
+test("punctuality: names the late point and flags impossible travel", () => {
+  const trip = {
+    pickup_address: "DE74 2BB", planned_departure: "2026-06-30 04:00:00", loading_done_time: "2026-06-30 05:00:00",
+    actual_departure: "2026-07-01 21:59:00", calculated_arrival: "2026-06-30 12:00:00", calculated_unload_end: "2026-06-30 13:30:00",
+    primary_drop_status: "completed", primary_drop_completed_at: "2026-07-01 22:17:00", driver_job_status: "delivered"
+  };
+  const stops = [{ id: 9, stop_order: 1, stop_type: "delivery", address: "DE74 2BB", planned_arrival: "2026-06-30 17:30:00", status: "completed", actual_arrival: "2026-07-01 22:30:00" }];
+  const events = [{ status: "arrived_pickup", created_at: "2026-07-01 21:59:00" }, { status: "arrived_drop", created_at: "2026-07-01 21:59:00" }];
+  const result = assessPunctuality(buildJobPoints(trip, stops, events), { dispatchStatus: "completed" });
+  const [pickup, drop1, back] = result.points;
+  assert.equal(pickup.arrivalDelayMins, 2519);
+  assert.equal(drop1.actualArrival, "2026-07-01T21:59");
+  assert.equal(drop1.state, "late");
+  assert.equal(back.label, "Return point");
+  assert.match(drop1.warnings[0], /Arrived 0 min after leaving Collection/);
+  assert.equal(result.summary.worstPoint.label, "Collection");
+});
+
+test("punctuality: open jobs past a planned arrival are overdue", () => {
+  const trip = { planned_departure: "2026-06-30 04:00:00", loading_done_time: "2026-06-30 05:00:00", calculated_arrival: "2026-06-30 12:00:00" };
+  const result = assessPunctuality(buildJobPoints(trip), { dispatchStatus: "planned", now: "2026-06-30T05:00" });
+  assert.equal(result.points[0].overdue.mins, 60);
+  assert.equal(result.summary.state, "overdue");
+  assert.equal(result.summary.worstPoint.label, "Collection");
 });

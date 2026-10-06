@@ -11,6 +11,8 @@ export const updateJobAssignment = (id, data) => api.patch(`/api/jobs/${id}/assi
 export const replaceJobVehicle = (id, data) => api.patch(`/api/jobs/${id}/replace-vehicle`, data);
 export const updateJobStatus = (id, data) => api.patch(`/api/jobs/${id}/status`, data);
 export const cancelJob       = (id, data) => api.delete(`/api/jobs/${id}`, { data });
+export const deleteJob       = (id, data) => api.post(`/api/jobs/${id}/delete`, data);
+export const getJobDeletePreview = (id) => api.get(`/api/jobs/${id}/delete-preview`);
 export const getJobNotes     = (id)       => api.get(`/api/jobs/${id}/notes`);
 export const addJobNote      = (id, data) => api.post(`/api/jobs/${id}/notes`, data);
 export const addJobStop      = (id, data) => api.post(`/api/jobs/${id}/stops`, data);

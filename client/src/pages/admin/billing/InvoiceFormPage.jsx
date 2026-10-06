@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { createInvoice, getBillingFormData, getInvoiceById, updateInvoice } from "../../../api/adminApi";
 import { AdminWorkspaceLayout } from "../AdminWorkspaceLayout";
+import { ukNow } from "../../../utils/ukJobTime";
 
 const empty = {
   invoice_no: "",
@@ -13,13 +14,13 @@ const empty = {
   supplier_address: "",
   supplier_vat_number: "",
   service_description: "Road freight transport service",
-  supply_date: new Date().toISOString().slice(0, 10),
+  supply_date: ukNow().slice(0, 10),
   purchase_order_ref: "",
   net_amount_gbp: "",
   vat_rate: "20",
   vat_amount_gbp: "0.00",
   amount_gbp: "",
-  issued_at: new Date().toISOString().slice(0, 10),
+  issued_at: ukNow().slice(0, 10),
   due_date: "",
   payment_status: "draft",
   pod_verified: false,
@@ -229,7 +230,7 @@ export function InvoiceFormPage() {
                   </select>
                 </Field>
                 <Field label="POD Verified">
-                  <label style={{ display: "flex", alignItems: "center", gap: 8, minHeight: 42, color: "#334155", fontWeight: 700 }}>
+                  <label style={{ display: "flex", alignItems: "center", gap: 8, minHeight: 42, color: "#414D5C", fontWeight: 700 }}>
                     <input type="checkbox" checked={fields.pod_verified} onChange={e => set("pod_verified", e.target.checked)} />
                     Verified
                   </label>

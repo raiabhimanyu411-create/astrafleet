@@ -132,7 +132,7 @@ export function AdminTripDetailPage() {
                 </div>
               )}
               {trip.clientName && (
-                <p style={{ margin: 0, fontSize: "0.85rem", color: "#475569" }}>
+                <p style={{ margin: 0, fontSize: "0.85rem", color: "#424650" }}>
                   Client: <strong>{trip.clientName}</strong>
                 </p>
               )}

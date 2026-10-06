@@ -7,7 +7,7 @@ function Field({ label, hint, required, children }) {
   return (
     <div className="af-field">
       <label className="af-label">
-        {label}{required && <span style={{ color: "#C20404" }}> *</span>}
+        {label}{required && <span style={{ color: "#D91515" }}> *</span>}
       </label>
       {children}
       {hint && <p className="af-hint">{hint}</p>}
@@ -129,7 +129,7 @@ export function DriverFormPage() {
             {!isEdit && (
               <div className="af-section">
                 <p className="af-section-title">Driver Account Login</p>
-                <p style={{ fontSize: "0.82rem", color: "#64748b", margin: "0 0 14px" }}>
+                <p style={{ fontSize: "0.82rem", color: "#5F6B7A", margin: "0 0 14px" }}>
                   Admin can create the driver web panel login here. Add an email above and set an initial password.
                 </p>
                 <div className="af-grid-3">

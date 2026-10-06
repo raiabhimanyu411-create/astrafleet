@@ -2,65 +2,72 @@
   color-scheme: light;
 
   /* Brand */
-  --brand-navy:     #102A43;
-  --primary:        #237FDA;
-  --primary-hover:  #196DBD;
-  --primary-soft:   #EAF4FD;
-  --primary-ring:   rgba(35, 127, 218, 0.22);
+  --brand-navy:     #0F1B2A;
+  --primary:        #0972D3;
+  --primary-hover:  #065AA8;
+  --primary-soft:   #F0FBFF;
+  --primary-ring:   rgba(9, 114, 211, 0.22);
 
   /* Surface */
-  --bg:             #F4F6F9;
+  --bg:             #F4F4F4;
   --surface:        #ffffff;
-  --surface-2:      #f8fafc;
-  --surface-3:      #f1f5f9;
+  --surface-2:      #FAFAFA;
+  --surface-3:      #F4F4F4;
 
   /* Text */
-  --text:           #0f172a;
-  --text-soft:      #334155;
-  --muted:          #64748b;
-  --subtle:         #94a3b8;
+  --text:           #0F141A;
+  --text-soft:      #414D5C;
+  --muted:          #5F6B7A;
+  --subtle:         #8C8C94;
 
   /* Border */
-  --border:         #e2e8f0;
-  --border-strong:  #cbd5e1;
+  --border:         #E9EBED;
+  --border-strong:  #C6C6CD;
 
   /* Semantic */
-  --success:        #1CB48C;
-  --success-soft:   #E7F8F3;
-  --success-ring:   #8DDBC6;
-  --success-text:   #08765B;
+  --success:        #037F0C;
+  --success-soft:   #F2FCF3;
+  --success-ring:   #A3DEA7;
+  --success-text:   #026A0A;
 
-  --warning:        #ECAC69;
-  --warning-soft:   #FFF5EA;
-  --warning-ring:   #F2C99E;
-  --warning-text:   #9A5513;
+  --warning:        #E8A300;
+  --warning-soft:   #FFFCE6;
+  --warning-ring:   #F5D77A;
+  --warning-text:   #8D6605;
 
-  --danger:         #C20404;
-  --danger-soft:    #FCEAEA;
-  --danger-ring:    #E9A1A1;
-  --danger-text:    #920303;
+  --danger:         #D91515;
+  --danger-soft:    #FFF5F5;
+  --danger-ring:    #F5B5B5;
+  --danger-text:    #AD0A0A;
 
-  --neutral-soft:   #f1f5f9;
-  --neutral-text:   #475569;
+  --neutral-soft:   #F4F4F4;
+  --neutral-text:   #424650;
+
+  /* Notifications (Fluent-style toasts) */
+  --message:        #5B5FC7;
+  --message-soft:   #F3F3FD;
+  --info:           var(--primary);
+  --info-soft:      var(--primary-soft);
+  --toast-shadow:   0 8px 16px rgba(0, 7, 22, 0.14), 0 0 2px rgba(0, 7, 22, 0.12);
 
   /* Shadows */
-  --shadow-xs: 0 1px 2px rgba(15, 23, 42, 0.05);
-  --shadow-sm: 0 1px 4px rgba(15, 23, 42, 0.07), 0 1px 2px rgba(15, 23, 42, 0.04);
-  --shadow:    0 4px 16px rgba(15, 23, 42, 0.09), 0 2px 6px rgba(15, 23, 42, 0.05);
-  --shadow-lg: 0 20px 56px rgba(15, 23, 42, 0.13), 0 8px 24px rgba(15, 23, 42, 0.07);
-  --shadow-xl: 0 40px 96px rgba(15, 23, 42, 0.16), 0 16px 40px rgba(15, 23, 42, 0.08);
+  --shadow-xs: 0 1px 1px rgba(0, 7, 22, 0.06);
+  --shadow-sm: 0 1px 1px rgba(0, 7, 22, 0.08), 0 0 1px rgba(0, 7, 22, 0.12);
+  --shadow:    0 1px 4px rgba(0, 7, 22, 0.1), 0 0 1px rgba(0, 7, 22, 0.14);
+  --shadow-lg: 0 4px 20px rgba(0, 7, 22, 0.14), 0 0 1px rgba(0, 7, 22, 0.16);
+  --shadow-xl: 0 12px 40px rgba(0, 7, 22, 0.18), 0 0 1px rgba(0, 7, 22, 0.16);
 
   /* Radius */
-  --radius-sm:  6px;
-  --radius:     10px;
-  --radius-md:  12px;
-  --radius-lg:  16px;
-  --radius-xl:  20px;
-  --radius-2xl: 28px;
+  --radius-sm:  4px;
+  --radius:     8px;
+  --radius-md:  8px;
+  --radius-lg:  12px;
+  --radius-xl:  16px;
+  --radius-2xl: 20px;
 
   /* Typography */
-  font-family: "Inter", "Segoe UI", -apple-system, BlinkMacSystemFont, sans-serif;
-  font-size: 15px;
+  font-family: "Open Sans", "Inter", "Segoe UI", -apple-system, BlinkMacSystemFont, sans-serif;
+  font-size: 14px;
   line-height: 1.5;
   font-weight: 400;
   -webkit-font-smoothing: antialiased;

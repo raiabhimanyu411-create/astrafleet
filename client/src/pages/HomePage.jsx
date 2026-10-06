@@ -201,9 +201,9 @@ function IconChart() {
 function IconGlobe() {
   return (
     <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-      <circle cx="8" cy="8" r="6.5" stroke="#64748b" strokeWidth="1.3" />
-      <ellipse cx="8" cy="8" rx="3" ry="6.5" stroke="#64748b" strokeWidth="1.3" />
-      <line x1="1.5" y1="8" x2="14.5" y2="8" stroke="#64748b" strokeWidth="1.3" />
+      <circle cx="8" cy="8" r="6.5" stroke="#5F6B7A" strokeWidth="1.3" />
+      <ellipse cx="8" cy="8" rx="3" ry="6.5" stroke="#5F6B7A" strokeWidth="1.3" />
+      <line x1="1.5" y1="8" x2="14.5" y2="8" stroke="#5F6B7A" strokeWidth="1.3" />
     </svg>
   );
 }
@@ -211,7 +211,7 @@ function IconGlobe() {
 function IconChevron() {
   return (
     <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
-      <path d="M3 5 L7 9 L11 5" stroke="#64748b" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M3 5 L7 9 L11 5" stroke="#5F6B7A" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
   );
 }
@@ -219,8 +219,8 @@ function IconChevron() {
 function IconPerson() {
   return (
     <svg width="17" height="17" viewBox="0 0 17 17" fill="none">
-      <circle cx="8.5" cy="5.5" r="3" stroke="#94a3b8" strokeWidth="1.4" fill="none" />
-      <path d="M2 15 C2 11.5 5 9.5 8.5 9.5 C12 9.5 15 11.5 15 15" stroke="#94a3b8" strokeWidth="1.4" strokeLinecap="round" fill="none" />
+      <circle cx="8.5" cy="5.5" r="3" stroke="#8C8C94" strokeWidth="1.4" fill="none" />
+      <path d="M2 15 C2 11.5 5 9.5 8.5 9.5 C12 9.5 15 11.5 15 15" stroke="#8C8C94" strokeWidth="1.4" strokeLinecap="round" fill="none" />
     </svg>
   );
 }
@@ -228,9 +228,9 @@ function IconPerson() {
 function IconLock() {
   return (
     <svg width="17" height="17" viewBox="0 0 17 17" fill="none">
-      <rect x="3" y="8" width="11" height="8" rx="2" stroke="#94a3b8" strokeWidth="1.4" fill="none" />
-      <path d="M5.5 8 L5.5 5.5 C5.5 3.57 6.57 2 8.5 2 C10.43 2 11.5 3.57 11.5 5.5 L11.5 8" stroke="#94a3b8" strokeWidth="1.4" strokeLinecap="round" fill="none" />
-      <circle cx="8.5" cy="12" r="1.2" fill="#94a3b8" />
+      <rect x="3" y="8" width="11" height="8" rx="2" stroke="#8C8C94" strokeWidth="1.4" fill="none" />
+      <path d="M5.5 8 L5.5 5.5 C5.5 3.57 6.57 2 8.5 2 C10.43 2 11.5 3.57 11.5 5.5 L11.5 8" stroke="#8C8C94" strokeWidth="1.4" strokeLinecap="round" fill="none" />
+      <circle cx="8.5" cy="12" r="1.2" fill="#8C8C94" />
     </svg>
   );
 }
@@ -240,14 +240,14 @@ function IconEye({ show, onClick }) {
     <button type="button" className="eye-btn" onClick={onClick} tabIndex={-1}>
       {show ? (
         <svg width="17" height="17" viewBox="0 0 17 17" fill="none">
-          <path d="M1 8.5 C3 5 5.5 3 8.5 3 C11.5 3 14 5 16 8.5 C14 12 11.5 14 8.5 14 C5.5 14 3 12 1 8.5 Z" stroke="#94a3b8" strokeWidth="1.4" fill="none" />
-          <circle cx="8.5" cy="8.5" r="2.2" stroke="#94a3b8" strokeWidth="1.4" fill="none" />
+          <path d="M1 8.5 C3 5 5.5 3 8.5 3 C11.5 3 14 5 16 8.5 C14 12 11.5 14 8.5 14 C5.5 14 3 12 1 8.5 Z" stroke="#8C8C94" strokeWidth="1.4" fill="none" />
+          <circle cx="8.5" cy="8.5" r="2.2" stroke="#8C8C94" strokeWidth="1.4" fill="none" />
         </svg>
       ) : (
         <svg width="17" height="17" viewBox="0 0 17 17" fill="none">
-          <path d="M1 8.5 C3 5 5.5 3 8.5 3 C11.5 3 14 5 16 8.5" stroke="#94a3b8" strokeWidth="1.4" strokeLinecap="round" fill="none" />
-          <path d="M2 13 L14 4" stroke="#94a3b8" strokeWidth="1.4" strokeLinecap="round" />
-          <path d="M7 13.7 C7.5 13.9 8 14 8.5 14 C11.5 14 14 12 16 8.5" stroke="#94a3b8" strokeWidth="1.4" strokeLinecap="round" fill="none" />
+          <path d="M1 8.5 C3 5 5.5 3 8.5 3 C11.5 3 14 5 16 8.5" stroke="#8C8C94" strokeWidth="1.4" strokeLinecap="round" fill="none" />
+          <path d="M2 13 L14 4" stroke="#8C8C94" strokeWidth="1.4" strokeLinecap="round" />
+          <path d="M7 13.7 C7.5 13.9 8 14 8.5 14 C11.5 14 14 12 16 8.5" stroke="#8C8C94" strokeWidth="1.4" strokeLinecap="round" fill="none" />
         </svg>
       )}
     </button>
@@ -591,13 +591,13 @@ export function HomePage() {
 
               {error && (
                 <div className="lp-alert lp-error" role="alert">
-                  <IconAlertCircle color="#920303" />
+                  <IconAlertCircle color="#AD0A0A" />
                   <span>{error}</span>
                 </div>
               )}
               {success && (
                 <div className="lp-alert lp-success" role="status">
-                  <IconCheckCircle color="#08765B" />
+                  <IconCheckCircle color="#026A0A" />
                   <span>{success}</span>
                 </div>
               )}

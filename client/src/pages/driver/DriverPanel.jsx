@@ -176,7 +176,7 @@ function SignatureCanvas({ onCapture }) {
     const pos    = getPos(e, canvas);
     ctx.lineWidth   = 2.5;
     ctx.lineCap     = "round";
-    ctx.strokeStyle = "#0f172a";
+    ctx.strokeStyle = "#0F141A";
     ctx.lineTo(pos.x, pos.y);
     ctx.stroke();
   }
@@ -1413,7 +1413,7 @@ export function DriverPanel() {
                 </div>
                 <div style={{ textAlign: "right" }}>
                   <StatusPill tone={d.severity === "critical" || d.severity === "high" ? "danger" : d.severity === "medium" ? "warning" : "neutral"}>{d.severity}</StatusPill>
-                  <p style={{ fontSize: "0.78rem", color: "#64748b", marginTop: 4 }}>{d.status}</p>
+                  <p style={{ fontSize: "0.78rem", color: "#5F6B7A", marginTop: 4 }}>{d.status}</p>
                 </div>
               </div>
             )) : <p className="driver-empty">No defect reports submitted yet.</p>}
@@ -1434,7 +1434,7 @@ export function DriverPanel() {
                 <div>
                   <strong>{p.code}</strong>
                   <p>Drop: {p.to}</p>
-                  {p.notes && <p style={{ color: "#64748b", fontSize: "0.75rem" }}>{p.notes}</p>}
+                  {p.notes && <p style={{ color: "#5F6B7A", fontSize: "0.75rem" }}>{p.notes}</p>}
                 </div>
                 <StatusPill tone={p.podStatus === "verified" ? "success" : p.podStatus === "uploaded" ? "warning" : "neutral"}>
                   {p.podStatus || "pending"}

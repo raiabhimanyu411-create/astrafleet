@@ -220,7 +220,7 @@
   padding: 8px 10px;
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
-  background: var(--surface-muted, #f8fafc);
+  background: var(--surface-muted, #FAFAFA);
   cursor: pointer;
 }
 
@@ -1046,7 +1046,7 @@
   font-size: 0.68rem;
   font-weight: 800;
   font-family: inherit;
-  color: var(--primary, #237FDA);
+  color: var(--primary, #0972D3);
   text-decoration: underline;
   cursor: pointer;
 }
@@ -1179,7 +1179,7 @@
   height: 7px;
   border-radius: 50%;
   background: var(--success);
-  box-shadow: 0 0 0 0 rgba(28, 180, 140, 0.42);
+  box-shadow: 0 0 0 0 rgba(3, 127, 12, 0.42);
   animation: tyre-live-pulse 1.8s infinite;
 }
 
@@ -1285,7 +1285,7 @@
 .digital-tyre-pair { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 9px; }
 
 .digital-tyre-card {
-  --tyre-state: #94a3b8;
+  --tyre-state: #8C8C94;
   position: relative;
   display: grid;
   grid-template-columns: 38px 1fr auto;
@@ -1813,7 +1813,7 @@
 }
 
 .maintenance-job-note {
-  background: var(--surface, #f8fafc);
+  background: var(--surface, #FAFAFA);
   border: 1px solid var(--border);
   border-radius: 8px;
   padding: 10px 12px;
@@ -2311,7 +2311,7 @@
 .excel-month-head {
   top: 0;
   background: #bfdbfe;
-  color: #0f172a;
+  color: #0F141A;
   padding: 6px 4px;
   font-size: 0.65rem;
   font-weight: 900;
@@ -2355,7 +2355,7 @@
   left: 0;
   z-index: 8 !important;
   background: #bfdbfe;
-  color: #0f172a;
+  color: #0F141A;
   padding: 6px 8px;
   text-align: left;
   font-size: 0.65rem;
@@ -2434,7 +2434,7 @@
 }
 
 .excel-vehicle-row:nth-child(even) {
-  background: #f8fafc;
+  background: #FAFAFA;
 }
 
 .excel-vehicle-row:hover {
@@ -2442,7 +2442,7 @@
 }
 
 .excel-trailer-start > td {
-  border-top: 3px solid #64748b;
+  border-top: 3px solid #5F6B7A;
 }
 
 /* Sticky left cells in vehicle rows */
@@ -2456,7 +2456,7 @@
   height: 46px;
   padding: 0 8px;
   vertical-align: middle;
-  border-color: #e2e8f0;
+  border-color: #E9EBED;
   cursor: pointer;
   line-height: 1.2;
   overflow: hidden;
@@ -2526,7 +2526,7 @@
   text-align: center;
   width: var(--excel-week-col);
   min-width: var(--excel-week-col);
-  border-color: #e2e8f0;
+  border-color: #E9EBED;
   cursor: pointer;
   overflow: hidden;
 }
@@ -2617,8 +2617,8 @@
 
 .excel-legend-chip.forecast {
   color: #fff;
-  background: #475569;
-  border: 1px dashed #cbd5e1;
+  background: #424650;
+  border: 1px dashed #C6C6CD;
 }
 /* ── Completed event popover box ── */
 .completed-chip-popover {
@@ -2639,7 +2639,7 @@
   align-items: center;
   gap: 7px;
   margin-bottom: 8px;
-  border-bottom: 1px solid #e2e8f0;
+  border-bottom: 1px solid #E9EBED;
   padding-bottom: 7px;
 }
 .ccp-badge {
@@ -2666,7 +2666,7 @@
 }
 .ccp-label {
   font-size: 0.7rem;
-  color: #64748b;
+  color: #5F6B7A;
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.04em;
@@ -2679,7 +2679,7 @@
 .ccp-group-item {
   margin-bottom: 6px;
   padding-bottom: 6px;
-  border-bottom: 1px solid #f1f5f9;
+  border-bottom: 1px solid #F4F4F4;
 }
 .ccp-group-item:last-child {
   margin-bottom: 0;
@@ -2696,7 +2696,7 @@
 }
 .ccp-notes {
   margin-top: 7px;
-  border-top: 1px solid #f1f5f9;
+  border-top: 1px solid #F4F4F4;
   padding-top: 6px;
 }
 .ccp-notes-text {
@@ -2734,7 +2734,7 @@
   align-items: center;
   gap: 12px;
   padding: 10px 24px 4px;
-  background: var(--surface-alt, #f8fafc);
+  background: var(--surface-alt, #FAFAFA);
   border-radius: var(--radius-sm, 6px);
   margin: 0 24px 8px;
   font-size: 0.85rem;
@@ -2782,7 +2782,7 @@
 }
 
 .maintenance-documents-vault { grid-column: 1 / -1; }
-.maintenance-documents-help { color: #64748b; font-size: 13px; margin: 12px 0; }
+.maintenance-documents-help { color: #5F6B7A; font-size: 13px; margin: 12px 0; }
 
 .maintenance-document-card {
   display: flex;
@@ -2805,20 +2805,20 @@
   overflow: hidden;
   border: 1px solid var(--border);
   border-radius: 8px;
-  background: #f1f5f9;
+  background: #F4F4F4;
   cursor: pointer;
 }
 .maintenance-document-thumbnail:hover { border-color: var(--primary); }
 .maintenance-document-thumbnail:focus-visible { outline: 3px solid var(--primary); outline-offset: 3px; }
 .maintenance-document-thumbnail img { display: block; max-width: 100%; max-height: 100%; object-fit: contain; }
-.maintenance-thumbnail-status { color: #64748b; font-size: 12px; text-align: center; }
-.maintenance-thumbnail-caption { position: absolute; bottom: 0; left: 0; right: 0; padding: 6px; background: #e2e8f0; color: #334155; font-size: 12px; font-weight: 700; }
+.maintenance-thumbnail-status { color: #5F6B7A; font-size: 12px; text-align: center; }
+.maintenance-thumbnail-caption { position: absolute; bottom: 0; left: 0; right: 0; padding: 6px; background: #E9EBED; color: #414D5C; font-size: 12px; font-weight: 700; }
 .maintenance-document-details { flex: 1; min-width: 0; display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 12px; }
 .maintenance-document-details > strong { font-size: 14px; }
 .maintenance-document-details > span { font-size: 13px; font-weight: 700; }
 .maintenance-document-details > p { grid-column: 1 / -1; margin: 0; color: var(--muted); font-size: 13px; }
 .maintenance-document-facts { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 8px; }
-.maintenance-document-facts span { display: grid; gap: 2px; min-width: 150px; padding: 8px 10px; border-radius: 7px; background: #f8fafc; color: var(--text); font-size: 13px; }
+.maintenance-document-facts span { display: grid; gap: 2px; min-width: 150px; padding: 8px 10px; border-radius: 7px; background: #FAFAFA; color: var(--text); font-size: 13px; }
 .maintenance-document-facts b { color: var(--muted); font-size: 11px; font-weight: 700; text-transform: uppercase; }
 .maintenance-paperwork-guidance { grid-column: 1 / -1; margin: 0; padding: 10px 12px; border-radius: 8px; background: #eff6ff; color: #1e40af; font-size: 13px; }
 .maintenance-document-details > .finance-row-actions { grid-column: 1 / -1; flex-wrap: wrap; }

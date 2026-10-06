@@ -185,7 +185,7 @@ export function AdminTrackingPage() {
           {autoRefresh ? "Live · Refreshes Every 30 Seconds" : "Auto Refresh Paused"}
         </span>
         <span className="tracking-last-updated">
-          Last Updated {lastUpdatedAt.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit", second: "2-digit" })}
+          Last Updated {lastUpdatedAt.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit", second: "2-digit", timeZone: "Europe/London" })}
         </span>
         <button className="header-action-button" type="button" onClick={() => setAutoRefresh(value => !value)}>
           {autoRefresh ? "Pause Live Updates" : "Resume Live Updates"}

@@ -6,9 +6,9 @@ import { AdminWorkspaceLayout } from "../AdminWorkspaceLayout";
 
 function DetailField({ label, value }) {
   return (
-    <div style={{ padding: "11px 14px", background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 8 }}>
-      <span style={{ display: "block", fontSize: "0.7rem", fontWeight: 700, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 4 }}>{label}</span>
-      <strong style={{ fontSize: "0.88rem", fontWeight: 600, color: "#0f172a" }}>{value || "—"}</strong>
+    <div style={{ padding: "11px 14px", background: "#FAFAFA", border: "1px solid #E9EBED", borderRadius: 8 }}>
+      <span style={{ display: "block", fontSize: "0.7rem", fontWeight: 700, color: "#5F6B7A", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 4 }}>{label}</span>
+      <strong style={{ fontSize: "0.88rem", fontWeight: 600, color: "#0F141A" }}>{value || "—"}</strong>
     </div>
   );
 }
@@ -55,7 +55,7 @@ export function DriverDetailPage() {
                 <span className="card-label">Driver Profile</span>
                 <h2 style={{ margin: "6px 0 4px", fontSize: "1.3rem" }}>{data.fullName}</h2>
               </div>
-              <span style={{ fontSize: "0.78rem", color: "#94a3b8" }}>Since {data.since}</span>
+              <span style={{ fontSize: "0.78rem", color: "#8C8C94" }}>Since {data.since}</span>
             </div>
 
             <div className="detail-grid">

@@ -1,15 +1,17 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { DelayTag, PointWarnings, PunctualityPill, delayTone, punctualityPoint } from "./punctuality";
 import { useNavigate } from "react-router-dom";
 import { getDriverChats } from "../../../api/adminApi";
 import { getRealtimeSocket, joinAdminChatRoom, leaveAdminChatRoom, subscribeJobUpdates } from "../../../api/realtime";
-import { addJobNote, cancelJob, getJobNotes, getJobs, replaceJobVehicle, updateJobAssignment, updateJobStatus } from "../../../api/jobApi";
+import { addJobNote, cancelJob, deleteJob, getJobNotes, getJobs, replaceJobVehicle, updateJobAssignment, updateJobStatus } from "../../../api/jobApi";
 import { DeleteReasonModal } from "../../../components/DeleteReasonModal";
+import { JobDeleteModal } from "./JobDeleteModal";
 import { StateNotice } from "../../../components/StateNotice";
 import { StatusPill } from "../../../components/StatusPill";
 import { DriverChatWidget } from "../DriverChatWidget";
 import { AdminWorkspaceLayout } from "../AdminWorkspaceLayout";
 import { getAuthSession } from "../../../utils/authSession";
-import { formatUkWall, ukMinutes } from "../../../utils/ukJobTime";
+import { formatUkWall, ukMinutes, ukNow } from "../../../utils/ukJobTime";
 import JobRouteMapModal from "./JobRouteMapModal";
 import { ImportJobsModal } from "./ImportJobsModal";
 import { JobStopsEditor } from "./JobStopsEditor";
@@ -173,15 +175,6 @@ function fmtGBP(n) {
   return `£${Number(n).toFixed(2)}`;
 }
 
-function timeLateClass(actualRaw, scheduledRaw) {
-  if (!actualRaw || !scheduledRaw) return "";
-  const diffMins = ukMinutes(scheduledRaw, actualRaw);
-  if (diffMins == null) return "";
-  if (diffMins > 15) return "relay-time-late";
-  if (diffMins < -5) return "relay-time-early";
-  return "relay-time-ontime";
-}
-
 function sortJobs(jobs, sortBy) {
   const arr = [...jobs];
   switch (sortBy) {
@@ -261,18 +254,17 @@ function JobDetailsModal({ job, onClose }) {
                       <tr><th>Cost Item</th><th>Amount</th></tr>
                     </thead>
                     <tbody>
-                      <tr><td>Fuel Cost</td><td>£{Number(job.economics.fuelCost || 0).toFixed(2)}</td></tr>
+                      <tr><td>Fuel Cost ({job.economics.fuelSource === "receipts" ? "receipts" : "estimate"})</td><td>£{Number(job.economics.fuelCost || 0).toFixed(2)}</td></tr>
                       <tr><td>Driver Cost</td><td>£{Number(job.economics.driverCost || 0).toFixed(2)}</td></tr>
                       <tr><td>Fleet Cost</td><td>£{Number(job.economics.fleetCost || 0).toFixed(2)}</td></tr>
-                      {Number(job.economics.tollCost || 0) > 0 && <tr><td>Route Toll Estimate</td><td>£{Number(job.economics.tollCost).toFixed(2)}</td></tr>}
-                      {Number(job.economics.recordedExpenses || 0) > 0 && <tr><td>Recorded Driver Expenses</td><td>£{Number(job.economics.recordedExpenses).toFixed(2)}</td></tr>}
+                      {Number(job.economics.recordedExpenses || 0) > 0 && <tr><td>Other Driver Expenses</td><td>£{Number(job.economics.recordedExpenses).toFixed(2)}</td></tr>}
                       <tr className="rjd-payout-subtotal"><td><strong>Total Cost</strong></td><td><strong>£{Number(job.economics.totalCost || 0).toFixed(2)}</strong></td></tr>
                       <tr><td>Suggested Price</td><td>£{Number(job.economics.suggestedPrice || 0).toFixed(2)}</td></tr>
                       <tr><td>Freight Charged</td><td>{job.freight || "—"}</td></tr>
                     </tbody>
                   </table>
                   <div className={`rjd-payout-pl ${job.isProfitable === true ? "profit" : job.isProfitable === false ? "loss" : ""}`}>
-                    <span>{job.isProfitable === true ? "Estimated Contribution Profit" : job.isProfitable === false ? "Estimated Contribution Loss" : "Contribution unavailable"}</span>
+                    <span>{job.isProfitable == null ? "Contribution unavailable" : `${job.economics.basis === "actual" ? "Actual" : "Estimated"} Contribution ${job.isProfitable ? "Profit" : "Loss"}`}</span>
                     <strong>
                       {job.profitLossValue !== null && job.profitLossValue !== undefined
                         ? `${job.profitLossValue >= 0 ? "+" : "-"}£${Math.abs(job.profitLossValue).toFixed(2)}`
@@ -465,6 +457,7 @@ export function JobsListPage() {
   const [expandedStopInstr, setExpandedStopInstr] = useState(new Set());
   const [busyId, setBusyId] = useState(null);
   const [blockTarget, setBlockTarget] = useState(null);
+  const [deleteTarget, setDeleteTarget] = useState(null);
   const [delayTarget, setDelayTarget] = useState(null);
   const [delayReason, setDelayReason] = useState("");
   const [replaceTarget, setReplaceTarget] = useState(null);
@@ -608,6 +601,9 @@ export function JobsListPage() {
   }), [baseFilteredJobs]);
 
   async function updatePlannerField(job, payload, busyKey, fallbackMessage = "Job could not be updated.") {
+    const collectionPassed = job.departureRaw && job.departureRaw < ukNow();
+    if (payload.driver_id && ["planned", "loading"].includes(job.status) && collectionPassed &&
+      !window.confirm(`Collection for ${job.code} was planned for ${fmtTimeFull(job.departureRaw)}, which has already passed. Assign anyway?`)) return;
     setError("");
     setBusyId(`${busyKey}-${job.id}`);
     try {
@@ -643,6 +639,22 @@ export function JobsListPage() {
       await load();
     } catch (err) {
       setError(err?.response?.data?.message || "Job could not be blocked.");
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  async function handleDelete(payload) {
+    if (!deleteTarget) return;
+    setError("");
+    setBusyId(deleteTarget.id);
+    try {
+      await deleteJob(deleteTarget.id, payload);
+      setDeleteTarget(null);
+      await load();
+    } catch (err) {
+      setError(err?.response?.data?.message || "Job could not be deleted.");
+      setDeleteTarget(null);
     } finally {
       setBusyId(null);
     }
@@ -774,8 +786,8 @@ export function JobsListPage() {
         <div className="relay-filter-bar">
           <div className="relay-search-wrap">
             <svg className="relay-search-icon" viewBox="0 0 20 20" fill="none">
-              <circle cx="9" cy="9" r="6" stroke="#64748b" strokeWidth="1.5" />
-              <path d="M15 15l-3-3" stroke="#64748b" strokeWidth="1.5" strokeLinecap="round" />
+              <circle cx="9" cy="9" r="6" stroke="#5F6B7A" strokeWidth="1.5" />
+              <path d="M15 15l-3-3" stroke="#5F6B7A" strokeWidth="1.5" strokeLinecap="round" />
             </svg>
             <input
               className="relay-search-input"
@@ -909,36 +921,25 @@ export function JobsListPage() {
             const vehicleToneVal = vehicleTone(assignedVehicle, job.vehicleAssigned);
             const trolleyToneVal = trolleyTone(assignedTrolley, job.trailerAssigned);
 
-            const pickupShort = extractUkPostcode(job.pickupAddress);
-            const dropShort = extractUkPostcode(job.dropAddress);
             const routeStops = Array.isArray(job.stops) ? job.stops : [];
-            const routeTimelinePoints = [
-              {
-                key: "pickup",
-                index: 1,
-                name: pickupShort,
-                title: job.pickupAddress,
-                arrival: fmtRouteStamp(job.collectionArrivedAtRaw || job.departureRaw, job.collectionArrivedAt || job.departure),
-                departure: fmtRouteStamp(job.actualDepartureRaw || job.loadingDoneTime, job.actualDeparture)
-              },
-              {
-                key: "delivery",
-                index: 2,
-                name: dropShort,
-                title: job.dropAddress,
-                arrival: fmtRouteStamp(job.primaryDropArrivedAtRaw || job.primaryDropCompletedAtRaw || job.actualArrivalRaw || job.calculatedArrival, job.primaryDropArrivedAt || job.primaryDropCompletedAt || job.actualArrival),
-                departure: fmtRouteStamp(job.primaryDropCompletedAtRaw || job.calculatedUnloadEnd, job.primaryDropCompletedAt)
-              },
-              ...routeStops.map((stop, index) => ({
-                key: stop.id || `stop-${index}`,
-                index: index + 3,
-                name: extractUkPostcode(stop.address),
-                title: stop.address,
-                arrival: fmtRouteStamp(stop.actualArrivalRaw || stop.plannedArrivalRaw, stop.actualArrival),
-                departure: fmtRouteStamp(stop.actualDepartureRaw || stop.plannedDepartureRaw, stop.actualDeparture || stop.plannedDeparture)
-              }))
-            ];
-            const hasGap = !job.driverAssigned || !job.vehicleAssigned;
+            // Collection = "C", drops numbered 1..n, return to yard = "R". Each time says whether it is actual or planned.
+            const stamp = (actualRaw, plannedRaw) => actualRaw
+              ? { text: fmtRouteStamp(actualRaw), kind: "Actual" }
+              : { text: fmtRouteStamp(plannedRaw), kind: "Plan" };
+            const routeTimelinePoints = (job.punctuality?.points || []).map(point => {
+              const stop = routeStops.find(s => String(s.id) === point.key);
+              const address = point.key === "pickup" ? job.pickupAddress : point.key === "drop-1" ? job.dropAddress : stop?.address;
+              return {
+                key: point.key,
+                index: point.kind === "pickup" ? "C" : point.kind === "return" ? "R" : point.kind === "waypoint" ? "W" : point.label.replace("Drop ", ""),
+                name: extractUkPostcode(address),
+                title: `${point.label} · ${address || ""}`,
+                arrival: stamp(point.actualArrival, point.plannedArrival),
+                departure: stamp(point.actualDeparture, point.plannedDeparture),
+                point
+              };
+            });
+            const hasGap = ["planned", "loading", "active"].includes(job.status) && (!job.driverAssigned || !job.vehicleAssigned);
             const podPending = isPodPending(job);
             const loadIcon = LOAD_ICONS[job.loadType] || "📦";
             const chatDriver = chatDrivers.find(driver => Number(driver.id) === Number(job.driverId));
@@ -949,12 +950,14 @@ export function JobsListPage() {
               : null;
             const driverStatusToneVal = DRIVER_STATUS_TONE[job.driverJobStatus] || "neutral";
 
-            const depTimeTone = job.actualDepartureRaw
-              ? timeLateClass(job.actualDepartureRaw, job.departureRaw)
-              : "";
-            const arrTimeTone = job.actualArrivalRaw
-              ? timeLateClass(job.actualArrivalRaw, job.etaRaw)
-              : "";
+            const pickupPoint = punctualityPoint(job, "pickup");
+            const drop1Point = punctualityPoint(job, "drop-1");
+            const graceMins = job.punctuality?.graceMins;
+            const toneClass = mins => (delayTone(mins, graceMins) ? `relay-time-${delayTone(mins, graceMins)}` : "");
+            const depTimeTone = toneClass(pickupPoint?.departureDelayMins);
+            const arrTimeTone = toneClass(drop1Point?.arrivalDelayMins);
+            const dropCount = Math.max(1, (job.punctuality?.points || []).filter(point => point.kind === "drop").length);
+            const dispatchLocked = ["completed", "cancelled", "failed"].includes(job.status);
 
             return (
               <div
@@ -1004,10 +1007,10 @@ export function JobsListPage() {
                     {routeTimelinePoints.map((point, index) => (
                       <div className="relay-route-segment" key={point.key}>
                         <div className="relay-stop-node">
-                          <span className="relay-stop-bubble">{point.index}</span>
+                          <span className={`relay-stop-bubble${point.point.state === "late" || point.point.state === "overdue" ? " late" : ""}`}>{point.index}</span>
                           <span className="relay-stop-name" title={point.title}>{point.name}</span>
-                          <span className="relay-route-time-line"><strong>Arrival</strong> {point.arrival}</span>
-                          <span className="relay-route-time-line"><strong>Departure</strong> {point.departure}</span>
+                          <span className="relay-route-time-line"><strong>Arr</strong> {point.arrival.text} <em>{point.arrival.kind}</em></span>
+                          <span className="relay-route-time-line"><strong>Dep</strong> {point.departure.text} <em>{point.departure.kind}</em></span>
                         </div>
                         {index < routeTimelinePoints.length - 1 && (
                           <div className="relay-route-arrow">
@@ -1068,7 +1071,7 @@ export function JobsListPage() {
                       <StatusPill tone={PRIORITY_TONE[job.priority] || "neutral"}>{job.priority}</StatusPill>
                     )}
                     {hasGap && <StatusPill tone="warning">Gap</StatusPill>}
-                    {job.etaRisk && <StatusPill tone="danger">ETA risk</StatusPill>}
+                    <PunctualityPill summary={job.punctuality?.summary} />
                     {podPending && <StatusPill tone="warning">POD</StatusPill>}
                   </div>
 
@@ -1091,7 +1094,7 @@ export function JobsListPage() {
                     <span>{job.freight}</span>
                     {job.profitLoss && (
                       <span className={`relay-profit-badge ${job.isProfitable ? "profit" : "loss"}`}>
-                        {job.isProfitable ? "▲" : "▼"} Est. {job.profitLoss}
+                        {job.isProfitable ? "▲" : "▼"} {job.economics?.basis === "actual" ? "" : "Est. "}{job.profitLoss}
                       </span>
                     )}
                     {!job.profitLoss && job.economics && (
@@ -1122,7 +1125,9 @@ export function JobsListPage() {
                     {/* ETA risk banner */}
                     {job.etaRisk && !isBlocked && (
                       <div className="relay-status-banner warning">
-                        <span>⚠️ ETA risk · Scheduled ETA has passed and job is still open</span>
+                        <span>⚠️ {job.punctuality?.summary?.worstPoint
+                          ? `Overdue at ${job.punctuality.summary.worstPoint.label} · planned time passed and nothing recorded yet`
+                          : "Planned time has passed and job is still open"}</span>
                         <button
                           className="header-action-button"
                           type="button"
@@ -1208,7 +1213,7 @@ export function JobsListPage() {
                       <div className="relay-stop-block">
                         <div className="relay-stop-row">
                           <div className="relay-stop-location">
-                            <span className="relay-stop-bubble" style={{ background: "#64748b", fontSize: "0.6rem" }}>C</span>
+                            <span className="relay-stop-bubble" style={{ background: "#5F6B7A", fontSize: "0.6rem" }}>C</span>
                             <div>
                               <strong>{abbrevAddr(job.pickupAddress)}</strong>
                               <small>{job.pickupAddress !== "—" ? job.pickupAddress : "Address not set"}</small>
@@ -1230,9 +1235,10 @@ export function JobsListPage() {
                             )}
                           </div>
                           <div className="relay-stop-time">
-                            <strong>{job.collectionArrivedAt !== "—" ? job.collectionArrivedAt : job.departure !== "—" ? job.departure : "TBD"}</strong>
+                            <strong className={toneClass(pickupPoint?.arrivalDelayMins)}>{job.collectionArrivedAt !== "—" ? job.collectionArrivedAt : job.departure !== "—" ? job.departure : "TBD"}</strong>
                             {job.collectionArrivedAt !== "—" && job.departure !== "—" && <small className="relay-sch-time">Sch. {job.departure}</small>}
                             {job.collectionArrivedAt === "—" && job.departure !== "—" && <small className="relay-sch-time">Scheduled</small>}
+                            <DelayTag mins={pickupPoint?.arrivalDelayMins} overdue={pickupPoint?.overdue?.type === "arrival" ? pickupPoint.overdue : null} graceMins={graceMins} />
                           </div>
                           <div className="relay-stop-time">
                             <strong className={depTimeTone}>
@@ -1243,6 +1249,7 @@ export function JobsListPage() {
                             {job.loadingDoneTime && (
                               <small className="relay-sch-time">Sch. {fmtTimeFull(job.loadingDoneTime)}</small>
                             )}
+                            <DelayTag mins={pickupPoint?.departureDelayMins} overdue={pickupPoint?.overdue?.type === "departure" ? pickupPoint.overdue : null} graceMins={graceMins} />
                             {(isActive || isLoading) && (
                               <button className="relay-report-delay-btn" type="button"
                                 onClick={e => { e.stopPropagation(); setDelayTarget(job); }}>
@@ -1315,18 +1322,13 @@ export function JobsListPage() {
                             <strong className={arrTimeTone}>
                               {job.primaryDropArrivedAt && job.primaryDropArrivedAt !== "—"
                                 ? job.primaryDropArrivedAt
-                                : job.primaryDropCompletedAt && job.primaryDropCompletedAt !== "—"
-                                ? job.primaryDropCompletedAt
-                                : job.actualArrival && job.actualArrival !== "—"
-                                ? job.actualArrival
                                 : job.calculatedArrival ? fmtTimeFull(job.calculatedArrival) : "TBD"}
                             </strong>
-                            {job.calculatedArrival && ((job.actualArrival && job.actualArrival !== "—") || (job.primaryDropArrivedAt && job.primaryDropArrivedAt !== "—") || (job.primaryDropCompletedAt && job.primaryDropCompletedAt !== "—")) && (
-                              <small className="relay-sch-time">Sch. {fmtTimeFull(job.calculatedArrival)}</small>
+                            {job.calculatedArrival && (
+                              <small className="relay-sch-time">{job.primaryDropArrivedAt && job.primaryDropArrivedAt !== "—" ? `Sch. ${fmtTimeFull(job.calculatedArrival)}` : "Scheduled"}</small>
                             )}
-                            {!job.actualArrival && (!job.primaryDropArrivedAt || job.primaryDropArrivedAt === "—") && (!job.primaryDropCompletedAt || job.primaryDropCompletedAt === "—") && job.calculatedArrival && (
-                              <small className="relay-sch-time">Sch. {fmtTimeFull(job.calculatedArrival)}</small>
-                            )}
+                            <DelayTag mins={drop1Point?.arrivalDelayMins} overdue={drop1Point?.overdue?.type === "arrival" ? drop1Point.overdue : null} graceMins={graceMins} />
+                            <PointWarnings point={drop1Point} />
                             {isActive && (
                               <button className="relay-report-delay-btn" type="button"
                                 onClick={e => { e.stopPropagation(); setDelayTarget(job); }}>
@@ -1335,14 +1337,15 @@ export function JobsListPage() {
                             )}
                           </div>
                           <div className="relay-stop-time">
-                            {job.primaryDropCompletedAt && job.primaryDropCompletedAt !== "—"
-                              ? <strong>{job.primaryDropCompletedAt}</strong>
+                            {job.primaryDropDepartedAt && job.primaryDropDepartedAt !== "—"
+                              ? <strong className={toneClass(drop1Point?.departureDelayMins)}>{job.primaryDropDepartedAt}</strong>
                               : job.calculatedUnloadEnd
                               ? <strong>{fmtTimeFull(job.calculatedUnloadEnd)}</strong>
                               : <span className="relay-time-dash">—</span>}
                             {job.calculatedUnloadEnd && (
-                              <small className="relay-sch-time">Sch. {fmtTimeFull(job.calculatedUnloadEnd)}</small>
+                              <small className="relay-sch-time">{job.primaryDropDepartedAt && job.primaryDropDepartedAt !== "—" ? `Sch. ${fmtTimeFull(job.calculatedUnloadEnd)}` : "Scheduled"}</small>
                             )}
+                            <DelayTag mins={drop1Point?.departureDelayMins} overdue={drop1Point?.overdue?.type === "departure" ? drop1Point.overdue : null} graceMins={graceMins} />
                           </div>
                         </div>
                         {/* Drop instructions */}
@@ -1380,16 +1383,17 @@ export function JobsListPage() {
                       {/* Intermediate stops */}
                       {routeStops.map((stop, index) => {
                         const stopTone = STOP_STATUS_TONE[stop.status] || "neutral";
+                        const stopPoint = punctualityPoint(job, stop.id);
                         return (
                         <div className="relay-stop-block" key={stop.id || `${job.id}-stop-${index}`}>
                           <div className="relay-stop-row">
                             <div className="relay-stop-location">
-                              <span className={`relay-stop-bubble${stop.isReturnPoint ? " return" : ""}`}>{stop.isReturnPoint ? "R" : index + 2}</span>
+                              <span className={`relay-stop-bubble${stop.isReturnPoint ? " return" : ""}`}>{stop.isReturnPoint ? "R" : stopPoint?.kind === "waypoint" ? "W" : (stopPoint?.label || "").replace("Drop ", "") || index + 2}</span>
                               <div>
                                 <strong>{abbrevAddr(stop.address)}</strong>
                                 <small>{stop.address !== "—" ? stop.address : "Address not set"}</small>
                                 <small className="relay-dock-label">
-                                  {stop.isReturnPoint ? "Return point" : `${(stop.type || "stop").replace(/^./, c => c.toUpperCase())} stop`}
+                                  {stop.label || (stop.isReturnPoint ? "Return point" : "Stop")}
                                 </small>
                                 <span className={`relay-driver-stop-status ${stopTone}`}>{stop.statusLabel || stop.status || "Pending"}</span>
                               </div>
@@ -1401,22 +1405,21 @@ export function JobsListPage() {
                               {stop.notes !== "—" && <span>Notes <strong>{stop.notes}</strong></span>}
                             </div>
                             <div className="relay-stop-time">
-                              <strong>{stop.actualArrival !== "—" ? stop.actualArrival : stop.plannedArrival !== "—" ? stop.plannedArrival : "TBD"}</strong>
-                              {stop.actualArrival !== "—" && stop.plannedArrival !== "—" && (
-                                <small className="relay-sch-time">Sch. {stop.plannedArrival}</small>
+                              <strong className={toneClass(stopPoint?.arrivalDelayMins)}>{stop.actualArrival !== "—" ? stop.actualArrival : stop.plannedArrival !== "—" ? stop.plannedArrival : "TBD"}</strong>
+                              {stop.plannedArrival !== "—" && (
+                                <small className="relay-sch-time">{stop.actualArrival !== "—" ? `Sch. ${stop.plannedArrival}` : "Scheduled"}</small>
                               )}
-                              {stop.actualArrival === "—" && stop.plannedArrival !== "—" && (
-                                <small className="relay-sch-time">Sch. {stop.plannedArrival}</small>
-                              )}
+                              <DelayTag mins={stopPoint?.arrivalDelayMins} overdue={stopPoint?.overdue?.type === "arrival" ? stopPoint.overdue : null} graceMins={graceMins} />
+                              <PointWarnings point={stopPoint} />
                             </div>
                             <div className="relay-stop-time">
-                              <strong>{stop.actualDeparture !== "—" ? stop.actualDeparture : stop.plannedDeparture !== "—" ? stop.plannedDeparture : "—"}</strong>
-                              {stop.actualDeparture !== "—" && stop.plannedDeparture !== "—" && (
-                                <small className="relay-sch-time">Sch. {stop.plannedDeparture}</small>
+                              {stop.status === "skipped"
+                                ? <strong>Skipped</strong>
+                                : <strong className={toneClass(stopPoint?.departureDelayMins)}>{stop.actualDeparture !== "—" ? stop.actualDeparture : stop.plannedDeparture !== "—" ? stop.plannedDeparture : "—"}</strong>}
+                              {stop.plannedDeparture !== "—" && (
+                                <small className="relay-sch-time">{stop.actualDeparture !== "—" ? `Sch. ${stop.plannedDeparture}` : "Scheduled"}</small>
                               )}
-                              {stop.actualDeparture === "—" && stop.plannedDeparture !== "—" && (
-                                <small className="relay-sch-time">Sch. {stop.plannedDeparture}</small>
-                              )}
+                              <DelayTag mins={stopPoint?.departureDelayMins} overdue={stopPoint?.overdue?.type === "departure" ? stopPoint.overdue : null} graceMins={graceMins} />
                             </div>
                           </div>
                           <div className="relay-stop-instr-wrap">
@@ -1457,12 +1460,8 @@ export function JobsListPage() {
                         <div className="relay-time-calc-arrow">→</div>
                         <div className="relay-time-calc-item">
                           <span className="relay-time-calc-label">Travel</span>
-                          <strong>
-                            {job.economics?.distanceMiles
-                              ? fmtMins(Math.round((job.economics.distanceMiles / (job.settings?.avgSpeedMph || 40)) * 60))
-                              : "—"}
-                          </strong>
-                          <small>{job.economics?.distanceMiles?.toFixed(1)} mi</small>
+                          <strong>{fmtMins(ukMinutes(job.loadingDoneTime, job.calculatedArrival))}</strong>
+                          <small>Collection → Drop 1</small>
                         </div>
                         <div className="relay-time-calc-arrow">→</div>
                         <div className="relay-time-calc-item">
@@ -1478,11 +1477,11 @@ export function JobsListPage() {
                           <span className="relay-time-calc-label">Total Job</span>
                           <strong>{fmtMins(job.totalJobDurationMins)}</strong>
                         </div>
-                        {job.economics?.distanceMiles && (routeStops.length + 1) > 0 && (
+                        {job.economics?.distanceMiles && (
                           <div className="relay-time-calc-item relay-time-calc-per-drop">
-                            <span className="relay-time-calc-label">Per Drop</span>
-                            <strong>{(job.economics.distanceMiles / (routeStops.length + 1)).toFixed(1)} mi</strong>
-                            <small>{routeStops.length + 1} drop{routeStops.length + 1 > 1 ? "s" : ""}</small>
+                            <span className="relay-time-calc-label">Route · Per Drop</span>
+                            <strong>{job.economics.distanceMiles.toFixed(1)} mi</strong>
+                            <small>{(job.economics.distanceMiles / dropCount).toFixed(1)} mi × {dropCount} drop{dropCount > 1 ? "s" : ""}</small>
                           </div>
                         )}
                       </div>
@@ -1494,30 +1493,23 @@ export function JobsListPage() {
                         <div className="relay-economics-col">
                           <span className="relay-economics-label">Fuel Cost</span>
                           <strong>{fmtGBP(job.economics.fuelCost)}</strong>
-                          <small>{fmtGBP(job.economics.fuelCostPerMile)}/mi</small>
+                          <small>{job.economics.fuelSource === "receipts" ? "Driver fuel receipts" : `${fmtGBP(job.economics.fuelCostPerMile)}/mi estimate`}</small>
                         </div>
                         <div className="relay-economics-col">
                           <span className="relay-economics-label">Driver Cost</span>
                           <strong>{fmtGBP(job.economics.driverCost)}</strong>
-                          <small>{fmtMins(job.totalJobDurationMins)} job time</small>
+                          <small>{fmtMins(job.economics.totalMins)} {job.economics.durationSource === "actual" ? "actual" : "planned"} time</small>
                         </div>
                         <div className="relay-economics-col">
                           <span className="relay-economics-label">Fleet Cost</span>
                           <strong>{fmtGBP(job.economics.fleetCost)}</strong>
-                          <small>{fmtGBP(job.economics.fleetCostPerHour)}/hr</small>
+                          <small>{job.economics.fleetCharged ? `${fmtGBP(job.economics.fleetCostPerHour)}/hr` : "No truck assigned"}</small>
                         </div>
-                        {Number(job.economics.tollCost || 0) > 0 && (
-                          <div className="relay-economics-col">
-                            <span className="relay-economics-label">Route Toll</span>
-                            <strong>{fmtGBP(job.economics.tollCost)}</strong>
-                            <small>Estimate</small>
-                          </div>
-                        )}
                         {Number(job.economics.recordedExpenses || 0) > 0 && (
                           <div className="relay-economics-col">
                             <span className="relay-economics-label">Recorded Expenses</span>
                             <strong>{fmtGBP(job.economics.recordedExpenses)}</strong>
-                            <small>Driver submitted</small>
+                            <small>Parking, meals, repairs</small>
                           </div>
                         )}
                         <div className="relay-economics-col">
@@ -1533,7 +1525,7 @@ export function JobsListPage() {
                           <strong>{job.freight}</strong>
                         </div>
                         <div className={`relay-economics-col profit-col ${job.isProfitable === true ? "profit" : job.isProfitable === false ? "loss" : ""}`}>
-                          <span className="relay-economics-label">{job.isProfitable ? "Est. Contribution Profit" : job.isProfitable === false ? "Est. Contribution Loss" : "Contribution unavailable"}</span>
+                          <span className="relay-economics-label">{`${job.economics.basis === "actual" ? "Actual" : "Est."} ${job.isProfitable ? "Contribution Profit" : job.isProfitable === false ? "Contribution Loss" : ""}`.trim() || "Contribution unavailable"}</span>
                           <strong>
                             {job.profitLossValue !== null
                               ? `${job.profitLossValue >= 0 ? "+" : "-"}${fmtGBP(Math.abs(job.profitLossValue))}`
@@ -1548,13 +1540,13 @@ export function JobsListPage() {
 
                     {/* ── Quick dispatch controls ── */}
                     <div className="relay-dispatch-controls">
-                      <div className="relay-dispatch-label">Quick Dispatch</div>
+                      <div className="relay-dispatch-label">Quick Dispatch{dispatchLocked && <small> · locked, job is {job.status}</small>}</div>
                       <div className="relay-dispatch-selects">
                         <div className="relay-dispatch-field">
                           <label>Driver</label>
                           <select
                             className={`jobs-planner-select ${driverToneVal}`}
-                            disabled={busyId === `driver-${job.id}`}
+                            disabled={dispatchLocked || busyId === `driver-${job.id}`}
                             value={job.driverId || ""}
                             onChange={e => updatePlannerField(job, { driver_id: e.target.value ? Number(e.target.value) : null }, "driver", "Driver could not be assigned.")}
                           >
@@ -1573,7 +1565,7 @@ export function JobsListPage() {
                           <label>Truck</label>
                           <select
                             className={`jobs-planner-select ${vehicleToneVal}`}
-                            disabled={busyId === `vehicle-${job.id}`}
+                            disabled={dispatchLocked || busyId === `vehicle-${job.id}`}
                             value={job.vehicleId || ""}
                             onChange={e => updatePlannerField(job, { vehicle_id: e.target.value ? Number(e.target.value) : null }, "vehicle", "Truck could not be assigned.")}
                           >
@@ -1592,7 +1584,7 @@ export function JobsListPage() {
                           <label>Trailer</label>
                           <select
                             className={`jobs-planner-select ${trolleyToneVal}`}
-                            disabled={busyId === `trailer-${job.id}`}
+                            disabled={dispatchLocked || busyId === `trailer-${job.id}`}
                             value={job.trailerId || ""}
                             onChange={e => updatePlannerField(job, { trailer_id: e.target.value ? Number(e.target.value) : null }, "trailer", "Trailer could not be assigned.")}
                           >
@@ -1611,7 +1603,7 @@ export function JobsListPage() {
                           <label>Status</label>
                           <select
                             className="jobs-planner-select compact"
-                            disabled={busyId === job.id}
+                            disabled={job.status === "completed" || busyId === job.id}
                             value={job.status}
                             onChange={e => setStatus(job, e.target.value)}
                           >
@@ -1682,6 +1674,13 @@ export function JobsListPage() {
                             {busyId === job.id ? "Saving…" : "Block"}
                           </button>
                         )}
+                        {!isActive && !isLoading && (
+                          <button className="relay-bottom-block-btn" type="button"
+                            disabled={busyId === job.id}
+                            onClick={() => setDeleteTarget(job)}>
+                            Delete
+                          </button>
+                        )}
                       </div>
                     </div>
 
@@ -1705,6 +1704,13 @@ export function JobsListPage() {
         loading={Boolean(busyId)}
         onCancel={() => setBlockTarget(null)}
         onConfirm={handleCancel}
+      />
+
+      <JobDeleteModal
+        job={deleteTarget}
+        loading={Boolean(busyId)}
+        onCancel={() => setDeleteTarget(null)}
+        onConfirm={handleDelete}
       />
 
       {/* Job details modal (Notes / Payout / Shipment) */}

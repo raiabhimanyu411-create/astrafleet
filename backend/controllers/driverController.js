@@ -1,8 +1,10 @@
 const db = require("../db/connection");
+const { ukDaysUntil } = require("../utils/maintenanceDates");
 const { verifySessionToken } = require("./authController");
 const { emitDriverChatMessage, emitDriverLocationUpdate, emitJobUpdate } = require("../realtime");
 const { buildChangeSet, logActivity } = require("../utils/auditLogger");
 const { attachJobCoordinates } = require("../utils/postcodeGeo");
+const { snapshotCostSettings } = require("../utils/jobCostSettings");
 const { dateTimeKey, fmtUkDateTime, fmtUkTime, isDateTimeKey, ukNowDateTimeKey, wallMinutesBetween, addWallMinutes } = require("../utils/jobDateTimes");
 
 function fmtDate(d) {
@@ -26,10 +28,9 @@ function fmtAmount(n) {
   return `£${Number(n).toLocaleString("en-GB", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 
+// UK calendar days, so a document expiring tomorrow always shows 1 whatever the time of day.
 function daysUntil(dateStr) {
-  if (!dateStr) return null;
-  const diff = new Date(dateStr) - new Date();
-  return Math.ceil(diff / (1000 * 60 * 60 * 24));
+  return ukDaysUntil(dateStr);
 }
 
 function expiryTone(dateStr) {
@@ -102,7 +103,8 @@ const tripColumnDefinitions = {
   eta_updated_at: "DATETIME DEFAULT NULL",
   primary_drop_status: "VARCHAR(40) DEFAULT 'pending'",
   primary_drop_arrived_at: "DATETIME DEFAULT NULL",
-  primary_drop_completed_at: "DATETIME DEFAULT NULL"
+  primary_drop_completed_at: "DATETIME DEFAULT NULL",
+  cost_settings_json: "TEXT DEFAULT NULL"
 };
 
 const statusTransitions = {
@@ -736,6 +738,9 @@ exports.updateMyJobStatus = async (req, res) => {
     if (status === "delivered") {
       return res.status(400).json({ message: "Submit POD with signature/photo to mark the job delivered." });
     }
+    if (["loaded", "in_transit"].includes(status) && !job.vehicle_id) {
+      return res.status(409).json({ message: "No truck is assigned to this job. Ask dispatch to assign a truck before loading." });
+    }
     if (!statusTransitions[currentStatus]?.has(status) && status !== currentStatus) {
       return res.status(409).json({ message: `Cannot move job from ${driverStatusLabel[currentStatus] || currentStatus} to ${driverStatusLabel[status] || status}.` });
     }
@@ -868,6 +873,14 @@ exports.submitMyProofOfDelivery = async (req, res) => {
         [completedAt, jobId, driver.id]
       );
     }
+    // Older app versions could reach Drop 1 without stamping its arrival; recover it from the status event.
+    if (!job.primary_drop_arrived_at) {
+      const [[arrivedEvent]] = await db.query(
+        `SELECT created_at FROM driver_job_status_events WHERE trip_id=? AND status='arrived_drop' ORDER BY created_at ASC, id ASC LIMIT 1`,
+        [jobId]
+      );
+      if (arrivedEvent) await db.query(`UPDATE trips SET primary_drop_arrived_at=COALESCE(primary_drop_arrived_at, ?) WHERE id=?`, [dateTimeKey(arrivedEvent.created_at), jobId]);
+    }
     const [[lastArrival]] = await db.query(`SELECT actual_arrival FROM job_stops WHERE trip_id=? AND stop_type='delivery' AND status='completed' ORDER BY stop_order DESC LIMIT 1`, [jobId]);
     await db.query(
       `UPDATE trips
@@ -886,6 +899,8 @@ exports.submitMyProofOfDelivery = async (req, res) => {
       await db.query(`UPDATE vehicles SET status='available' WHERE id=?`, [job.vehicle_id]);
     }
     if (job.trailer_id) await db.query(`UPDATE trailers SET status='available' WHERE id=?`, [job.trailer_id]);
+
+    await snapshotCostSettings(db, jobId);
 
     emitJobUpdate({ jobId: Number(jobId), source: "driver-pod", status: "delivered", dispatchStatus: "completed" });
 
@@ -906,8 +921,8 @@ exports.startMyShift = async (req, res) => {
     if (active) return res.json({ message: "Shift already active.", id: active.id });
 
     const [result] = await db.query(
-      `INSERT INTO driver_shifts (driver_id, shift_start, status, start_note) VALUES (?, NOW(), 'active', ?)`,
-      [driver.id, req.body.note || null]
+      `INSERT INTO driver_shifts (driver_id, shift_start, status, start_note) VALUES (?, ?, 'active', ?)`,
+      [driver.id, ukNowDateTimeKey(), req.body.note || null]
     );
     await db.query(`UPDATE drivers SET shift_status='ready' WHERE id=?`, [driver.id]);
     res.status(201).json({ message: "Shift started.", id: result.insertId });
@@ -926,11 +941,14 @@ exports.endMyShift = async (req, res) => {
     const [[active]] = await db.query(`SELECT id, shift_start FROM driver_shifts WHERE driver_id=? AND status='active' ORDER BY shift_start DESC LIMIT 1`, [driver.id]);
     if (!active) return res.status(400).json({ message: "No active shift found." });
 
+    // Shift times are UK wall-clock values, like every other operational timestamp.
+    const shiftEnd = ukNowDateTimeKey();
+    const shiftMins = Math.max(0, wallMinutesBetween(active.shift_start, shiftEnd) ?? 0);
     await db.query(
       `UPDATE driver_shifts
-       SET shift_end=NOW(), total_hours=TIMESTAMPDIFF(MINUTE, shift_start, NOW()) / 60, status='completed', end_note=?
+       SET shift_end=?, total_hours=?, status='completed', end_note=?
        WHERE id=? AND driver_id=?`,
-      [req.body.note || null, active.id, driver.id]
+      [shiftEnd, Math.round(shiftMins / 60 * 100) / 100, req.body.note || null, active.id, driver.id]
     );
     await db.query(`UPDATE drivers SET shift_status='rest' WHERE id=?`, [driver.id]);
     res.json({ message: "Shift ended." });
@@ -967,9 +985,9 @@ exports.createMyExpense = async (req, res) => {
 
     const [result] = await db.query(
       `INSERT INTO driver_expenses
-         (driver_id, trip_id, expense_type, amount_gbp, notes, receipt_data)
-       VALUES (?, ?, ?, ?, ?, ?)`,
-      [driver.id, tripId || null, allowedCategory, amountValue, finalNotes, receiptData || null]
+         (driver_id, trip_id, expense_type, amount_gbp, notes, receipt_data, expense_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      [driver.id, tripId || null, allowedCategory, amountValue, finalNotes, receiptData || null, ukNowDateTimeKey()]
     );
     await createControlRoomAlert({
       title: `Driver expense submitted`,

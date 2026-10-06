@@ -2,9 +2,10 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import api from "../api/axios";
 import { StateNotice } from "./StateNotice";
+import { SeverityIcon } from "./SeverityIcon";
 import { StatusPill } from "./StatusPill";
 
-const toneLabel = { danger: "Action", warning: "Watch", info: "Info" };
+const toneLabel = { danger: "Critical", warning: "Warning", info: "Info" };
 const tonePill = { danger: "danger", warning: "warning", info: "neutral" };
 
 function formatNotificationDate(value) {
@@ -16,7 +17,8 @@ function formatNotificationDate(value) {
     month: "short",
     year: "numeric",
     hour: "2-digit",
-    minute: "2-digit"
+    minute: "2-digit",
+    timeZone: "Europe/London"
   });
 }
 
@@ -179,7 +181,7 @@ export function NotificationCenter({
             ["all", "All"],
             ["unread", "Unread"],
             ["priority", "Priority"],
-            ["danger", "Action needed"]
+            ["danger", "Critical"]
           ].map(([key, label]) => (
             <button className={`notification-filter-btn${filter === key ? " active" : ""}`} key={key} onClick={() => setFilter(key)} type="button">
               {label}<span>{counts[key]}</span>
@@ -198,7 +200,7 @@ export function NotificationCenter({
               <article className={`notification-center-item ${item.type || "info"}${item.isRead ? " read" : " unread"}${item.isPriority ? " priority" : ""}`} key={item.id}>
                 <button className="notification-center-open" onClick={() => viewDetails(item)} type="button">
                   <span className="notification-center-icon" aria-hidden="true">
-                    {item.type === "danger" ? "!" : item.type === "warning" ? "⌁" : "i"}
+                    <SeverityIcon type={item.type || "info"} />
                   </span>
                   <span className="notification-center-copy">
                     <span className="notification-item-meta">

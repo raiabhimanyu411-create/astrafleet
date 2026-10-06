@@ -15,6 +15,7 @@ const maintenanceRoutes = require("./routes/maintenanceRoutes");
 const maintenanceController = require("./controllers/maintenanceController");
 const settingsRoutes    = require("./routes/settingsRoutes");
 const { chatRoom, setRealtimeServer } = require("./realtime");
+const { runLegacyUkTimeMigration } = require("./utils/legacyUkTimeMigration");
 
 const app = express();
 const PORT = process.env.PORT || 5001;
@@ -118,11 +119,23 @@ if (process.env.NODE_ENV === "production") {
 }
 
 if (require.main === module) {
-  httpServer.listen(PORT, () => {
-    console.log(`Astra Fleet backend listening on http://localhost:${PORT}`);
-    maintenanceController.initializeMaintenance()
-      .catch((error) => console.error("[MaintenanceIntegrity] startup verification failed:", error.message));
-  });
+  // Convert maintenance times MySQL wrote in its old timezone to UK time once, before any request can
+  // write new UK-time rows. Never blocks startup: on any problem it logs and leaves the data unchanged.
+  runLegacyUkTimeMigration()
+    .then((result) => {
+      if (result.status === "applied") {
+        const changed = result.summary.reduce((sum, item) => sum + item.changed, 0);
+        console.log(`[UK time] Converted ${changed} old maintenance times from ${result.from} to UK time.`);
+      }
+    })
+    .catch((error) => console.error("[UK time] Conversion check failed:", error.message))
+    .finally(() => {
+      httpServer.listen(PORT, () => {
+        console.log(`Astra Fleet backend listening on http://localhost:${PORT}`);
+        maintenanceController.initializeMaintenance()
+          .catch((error) => console.error("[MaintenanceIntegrity] startup verification failed:", error.message));
+      });
+    });
 }
 
 module.exports = { app, httpServer, io };

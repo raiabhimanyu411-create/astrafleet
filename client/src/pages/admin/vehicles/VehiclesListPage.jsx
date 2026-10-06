@@ -90,7 +90,7 @@ function TrolleyModal({ onClose, onSaved }) {
         </div>
         <div className="af-grid-2">
           <div className="af-field">
-            <label className="af-label">Registration Number <span style={{ color: "#C20404" }}>*</span></label>
+            <label className="af-label">Registration Number <span style={{ color: "#D91515" }}>*</span></label>
             <input className="af-input" type="text" placeholder="e.g. TR12 ABC" value={fields.registration_number} onChange={e => set("registration_number", e.target.value.toUpperCase())} required />
           </div>
           <div className="af-field">

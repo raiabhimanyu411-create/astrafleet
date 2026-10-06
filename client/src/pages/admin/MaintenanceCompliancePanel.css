@@ -161,7 +161,7 @@
 .compliance-tabs button.active {
   background: linear-gradient(135deg, #164fb5, #1679ce);
   color: #fff;
-  box-shadow: 0 5px 14px rgba(37, 99, 235, 0.2);
+  box-shadow: 0 5px 14px rgba(9, 114, 211, 0.2);
 }
 
 .compliance-card {
@@ -271,7 +271,7 @@
 .compliance-field select:hover,
 .compliance-field textarea:hover,
 .compliance-check-row input:hover,
-.compliance-check-row select:hover { border-color: #94a3b8; }
+.compliance-check-row select:hover { border-color: #8C8C94; }
 
 .compliance-field input:focus,
 .compliance-field select:focus,
@@ -336,7 +336,7 @@
   min-height: 52px;
   padding: 7px 8px 7px 11px;
   border: 1px solid var(--border);
-  border-left: 3px solid #cbd5e1;
+  border-left: 3px solid #C6C6CD;
   border-radius: 8px;
   background: var(--surface-2);
   transition: border-color 140ms ease, background-color 140ms ease, transform 140ms ease;
@@ -414,7 +414,7 @@
   border-color: var(--primary);
   background: linear-gradient(135deg, var(--primary), #1678d3);
   color: #fff;
-  box-shadow: 0 4px 12px rgba(37, 99, 235, 0.18);
+  box-shadow: 0 4px 12px rgba(9, 114, 211, 0.18);
 }
 
 .compliance-actions button:disabled,
@@ -502,7 +502,7 @@
   border-color: #93c5fd;
   border-left-color: var(--primary);
   background: var(--primary-soft);
-  box-shadow: 0 4px 12px rgba(37, 99, 235, 0.08);
+  box-shadow: 0 4px 12px rgba(9, 114, 211, 0.08);
 }
 
 .compliance-record strong { font-size: 0.8rem; }
@@ -546,7 +546,7 @@
 .compliance-inline-form {
   margin-top: 13px;
   padding: 14px;
-  border: 1px solid #cbd5e1;
+  border: 1px solid #C6C6CD;
   border-radius: 9px;
   background: linear-gradient(135deg, var(--surface-2), #fff);
 }

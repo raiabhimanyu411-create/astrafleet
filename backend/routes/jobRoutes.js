@@ -20,5 +20,7 @@ router.post("/:id/notes",        j.addJobNote);
 router.post("/:id/stops",        j.addJobStop);
 router.delete("/:id/stops/:stopId", j.deleteJobStop);
 router.delete("/:id",            j.cancelJob);
+router.get("/:id/delete-preview", j.getJobDeletePreview);
+router.post("/:id/delete",       j.deleteJob);
 
 module.exports = router;

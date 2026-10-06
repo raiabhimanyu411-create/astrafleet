@@ -8,7 +8,7 @@ import { ukAddMinutes, ukInstant, ukMinutes, ukNow, formatUkWall } from '../../.
 function Field({ label, hint, required, error, children }) {
   return (
     <div className="af-field">
-      <label className="af-label">{label}{required && <span style={{ color: "#C20404" }}> *</span>}</label>
+      <label className="af-label">{label}{required && <span style={{ color: "#D91515" }}> *</span>}</label>
       {children}
       {error && <p className="af-field-error">{error}</p>}
       {hint && <p className="af-hint">{hint}</p>}
@@ -460,9 +460,9 @@ export function JobFormPage() {
                   <input className="af-input" type="text" placeholder="e.g. Northline Retail" value={fields.client_name} onChange={e => set("client_name", e.target.value)} aria-invalid={Boolean(fieldErrors.client_name)} />
                 </Field>
                 {selectedCustomer && (
-                  <div style={{ gridColumn: "1 / -1", padding: 12, border: "1px solid #e2e8f0", borderRadius: 8, background: "#f8fafc" }}>
+                  <div style={{ gridColumn: "1 / -1", padding: 12, border: "1px solid #E9EBED", borderRadius: 8, background: "#FAFAFA" }}>
                     <span className="card-label">Auto-Filled From Customer</span>
-                    <p style={{ margin: "5px 0 0", color: "#475569", fontSize: "0.86rem" }}>
+                    <p style={{ margin: "5px 0 0", color: "#424650", fontSize: "0.86rem" }}>
                       {selectedCustomer.contact_name || "Contact not set"} · {selectedCustomer.phone || "Phone not set"} · {selectedCustomer.email || "Email not set"}
                     </p>
                   </div>
@@ -472,7 +472,7 @@ export function JobFormPage() {
 
             <div className="af-section">
               <p className="af-section-title">Route</p>
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: 16, marginBottom: 16, paddingBottom: 16, borderBottom: "1px solid #e2e8f0" }}>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: 16, marginBottom: 16, paddingBottom: 16, borderBottom: "1px solid #E9EBED" }}>
                 <Field label="Reference">
                   <input className="af-input" type="text" placeholder="e.g. DE_1056839_1" value={fields.reference} onChange={e => set("reference", e.target.value)} />
                 </Field>
@@ -499,7 +499,7 @@ export function JobFormPage() {
                 <Field label="Collection Departure (UK Time)" hint="Same date as collection arrival. Used for ETA and estimated cost." required error={fieldErrors.loading_done_time}>
                   <input className="af-input" type="datetime-local" value={fields.loading_done_time} onChange={e => set("loading_done_time", e.target.value)} />
                 </Field>
-                <Field label={<>Delivery Address <span style={{ fontWeight: 700, fontSize: "0.72rem", color: "#237FDA", background: "#EAF4FD", border: "1px solid #A8D2F4", borderRadius: 20, padding: "1px 8px", marginLeft: 6, verticalAlign: "middle" }}>Stop 1</span></>} required error={fieldErrors.drop_address}>
+                <Field label={<>Delivery Address <span style={{ fontWeight: 700, fontSize: "0.72rem", color: "#0972D3", background: "#F0FBFF", border: "1px solid #A8D2F4", borderRadius: 20, padding: "1px 8px", marginLeft: 6, verticalAlign: "middle" }}>Stop 1</span></>} required error={fieldErrors.drop_address}>
                   {dropOptions.length > 0 && (
                     <select className="af-select" style={{ marginBottom: 8 }} value="" onChange={e => e.target.value && set("drop_address", e.target.value)}>
                       <option value="">Choose Saved Delivery Address</option>
@@ -516,12 +516,12 @@ export function JobFormPage() {
                 </Field>
               </div>
 
-              <div style={{ marginTop: 16, borderTop: "1px solid #e2e8f0", paddingTop: 16 }}>
+              <div style={{ marginTop: 16, borderTop: "1px solid #E9EBED", paddingTop: 16 }}>
                 <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
                   <p className="af-section-title" style={{ margin: 0 }}>
                     Intermediate Stops
                     {validStops.length > 0 && (
-                      <span style={{ marginLeft: 8, fontSize: "0.75rem", fontWeight: 600, color: "#237FDA", background: "#EAF4FD", borderRadius: 20, padding: "2px 8px" }}>
+                      <span style={{ marginLeft: 8, fontSize: "0.75rem", fontWeight: 600, color: "#0972D3", background: "#F0FBFF", borderRadius: 20, padding: "2px 8px" }}>
                         {validStops.length} stop{validStops.length > 1 ? "s" : ""} · calculate route for exact miles
                       </span>
                     )}
@@ -535,15 +535,15 @@ export function JobFormPage() {
                   </button>
                 </div>
                 {stops.length === 0 && (
-                  <p style={{ color: "#94a3b8", fontSize: "0.84rem", margin: 0 }}>
+                  <p style={{ color: "#8C8C94", fontSize: "0.84rem", margin: 0 }}>
                     No intermediate stops. Click "Add stop" to include waypoints, additional pickups, or delivery stops.
                   </p>
                 )}
                 {fieldErrors.stops && <p className="af-field-error">{fieldErrors.stops}</p>}
                 {stops.map((stop, i) => (
-                  <div key={i} style={{ border: "1px solid #e2e8f0", borderRadius: 10, padding: "14px 16px", marginBottom: 10, background: "#f8fafc", position: "relative" }}>
+                  <div key={i} style={{ border: "1px solid #E9EBED", borderRadius: 10, padding: "14px 16px", marginBottom: 10, background: "#FAFAFA", position: "relative" }}>
                     <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
-                      <strong style={{ fontSize: "0.84rem", color: "#0f172a" }}>Stop {i + 2}</strong>
+                      <strong style={{ fontSize: "0.84rem", color: "#0F141A" }}>Stop {i + 2}</strong>
                       <button
                         type="button"
                         className="header-action-button danger"
@@ -610,7 +610,7 @@ export function JobFormPage() {
                         {routeEstimate.pickupPostcode} → {routeEstimate.stopPostcodes?.length ? `${routeEstimate.stopPostcodes.join(" → ")} → ` : ""}{routeEstimate.dropPostcode}
                       </span>
                     )}
-                    {estimateErr && <span style={{ color: "#920303", fontSize: "0.84rem", fontWeight: 700 }}>{estimateErr}</span>}
+                    {estimateErr && <span style={{ color: "#AD0A0A", fontSize: "0.84rem", fontWeight: 700 }}>{estimateErr}</span>}
                   </div>
                 )}
               </div>
@@ -677,7 +677,7 @@ export function JobFormPage() {
                   </div>
                 </div>
               ) : (
-                <p style={{ color: "#94a3b8", fontSize: "0.84rem", marginTop: 12 }}>
+                <p style={{ color: "#8C8C94", fontSize: "0.84rem", marginTop: 12 }}>
                   Select a route or calculate distance from postcodes, then enter loading done time to auto-calculate travel time and arrival.
                 </p>
               )}

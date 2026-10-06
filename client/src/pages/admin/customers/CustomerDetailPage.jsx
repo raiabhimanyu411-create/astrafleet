@@ -7,11 +7,11 @@ import { AdminWorkspaceLayout } from "../AdminWorkspaceLayout";
 
 function DetailField({ label, value }) {
   return (
-    <div style={{ padding: "12px 14px", background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 8 }}>
-      <span style={{ display: "block", fontSize: "0.72rem", fontWeight: 700, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 5 }}>
+    <div style={{ padding: "12px 14px", background: "#FAFAFA", border: "1px solid #E9EBED", borderRadius: 8 }}>
+      <span style={{ display: "block", fontSize: "0.72rem", fontWeight: 700, color: "#5F6B7A", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 5 }}>
         {label}
       </span>
-      <strong style={{ fontSize: "0.9rem", fontWeight: 600, color: "#0f172a" }}>{value || "—"}</strong>
+      <strong style={{ fontSize: "0.9rem", fontWeight: 600, color: "#0F141A" }}>{value || "—"}</strong>
     </div>
   );
 }
@@ -63,7 +63,7 @@ export function CustomerDetailPage() {
                 <div>
                   <p className="af-section-title" style={{ margin: 0 }}>Company Profile</p>
                   <h2 style={{ margin: "6px 0 4px", fontSize: "1.3rem" }}>{data.companyName}</h2>
-                  <span style={{ fontSize: "0.8rem", color: "#64748b" }}>Customer since {data.since}</span>
+                  <span style={{ fontSize: "0.8rem", color: "#5F6B7A" }}>Customer since {data.since}</span>
                 </div>
                 <StatusPill tone={data.tone}>{data.status}</StatusPill>
               </div>
@@ -105,7 +105,7 @@ export function CustomerDetailPage() {
               </div>
 
               {data.trips.length === 0 ? (
-                <p style={{ color: "#94a3b8", fontSize: "0.86rem", margin: 0 }}>No trips found for this customer.</p>
+                <p style={{ color: "#8C8C94", fontSize: "0.86rem", margin: 0 }}>No trips found for this customer.</p>
               ) : (
                 <div className="data-rows">
                   {data.trips.map(t => (
@@ -125,7 +125,7 @@ export function CustomerDetailPage() {
                       </div>
                       <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 4 }}>
                         <StatusPill tone={t.tone}>{t.status}</StatusPill>
-                        <span style={{ fontSize: "0.8rem", fontWeight: 600, color: "#334155" }}>{t.freight}</span>
+                        <span style={{ fontSize: "0.8rem", fontWeight: 600, color: "#414D5C" }}>{t.freight}</span>
                       </div>
                     </div>
                   ))}
@@ -144,7 +144,7 @@ export function CustomerDetailPage() {
               </div>
 
               {data.invoices.length === 0 ? (
-                <p style={{ color: "#94a3b8", fontSize: "0.86rem", margin: 0 }}>No invoices found for this customer.</p>
+                <p style={{ color: "#8C8C94", fontSize: "0.86rem", margin: 0 }}>No invoices found for this customer.</p>
               ) : (
                 <div className="data-rows">
                   {data.invoices.map(inv => (
