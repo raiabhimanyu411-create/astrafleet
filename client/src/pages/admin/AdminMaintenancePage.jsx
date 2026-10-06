@@ -21,7 +21,8 @@ import {
   updateDefectWorkflow,
   updateMaintenanceBill,
   updateInventoryItem,
-  updateMaintenanceJob
+  updateMaintenanceJob,
+  extractMaintenanceDocument
 } from "../../api/maintenanceApi";
 import { getAuthSession } from "../../utils/authSession";
 import { StateNotice } from "../../components/StateNotice";
@@ -161,9 +162,9 @@ function daysFromToday(value) {
 }
 
 const TYRE_AXLES = [
-  { key: "front", label: "Front / steer axle", shortLabel: "FRONT", target: "105–125 psi", left: "Front left", right: "Front right" },
-  { key: "middle", label: "Middle / drive axle", shortLabel: "DRIVE", target: "90–115 psi", left: "Axle 2 left", right: "Axle 2 right" },
-  { key: "rear", label: "Rear axle", shortLabel: "REAR", target: "90–115 psi", left: "Rear left", right: "Rear right" }
+  { key: "front", label: "Front / steer axle", shortLabel: "Steer", target: "105–125 psi", left: "Front left", right: "Front right" },
+  { key: "middle", label: "Middle / drive axle", shortLabel: "Drive", target: "90–115 psi", left: "Axle 2 left", right: "Axle 2 right" },
+  { key: "rear", label: "Rear axle", shortLabel: "Rear", target: "90–115 psi", left: "Rear left", right: "Rear right" }
 ];
 
 function tyrePressureValue(tyre) {
@@ -205,7 +206,7 @@ function DigitalTyreMonitor({ tyres = [] }) {
     <div className="digital-tyre-monitor">
       <div className="digital-tyre-toolbar">
         <div>
-          <span className="digital-live"><i /> LIVE TYRE TELEMETRY</span>
+          <span className="digital-live"><i /> Live tyre telemetry</span>
           <strong>{selectedVehicle || "No vehicle selected"}</strong>
           <small>{healthyCount}/{vehicleTyres.length || 6} tyres within fleet target</small>
         </div>
@@ -219,32 +220,34 @@ function DigitalTyreMonitor({ tyres = [] }) {
 
       <div className="digital-tyre-stage">
         <div className="truck-digital-visual" aria-hidden="true">
-          <svg viewBox="0 0 260 540" role="img">
-            <defs>
-              <linearGradient id="truckCab" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stopColor="#2dd4bf" /><stop offset="1" stopColor="#087ea4" /></linearGradient>
-              <linearGradient id="truckBody" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stopColor="#ecfeff" /><stop offset="1" stopColor="#c8eef2" /></linearGradient>
-            </defs>
-            <ellipse className="truck-shadow" cx="130" cy="503" rx="91" ry="12" />
-            <rect className="truck-chassis" x="116" y="139" width="28" height="346" rx="8" />
-            <rect className="truck-trailer" x="65" y="171" width="130" height="310" rx="10" fill="url(#truckBody)" />
-            <path className="truck-cab" d="M73 160V82l25-51h64l25 51v78z" fill="url(#truckCab)" />
-            <path className="truck-glass" d="M94 78l16-32h40l16 32z" />
-            <path className="truck-window" d="M87 88h27v31H83V99zm59 0h27l4 11v20h-31z" />
-            <rect className="truck-grille" x="99" y="129" width="62" height="14" rx="3" />
-            <circle className="truck-light" cx="87" cy="139" r="5" /><circle className="truck-light" cx="173" cy="139" r="5" />
-            <path className="truck-spine" d="M130 190v265" />
-            <path className="truck-detail" d="M79 207h102M79 358h102M79 447h102" />
-            <g className="truck-tyres">
-              <g><rect x="45" y="118" width="24" height="58" rx="9" /><path d="M51 128v38m6-38v38m6-38v38" /></g>
-              <g><rect x="191" y="118" width="24" height="58" rx="9" /><path d="M197 128v38m6-38v38m6-38v38" /></g>
-              <g><rect x="43" y="333" width="26" height="62" rx="9" /><path d="M49 343v42m7-42v42m7-42v42" /></g>
-              <g><rect x="191" y="333" width="26" height="62" rx="9" /><path d="M197 343v42m7-42v42m7-42v42" /></g>
-              <g><rect x="43" y="423" width="26" height="62" rx="9" /><path d="M49 433v42m7-42v42m7-42v42" /></g>
-              <g><rect x="191" y="423" width="26" height="62" rx="9" /><path d="M197 433v42m7-42v42m7-42v42" /></g>
-            </g>
-            <g className="truck-axle-lines"><path d="M69 147h122" /><path d="M69 364h122" /><path d="M69 454h122" /></g>
+          {/* Top-view schematic: each tyre takes the colour of its live reading. */}
+          <svg viewBox="0 0 200 440">
+            <text className="truck-front-label" x="100" y="14" textAnchor="middle">Front</text>
+            <rect className="truck-outline cab" x="62" y="24" width="76" height="62" rx="8" />
+            <rect className="truck-outline body" x="56" y="98" width="88" height="318" rx="4" />
+            <path className="truck-rail" d="M86 86v330M114 86v330" />
+            {TYRE_AXLES.map((axle, index) => {
+              const y = [55, 300, 378][index];
+              return (
+                <g key={axle.key}>
+                  <path className="truck-axle" d={`M40 ${y}h120`} />
+                  {[axle.left, axle.right].map((position, side) => (
+                    <rect
+                      key={position}
+                      className={`truck-tyre ${tyreVisualState(findTyre(position), axle.key)}`}
+                      x={side ? 160 : 22}
+                      y={y - 22}
+                      width="18"
+                      height="44"
+                      rx="4"
+                    />
+                  ))}
+                  <text className="truck-axle-label" x="100" y={y - 8} textAnchor="middle">{axle.shortLabel}</text>
+                </g>
+              );
+            })}
           </svg>
-          <span className="truck-visual-label">3-AXLE HGV CONFIGURATION</span>
+          <span className="truck-visual-label">3-axle HGV · top view</span>
         </div>
 
         <div className="digital-axle-list">
@@ -263,8 +266,8 @@ function DigitalTyreMonitor({ tyres = [] }) {
                     <div className={`digital-tyre-card ${state}`} key={position}>
                       <div className="digital-wheel"><span /></div>
                       <div>
-                        <small>{position.endsWith("left") ? "LEFT" : "RIGHT"}</small>
-                        <strong>{pressure == null ? "—" : pressure.toFixed(0)} <em>PSI</em></strong>
+                        <small>{position.endsWith("left") ? "Left" : "Right"}</small>
+                        <strong>{pressure == null ? "—" : pressure.toFixed(0)} <em>psi</em></strong>
                         <p>{tyre?.treadDepth || "No reading"} tread</p>
                       </div>
                       <span className="digital-state-dot" title={state} />
@@ -622,13 +625,74 @@ function toJobForm(job) {
   };
 }
 
-function Field({ label, children }) {
+function Field({ label, children, autoFilled = false }) {
   return (
     <label className="af-field">
-      <span className="af-label">{label}</span>
+      <span className="af-label">{label}{autoFilled && <em className="af-autofill-tag">Auto-filled</em>}</span>
       {children}
     </label>
   );
+}
+
+// Suggested values read from an uploaded invoice / certificate (server-side OCR, nothing saved until the
+// person presses Save). Only empty fields are filled, so anything typed by hand is never overwritten.
+const AUTOFILL_FIELDS = [
+  ["billNumber", "bill_number", "Bill number"],
+  ["billDate", "bill_date", "Bill date"],
+  ["billAmountGbp", "bill_amount_gbp", "Bill amount"],
+  ["billAmountGbp", "final_cost_gbp", "Cost"],
+  ["garageName", "garage_name", "Garage"],
+  ["odometerKm", "completed_mileage_km", "Odometer"]
+];
+
+const isBlankFormValue = (value) => value == null || String(value).trim() === "" || Number(value) === 0 && /^0*\.?0*$/.test(String(value).trim());
+
+function useDocumentAutofill(form, setForm) {
+  const formRef = useRef(form);
+  formRef.current = form;
+  const [autofill, setAutofill] = useState({ status: "idle", message: "", values: {} });
+
+  async function run(source) {
+    setAutofill({ status: "reading", message: "Reading document…", values: {} });
+    try {
+      const { data } = await extractMaintenanceDocument(source);
+      if (data.status !== "ok") {
+        setAutofill({ status: "manual", message: data.reason || "No invoice details were found in this document. Please fill them in.", values: {} });
+        return;
+      }
+      const current = formRef.current;
+      const patch = {};
+      const labels = [];
+      for (const [key, field, label] of AUTOFILL_FIELDS) {
+        const value = data.fields?.[key];
+        if (value == null || !(field in current) || !isBlankFormValue(current[field])) continue;
+        if (field === "bill_date" && value > ukDateKey()) continue;
+        patch[field] = String(value);
+        labels.push(label);
+      }
+      if (!labels.length) {
+        setAutofill({ status: "manual", message: "The document was read, but the matching fields are already filled.", values: {} });
+        return;
+      }
+      setForm((latest) => {
+        const next = { ...latest };
+        Object.entries(patch).forEach(([field, value]) => { if (isBlankFormValue(latest[field])) next[field] = value; });
+        return next;
+      });
+      setAutofill({ status: "filled", message: `Filled from document: ${labels.join(", ")}. Please check before saving.`, values: patch });
+    } catch (err) {
+      setAutofill({ status: "manual", message: err?.response?.data?.message || "The document could not be read. Please fill the details in.", values: {} });
+    }
+  }
+
+  const isAutoFilled = (field) => autofill.values[field] != null && String(form[field]) === autofill.values[field];
+  const reset = () => setAutofill({ status: "idle", message: "", values: {} });
+  return { autofill, run, isAutoFilled, reset };
+}
+
+function AutofillStatus({ autofill }) {
+  if (autofill.status === "idle") return null;
+  return <p className={`af-autofill-status ${autofill.status}`} role="status">{autofill.message}</p>;
 }
 
 function JobModal({ vehicles, defects, editingJob, initialForm, onClose, onSaved }) {
@@ -645,6 +709,8 @@ function JobModal({ vehicles, defects, editingJob, initialForm, onClose, onSaved
     const items = getMaintenanceItems(assetType);
     setSelectedServices(editingJob ? [initialForm?.service_type].filter(Boolean) : items.map((i) => i.value));
   }, [initialForm]);
+
+  const { autofill, run: readDocument, isAutoFilled } = useDocumentAutofill(form, setForm);
 
   function set(name, value) {
     setError("");
@@ -792,7 +858,7 @@ function JobModal({ vehicles, defects, editingJob, initialForm, onClose, onSaved
               {priorityOptions.map((priority) => <option key={priority} value={priority}>{priority}</option>)}
             </select>
           </Field>
-          <Field label="Garage / Vendor">
+          <Field label="Garage / Vendor" autoFilled={isAutoFilled("garage_name")}>
             <input className="af-input" value={form.garage_name} onChange={(e) => set("garage_name", e.target.value)} placeholder="Workshop or vendor" />
           </Field>
           <Field label="Mechanic / Owner">
@@ -817,12 +883,12 @@ function JobModal({ vehicles, defects, editingJob, initialForm, onClose, onSaved
               </select>
             </Field>
           )}
-          <Field label="Final Cost">
+          <Field label="Final Cost" autoFilled={isAutoFilled("final_cost_gbp")}>
             <input className="af-input" type="number" min="0" step="0.01" value={form.final_cost_gbp} onChange={(e) => set("final_cost_gbp", e.target.value)} />
           </Field>
           {(!editingJob || form.service_type === "Full Service") && (
             <>
-              <Field label="Completed Mileage (km)">
+              <Field label="Completed Mileage (km)" autoFilled={isAutoFilled("completed_mileage_km")}>
                 <input className="af-input" type="number" min="0" value={form.completed_mileage_km} onChange={(e) => set("completed_mileage_km", e.target.value)} placeholder="e.g. 185000" />
               </Field>
               <Field label="Next Due Mileage (km)">
@@ -865,13 +931,13 @@ function JobModal({ vehicles, defects, editingJob, initialForm, onClose, onSaved
               Select one maintenance item above before adding its costs, notes, bill details, or paperwork.
             </p>
           )}
-          <Field label="Bill / Invoice Number">
+          <Field label="Bill / Invoice Number" autoFilled={isAutoFilled("bill_number")}>
             <input className="af-input" value={form.bill_number} onChange={(e) => set("bill_number", e.target.value)} placeholder="e.g. INV-9821" />
           </Field>
-          <Field label="Bill Date">
+          <Field label="Bill Date" autoFilled={isAutoFilled("bill_date")}>
             <input className="af-input" type="date" max={ukDateKey()} value={form.bill_date} onChange={(e) => set("bill_date", e.target.value)} />
           </Field>
-          <Field label="Bill Amount">
+          <Field label="Bill Amount" autoFilled={isAutoFilled("bill_amount_gbp")}>
             <input className="af-input" type="number" min="0" step="0.01" value={form.bill_amount_gbp} onChange={(e) => set("bill_amount_gbp", e.target.value)} />
           </Field>
           <Field label="Attach Document / Bill">
@@ -880,7 +946,7 @@ function JobModal({ vehicles, defects, editingJob, initialForm, onClose, onSaved
               type="file"
               accept="image/*,.pdf,.doc,.docx,.xls,.xlsx"
               disabled={!editingJob && selectedServices.length !== 1}
-              onChange={(e) => readFileAsDataUrl(e.target.files?.[0], (value) => set("bill_attachment_data", value))}
+              onChange={(e) => readFileAsDataUrl(e.target.files?.[0], (value) => { set("bill_attachment_data", value); readDocument({ attachmentData: value }); })}
             />
           </Field>
           <Field label="Document Notes">
@@ -891,6 +957,7 @@ function JobModal({ vehicles, defects, editingJob, initialForm, onClose, onSaved
             <strong>{form.bill_attachment_data ? "Document attached" : "No document attached"}</strong>
           </div>
         </div>
+        <AutofillStatus autofill={autofill} />
 
         <div className="maintenance-form-grid single">
           <Field label="Parts Required">
@@ -974,8 +1041,10 @@ function VehicleDetailModal({ target, profiles, onClose, onSaved }) {
   function set(name, value) {
     setForm((c) => ({ ...c, [name]: value }));
   }
+  const { autofill, run: readDocument, isAutoFilled, reset: resetAutofill } = useDocumentAutofill(form, setForm);
 
   function openItem(type) {
+    resetAutofill();
     setActiveType(type);
     setError("");
     setSuccessMessage("");
@@ -1154,7 +1223,7 @@ function VehicleDetailModal({ target, profiles, onClose, onSaved }) {
           <div>
             <span className="card-label">{target.assetType === "trailer" ? "Trailer" : "Vehicle"} · {profile.fleetCode}</span>
             <h2>{profile.vehicle}</h2>
-            <p className="finance-empty">{profile.make} · {profile.currentKmLabel}</p>
+            <p className="finance-empty">{[profile.make, profile.currentKmLabel].filter(value => value && !["-", "—"].includes(String(value).trim())).join(" · ")}</p>
           </div>
           <button className="header-action-button" type="button" onClick={onClose}>Close</button>
         </div>
@@ -1164,7 +1233,7 @@ function VehicleDetailModal({ target, profiles, onClose, onSaved }) {
         <div className="maintenance-profile-items vehicle-detail-items">
           {profile.items.map((item) => {
             const code = TYPE_TO_CODE[item.type] || item.type;
-            const color = EVENT_COLORS[code] || { bg: "#8C8C94", text: "#fff" };
+            const color = EVENT_COLORS[code] || { bg: "#616161", text: "#fff" };
             const isSelectedCompleted = target?.selectionKind === "completed"
               && target?.preselectType === item.type
               && Boolean(target?.completedJob);
@@ -1214,7 +1283,7 @@ function VehicleDetailModal({ target, profiles, onClose, onSaved }) {
                   }
                 }}
               >
-                <span className="vehicle-detail-item-code" style={{ background: color.bg, color: color.text }}>{code}</span>
+                <span className="vehicle-detail-item-code" style={{ "--chip-accent": color.bg }}>{code}</span>
                 <strong>{item.type}</strong>
                 <p>{isSelectedCompleted ? "Selected completion" : "Last done"}: <b className="maintenance-profile-date">{displayedLastDone}{displayedLastDoneKm ? ` · ${Number(displayedLastDoneKm).toLocaleString("en-GB")} km` : ""}</b></p>
                 <p>Next due: <b className="maintenance-profile-date">{displayedNextDue}</b></p>
@@ -1258,7 +1327,7 @@ function VehicleDetailModal({ target, profiles, onClose, onSaved }) {
                 <strong>
                   {isInspectionCycle
                     ? `WK${isoWeekNumber(nextDueWeekStart)} · ${formatWeekStart(nextDueWeekStart)} to ${formatWeekStart(addDaysToKey(nextDueWeekStart, 6))}`
-                    : nextDue}
+                    : (/^\d{4}-\d{2}-\d{2}$/.test(String(nextDue)) ? formatDateKeyLong(nextDue) : nextDue)}
                 </strong>
               </div>
             )}
@@ -1274,29 +1343,29 @@ function VehicleDetailModal({ target, profiles, onClose, onSaved }) {
               <Field label="Date Done">
                 <input className="af-input" type="date" max={ukDateKey()} value={form.service_date} onChange={(e) => set("service_date", e.target.value)} required />
               </Field>
-              <Field label="Garage / Vendor">
+              <Field label="Garage / Vendor" autoFilled={isAutoFilled("garage_name")}>
                 <input className="af-input" value={form.garage_name} onChange={(e) => set("garage_name", e.target.value)} placeholder="Workshop or vendor name" />
               </Field>
-              <Field label="Cost (£)">
+              <Field label="Cost (£)" autoFilled={isAutoFilled("final_cost_gbp")}>
                 <input className="af-input" type="number" min="0" step="0.01" value={form.final_cost_gbp} onChange={(e) => set("final_cost_gbp", e.target.value)} />
               </Field>
               {target.assetType !== "trailer" && (
-                <Field label="Odometer Reading (KM)">
+                <Field label="Odometer Reading (KM)" autoFilled={isAutoFilled("completed_mileage_km")}>
                   <input className="af-input" type="number" min="0" step="1" value={form.completed_mileage_km} onChange={(e) => set("completed_mileage_km", e.target.value)} placeholder="e.g. 45230" />
                 </Field>
               )}
-              <Field label="Bill / Invoice Number">
+              <Field label="Bill / Invoice Number" autoFilled={isAutoFilled("bill_number")}>
                 <input className="af-input" value={form.bill_number} onChange={(e) => set("bill_number", e.target.value)} placeholder="e.g. INV-9821" />
               </Field>
-              <Field label="Bill Amount (£)">
+              <Field label="Bill Amount (£)" autoFilled={isAutoFilled("bill_amount_gbp")}>
                 <input className="af-input" type="number" min="0" step="0.01" value={form.bill_amount_gbp} onChange={(e) => set("bill_amount_gbp", e.target.value)} />
               </Field>
-              <Field label="Bill Date">
+              <Field label="Bill Date" autoFilled={isAutoFilled("bill_date")}>
                 <input className="af-input" type="date" max={ukDateKey()} value={form.bill_date} onChange={(e) => set("bill_date", e.target.value)} />
               </Field>
               <Field label="Attach Document / Certificate">
                 <input className="af-input" type="file" accept="image/*,.pdf,.doc,.docx,.xls,.xlsx"
-                  onChange={(e) => readFileAsDataUrl(e.target.files?.[0], (v) => set("bill_attachment_data", v))} />
+                  onChange={(e) => readFileAsDataUrl(e.target.files?.[0], (v) => { set("bill_attachment_data", v); readDocument({ attachmentData: v }); })} />
               </Field>
               <Field label="Document / Bill Notes">
                 <textarea className="af-textarea" value={form.bill_notes} onChange={(e) => set("bill_notes", e.target.value)} rows={2} placeholder="Certificate number, MOT pass notes, inspector..." />
@@ -1318,8 +1387,19 @@ function VehicleDetailModal({ target, profiles, onClose, onSaved }) {
                     View document
                   </button>
                 )}
+                {(form.bill_attachment_data || activeHasAttachment) && (
+                  <button
+                    className="vehicle-detail-item-doc-link"
+                    type="button"
+                    disabled={autofill.status === "reading"}
+                    onClick={() => readDocument(form.bill_attachment_data ? { attachmentData: form.bill_attachment_data } : { jobId: activeDocumentJobId })}
+                  >
+                    {autofill.status === "reading" ? "Reading…" : "Read details from document"}
+                  </button>
+                )}
               </div>
             </div>
+            <AutofillStatus autofill={autofill} />
             {error && <p className="lp-error">{error}</p>}
             <div className="finance-command-bar">
               <button className="header-action-button" type="button" onClick={() => setActiveType(null)}>Cancel</button>
@@ -1810,60 +1890,28 @@ function JobDrawer({ job, history, onClose, onEdit, onComplete, onBillStatus, sa
   );
 }
 
+// One accent per maintenance type (Fluent shared colours, dark enough to read on a light tint).
+// Chips use the accent as a tinted background + coloured text; `bg`/`text` stay for solid badges.
 const EVENT_COLORS = {
-  TAX: { bg: "#f97316", text: "#fff", label: "Road Tax" },
-  IB:  { bg: "#3b82f6", text: "#fff", label: "Safety Inspection" },
-  BT:  { bg: "#0f766e", text: "#fff", label: "Brake Test" },
-  MOT: { bg: "#eab308", text: "#1a1a1a", label: "Ministry of Transport" },
-  VOR: { bg: "#14b8a6", text: "#fff", label: "Vechile Off Road" },
-  INS: { bg: "#22c55e", text: "#fff", label: "Insurance" },
-  T:   { bg: "#a855f7", text: "#fff", label: "Tacho" },
-  SRV: { bg: "#5F6B7A", text: "#fff", label: "Full Service" }
+  IB:  { bg: "#0F6CBD", text: "#fff", label: "Safety inspection" },
+  BT:  { bg: "#03787C", text: "#fff", label: "Brake test" },
+  MOT: { bg: "#8A6100", text: "#fff", label: "MOT" },
+  TAX: { bg: "#BC4B09", text: "#fff", label: "Road tax" },
+  INS: { bg: "#107C10", text: "#fff", label: "Insurance" },
+  T:   { bg: "#6B3FA0", text: "#fff", label: "Tacho calibration" },
+  SRV: { bg: "#616161", text: "#fff", label: "Full service" },
+  VOR: { bg: "#C50F1F", text: "#fff", label: "Vehicle off road" }
 };
 
-// Forecast chips stay type-coloured, but use a deeper solid palette so they
-// remain clearly visible without relying on a faded/transparent treatment.
-const FORECAST_EVENT_COLORS = {
-  TAX: { bg: "#c2410c", text: "#fff" },
-  IB:  { bg: "#065AA8", text: "#fff" },
-  BT:  { bg: "#115e59", text: "#fff" },
-  MOT: { bg: "#a16207", text: "#fff" },
-  VOR: { bg: "#0f766e", text: "#fff" },
-  INS: { bg: "#026A0A", text: "#fff" },
-  T:   { bg: "#7e22ce", text: "#fff" },
-  SRV: { bg: "#424650", text: "#fff" }
-};
+// Upcoming chips turn amber inside this window and red once overdue.
+const DUE_SOON_DAYS = 14;
 
-const URGENT_RED = "#D91515";
-const URGENCY_WINDOW_DAYS = 30;
-
-function hexToRgb(hex) {
-  const value = parseInt(hex.replace("#", ""), 16);
-  return { r: (value >> 16) & 255, g: (value >> 8) & 255, b: value & 255 };
+function chipUrgency(daysUntilDue) {
+  if (daysUntilDue === null || daysUntilDue === undefined) return "";
+  if (daysUntilDue < 0) return " overdue";
+  if (daysUntilDue <= DUE_SOON_DAYS) return " due-soon";
+  return "";
 }
-
-function blendColors(fromHex, toHex, t) {
-  const from = hexToRgb(fromHex);
-  const to = hexToRgb(toHex);
-  const r = Math.round(from.r + (to.r - from.r) * t);
-  const g = Math.round(from.g + (to.g - from.g) * t);
-  const b = Math.round(from.b + (to.b - from.b) * t);
-  return `rgb(${r}, ${g}, ${b})`;
-}
-
-// Upcoming (not-yet-done) chips start in their type color and drift toward red
-// as the due date approaches, so urgency is visible at a glance in the grid.
-function urgencyColor(base, daysUntilDue) {
-  if (daysUntilDue === null || daysUntilDue === undefined || daysUntilDue >= URGENCY_WINDOW_DAYS) {
-    return base;
-  }
-  const t = 1 - Math.max(daysUntilDue, 0) / URGENCY_WINDOW_DAYS;
-  return { bg: blendColors(base.bg, URGENT_RED, t), text: t > 0.35 ? "#fff" : base.text };
-}
-
-const COMPANY_COLORS = [
-  "#c0392b", "#1a5276", "#117a65", "#6c3483", "#784212", "#0e6655", "#1f3a5f"
-];
 
 const TYPE_TO_CODE = {
   "Road Tax": "TAX",
@@ -2115,11 +2163,12 @@ function ExcelScheduleView({ data, onOpenVehicle }) {
   }
 
   const legendChips = [
-    <span key="upcoming" className="excel-legend-chip" style={{ background: "#D91515", color: "#fff" }}>UPCOMING</span>,
-    <span key="completed" className="excel-legend-chip" style={{ background: "#037F0C", color: "#fff" }}>DONE</span>,
-    <span key="forecast" className="excel-legend-chip forecast">FORECAST</span>,
-    ...Object.entries(EVENT_COLORS).map(([code, { bg, text, label }]) => (
-      <span key={code} className="excel-legend-chip" style={{ background: bg, color: text }} title={label}>{code}</span>
+    <span key="upcoming" className="excel-legend-status"><i className="excel-legend-sample" />Planned</span>,
+    <span key="completed" className="excel-legend-status"><i className="excel-legend-sample completed" />Done</span>,
+    <span key="forecast" className="excel-legend-status"><i className="excel-legend-sample forecast" />Forecast</span>,
+    <span key="divider" className="excel-legend-divider" aria-hidden="true" />,
+    ...Object.entries(EVENT_COLORS).map(([code, { bg, label }]) => (
+      <span key={code} className="excel-legend-chip" style={{ "--chip-accent": bg }} title={label}><i />{code}</span>
     ))
   ];
 
@@ -2213,63 +2262,37 @@ function ExcelScheduleView({ data, onOpenVehicle }) {
         </colgroup>
         <thead>
           <tr className="excel-month-row">
-            <th className="excel-fixed-head">REG</th>
-            <th className="excel-fixed-head">Fleet Code</th>
-            <th className="excel-fixed-head">Inspection Frequency</th>
-            <th className="excel-fixed-head">Make</th>
+            <th className="excel-fixed-head" rowSpan={2}>Reg</th>
+            <th className="excel-fixed-head" rowSpan={2}>Fleet code</th>
+            <th className="excel-fixed-head" rowSpan={2}>Frequency</th>
+            <th className="excel-fixed-head" rowSpan={2}>Make</th>
             {monthGroups.map((group) => (
               <th key={group.key} colSpan={group.count} className="excel-month-head">
-                {group.month.toUpperCase()} {group.year}
+                {group.month} {group.year}
               </th>
             ))}
           </tr>
           <tr className="excel-date-row">
-            <th className="excel-fixed-head excel-fixed-head-spacer" aria-hidden="true" />
-            <th className="excel-fixed-head excel-fixed-head-spacer" aria-hidden="true" />
-            <th className="excel-fixed-head excel-fixed-head-spacer" aria-hidden="true" />
-            <th className="excel-fixed-head excel-fixed-head-spacer" aria-hidden="true" />
             {displayWeeks.map((week) => (
               <th
                 key={week.key}
                 className={`excel-date-head${week.key === selectedWeekKey ? " selected-week" : ""}`}
                 title="Week commencing (Monday)"
               >
-                {formatWeekStart(week.startRaw)}
-              </th>
-            ))}
-          </tr>
-          <tr className="excel-week-row">
-            <th className="excel-fixed-head excel-fixed-head-spacer" aria-hidden="true" />
-            <th className="excel-fixed-head excel-fixed-head-spacer" aria-hidden="true" />
-            <th className="excel-fixed-head excel-fixed-head-spacer" aria-hidden="true" />
-            <th className="excel-fixed-head excel-fixed-head-spacer" aria-hidden="true" />
-            {displayWeeks.map((week) => (
-              <th
-                key={week.key}
-                className={`excel-week-head${week.key === selectedWeekKey ? " selected-week" : ""}`}
-              >
-                {week.label || `WK${isoWeekNumber(week.startRaw || week.key)}`}
+                <span>{formatWeekStart(week.startRaw)}</span>
+                <small>{week.label || `WK${isoWeekNumber(week.startRaw || week.key)}`}</small>
               </th>
             ))}
           </tr>
         </thead>
         <tbody>
-          {companies.map(([company, rows], coIndex) => (
+          {companies.map(([company, rows]) => (
             <React.Fragment key={`co-${company}`}>
               <tr className="excel-company-row">
-                <td
-                  colSpan={4}
-                  className="excel-company-cell excel-company-label-cell"
-                  style={{ background: COMPANY_COLORS[coIndex % COMPANY_COLORS.length] }}
-                >
-                  {company.toUpperCase()}
+                <td colSpan={4} className="excel-company-cell excel-company-label-cell">
+                  {company} <span>· {rows.length} {rows.length === 1 ? "asset" : "assets"}</span>
                 </td>
-                <td
-                  colSpan={displayWeeks.length}
-                  className="excel-company-cell"
-                  style={{ background: COMPANY_COLORS[coIndex % COMPANY_COLORS.length] }}
-                  aria-hidden="true"
-                />
+                <td colSpan={displayWeeks.length} className="excel-company-cell" aria-hidden="true" />
               </tr>
               {rows.map((row, rowIndex) => {
                 const assetType = row.assetType === "trailer" ? "trailer" : "vehicle";
@@ -2283,7 +2306,7 @@ function ExcelScheduleView({ data, onOpenVehicle }) {
                     <strong>{row.vehicle}</strong>
                   </td>
                   <td className="excel-fleet-code-cell" onClick={() => onOpenVehicle(row, assetType)}>{row.fleetCode}</td>
-                  <td className="excel-freq-cell" onClick={() => onOpenVehicle(row, assetType)}>{row.inspectionFrequency}</td>
+                  <td className="excel-freq-cell" onClick={() => onOpenVehicle(row, assetType)}>{String(row.inspectionFrequency || "").toLowerCase()}</td>
                   <td className="excel-make-cell" onClick={() => onOpenVehicle(row, assetType)}>{row.make}</td>
                   {displayWeeks.map((week) => {
                     const events = groupCompletedByDate(uniqueWeekEvents((row.events || []).filter((ev) => eventBelongsToWeek(ev, week))));
@@ -2306,7 +2329,6 @@ function ExcelScheduleView({ data, onOpenVehicle }) {
                               <button
                                 key={ev.id}
                                 className="excel-event-chip completed"
-                                style={{ background: "#037F0C", color: "#fff" }}
                                 title="Click to open vehicle details"
                                 onMouseEnter={(e) => {
                                   clearTimeout(popoverTimer.current);
@@ -2331,7 +2353,6 @@ function ExcelScheduleView({ data, onOpenVehicle }) {
                               <button
                                 key={ev.id}
                                 className="excel-event-chip vor"
-                                style={{ background: EVENT_COLORS.VOR.bg, color: EVENT_COLORS.VOR.text }}
                                 title="Click to open vehicle details"
                                 onMouseEnter={(e) => {
                                   clearTimeout(popoverTimer.current);
@@ -2353,19 +2374,16 @@ function ExcelScheduleView({ data, onOpenVehicle }) {
                           }
                           const isCompleted = ev.kind === "completed";
                           const isForecast = ev.kind === "forecast";
-                          const color = isCompleted
-                            ? { bg: "#037F0C", text: "#fff" }
-                            : isForecast
-                              ? (FORECAST_EVENT_COLORS[ev.code] || { bg: "#991b1b", text: "#fff" })
-                              : urgencyColor(EVENT_COLORS[ev.code] || { bg: "#D91515", text: "#fff" }, daysFromToday(ev.dueDateRaw));
+                          const accent = (EVENT_COLORS[ev.code] || EVENT_COLORS.SRV).bg;
+                          const urgency = isCompleted || isForecast ? "" : chipUrgency(daysFromToday(ev.dueDateRaw));
                           const chipDateRaw = isCompleted ? (ev.completedDateRaw || ev.dueDateRaw) : ev.dueDateRaw;
                           const day = chipDateRaw?.slice(8, 10);
                           const mon = chipDateRaw?.slice(5, 7);
                           return (
                             <button
                               key={ev.id}
-                              className={`excel-event-chip${isCompleted ? " completed" : ""}${isForecast ? " forecast" : ""}`}
-                              style={{ background: color.bg, color: color.text }}
+                              className={`excel-event-chip${isCompleted ? " completed" : ""}${isForecast ? " forecast" : ""}${urgency}`}
+                              style={{ "--chip-accent": accent }}
                               title={isCompleted
                                 ? undefined
                                 : isForecast
@@ -2397,7 +2415,7 @@ function ExcelScheduleView({ data, onOpenVehicle }) {
                             >
                               {isCompleted
                                 ? `✓ ${ev.code} ${day}/${mon}${ev.hasAttachment ? " 📎" : ""}`
-                                : `${isForecast ? "~ " : ""}${ev.code} ${day}/${mon}`}
+                                : `${ev.code} ${day}/${mon}`}
                             </button>
                           );
                         })}
@@ -2936,7 +2954,7 @@ export function AdminMaintenancePage() {
               <div className="maintenance-profile-head">
                 <div>
                   <strong>{profile.vehicle}</strong>
-                  <p>{profile.fleetCode} · {profile.currentKmLabel}</p>
+                  <p>{[profile.fleetCode, profile.currentKmLabel].filter(value => value && !["-", "—"].includes(String(value).trim())).join(" · ")}</p>
                 </div>
                 <button
                   className="header-action-button"
