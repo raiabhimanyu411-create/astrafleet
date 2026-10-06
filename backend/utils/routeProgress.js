@@ -3,7 +3,7 @@
 // otherwise "Driver" (recorded by a tap). Never throws: on any failure the page simply gets empty lists.
 const db = require("../db/connection");
 const { dateTimeKey, fmtUkDateTime } = require("./jobDateTimes");
-const { extractUkPostcode } = require("./postcodeGeo");
+const { buildJobPoints } = require("./jobPunctuality");
 
 const STOP_TONE = { pending: "neutral", arrived: "warning", completed: "success", skipped: "danger" };
 const STATUS_LABEL = { pending: "Pending", arrived: "Arrived", completed: "Completed", skipped: "Skipped" };
@@ -21,13 +21,7 @@ async function loadGeofenceEvents(tripId) {
   }
 }
 
-function pickupStatus(driverStatus, trip) {
-  if (["in_transit", "arrived_drop", "delivered"].includes(driverStatus)) return "completed";
-  if (["arrived_pickup", "loaded"].includes(driverStatus)) return "arrived";
-  return trip.actual_departure ? "completed" : "pending";
-}
-
-async function buildRouteProgress(trip, stops, firstPickupArrivalEvent) {
+async function buildRouteProgress(trip, stops, statusEvents = [], punctuality = null) {
   try {
     const events = await loadGeofenceEvents(trip.id);
     const source = (pointKey, eventType, value) => {
@@ -36,43 +30,30 @@ async function buildRouteProgress(trip, stops, firstPickupArrivalEvent) {
       const fromGps = events.some(e => Number(e.applied) && e.point_key === pointKey && e.event_type === eventType && dateTimeKey(e.occurred_at) === key);
       return fromGps ? "GPS" : "Driver";
     };
-    const point = (pointKey, label, address, status, planned, actual) => ({
-      key: pointKey,
-      label,
-      address: address || "—",
-      status,
-      statusLabel: STATUS_LABEL[status] || status,
-      tone: STOP_TONE[status] || "neutral",
-      plannedArrival: fmtUkDateTime(planned.arrival),
-      plannedDeparture: fmtUkDateTime(planned.departure),
-      actualArrival: fmtUkDateTime(actual.arrival),
-      actualDeparture: fmtUkDateTime(actual.departure),
-      arrivalSource: source(pointKey, "enter", actual.arrival),
-      departureSource: source(pointKey, "exit", actual.departure)
-    });
-
-    const driverStatus = trip.driver_job_status || "accepted";
-    const pickupAddress = trip.pickup_address || trip.origin_hub;
-    const drop1Status = trip.primary_drop_status === "completed" || driverStatus === "delivered"
-      ? "completed"
-      : trip.primary_drop_status === "arrived" || driverStatus === "arrived_drop" ? "arrived" : "pending";
-    const pickupPostcode = extractUkPostcode(pickupAddress);
-    const lastStopId = stops.length ? stops[stops.length - 1].id : null;
-
-    const routeProgress = [
-      point("pickup", "Pickup", pickupAddress, pickupStatus(driverStatus, trip),
-        { arrival: trip.planned_departure, departure: trip.loading_done_time },
-        { arrival: trip.pickup_arrived_at || firstPickupArrivalEvent, departure: trip.actual_departure }),
-      point("drop-1", "Drop 1", trip.drop_address || trip.destination_hub, drop1Status,
-        { arrival: trip.calculated_arrival || trip.eta, departure: trip.calculated_unload_end },
-        { arrival: trip.primary_drop_arrived_at, departure: trip.primary_drop_departed_at || trip.primary_drop_completed_at }),
-      ...stops.map((stop, index) => {
-        const isReturn = stop.id === lastStopId && pickupPostcode && extractUkPostcode(stop.address) === pickupPostcode;
-        return point(String(stop.id), isReturn ? "Return point" : `Drop ${index + 2}`, stop.address, stop.status || "pending",
-          { arrival: stop.planned_arrival, departure: stop.planned_departure },
-          { arrival: stop.actual_arrival, departure: stop.actual_departure });
-      })
-    ];
+    const assessed = punctuality?.points || buildJobPoints(trip, stops, statusEvents);
+    const routeProgress = assessed.map(point => ({
+      key: point.key,
+      label: point.label,
+      kind: point.kind,
+      address: point.key === "pickup" ? trip.pickup_address || trip.origin_hub || "—"
+        : point.key === "drop-1" ? trip.drop_address || trip.destination_hub || "—"
+        : stops.find(stop => String(stop.id) === point.key)?.address || "—",
+      status: point.status,
+      statusLabel: STATUS_LABEL[point.status] || point.status,
+      tone: STOP_TONE[point.status] || "neutral",
+      plannedArrival: fmtUkDateTime(point.plannedArrival),
+      plannedDeparture: fmtUkDateTime(point.plannedDeparture),
+      actualArrival: fmtUkDateTime(point.actualArrival),
+      actualDeparture: fmtUkDateTime(point.actualDeparture),
+      arrivalSource: source(point.key, "enter", point.actualArrival),
+      departureSource: source(point.key, "exit", point.actualDeparture),
+      arrivalDelayMins: point.arrivalDelayMins ?? null,
+      departureDelayMins: point.departureDelayMins ?? null,
+      overdue: point.overdue ?? null,
+      state: point.state ?? null,
+      lateMins: point.lateMins ?? null,
+      warnings: point.warnings || []
+    }));
 
     const labels = new Map(routeProgress.map(p => [p.key, p.label]));
     const geofenceEvents = events.map(e => ({

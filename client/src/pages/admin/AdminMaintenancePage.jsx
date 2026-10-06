@@ -475,10 +475,10 @@ function writeAttachmentPreview(blobUrl, mime, existingPreview = null) {
     <!doctype html>
     <title>Document attachment</title>
     <style>
-      html, body { height: 100%; margin: 0; background: #0f172a; font-family: system-ui, sans-serif; }
-      header { height: 48px; display: flex; align-items: center; justify-content: space-between; padding: 0 14px; background: #fff; color: #0f172a; border-bottom: 1px solid #cbd5e1; box-sizing: border-box; }
+      html, body { height: 100%; margin: 0; background: #0F141A; font-family: system-ui, sans-serif; }
+      header { height: 48px; display: flex; align-items: center; justify-content: space-between; padding: 0 14px; background: #fff; color: #0F141A; border-bottom: 1px solid #C6C6CD; box-sizing: border-box; }
       strong { font-size: 14px; }
-      a { display: inline-flex; padding: 8px 10px; border-radius: 6px; background: #237FDA; color: #fff; font-size: 13px; font-weight: 800; text-decoration: none; }
+      a { display: inline-flex; padding: 8px 10px; border-radius: 6px; background: #0972D3; color: #fff; font-size: 13px; font-weight: 800; text-decoration: none; }
       iframe { width: 100%; height: calc(100% - 48px); border: 0; background: #fff; }
       img { display: block; max-width: 100%; max-height: calc(100% - 48px); margin: 0 auto; object-fit: contain; background: #fff; }
     </style>
@@ -526,11 +526,11 @@ function openAttachment(dataUrl, existingPreview = null) {
           <!doctype html>
           <title>Document attachment</title>
           <style>
-            body { font-family: system-ui, sans-serif; margin: 0; display: grid; min-height: 100vh; place-items: center; background: #f8fafc; color: #0f172a; }
-            main { max-width: 520px; padding: 28px; border: 1px solid #cbd5e1; border-radius: 8px; background: #fff; box-shadow: 0 18px 50px rgba(15,23,42,.12); }
+            body { font-family: system-ui, sans-serif; margin: 0; display: grid; min-height: 100vh; place-items: center; background: #FAFAFA; color: #0F141A; }
+            main { max-width: 520px; padding: 28px; border: 1px solid #C6C6CD; border-radius: 8px; background: #fff; box-shadow: 0 18px 50px rgba(15,23,42,.12); }
             h1 { margin: 0 0 8px; font-size: 22px; }
-            p { margin: 0 0 18px; color: #475569; line-height: 1.5; }
-            a { display: inline-flex; padding: 10px 14px; border-radius: 6px; background: #237FDA; color: #fff; font-weight: 800; text-decoration: none; }
+            p { margin: 0 0 18px; color: #424650; line-height: 1.5; }
+            a { display: inline-flex; padding: 10px 14px; border-radius: 6px; background: #0972D3; color: #fff; font-weight: 800; text-decoration: none; }
           </style>
           <main>
             <h1>Document ready</h1>
@@ -1164,7 +1164,7 @@ function VehicleDetailModal({ target, profiles, onClose, onSaved }) {
         <div className="maintenance-profile-items vehicle-detail-items">
           {profile.items.map((item) => {
             const code = TYPE_TO_CODE[item.type] || item.type;
-            const color = EVENT_COLORS[code] || { bg: "#94a3b8", text: "#fff" };
+            const color = EVENT_COLORS[code] || { bg: "#8C8C94", text: "#fff" };
             const isSelectedCompleted = target?.selectionKind === "completed"
               && target?.preselectType === item.type
               && Boolean(target?.completedJob);
@@ -1818,23 +1818,23 @@ const EVENT_COLORS = {
   VOR: { bg: "#14b8a6", text: "#fff", label: "Vechile Off Road" },
   INS: { bg: "#22c55e", text: "#fff", label: "Insurance" },
   T:   { bg: "#a855f7", text: "#fff", label: "Tacho" },
-  SRV: { bg: "#64748b", text: "#fff", label: "Full Service" }
+  SRV: { bg: "#5F6B7A", text: "#fff", label: "Full Service" }
 };
 
 // Forecast chips stay type-coloured, but use a deeper solid palette so they
 // remain clearly visible without relying on a faded/transparent treatment.
 const FORECAST_EVENT_COLORS = {
   TAX: { bg: "#c2410c", text: "#fff" },
-  IB:  { bg: "#196DBD", text: "#fff" },
+  IB:  { bg: "#065AA8", text: "#fff" },
   BT:  { bg: "#115e59", text: "#fff" },
   MOT: { bg: "#a16207", text: "#fff" },
   VOR: { bg: "#0f766e", text: "#fff" },
-  INS: { bg: "#08765B", text: "#fff" },
+  INS: { bg: "#026A0A", text: "#fff" },
   T:   { bg: "#7e22ce", text: "#fff" },
-  SRV: { bg: "#475569", text: "#fff" }
+  SRV: { bg: "#424650", text: "#fff" }
 };
 
-const URGENT_RED = "#C20404";
+const URGENT_RED = "#D91515";
 const URGENCY_WINDOW_DAYS = 30;
 
 function hexToRgb(hex) {
@@ -2115,8 +2115,8 @@ function ExcelScheduleView({ data, onOpenVehicle }) {
   }
 
   const legendChips = [
-    <span key="upcoming" className="excel-legend-chip" style={{ background: "#C20404", color: "#fff" }}>UPCOMING</span>,
-    <span key="completed" className="excel-legend-chip" style={{ background: "#1CB48C", color: "#fff" }}>DONE</span>,
+    <span key="upcoming" className="excel-legend-chip" style={{ background: "#D91515", color: "#fff" }}>UPCOMING</span>,
+    <span key="completed" className="excel-legend-chip" style={{ background: "#037F0C", color: "#fff" }}>DONE</span>,
     <span key="forecast" className="excel-legend-chip forecast">FORECAST</span>,
     ...Object.entries(EVENT_COLORS).map(([code, { bg, text, label }]) => (
       <span key={code} className="excel-legend-chip" style={{ background: bg, color: text }} title={label}>{code}</span>
@@ -2306,7 +2306,7 @@ function ExcelScheduleView({ data, onOpenVehicle }) {
                               <button
                                 key={ev.id}
                                 className="excel-event-chip completed"
-                                style={{ background: "#1CB48C", color: "#fff" }}
+                                style={{ background: "#037F0C", color: "#fff" }}
                                 title="Click to open vehicle details"
                                 onMouseEnter={(e) => {
                                   clearTimeout(popoverTimer.current);
@@ -2354,10 +2354,10 @@ function ExcelScheduleView({ data, onOpenVehicle }) {
                           const isCompleted = ev.kind === "completed";
                           const isForecast = ev.kind === "forecast";
                           const color = isCompleted
-                            ? { bg: "#1CB48C", text: "#fff" }
+                            ? { bg: "#037F0C", text: "#fff" }
                             : isForecast
                               ? (FORECAST_EVENT_COLORS[ev.code] || { bg: "#991b1b", text: "#fff" })
-                              : urgencyColor(EVENT_COLORS[ev.code] || { bg: "#C20404", text: "#fff" }, daysFromToday(ev.dueDateRaw));
+                              : urgencyColor(EVENT_COLORS[ev.code] || { bg: "#D91515", text: "#fff" }, daysFromToday(ev.dueDateRaw));
                           const chipDateRaw = isCompleted ? (ev.completedDateRaw || ev.dueDateRaw) : ev.dueDateRaw;
                           const day = chipDateRaw?.slice(8, 10);
                           const mon = chipDateRaw?.slice(5, 7);
@@ -2434,7 +2434,7 @@ function ExcelScheduleView({ data, onOpenVehicle }) {
             {popover.group.map((ev) => (
               <div className="ccp-group-item" key={ev.id}>
                 <div className="ccp-row">
-                  <span className="ccp-badge" style={{ background: EVENT_COLORS[ev.code]?.bg || "#1CB48C" }}>
+                  <span className="ccp-badge" style={{ background: EVENT_COLORS[ev.code]?.bg || "#037F0C" }}>
                     {ev.code}
                   </span>
                   <span className="ccp-value">{ev.type}</span>
@@ -2491,7 +2491,7 @@ function ExcelScheduleView({ data, onOpenVehicle }) {
         ) : (
           <>
             <div className="ccp-header">
-              <span className="ccp-badge" style={{ background: EVENT_COLORS[popover.ev.code]?.bg || "#1CB48C" }}>
+              <span className="ccp-badge" style={{ background: EVENT_COLORS[popover.ev.code]?.bg || "#037F0C" }}>
                 {popover.ev.code}
               </span>
               <strong className="ccp-title">{popover.ev.type}</strong>

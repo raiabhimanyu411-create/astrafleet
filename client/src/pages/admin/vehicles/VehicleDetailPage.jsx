@@ -11,12 +11,12 @@ import { AdminWorkspaceLayout } from "../AdminWorkspaceLayout";
 
 function DetailField({ label, value, tone }) {
   return (
-    <div style={{ padding: "11px 14px", background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 8 }}>
-      <span style={{ display: "block", fontSize: "0.7rem", fontWeight: 700, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 4 }}>{label}</span>
+    <div style={{ padding: "11px 14px", background: "#FAFAFA", border: "1px solid #E9EBED", borderRadius: 8 }}>
+      <span style={{ display: "block", fontSize: "0.7rem", fontWeight: 700, color: "#5F6B7A", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 4 }}>{label}</span>
       {tone ? (
         <StatusPill tone={tone}>{value || "—"}</StatusPill>
       ) : (
-        <strong style={{ fontSize: "0.88rem", fontWeight: 600, color: "#0f172a" }}>{value || "—"}</strong>
+        <strong style={{ fontSize: "0.88rem", fontWeight: 600, color: "#0F141A" }}>{value || "—"}</strong>
       )}
     </div>
   );
@@ -30,7 +30,7 @@ function ExpiryField({ label, expiry, tone, daysLeft, lastDone, source }) {
     : "";
   return (
     <div className={`vehicle-detail-expiry ${tone || "neutral"}`}>
-      <span style={{ display: "block", fontSize: "0.7rem", fontWeight: 700, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 4 }}>{label}</span>
+      <span style={{ display: "block", fontSize: "0.7rem", fontWeight: 700, color: "#5F6B7A", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 4 }}>{label}</span>
       {lastDone && lastDone !== "—" && <small className="vehicle-detail-last-done">Done {lastDone}</small>}
       <strong>
         {expiry}{suffix}
@@ -186,8 +186,8 @@ export function VehicleDetailPage() {
     }
   }
 
-  const formStyle = { background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 10, padding: 16, marginBottom: 14 };
-  const formTitle = { margin: "0 0 12px", fontWeight: 700, fontSize: "0.86rem", color: "#334155" };
+  const formStyle = { background: "#FAFAFA", border: "1px solid #E9EBED", borderRadius: 10, padding: 16, marginBottom: 14 };
+  const formTitle = { margin: "0 0 12px", fontWeight: 700, fontSize: "0.86rem", color: "#414D5C" };
 
   return (
     <AdminWorkspaceLayout
@@ -220,7 +220,7 @@ export function VehicleDetailPage() {
                   <span className="card-label">Vehicle Profile</span>
                   <h2 style={{ margin: "6px 0 4px", fontSize: "1.3rem" }}>{data.registrationNumber}</h2>
                   <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 6 }}>
-                    <span style={{ fontFamily: "monospace", fontSize: "0.82rem", background: "#EAF4FD", color: "#237FDA", padding: "3px 10px", borderRadius: 999, fontWeight: 700 }}>
+                    <span style={{ fontFamily: "monospace", fontSize: "0.82rem", background: "#F0FBFF", color: "#0972D3", padding: "3px 10px", borderRadius: 999, fontWeight: 700 }}>
                       {data.fleetCode}
                     </span>
                     <StatusPill tone={data.statusTone}>{data.status.replace("_", " ")}</StatusPill>
@@ -302,7 +302,7 @@ export function VehicleDetailPage() {
                       <input className="af-input" type="text" placeholder="Reference or certificate number" value={docForm.document_number} onChange={e => setDocForm(p => ({ ...p, document_number: e.target.value }))} />
                     </div>
                     <div className="af-field">
-                      <label className="af-label">Expiry Date <span style={{ color: "#C20404" }}>*</span></label>
+                      <label className="af-label">Expiry Date <span style={{ color: "#D91515" }}>*</span></label>
                       <input className="af-input" type="date" value={docForm.expiry_date} onChange={e => setDocForm(p => ({ ...p, expiry_date: e.target.value }))} required />
                     </div>
                   </div>
@@ -316,7 +316,7 @@ export function VehicleDetailPage() {
               )}
 
               {data.documents.length === 0 && !showDocForm ? (
-                <p style={{ color: "#94a3b8", fontSize: "0.86rem", margin: 0 }}>No documents added yet.</p>
+                <p style={{ color: "#8C8C94", fontSize: "0.86rem", margin: 0 }}>No documents added yet.</p>
               ) : (
                 <div className="data-rows">
                   {data.documents.map(doc => (
@@ -326,7 +326,7 @@ export function VehicleDetailPage() {
                         <p>{doc.number || "No number"}</p>
                       </div>
                       <div>
-                        <span style={{ color: doc.expiryTone === "danger" ? "#920303" : doc.expiryTone === "warning" ? "#9A5513" : "#0f172a" }}>{doc.expiry}</span>
+                        <span style={{ color: doc.expiryTone === "danger" ? "#AD0A0A" : doc.expiryTone === "warning" ? "#8D6605" : "#0F141A" }}>{doc.expiry}</span>
                         <p>{doc.daysLeft !== null ? (doc.daysLeft < 0 ? `Expired ${Math.abs(doc.daysLeft)}d ago` : `${doc.daysLeft}d remaining`) : "—"}</p>
                       </div>
                       <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
@@ -358,11 +358,11 @@ export function VehicleDetailPage() {
                   <p style={formTitle}>Log Maintenance Record</p>
                   <div className="af-grid-3" style={{ gap: 12 }}>
                     <div className="af-field">
-                      <label className="af-label">Service Date <span style={{ color: "#C20404" }}>*</span></label>
+                      <label className="af-label">Service Date <span style={{ color: "#D91515" }}>*</span></label>
                       <input className="af-input" type="date" value={maintForm.service_date} onChange={e => setMaintForm(p => ({ ...p, service_date: e.target.value }))} required />
                     </div>
                     <div className="af-field">
-                      <label className="af-label">Service Type <span style={{ color: "#C20404" }}>*</span></label>
+                      <label className="af-label">Service Type <span style={{ color: "#D91515" }}>*</span></label>
                       <select className="af-select" value={maintForm.service_type} onChange={e => setMaintForm(p => ({ ...p, service_type: e.target.value }))} required>
                         <option value="">Select maintenance type</option>
                         {MAINTENANCE_TYPES.map(type => <option key={type} value={type}>{type}</option>)}
@@ -398,7 +398,7 @@ export function VehicleDetailPage() {
               )}
 
               {data.maintenance.length === 0 && !showMaintForm ? (
-                <p style={{ color: "#94a3b8", fontSize: "0.86rem", margin: 0 }}>No maintenance records yet.</p>
+                <p style={{ color: "#8C8C94", fontSize: "0.86rem", margin: 0 }}>No maintenance records yet.</p>
               ) : (
                 <div className="data-rows">
                   {data.maintenance.map(m => (
@@ -412,7 +412,7 @@ export function VehicleDetailPage() {
                         <p>Mileage: {m.mileage}</p>
                       </div>
                       <div>
-                        <span style={{ fontSize: "0.8rem", color: "#64748b" }}>Next due: {m.nextDue}</span>
+                        <span style={{ fontSize: "0.8rem", color: "#5F6B7A" }}>Next due: {m.nextDue}</span>
                         <button className="header-action-button danger" style={{ marginTop: 4, height: 24, padding: "0 8px", fontSize: "0.72rem" }} type="button" onClick={() => handleDeleteMaint(m.id)}>Remove</button>
                       </div>
                     </div>
@@ -438,7 +438,7 @@ export function VehicleDetailPage() {
                   <p style={formTitle}>Log Inspection</p>
                   <div className="af-grid-3" style={{ gap: 12 }}>
                     <div className="af-field">
-                      <label className="af-label">Inspection Date <span style={{ color: "#C20404" }}>*</span></label>
+                      <label className="af-label">Inspection Date <span style={{ color: "#D91515" }}>*</span></label>
                       <input className="af-input" type="date" value={inspForm.inspection_date} onChange={e => setInspForm(p => ({ ...p, inspection_date: e.target.value }))} required />
                     </div>
                     <div className="af-field">
@@ -448,7 +448,7 @@ export function VehicleDetailPage() {
                       </select>
                     </div>
                     <div className="af-field">
-                      <label className="af-label">Result <span style={{ color: "#C20404" }}>*</span></label>
+                      <label className="af-label">Result <span style={{ color: "#D91515" }}>*</span></label>
                       <select className="af-select" value={inspForm.result} onChange={e => setInspForm(p => ({ ...p, result: e.target.value }))}>
                         <option value="pass">Pass</option>
                         <option value="advisory">Advisory</option>
@@ -477,7 +477,7 @@ export function VehicleDetailPage() {
               )}
 
               {data.inspections.length === 0 && !showInspForm ? (
-                <p style={{ color: "#94a3b8", fontSize: "0.86rem", margin: 0 }}>No inspections logged yet.</p>
+                <p style={{ color: "#8C8C94", fontSize: "0.86rem", margin: 0 }}>No inspections logged yet.</p>
               ) : (
                 <div className="data-rows">
                   {data.inspections.map(i => (
@@ -491,7 +491,7 @@ export function VehicleDetailPage() {
                         <p style={{ marginTop: 4, fontSize: "0.79rem" }}>{i.notes !== "—" ? i.notes : ""}</p>
                       </div>
                       <div>
-                        <span style={{ fontSize: "0.8rem", color: "#64748b" }}>Next due: {i.nextDue}</span>
+                        <span style={{ fontSize: "0.8rem", color: "#5F6B7A" }}>Next due: {i.nextDue}</span>
                       </div>
                     </div>
                   ))}
@@ -516,7 +516,7 @@ export function VehicleDetailPage() {
                   <p style={formTitle}>Report A Defect</p>
                   <div className="af-grid-3" style={{ gap: 12 }}>
                     <div className="af-field">
-                      <label className="af-label">Defect Type <span style={{ color: "#C20404" }}>*</span></label>
+                      <label className="af-label">Defect Type <span style={{ color: "#D91515" }}>*</span></label>
                       <select className="af-select" value={defectForm.defect_type} onChange={e => setDefectForm(p => ({ ...p, defect_type: e.target.value }))}>
                         {DEFECT_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
                       </select>
@@ -545,7 +545,7 @@ export function VehicleDetailPage() {
               )}
 
               {data.defects.length === 0 && !showDefectForm ? (
-                <p style={{ color: "#94a3b8", fontSize: "0.86rem", margin: 0 }}>No defects reported.</p>
+                <p style={{ color: "#8C8C94", fontSize: "0.86rem", margin: 0 }}>No defects reported.</p>
               ) : (
                 <div className="data-rows">
                   {data.defects.map(d => (
@@ -567,12 +567,12 @@ export function VehicleDetailPage() {
                                 In Progress
                               </button>
                             )}
-                            <button className="header-action-button" style={{ height: 24, padding: "0 7px", fontSize: "0.72rem", background: "#E7F8F3", color: "#08765B", border: "1px solid #8DDBC6" }} type="button" onClick={() => handleDefectStatus(d.id, "resolved")}>
+                            <button className="header-action-button" style={{ height: 24, padding: "0 7px", fontSize: "0.72rem", background: "#F2FCF3", color: "#026A0A", border: "1px solid #A3DEA7" }} type="button" onClick={() => handleDefectStatus(d.id, "resolved")}>
                               Resolve
                             </button>
                           </div>
                         )}
-                        {d.resolvedAt && <span style={{ fontSize: "0.76rem", color: "#64748b" }}>Resolved {d.resolvedAt}</span>}
+                        {d.resolvedAt && <span style={{ fontSize: "0.76rem", color: "#5F6B7A" }}>Resolved {d.resolvedAt}</span>}
                       </div>
                     </div>
                   ))}
@@ -589,7 +589,7 @@ export function VehicleDetailPage() {
                 <StatusPill tone="neutral">{data.fuelHistory?.length || 0} entries</StatusPill>
               </div>
               {(!data.fuelHistory || data.fuelHistory.length === 0) ? (
-                <p style={{ color: "#94a3b8", fontSize: "0.86rem", margin: 0 }}>No fuel expenses logged for this vehicle.</p>
+                <p style={{ color: "#8C8C94", fontSize: "0.86rem", margin: 0 }}>No fuel expenses logged for this vehicle.</p>
               ) : (
                 <div className="data-rows">
                   {data.fuelHistory.map(f => (
@@ -619,7 +619,7 @@ export function VehicleDetailPage() {
                 <StatusPill tone="neutral">{data.trips.length} trips</StatusPill>
               </div>
               {data.trips.length === 0 ? (
-                <p style={{ color: "#94a3b8", fontSize: "0.86rem", margin: 0 }}>No trips assigned yet.</p>
+                <p style={{ color: "#8C8C94", fontSize: "0.86rem", margin: 0 }}>No trips assigned yet.</p>
               ) : (
                 <div className="data-rows">
                   {data.trips.map(t => (
@@ -634,7 +634,7 @@ export function VehicleDetailPage() {
                       </div>
                       <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 4 }}>
                         <StatusPill tone={t.statusTone}>{t.status}</StatusPill>
-                        <span style={{ fontSize: "0.8rem", fontWeight: 600, color: "#334155" }}>{t.freight}</span>
+                        <span style={{ fontSize: "0.8rem", fontWeight: 600, color: "#414D5C" }}>{t.freight}</span>
                       </div>
                     </div>
                   ))}

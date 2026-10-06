@@ -5,7 +5,7 @@ import "leaflet/dist/leaflet.css";
 import { getJobRouteMap } from "../../../api/jobApi";
 import "./JobRouteMapModal.css";
 
-const colors = ["#237FDA", "#7c3aed", "#ea580c", "#0891b2", "#db2777"];
+const colors = ["#0972D3", "#7c3aed", "#ea580c", "#0891b2", "#db2777"];
 export default function JobRouteMapModal({ job, onClose }) {
   const container = useRef(null), dialog = useRef(null), mapRef = useRef(null), layers = useRef([]);
   const [data, setData] = useState(null), [error, setError] = useState(""), [retry, setRetry] = useState(0);

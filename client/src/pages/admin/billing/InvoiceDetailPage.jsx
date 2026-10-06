@@ -4,6 +4,7 @@ import { deleteInvoice, getInvoiceById, recordInvoicePayment, updateInvoiceStatu
 import { DeleteReasonModal } from "../../../components/DeleteReasonModal";
 import { StatusPill } from "../../../components/StatusPill";
 import { AdminWorkspaceLayout } from "../AdminWorkspaceLayout";
+import { ukNow } from "../../../utils/ukJobTime";
 
 function DetailBlock({ label, value }) {
   return (
@@ -25,7 +26,7 @@ export function InvoiceDetailPage() {
   const [deleting, setDeleting] = useState(false);
   const [recordingPayment, setRecordingPayment] = useState(false);
   const [payment, setPayment] = useState({
-    payment_date: new Date().toISOString().slice(0, 10),
+    payment_date: ukNow().slice(0, 10),
     amount_gbp: "",
     payment_method: "bank_transfer",
     payment_reference: "",
@@ -255,7 +256,7 @@ export function InvoiceDetailPage() {
                   <h2>Billing Notes</h2>
                 </div>
               </div>
-              <p style={{ margin: 0, color: "#475569", fontSize: "0.9rem" }}>{invoice.notes || "No notes recorded."}</p>
+              <p style={{ margin: 0, color: "#424650", fontSize: "0.9rem" }}>{invoice.notes || "No notes recorded."}</p>
             </div>
 
             <div className="af-actions">

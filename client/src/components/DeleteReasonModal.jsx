@@ -15,6 +15,8 @@ export function DeleteReasonModal({
   title,
   recordLabel,
   body,
+  details = null,
+  confirmDisabled = false,
   confirmLabel = "Confirm delete",
   loading = false,
   onCancel,
@@ -48,6 +50,7 @@ export function DeleteReasonModal({
         <p className="reason-modal-body">
           {body || "This action will be visible in the admin activity report with your name, time, and reason."}
         </p>
+        {details}
         <label className="af-field">
           <span className="af-label">Reason Category</span>
           <select className="af-select" value={reasonCategory} onChange={e => setReasonCategory(e.target.value)}>
@@ -74,7 +77,7 @@ export function DeleteReasonModal({
           <button
             className="header-action-button danger"
             type="button"
-            disabled={!isValid || loading}
+            disabled={!isValid || loading || confirmDisabled}
             onClick={() => onConfirm({ reason: cleanReason, reasonCategory })}
           >
             {loading ? "Working..." : confirmLabel}

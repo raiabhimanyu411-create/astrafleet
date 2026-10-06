@@ -1,7 +1,7 @@
 const { cleanMaintenanceHistory, maintenanceCostRows } = require("../utils/maintenanceHistory");
 const db = require("../db/connection");
 const { logActivity } = require("../utils/auditLogger");
-const { dateFieldError, optionalMoney } = require("../utils/maintenanceDates");
+const { dateFieldError, optionalMoney, ukDaysUntil } = require("../utils/maintenanceDates");
 
 const INSPECTION_INTERVAL_DAYS = 42;
 const TRAILER_INSPECTION_INTERVAL_DAYS = 70;
@@ -964,12 +964,7 @@ function fmtDate(d) {
 }
 
 function daysUntil(dateStr) {
-  if (!dateStr) return null;
-  const today = calendarDate(ukDateKey());
-  today.setHours(0, 0, 0, 0);
-  const date = calendarDate(dateStr);
-  date.setHours(0, 0, 0, 0);
-  return Math.ceil((date - today) / (1000 * 60 * 60 * 24));
+  return ukDaysUntil(dateStr);
 }
 
 function dueTone(days, openDefects, status) {

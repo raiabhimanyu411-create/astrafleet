@@ -30,10 +30,24 @@ function dateFieldError(value, label, { required = false, future = true, today =
   return "";
 }
 
+// Whole UK calendar days from today to `value` (negative = past). Counted on dates, not hours, so the
+// 23/25-hour days at the BST/GMT change and the time of day never shift the result.
+function ukDaysUntil(value) {
+  if (!value) return null;
+  const match = String(value).match(/^(\d{4})-(\d{2})-(\d{2})/);
+  const key = match ? match[0] : (value instanceof Date && !Number.isNaN(value.getTime()) ? ukDateKey(value) : null);
+  if (!key) return null;
+  const toUtc = dateKey => {
+    const [year, month, day] = dateKey.split("-").map(Number);
+    return Date.UTC(year, month - 1, day);
+  };
+  return Math.round((toUtc(key) - toUtc(ukDateKey())) / 86400000);
+}
+
 function optionalMoney(value) {
   if (value === "" || value == null) return null;
   const amount = Number(value);
   return Number.isFinite(amount) && amount >= 0 ? amount : null;
 }
 
-module.exports = { ukDateKey, isDateKey, dateFieldError, optionalMoney };
+module.exports = { ukDateKey, ukDaysUntil, isDateKey, dateFieldError, optionalMoney };

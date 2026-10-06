@@ -1,17 +1,19 @@
 import { useEffect, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { addJobStop, cancelJob, deleteJobStop, getJobById, updateJobStatus } from "../../../api/jobApi";
+import { addJobStop, cancelJob, deleteJob, deleteJobStop, getJobById, updateJobStatus } from "../../../api/jobApi";
 import { subscribeJobUpdates } from "../../../api/realtime";
 import { DeleteReasonModal } from "../../../components/DeleteReasonModal";
+import { JobDeleteModal } from "./JobDeleteModal";
 import { StateNotice } from "../../../components/StateNotice";
 import { StatusPill } from "../../../components/StatusPill";
 import { AdminWorkspaceLayout } from "../AdminWorkspaceLayout";
+import { DelayTag, PointWarnings, PunctualityPill } from "./punctuality";
 
 function DetailField({ label, value }) {
   return (
-    <div style={{ padding: "11px 14px", background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 8 }}>
-      <span style={{ display: "block", fontSize: "0.7rem", fontWeight: 700, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 4 }}>{label}</span>
-      <strong style={{ fontSize: "0.88rem", fontWeight: 600, color: "#0f172a" }}>{value || "—"}</strong>
+    <div style={{ padding: "11px 14px", background: "#FAFAFA", border: "1px solid #E9EBED", borderRadius: 8 }}>
+      <span style={{ display: "block", fontSize: "0.7rem", fontWeight: 700, color: "#5F6B7A", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 4 }}>{label}</span>
+      <strong style={{ fontSize: "0.88rem", fontWeight: 600, color: "#0F141A" }}>{value || "—"}</strong>
     </div>
   );
 }
@@ -40,15 +42,15 @@ const STATUS_FLOW = [
 const LOAD_ICONS = { general: "📦", hazardous: "⚠️", refrigerated: "❄️", oversized: "🔩", fragile: "🫙" };
 const STOP_TYPE_ICON = { pickup: "↑", delivery: "↓", waypoint: "●" };
 
-const progressCell = { padding: "9px 10px", borderBottom: "1px solid #e2e8f0", fontSize: "0.84rem", color: "#334155", verticalAlign: "top", whiteSpace: "nowrap" };
-const progressHead = { ...progressCell, fontSize: "0.7rem", fontWeight: 800, color: "#64748b", textTransform: "uppercase", textAlign: "left", background: "#f8fafc" };
+const progressCell = { padding: "9px 10px", borderBottom: "1px solid #E9EBED", fontSize: "0.84rem", color: "#414D5C", verticalAlign: "top", whiteSpace: "nowrap" };
+const progressHead = { ...progressCell, fontSize: "0.7rem", fontWeight: 800, color: "#5F6B7A", textTransform: "uppercase", textAlign: "left", background: "#FAFAFA" };
 
 function TimeWithSource({ value, source }) {
-  if (!value || value === "—") return <span style={{ color: "#94a3b8" }}>—</span>;
+  if (!value || value === "—") return <span style={{ color: "#8C8C94" }}>—</span>;
   const gps = source === "GPS";
   return (
     <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
-      <strong style={{ color: "#0f172a" }}>{value}</strong>
+      <strong style={{ color: "#0F141A" }}>{value}</strong>
       <span
         title={gps ? "Recorded automatically by the driver app geofence" : "Recorded when the driver tapped the status in the app"}
         style={{ fontSize: "0.62rem", fontWeight: 800, padding: "2px 6px", borderRadius: 6, background: gps ? "#dcfce7" : "#e0f2fe", color: gps ? "#15803d" : "#0369a1" }}
@@ -89,22 +91,23 @@ function RouteProgressCard({ points, events }) {
           <tbody>
             {points.map((point, index) => (
               <tr key={point.key}>
-                <td style={progressCell}><strong>{index + 1}</strong></td>
+                <td style={progressCell}><strong>{point.kind === "pickup" ? "C" : point.kind === "return" ? "R" : point.kind === "waypoint" ? "W" : point.label.replace("Drop ", "")}</strong></td>
                 <td style={{ ...progressCell, whiteSpace: "normal", minWidth: 200 }}>
-                  <strong style={{ color: "#0f172a" }}>{point.label}</strong>
-                  <div style={{ color: "#64748b", fontSize: "0.78rem", marginTop: 2 }}>{point.address}</div>
+                  <strong style={{ color: "#0F141A" }}>{point.label}</strong>
+                  <div style={{ color: "#5F6B7A", fontSize: "0.78rem", marginTop: 2 }}>{point.address}</div>
+                  <PointWarnings point={point} />
                 </td>
                 <td style={progressCell}><StatusPill tone={point.tone}>{point.statusLabel}</StatusPill></td>
                 <td style={progressCell}>{point.plannedArrival}</td>
-                <td style={progressCell}><TimeWithSource value={point.actualArrival} source={point.arrivalSource} /></td>
+                <td style={progressCell}><TimeWithSource value={point.actualArrival} source={point.arrivalSource} /><DelayTag mins={point.arrivalDelayMins} overdue={point.overdue?.type === "arrival" ? point.overdue : null} /></td>
                 <td style={progressCell}>{point.plannedDeparture}</td>
-                <td style={progressCell}><TimeWithSource value={point.actualDeparture} source={point.departureSource} /></td>
+                <td style={progressCell}><TimeWithSource value={point.actualDeparture} source={point.departureSource} /><DelayTag mins={point.departureDelayMins} overdue={point.overdue?.type === "departure" ? point.overdue : null} /></td>
               </tr>
             ))}
           </tbody>
         </table>
       </div>
-      <p style={{ color: "#64748b", fontSize: "0.78rem", margin: "10px 0 0" }}>
+      <p style={{ color: "#5F6B7A", fontSize: "0.78rem", margin: "10px 0 0" }}>
         All times UK (GMT/BST). <strong>GPS</strong> = recorded automatically when the vehicle entered or left the stop area; <strong>DRIVER</strong> = recorded when the driver confirmed in the app.
       </p>
       {events?.length > 0 && (
@@ -129,7 +132,7 @@ function RouteProgressCard({ points, events }) {
                       <td style={progressCell}>{event.at}</td>
                       <td style={progressCell}>{event.point}</td>
                       <td style={progressCell}>{event.event}</td>
-                      <td style={{ ...progressCell, whiteSpace: "normal", color: event.applied ? "#15803d" : "#64748b" }}>
+                      <td style={{ ...progressCell, whiteSpace: "normal", color: event.applied ? "#15803d" : "#5F6B7A" }}>
                         {event.applied ? `Recorded · ${event.note}` : `Ignored · ${event.note}`}
                       </td>
                     </tr>
@@ -154,6 +157,7 @@ export function JobDetailPage() {
   const [blockReason, setBlockReason] = useState("");
   const [showBlockInput, setShowBlockInput] = useState(false);
   const [showCancelModal, setShowCancelModal] = useState(false);
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [showAddStop, setShowAddStop] = useState(false);
   const [newStop, setNewStop] = useState({ address: "", stop_type: "delivery", contact_name: "", contact_phone: "", planned_arrival: "", notes: "" });
   const [stopSaving, setStopSaving] = useState(false);
@@ -220,6 +224,20 @@ export function JobDetailPage() {
     }
   }
 
+  async function handleDelete(payload) {
+    setUpdating(true);
+    try {
+      await deleteJob(id, payload);
+      setShowDeleteModal(false);
+      navigate("/admin/jobs");
+    } catch (err) {
+      setShowDeleteModal(false);
+      alert(err?.response?.data?.message || "Could not delete job.");
+    } finally {
+      setUpdating(false);
+    }
+  }
+
   async function handleAddStop(e) {
     e.preventDefault();
     if (!newStop.address.trim()) return;
@@ -279,6 +297,11 @@ export function JobDetailPage() {
                   Cancel Job
                 </button>
               )}
+              {!["loading", "active"].includes(data.status) && (
+                <button className="header-action-button danger" type="button" onClick={() => setShowDeleteModal(true)}>
+                  Delete Job
+                </button>
+              )}
             </div>
           )}
         </div>
@@ -288,14 +311,15 @@ export function JobDetailPage() {
         {data && (
           <>
             {/* Status bar */}
-            <div style={{ background: "#fff", border: "1px solid #e2e8f0", borderRadius: 14, padding: "18px 22px", marginBottom: 14, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 16, flexWrap: "wrap", boxShadow: "0 1px 3px rgba(15,23,42,0.05)" }}>
+            <div style={{ background: "#fff", border: "1px solid #E9EBED", borderRadius: 14, padding: "18px 22px", marginBottom: 14, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 16, flexWrap: "wrap", boxShadow: "0 1px 3px rgba(15,23,42,0.05)" }}>
               <div style={{ display: "flex", alignItems: "center", gap: 16, flexWrap: "wrap" }}>
                 <div>
-                  <span style={{ fontSize: "0.72rem", fontWeight: 700, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.06em", display: "block", marginBottom: 4 }}>Job Status</span>
+                  <span style={{ fontSize: "0.72rem", fontWeight: 700, color: "#5F6B7A", textTransform: "uppercase", letterSpacing: "0.06em", display: "block", marginBottom: 4 }}>Job Status</span>
                   <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
                     <StatusPill tone={data.statusTone}>{data.status}</StatusPill>
                     <StatusPill tone={data.priorityTone}>{data.priority} priority</StatusPill>
                     <StatusPill tone="neutral">POD: {data.podStatus}</StatusPill>
+                    <PunctualityPill summary={data.punctuality} />
                     {data.driverExecution?.statusLabel && data.driverExecution.statusLabel !== "—" && (
                       <StatusPill tone={data.driverExecution?.statusTone || "neutral"}>
                         Driver: {data.driverExecution.statusLabel}
@@ -316,17 +340,17 @@ export function JobDetailPage() {
                       <div key={s} style={{ display: "flex", alignItems: "center", gap: 4 }}>
                         <div style={{
                           width: 28, height: 28, borderRadius: "50%",
-                          background: done ? "#1CB48C" : current ? "#237FDA" : "#e2e8f0",
-                          color: done || current ? "#fff" : "#94a3b8",
+                          background: done ? "#037F0C" : current ? "#0972D3" : "#E9EBED",
+                          color: done || current ? "#fff" : "#8C8C94",
                           display: "flex", alignItems: "center", justifyContent: "center",
                           fontSize: "0.7rem", fontWeight: 700
                         }}>
                           {done ? "✓" : stepIdx + 1}
                         </div>
-                        <span style={{ fontSize: "0.72rem", color: current ? "#237FDA" : done ? "#1CB48C" : "#94a3b8", fontWeight: current || done ? 700 : 400, textTransform: "capitalize" }}>
+                        <span style={{ fontSize: "0.72rem", color: current ? "#0972D3" : done ? "#037F0C" : "#8C8C94", fontWeight: current || done ? 700 : 400, textTransform: "capitalize" }}>
                           {s}
                         </span>
-                        {i < arr.length - 1 && <div style={{ width: 20, height: 2, background: done ? "#1CB48C" : "#e2e8f0", borderRadius: 2, marginLeft: 2 }} />}
+                        {i < arr.length - 1 && <div style={{ width: 20, height: 2, background: done ? "#037F0C" : "#E9EBED", borderRadius: 2, marginLeft: 2 }} />}
                       </div>
                     );
                   })}
@@ -340,7 +364,7 @@ export function JobDetailPage() {
                     className="af-submit-btn"
                     type="button"
                     disabled={updating}
-                    style={{ background: nextStep.tone === "success" ? "#08765B" : "#ECAC69" }}
+                    style={{ background: nextStep.tone === "success" ? "#026A0A" : "#E8A300" }}
                     onClick={() => handleStatusChange(nextStep.next)}
                   >
                     {updating ? "Updating..." : nextStep.action + " →"}
@@ -356,8 +380,8 @@ export function JobDetailPage() {
 
             {/* Block reason input */}
             {showBlockInput && (
-              <div style={{ background: "#fff8f8", border: "1px solid rgba(220,38,38,0.2)", borderRadius: 12, padding: "16px 20px", marginBottom: 14 }}>
-                <p style={{ margin: "0 0 10px", fontSize: "0.86rem", fontWeight: 600, color: "#920303" }}>Block Reason</p>
+              <div style={{ background: "#fff8f8", border: "1px solid rgba(217, 21, 21,0.2)", borderRadius: 12, padding: "16px 20px", marginBottom: 14 }}>
+                <p style={{ margin: "0 0 10px", fontSize: "0.86rem", fontWeight: 600, color: "#AD0A0A" }}>Block Reason</p>
                 <div style={{ display: "flex", gap: 8 }}>
                   <input
                     className="af-input"
@@ -379,11 +403,11 @@ export function JobDetailPage() {
 
             {/* Cancellation / block reason notice */}
             {(data.cancellationReason || data.delayReason || data.failedDeliveryReason) && (
-              <div style={{ background: "#fff8f8", border: "1px solid rgba(220,38,38,0.2)", borderRadius: 12, padding: "14px 18px", marginBottom: 14 }}>
-                <strong style={{ fontSize: "0.84rem", color: "#920303" }}>
+              <div style={{ background: "#fff8f8", border: "1px solid rgba(217, 21, 21,0.2)", borderRadius: 12, padding: "14px 18px", marginBottom: 14 }}>
+                <strong style={{ fontSize: "0.84rem", color: "#AD0A0A" }}>
                   {data.failedDeliveryReason ? "Failed Delivery Reason" : data.cancellationReason ? "Cancellation Reason" : "Delay Reason"}:
                 </strong>
-                <span style={{ fontSize: "0.84rem", color: "#334155", marginLeft: 8 }}>
+                <span style={{ fontSize: "0.84rem", color: "#414D5C", marginLeft: 8 }}>
                   {data.failedDeliveryReason || data.cancellationReason || data.delayReason}
                 </span>
               </div>
@@ -435,9 +459,6 @@ export function JobDetailPage() {
                   {data.route.distanceKm && (
                     <DetailField label="Distance" value={`${Math.round(data.route.distanceKm * 0.621371)} mi`} />
                   )}
-                  {data.economics?.tollCost > 0 && (
-                    <DetailField label="Route Toll Estimate" value={`£${Number(data.economics.tollCost).toFixed(2)}`} />
-                  )}
                 </div>
               </SectionCard>
 
@@ -452,11 +473,11 @@ export function JobDetailPage() {
                     <DetailField label="Compliance"    value={data.driver.compliance} />
                   </div>
                 ) : (
-                  <p style={{ color: "#94a3b8", fontSize: "0.86rem", marginBottom: data.vehicle ? 12 : 0 }}>No driver assigned yet.</p>
+                  <p style={{ color: "#8C8C94", fontSize: "0.86rem", marginBottom: data.vehicle ? 12 : 0 }}>No driver assigned yet.</p>
                 )}
                 {data.vehicle && (
                   <>
-                    <div style={{ height: 1, background: "#e2e8f0", margin: "12px 0" }} />
+                    <div style={{ height: 1, background: "#E9EBED", margin: "12px 0" }} />
                     <div className="detail-grid">
                       <DetailField label="Registration" value={data.vehicle.registration} />
                       <DetailField label="Model"        value={data.vehicle.model} />
@@ -468,7 +489,7 @@ export function JobDetailPage() {
                 )}
                 {data.trailer && (
                   <>
-                    <div style={{ height: 1, background: "#e2e8f0", margin: "12px 0" }} />
+                    <div style={{ height: 1, background: "#E9EBED", margin: "12px 0" }} />
                     <div className="detail-grid">
                       <DetailField label="Trailer Registration" value={data.trailer.registration} />
                       <DetailField label="Trailer Code" value={data.trailer.code} />
@@ -578,7 +599,7 @@ export function JobDetailPage() {
                     </div>
                   ))}
                   {(!data.driverExpenses || data.driverExpenses.length === 0) && (
-                    <p style={{ color: "#94a3b8", fontSize: "0.86rem", margin: 0 }}>No expenses submitted for this job.</p>
+                    <p style={{ color: "#8C8C94", fontSize: "0.86rem", margin: 0 }}>No expenses submitted for this job.</p>
                   )}
                 </div>
               </SectionCard>
@@ -595,7 +616,7 @@ export function JobDetailPage() {
                     </div>
                   ))}
                   {(!data.vehicleDefects || data.vehicleDefects.length === 0) && (
-                    <p style={{ color: "#94a3b8", fontSize: "0.86rem", margin: 0 }}>No driver defect reports for this vehicle.</p>
+                    <p style={{ color: "#8C8C94", fontSize: "0.86rem", margin: 0 }}>No driver defect reports for this vehicle.</p>
                   )}
                 </div>
               </SectionCard>
@@ -629,7 +650,7 @@ export function JobDetailPage() {
                   <p style={{ margin: "0 0 10px", fontSize: "0.84rem", fontWeight: 700, color: "#0369a1" }}>New Stop Details</p>
                   <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0,1fr))", gap: 10 }}>
                     <div>
-                      <label style={{ fontSize: "0.72rem", fontWeight: 700, color: "#64748b", textTransform: "uppercase", display: "block", marginBottom: 4 }}>Stop Type</label>
+                      <label style={{ fontSize: "0.72rem", fontWeight: 700, color: "#5F6B7A", textTransform: "uppercase", display: "block", marginBottom: 4 }}>Stop Type</label>
                       <select className="af-select" value={newStop.stop_type} onChange={e => setNewStop(p => ({ ...p, stop_type: e.target.value }))}>
                         <option value="delivery">Delivery</option>
                         <option value="pickup">Pickup</option>
@@ -637,29 +658,29 @@ export function JobDetailPage() {
                       </select>
                     </div>
                     <div>
-                      <label style={{ fontSize: "0.72rem", fontWeight: 700, color: "#64748b", textTransform: "uppercase", display: "block", marginBottom: 4 }}>Planned Arrival</label>
+                      <label style={{ fontSize: "0.72rem", fontWeight: 700, color: "#5F6B7A", textTransform: "uppercase", display: "block", marginBottom: 4 }}>Planned Arrival</label>
                       <input className="af-input" style={{ margin: 0 }} type="datetime-local" value={newStop.planned_arrival} onChange={e => setNewStop(p => ({ ...p, planned_arrival: e.target.value }))} />
                     </div>
                     <div style={{ gridColumn: "1 / -1" }}>
-                      <label style={{ fontSize: "0.72rem", fontWeight: 700, color: "#64748b", textTransform: "uppercase", display: "block", marginBottom: 4 }}>Address <span style={{ color: "#C20404" }}>*</span></label>
+                      <label style={{ fontSize: "0.72rem", fontWeight: 700, color: "#5F6B7A", textTransform: "uppercase", display: "block", marginBottom: 4 }}>Address <span style={{ color: "#D91515" }}>*</span></label>
                       <textarea className="af-input" style={{ margin: 0, minHeight: 60, resize: "vertical" }} placeholder="Full address for this stop" required value={newStop.address} onChange={e => setNewStop(p => ({ ...p, address: e.target.value }))} />
                     </div>
                     <div>
-                      <label style={{ fontSize: "0.72rem", fontWeight: 700, color: "#64748b", textTransform: "uppercase", display: "block", marginBottom: 4 }}>Contact Name</label>
+                      <label style={{ fontSize: "0.72rem", fontWeight: 700, color: "#5F6B7A", textTransform: "uppercase", display: "block", marginBottom: 4 }}>Contact Name</label>
                       <input className="af-input" style={{ margin: 0 }} type="text" placeholder="e.g. John Smith" value={newStop.contact_name} onChange={e => setNewStop(p => ({ ...p, contact_name: e.target.value }))} />
                     </div>
                     <div>
-                      <label style={{ fontSize: "0.72rem", fontWeight: 700, color: "#64748b", textTransform: "uppercase", display: "block", marginBottom: 4 }}>Contact Phone</label>
+                      <label style={{ fontSize: "0.72rem", fontWeight: 700, color: "#5F6B7A", textTransform: "uppercase", display: "block", marginBottom: 4 }}>Contact Phone</label>
                       <input className="af-input" style={{ margin: 0 }} type="tel" placeholder="e.g. 07700 900123" value={newStop.contact_phone} onChange={e => setNewStop(p => ({ ...p, contact_phone: e.target.value }))} />
                     </div>
                     <div style={{ gridColumn: "1 / -1" }}>
-                      <label style={{ fontSize: "0.72rem", fontWeight: 700, color: "#64748b", textTransform: "uppercase", display: "block", marginBottom: 4 }}>Notes</label>
+                      <label style={{ fontSize: "0.72rem", fontWeight: 700, color: "#5F6B7A", textTransform: "uppercase", display: "block", marginBottom: 4 }}>Notes</label>
                       <input className="af-input" style={{ margin: 0 }} type="text" placeholder="Any special instructions for this stop" value={newStop.notes} onChange={e => setNewStop(p => ({ ...p, notes: e.target.value }))} />
                     </div>
                   </div>
                   <div style={{ display: "flex", gap: 8, justifyContent: "flex-end", marginTop: 12 }}>
                     <button type="button" className="header-action-button" onClick={() => setShowAddStop(false)}>Cancel</button>
-                    <button type="submit" className="af-submit-btn" disabled={stopSaving} style={{ background: "#237FDA" }}>
+                    <button type="submit" className="af-submit-btn" disabled={stopSaving} style={{ background: "#0972D3" }}>
                       {stopSaving ? "Saving..." : "Add Stop →"}
                     </button>
                   </div>
@@ -672,7 +693,7 @@ export function JobDetailPage() {
               )}
 
               {data.stops.length === 0 && !showAddStop && (
-                <p style={{ color: "#94a3b8", fontSize: "0.86rem", margin: 0 }}>No intermediate stops on this job. Click "+ Add stop" to add waypoints, extra pickups, or delivery stops.</p>
+                <p style={{ color: "#8C8C94", fontSize: "0.86rem", margin: 0 }}>No intermediate stops on this job. Click "+ Add stop" to add waypoints, extra pickups, or delivery stops.</p>
               )}
 
               {data.stops.length > 0 && (
@@ -702,33 +723,33 @@ export function JobDetailPage() {
                         </div>
                         <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0,1fr))", gap: 8 }}>
                           <div>
-                            <span style={{ fontSize: "0.72rem", color: "#64748b", fontWeight: 700, textTransform: "uppercase" }}>Address</span>
-                            <p style={{ margin: "2px 0 0", fontSize: "0.84rem", color: "#334155" }}>{stop.address}</p>
+                            <span style={{ fontSize: "0.72rem", color: "#5F6B7A", fontWeight: 700, textTransform: "uppercase" }}>Address</span>
+                            <p style={{ margin: "2px 0 0", fontSize: "0.84rem", color: "#414D5C" }}>{stop.address}</p>
                           </div>
                           <div>
-                            <span style={{ fontSize: "0.72rem", color: "#64748b", fontWeight: 700, textTransform: "uppercase" }}>Contact</span>
-                            <p style={{ margin: "2px 0 0", fontSize: "0.84rem", color: "#334155" }}>{stop.contactName} {stop.contactPhone !== "—" ? `· ${stop.contactPhone}` : ""}</p>
+                            <span style={{ fontSize: "0.72rem", color: "#5F6B7A", fontWeight: 700, textTransform: "uppercase" }}>Contact</span>
+                            <p style={{ margin: "2px 0 0", fontSize: "0.84rem", color: "#414D5C" }}>{stop.contactName} {stop.contactPhone !== "—" ? `· ${stop.contactPhone}` : ""}</p>
                           </div>
                           <div>
-                            <span style={{ fontSize: "0.72rem", color: "#64748b", fontWeight: 700, textTransform: "uppercase" }}>Planned Arrival</span>
-                            <p style={{ margin: "2px 0 0", fontSize: "0.84rem", color: "#334155" }}>{stop.plannedArrival}</p>
+                            <span style={{ fontSize: "0.72rem", color: "#5F6B7A", fontWeight: 700, textTransform: "uppercase" }}>Planned Arrival</span>
+                            <p style={{ margin: "2px 0 0", fontSize: "0.84rem", color: "#414D5C" }}>{stop.plannedArrival}</p>
                           </div>
                           <div>
-                            <span style={{ fontSize: "0.72rem", color: "#64748b", fontWeight: 700, textTransform: "uppercase" }}>Planned Departure</span>
-                            <p style={{ margin: "2px 0 0", fontSize: "0.84rem", color: "#334155" }}>{stop.plannedDeparture}</p>
+                            <span style={{ fontSize: "0.72rem", color: "#5F6B7A", fontWeight: 700, textTransform: "uppercase" }}>Planned Departure</span>
+                            <p style={{ margin: "2px 0 0", fontSize: "0.84rem", color: "#414D5C" }}>{stop.plannedDeparture}</p>
                           </div>
                           <div>
-                            <span style={{ fontSize: "0.72rem", color: "#64748b", fontWeight: 700, textTransform: "uppercase" }}>Actual Arrival</span>
-                            <p style={{ margin: "2px 0 0", fontSize: "0.84rem", color: "#334155" }}>{stop.actualArrival}</p>
+                            <span style={{ fontSize: "0.72rem", color: "#5F6B7A", fontWeight: 700, textTransform: "uppercase" }}>Actual Arrival</span>
+                            <p style={{ margin: "2px 0 0", fontSize: "0.84rem", color: "#414D5C" }}>{stop.actualArrival}</p>
                           </div>
                           <div>
-                            <span style={{ fontSize: "0.72rem", color: "#64748b", fontWeight: 700, textTransform: "uppercase" }}>Actual Departure</span>
-                            <p style={{ margin: "2px 0 0", fontSize: "0.84rem", color: "#334155" }}>{stop.actualDeparture}</p>
+                            <span style={{ fontSize: "0.72rem", color: "#5F6B7A", fontWeight: 700, textTransform: "uppercase" }}>Actual Departure</span>
+                            <p style={{ margin: "2px 0 0", fontSize: "0.84rem", color: "#414D5C" }}>{stop.actualDeparture}</p>
                           </div>
                           {stop.notes !== "—" && (
                             <div>
-                              <span style={{ fontSize: "0.72rem", color: "#64748b", fontWeight: 700, textTransform: "uppercase" }}>Notes</span>
-                              <p style={{ margin: "2px 0 0", fontSize: "0.84rem", color: "#334155" }}>{stop.notes}</p>
+                              <span style={{ fontSize: "0.72rem", color: "#5F6B7A", fontWeight: 700, textTransform: "uppercase" }}>Notes</span>
+                              <p style={{ margin: "2px 0 0", fontSize: "0.84rem", color: "#414D5C" }}>{stop.notes}</p>
                             </div>
                           )}
                         </div>
@@ -750,6 +771,12 @@ export function JobDetailPage() {
         loading={updating}
         onCancel={() => setShowCancelModal(false)}
         onConfirm={handleCancel}
+      />
+      <JobDeleteModal
+        job={showDeleteModal && data ? { id, code: data.code, customer: data.customer?.name } : null}
+        loading={updating}
+        onCancel={() => setShowDeleteModal(false)}
+        onConfirm={handleDelete}
       />
     </AdminWorkspaceLayout>
   );

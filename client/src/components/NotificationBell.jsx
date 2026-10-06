@@ -1,6 +1,15 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import api from "../api/axios";
+import {
+  PREFS_EVENT,
+  desktopAlertsSupported,
+  isDesktopAlertsEnabled,
+  isSoundEnabled,
+  setDesktopAlertsEnabled,
+  setSoundEnabled
+} from "../utils/notificationPrefs";
+import { SeverityIcon } from "./SeverityIcon";
 
 function BellIcon() {
   return (
@@ -11,17 +20,13 @@ function BellIcon() {
   );
 }
 
-const toneStyle = {
-  danger: { bg: "#FCEAEA", bar: "#C20404", text: "#920303" },
-  warning: { bg: "#FFF5EA", bar: "#ECAC69", text: "#9A5513" },
-  info: { bg: "#EAF4FD", bar: "#237FDA", text: "#196DBD" }
-};
-
 export function NotificationBell({ fetchUrl, paramKey, paramValue, viewAllTo }) {
   const [open, setOpen] = useState(false);
   const [notifications, setNotifications] = useState([]);
   const [count, setCount] = useState(0);
   const [seen, setSeen] = useState(false);
+  const [soundOn, setSoundOn] = useState(isSoundEnabled);
+  const [desktopOn, setDesktopOn] = useState(isDesktopAlertsEnabled);
   const wrapRef = useRef(null);
   const navigate = useNavigate();
 
@@ -44,6 +49,15 @@ export function NotificationBell({ fetchUrl, paramKey, paramValue, viewAllTo }) 
       window.removeEventListener("admin-notification:refresh", load);
     };
   }, [load]);
+
+  useEffect(() => {
+    function syncPrefs() {
+      setSoundOn(isSoundEnabled());
+      setDesktopOn(isDesktopAlertsEnabled());
+    }
+    window.addEventListener(PREFS_EVENT, syncPrefs);
+    return () => window.removeEventListener(PREFS_EVENT, syncPrefs);
+  }, []);
 
   useEffect(() => {
     if (!open) return;
@@ -77,6 +91,7 @@ export function NotificationBell({ fetchUrl, paramKey, paramValue, viewAllTo }) 
   }
 
   const showBadge = count > 0 && !seen;
+  const hasCritical = notifications.some(n => n.type === "danger" && !n.isRead);
 
   return (
     <div className="notif-wrap" ref={wrapRef}>
@@ -88,7 +103,7 @@ export function NotificationBell({ fetchUrl, paramKey, paramValue, viewAllTo }) 
       >
         <BellIcon />
         {count > 0 && (
-          <span className={`notif-badge${showBadge ? " pulse" : ""}`}>
+          <span className={`notif-badge${hasCritical ? " critical" : ""}${showBadge && hasCritical ? " pulse" : ""}`}>
             {count > 9 ? "9+" : count}
           </span>
         )}
@@ -98,32 +113,48 @@ export function NotificationBell({ fetchUrl, paramKey, paramValue, viewAllTo }) 
         <div className="notif-dropdown">
           <div className="notif-dropdown-head">
             <strong>Notifications</strong>
-            {count > 0 && <span className="notif-count-label">{count} active</span>}
+            {count > 0 && <span className={`notif-count-label${hasCritical ? " critical" : ""}`}>{count} active</span>}
           </div>
 
           {notifications.length === 0 ? (
             <p className="notif-empty">All clear — no active alerts.</p>
           ) : (
             <div className="notif-list">
-              {notifications.map(n => {
-                const style = toneStyle[n.type] || toneStyle.info;
-                return (
-                  <div
-                    key={n.id}
-                    className="notif-item"
-                    style={{ background: n.isRead ? "#f8fafc" : style.bg, cursor: n.link ? "pointer" : "default", opacity: n.isRead ? 0.74 : 1 }}
-                    onClick={() => handleNotifClick(n)}
-                  >
-                    <div className="notif-bar" style={{ background: style.bar }} />
-                    <div className="notif-text">
-                      <strong style={{ color: style.text }}>{n.title}</strong>
-                      <p>{n.body}</p>
-                    </div>
-                  </div>
-                );
-              })}
+              {notifications.map(n => (
+                <button
+                  key={n.id}
+                  className={`notif-item ${n.type || "info"}${n.isRead ? " read" : ""}`}
+                  onClick={() => handleNotifClick(n)}
+                  type="button"
+                >
+                  <span className="notif-item-icon"><SeverityIcon type={n.type || "info"} size={18} /></span>
+                  <span className="notif-text">
+                    <strong>{n.title}</strong>
+                    <p>{n.body}</p>
+                  </span>
+                  {!n.isRead && <span className="notif-unread-dot" aria-label="Unread" />}
+                </button>
+              ))}
             </div>
           )}
+
+          <div className="notif-prefs">
+            <label className="notif-pref">
+              <input checked={soundOn} onChange={e => setSoundEnabled(e.target.checked)} type="checkbox" />
+              <span>Alert sounds</span>
+            </label>
+            {desktopAlertsSupported() && (
+              <label className="notif-pref">
+                <input
+                  checked={desktopOn}
+                  disabled={Notification.permission === "denied"}
+                  onChange={e => setDesktopAlertsEnabled(e.target.checked)}
+                  type="checkbox"
+                />
+                <span>{Notification.permission === "denied" ? "Desktop alerts blocked" : "Desktop alerts"}</span>
+              </label>
+            )}
+          </div>
 
           <div className="notif-footer-actions">
             {viewAllTo && (

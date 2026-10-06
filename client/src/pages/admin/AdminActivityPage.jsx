@@ -1,9 +1,11 @@
 import { useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { getRealtimeSocket } from "../../api/realtime";
 import { getActivityReport, restoreActivityRecord } from "../../api/adminApi";
 import { StateNotice } from "../../components/StateNotice";
 import { StatusPill } from "../../components/StatusPill";
 import { AdminWorkspaceLayout } from "./AdminWorkspaceLayout";
+import { ukNow } from "../../utils/ukJobTime";
 
 const actionLabels = {
   login: "Login",
@@ -46,8 +48,27 @@ function ChangeList({ changes }) {
   );
 }
 
+// Calendar dates in UK time (the browser's UTC date is a day behind in the evening in India).
 function todayIso() {
-  return new Date().toISOString().slice(0, 10);
+  return ukNow().slice(0, 10);
+}
+
+function daysAgoIso(days) {
+  return ukNow(new Date(Date.now() - days * 86400000)).slice(0, 10);
+}
+
+// What else happened in the same delete (job deleted with its invoices, alerts resolved, restores).
+function RelatedDetails({ details }) {
+  if (!details) return null;
+  const lines = [
+    details.deleted_with_job && `Deleted together with job ${details.deleted_with_job}`,
+    details.invoices_deleted?.length && `Invoices deleted with it: ${details.invoices_deleted.join(", ")}`,
+    details.alerts_resolved?.length && `Alerts resolved: ${details.alerts_resolved.join(", ")}`,
+    details.restoredInvoices?.length && `Invoices restored with it: ${details.restoredInvoices.join(", ")}`,
+    details.amount_gbp != null && `Amount: £${Number(details.amount_gbp).toLocaleString("en-GB", { minimumFractionDigits: 2 })}${details.payment_status ? ` · ${details.payment_status}` : ""}`
+  ].filter(Boolean);
+  if (!lines.length) return null;
+  return <div className="audit-related">{lines.map(line => <small key={line}>{line}</small>)}</div>;
 }
 
 function exportCsv(name, rows) {
@@ -63,6 +84,8 @@ function exportCsv(name, rows) {
 }
 
 export function AdminActivityPage() {
+  const [searchParams, setSearchParams] = useSearchParams();
+  const focusEventId = searchParams.get("event") || "";
   const [data, setData] = useState(null);
   const [filters, setFilters] = useState({
     employeeId: "",
@@ -70,8 +93,19 @@ export function AdminActivityPage() {
     action: "",
     risk: "",
     from: "",
-    to: todayIso()
+    to: "",
+    eventId: focusEventId
   });
+
+  // Notifications link here with ?event=<id>; follow it even when the page is already open.
+  useEffect(() => {
+    setFilters(current => (current.eventId === focusEventId ? current : { ...current, eventId: focusEventId }));
+  }, [focusEventId]);
+
+  function showAllActivity() {
+    setSearchParams({});
+    setFilters(current => ({ ...current, eventId: "" }));
+  }
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [actionError, setActionError] = useState("");
@@ -109,11 +143,13 @@ export function AdminActivityPage() {
   }, [params]);
 
   function updateFilter(key, value) {
-    setFilters((current) => ({ ...current, [key]: value }));
+    if (focusEventId) setSearchParams({});
+    setFilters((current) => ({ ...current, eventId: "", [key]: value }));
   }
 
   function clearFilters() {
-    setFilters({ employeeId: "", module: "", action: "", risk: "", from: "", to: todayIso() });
+    if (focusEventId) setSearchParams({});
+    setFilters({ employeeId: "", module: "", action: "", risk: "", from: "", to: "", eventId: "" });
   }
 
   async function restoreLog(log) {
@@ -129,7 +165,7 @@ export function AdminActivityPage() {
     }
   }
 
-  const hasFilters = Boolean(filters.employeeId || filters.module || filters.action || filters.risk || filters.from || filters.to !== todayIso());
+  const hasFilters = Boolean(filters.employeeId || filters.module || filters.action || filters.risk || filters.from || filters.to || filters.eventId);
   const visibleLogs = useMemo(() => {
     return (data?.logs || []).filter(log => {
       if (filters.risk === "critical" && !["delete", "restore"].includes(log.action)) return false;
@@ -166,6 +202,13 @@ export function AdminActivityPage() {
         </div>
       )}
 
+      {filters.eventId && (
+        <div className="activity-focus-banner">
+          <span>Showing the activity from your notification{visibleLogs[0] ? ` · ${actionLabels[visibleLogs[0].action] || visibleLogs[0].action} ${visibleLogs[0].entityLabel}` : ""}.</span>
+          <button className="header-action-button" type="button" onClick={showAllActivity}>Show all activity</button>
+        </div>
+      )}
+
       <section className="activity-quick-grid">
         {(data?.summary || []).map(item => (
           <article className={`activity-quick-card ${item.tone || "neutral"}`} key={item.label}>
@@ -199,11 +242,10 @@ export function AdminActivityPage() {
         </select>
         <input className="af-input" type="date" value={filters.from} onChange={e => updateFilter("from", e.target.value)} />
         <input className="af-input" type="date" value={filters.to} onChange={e => updateFilter("to", e.target.value)} />
-        <button className="header-action-button" type="button" onClick={() => setFilters(current => ({ ...current, from: todayIso(), to: todayIso() }))}>Today</button>
+        <button className="header-action-button" type="button" onClick={() => { if (focusEventId) setSearchParams({}); setFilters(current => ({ ...current, eventId: "", from: todayIso(), to: todayIso() })); }}>Today</button>
         <button className="header-action-button" type="button" onClick={() => {
-          const date = new Date();
-          date.setDate(date.getDate() - 6);
-          setFilters(current => ({ ...current, from: date.toISOString().slice(0, 10), to: todayIso() }));
+          if (focusEventId) setSearchParams({});
+          setFilters(current => ({ ...current, eventId: "", from: daysAgoIso(6), to: todayIso() }));
         }}>7 Days</button>
         <button className="header-action-button" type="button" onClick={exportActivity}>Export CSV</button>
         <button className="header-action-button" disabled={!hasFilters} type="button" onClick={clearFilters}>Clear</button>
@@ -246,7 +288,7 @@ export function AdminActivityPage() {
             </thead>
             <tbody>
               {visibleLogs.map(log => (
-                <tr key={log.id}>
+                <tr key={log.id} className={String(log.id) === filters.eventId ? "activity-row-focus" : undefined}>
                   <td><strong>{log.at}</strong><small>{log.ipAddress}</small></td>
                   <td><strong>{log.actorName}</strong><small>{log.actorRole}</small></td>
                   <td><strong>{log.module}</strong><small>{log.entityType}</small></td>
@@ -255,6 +297,7 @@ export function AdminActivityPage() {
                   <td>
                     {log.reason && <p className="activity-reason"><strong>Reason:</strong> {log.reasonCategory ? `${log.reasonCategory.replaceAll("_", " ")} · ` : ""}{log.reason}</p>}
                     <ChangeList changes={log.details?.changes} />
+                    <RelatedDetails details={log.details} />
                     {!log.reason && !log.details?.changes && <small>No field changes recorded</small>}
                   </td>
                   <td>{log.hashVerified ? <small>{log.entryHash.slice(0, 12)}...</small> : <small>—</small>}</td>

@@ -47,6 +47,31 @@ mysql -u "$DB_USER" -p "$DB_NAME" < backend/db/schema.sql
 node backend/db/seed.js
 ```
 
+## UK time
+
+All times are UK time (GMT/BST), whatever timezone the server or MySQL host uses. The backend sets
+`TZ=Europe/London` for Node and sets each MySQL session's `time_zone` (see `backend/db/connection.js`).
+
+- Recommended: load MySQL's timezone tables once so sessions use `Europe/London` directly:
+  `mysql_tzinfo_to_sql /usr/share/zoneinfo | mysql -u root -p mysql`
+- Without them the backend logs a warning and uses the current UK offset (`+00:00` / `+01:00`), switching
+  automatically at the BST change. Both work; the named zone also converts historical `TIMESTAMP` values
+  across the clock change exactly.
+
+### Old maintenance times (one-time, automatic)
+
+On the first start of this version, before it accepts requests, the backend converts maintenance timestamps
+that MySQL wrote in its old timezone (completed, resolved, verified, QA, reported times …) to UK time, then
+records `uk_time_legacy_maintenance_v1` in `maintenance_data_migrations` so it never runs again.
+
+1. Before deploying, check the server's MySQL clock:
+   `SELECT @@global.time_zone, @@system_time_zone, TIMESTAMPDIFF(MINUTE, UTC_TIMESTAMP(), NOW());`
+   - `SYSTEM / IST / 330` (India) or `SYSTEM / UTC / 0` → detected automatically.
+   - `GMT`/`BST` → already UK time; nothing to convert.
+   - Anything else → set `LEGACY_DB_TIME_ZONE` (e.g. `UTC`, `Asia/Kolkata`) in the deploy environment first.
+2. Optional preview (writes nothing): `node backend/scripts/ukTimeMigration.js`
+3. After deploy, the log shows `[UK time] Converted N old maintenance times …` or why it was skipped.
+
 ## Smoke tests
 
 ```bash

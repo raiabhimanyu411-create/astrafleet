@@ -1,4 +1,5 @@
 const db = require("../db/connection");
+const { ukDaysUntil } = require("../utils/maintenanceDates");
 const { buildChangeSet, logActivity } = require("../utils/auditLogger");
 
 const vehicleColumns = [
@@ -137,16 +138,17 @@ function fmtDate(d) {
 }
 function rawDate(d) {
   if (!d) return "";
-  return new Date(d).toISOString().slice(0, 10);
+  // Stored values are UK wall-clock strings; take the calendar date as written instead of via UTC.
+  const match = String(d).match(/^(\d{4}-\d{2}-\d{2})/);
+  return match ? match[1] : new Date(d).toISOString().slice(0, 10);
 }
 function fmtDateTime(d) {
   if (!d) return "—";
   return new Date(d).toLocaleString("en-GB", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" });
 }
+// UK calendar days, so a document expiring tomorrow always shows 1 whatever the time of day.
 function daysUntil(dateStr) {
-  if (!dateStr) return null;
-  const diff = new Date(dateStr) - new Date();
-  return Math.ceil(diff / (1000 * 60 * 60 * 24));
+  return ukDaysUntil(dateStr);
 }
 function expiryTone(dateStr) {
   const days = daysUntil(dateStr);

@@ -48,6 +48,14 @@ function ensureGeofenceSchema() {
   return schemaReady;
 }
 
+// Phones often send ISO instants ("2026-07-01T20:59:00.000Z" or "+01:00"); convert those to UK wall time
+// instead of falling back to the upload time, which would mis-stamp events recorded offline.
+function instantToUkKey(value) {
+  if (typeof value !== "string" || !/(Z|[+-]\d{2}:?\d{2})$/i.test(value.trim())) return null;
+  const instant = new Date(value);
+  return Number.isNaN(instant.getTime()) ? null : ukNowDateTimeKey(instant);
+}
+
 const notBefore = (later, earlier) => !earlier || (wallMinutesBetween(earlier, later) ?? -1) >= 0;
 
 // Decides what an event changes. Returns { sql, params, note } or { note } when nothing is applied.
@@ -84,9 +92,11 @@ async function planUpdate(trip, pointKey, eventType, at) {
   if (!stop) return { note: "Stop not on this job" };
 
   if (eventType === "enter") {
-    const drop1Reached = ["arrived", "completed"].includes(trip.primary_drop_status) || trip.primary_drop_arrived_at;
-    const earlierUnvisited = stops.some(row => row.stop_order < stop.stop_order && row.status === "pending" && !row.actual_arrival);
-    if (stop.status !== "pending" || !drop1Reached || earlierUnvisited) return { note: "Stop not next" };
+    // The driver must have finished the previous point; passing near a later drop while still unloading
+    // at an earlier one must not stamp it.
+    const drop1Done = trip.primary_drop_status === "completed";
+    const earlierOpen = stops.some(row => row.stop_order < stop.stop_order && !["completed", "skipped"].includes(row.status));
+    if (stop.status !== "pending" || !drop1Done || earlierOpen) return { note: "Stop not next" };
     return { sql: `UPDATE job_stops SET actual_arrival=COALESCE(actual_arrival, ?) WHERE id=? AND trip_id=?`, params: [at, stopId, trip.id], note: "Stop arrival" };
   }
   if (!stop.actual_arrival || !notBefore(at, stop.actual_arrival)) return { note: "Stop not arrived" };
@@ -106,7 +116,7 @@ exports.recordGeofenceEvent = async (req, res) => {
     if (!pointKey || !["enter", "exit"].includes(event)) return res.status(400).json({ message: "pointId and event (enter/exit) are required." });
     // Offline events arrive late, so the phone's UK time is used — but never from the future or over a day old.
     const now = ukNowDateTimeKey();
-    const at = isDateTimeKey(occurredAt) ? dateTimeKey(occurredAt) : now;
+    const at = isDateTimeKey(occurredAt) ? dateTimeKey(occurredAt) : instantToUkKey(occurredAt) || now;
     const age = wallMinutesBetween(at, now);
     if (age == null || age < -2 || age > 24 * 60) return res.status(400).json({ message: "occurredAt must be a UK date-time within the last 24 hours." });
 
@@ -137,4 +147,4 @@ exports.recordGeofenceEvent = async (req, res) => {
 };
 
 exports.ensureGeofenceSchema = ensureGeofenceSchema;
-exports.__test = { planUpdate };
+exports.__test = { planUpdate, instantToUkKey };

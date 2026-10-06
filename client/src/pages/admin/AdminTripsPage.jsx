@@ -150,7 +150,7 @@ function RouteMaster() {
             </div>
           ))}
           {!loading && (data?.routes || []).length === 0 && (
-            <p style={{ color: "#94a3b8", fontSize: "0.86rem", margin: 0 }}>No routes yet. Add your first lane.</p>
+            <p style={{ color: "#8C8C94", fontSize: "0.86rem", margin: 0 }}>No routes yet. Add your first lane.</p>
           )}
         </div>
       </article>
