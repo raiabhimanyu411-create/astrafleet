@@ -2,6 +2,7 @@ const { cleanMaintenanceHistory, maintenanceCostRows } = require("../utils/maint
 const db = require("../db/connection");
 const { logActivity } = require("../utils/auditLogger");
 const { dateFieldError, optionalMoney, ukDaysUntil } = require("../utils/maintenanceDates");
+const { extractDocumentFields } = require("../utils/documentExtraction");
 
 const INSPECTION_INTERVAL_DAYS = 42;
 const TRAILER_INSPECTION_INTERVAL_DAYS = 70;
@@ -4357,6 +4358,25 @@ exports.getJobDocument = async (req, res) => {
     return res.json({ jobId: job.id, jobNumber: job.job_number, attachmentData: job.bill_attachment_data });
   } catch (err) {
     return res.status(500).json({ message: "Could not load maintenance document.", error: err.message });
+  }
+};
+
+// POST /api/maintenance/documents/extract  { attachmentData } or { jobId }
+// Reads the document on this server and returns suggested form values; nothing is saved here.
+exports.extractDocumentFields = async (req, res) => {
+  try {
+    let attachmentData = req.body?.attachmentData;
+    const jobId = Number(req.body?.jobId);
+    if (!attachmentData && jobId) {
+      const [[job]] = await db.query("SELECT bill_attachment_data FROM maintenance_jobs WHERE id=? LIMIT 1", [jobId]);
+      if (!job?.bill_attachment_data) return res.status(404).json({ message: "This maintenance item has no attached document." });
+      attachmentData = job.bill_attachment_data;
+    }
+    if (!attachmentData) return res.status(400).json({ message: "Attach a document first." });
+    const result = await extractDocumentFields(attachmentData);
+    res.json(result);
+  } catch (err) {
+    res.status(500).json({ message: "The document could not be read. Please fill the details in.", error: err.message });
   }
 };
 

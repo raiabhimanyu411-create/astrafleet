@@ -11,6 +11,7 @@ export const createBulkMaintenanceJobs = (data) => api.post("/api/maintenance/jo
 export const updateMaintenanceJob = (id, data) => api.put(`/api/maintenance/jobs/${id}`, data);
 export const updateMaintenanceBill = (id, data) => api.patch(`/api/maintenance/jobs/${id}/bill`, data);
 export const getMaintenanceDocument = (id, config) => api.get(`/api/maintenance/jobs/${id}/document`, config);
+export const extractMaintenanceDocument = (source) => api.post("/api/maintenance/documents/extract", source);
 export const getComplianceDocument = (source, id, config) => api.get(
   `/api/maintenance/compliance/documents/${source}/${id}`,
   config

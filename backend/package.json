@@ -10,12 +10,15 @@
     "test:compliance:integration": "node scripts/complianceIntegrationTest.js"
   },
   "dependencies": {
+    "@tesseract.js-data/eng": "^1.0.0",
     "bcrypt": "^6.0.0",
     "cors": "^2.8.6",
     "dotenv": "^17.4.2",
     "express": "^5.2.1",
     "mysql2": "^3.22.3",
     "nodemon": "^3.1.14",
-    "socket.io": "^4.8.3"
+    "pdfjs-dist": "^4.10.38",
+    "socket.io": "^4.8.3",
+    "tesseract.js": "^6.0.1"
   }
 }
