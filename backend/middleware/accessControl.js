@@ -1,11 +1,11 @@
 const db = require("../db/connection");
-const { parseAccessModules, verifySessionToken } = require("../controllers/authController");
+const { parseAccessModules, verifyActiveSession } = require("../controllers/authController");
 const { logActivity, touchUserSession } = require("../utils/auditLogger");
 
 async function readSessionUser(req) {
   const id = Number(req.headers["x-session-user-id"] || 0);
   if (!id) return null;
-  const tokenPayload = verifySessionToken(req.headers["x-session-token"]);
+  const tokenPayload = await verifyActiveSession(req.headers["x-session-token"]);
   if (!tokenPayload || Number(tokenPayload.id) !== id) return null;
   const [[user]] = await db.query(
     `SELECT id, name, role, approval_status, access_modules
@@ -30,6 +30,7 @@ function requireAdmin(req, res, next) {
         touchUserSession(req);
         return next();
       }
+      if (!user) return res.status(401).json({ code: "SESSION_EXPIRED", message: "Login session has expired." });
       return res.status(403).json({ message: "Admin access is required." });
     })
     .catch((error) => res.status(500).json({ message: "Access check error", error: error.message }));
@@ -39,7 +40,7 @@ function requireModuleAccess(moduleKey) {
   return (req, res, next) => {
     readSessionUser(req)
       .then((user) => {
-        if (!user) return res.status(401).json({ message: "Login session is required." });
+        if (!user) return res.status(401).json({ code: "SESSION_EXPIRED", message: "Login session has expired." });
         if (user.role === "admin") {
           req.sessionUser = user;
           touchUserSession(req);
@@ -62,7 +63,19 @@ function requireModuleAccess(moduleKey) {
   };
 }
 
+// Driver "/me" endpoints resolve the driver from the token; this rejects expired or revoked ones first.
+function requireDriverSession(req, res, next) {
+  verifyActiveSession(req.headers["x-session-token"])
+    .then((payload) => {
+      if (payload?.role === "driver") return next();
+      if (process.env.ALLOW_LEGACY_DRIVER_USER_ID === "true" && !req.headers["x-session-token"]) return next();
+      return res.status(401).json({ code: "SESSION_EXPIRED", message: "Login session has expired." });
+    })
+    .catch((error) => res.status(500).json({ message: "Access check error", error: error.message }));
+}
+
 module.exports = {
   requireAdmin,
+  requireDriverSession,
   requireModuleAccess
 };

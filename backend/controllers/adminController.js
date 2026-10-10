@@ -1,7 +1,7 @@
 const db = require("../db/connection");
 const { ensureEmployeeAuthSchema, employeeModules, parseAccessModules } = require("./authController");
 const { emitDriverChatMessage, emitDriverLocationUpdate, emitJobUpdate } = require("../realtime");
-const { buildChangeSet, ensureActivitySchema, ensureSessionSchema, getActor, logActivity, requireDeleteReason } = require("../utils/auditLogger");
+const { buildChangeSet, ensureActivitySchema, ensureSessionSchema, getActor, logActivity, requireDeleteReason, revokeUserSessions } = require("../utils/auditLogger");
 
 function severityTone(s) {
   return s === "critical" || s === "high" ? "danger" : s === "medium" ? "warning" : "neutral";
@@ -3303,7 +3303,8 @@ exports.updateEmployeeAccess = async (req, res) => {
   const cleanModules = Array.isArray(accessModules)
     ? accessModules.filter((module) => employeeModules.has(module))
     : [];
-  const savedModules = approvalStatus === "rejected" ? [] : Array.from(new Set(cleanModules));
+  // Kept on reject too: login is blocked by status, and re-approving restores the same pages.
+  const savedModules = Array.from(new Set(cleanModules));
 
   if (approvalStatus === "active" && savedModules.length === 0) {
     return res.status(400).json({ message: "Select at least one page before approving employee login." });
@@ -3320,6 +3321,9 @@ exports.updateEmployeeAccess = async (req, res) => {
 
     if (result.affectedRows === 0) {
       return res.status(404).json({ message: "Employee not found." });
+    }
+    if (approvalStatus !== "active") {
+      await revokeUserSessions(id);
     }
 
     await logActivity(req, {

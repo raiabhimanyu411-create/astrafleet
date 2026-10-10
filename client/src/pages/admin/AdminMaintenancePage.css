@@ -3887,3 +3887,241 @@
 
 .maintenance-rule-note .vehicle-detail-item-doc-link + .vehicle-detail-item-doc-link { margin-left: 12px; }
 .maintenance-rule-note .vehicle-detail-item-doc-link:disabled { color: #616161; cursor: wait; }
+
+/* ── Sticky view tabs: solid surface so scrolled content never shows through ── */
+.maintenance-page-shell .maintenance-view-tabs {
+  z-index: 30;
+  margin-inline: -4px;
+  padding-inline: 4px;
+  background: rgba(255, 255, 255, 0.97);
+  box-shadow: 0 1px 0 var(--mx-border), 0 6px 12px -10px rgba(0, 0, 0, 0.25);
+  backdrop-filter: blur(8px);
+}
+
+/* Mouse clicks should not leave a focus box on the active tab; keyboard focus still shows. */
+.maintenance-page-shell .maintenance-view-tabs button:focus:not(:focus-visible) { outline: none; }
+.maintenance-page-shell .maintenance-view-tabs button:focus-visible {
+  outline: 2px solid var(--mx-brand);
+  outline-offset: -2px;
+}
+
+/* ── Annual schedule: bold, high-contrast headings and row labels ──
+   Selectors include the table and row so they outrank `.excel-month-row th` (600). */
+.excel-schedule-view .excel-schedule-table th.excel-fixed-head,
+.excel-schedule-view .excel-schedule-table th.excel-month-head {
+  color: var(--mx-text);
+  font-size: 0.86rem;
+  font-weight: 700;
+}
+
+.excel-schedule-view .excel-schedule-table th.excel-date-head {
+  color: var(--mx-text);
+  font-size: 0.8rem;
+  font-weight: 700;
+}
+
+.excel-schedule-view .excel-schedule-table th.excel-date-head small {
+  color: var(--mx-text-2);
+  font-size: 0.7rem;
+  font-weight: 600;
+}
+
+.excel-schedule-view .excel-schedule-table .excel-company-row td { font-size: 0.84rem; font-weight: 700; }
+.excel-schedule-view .excel-schedule-table .excel-company-row td span { color: var(--mx-text-2); font-weight: 600; }
+
+.excel-schedule-view .excel-schedule-table .excel-reg-cell strong {
+  font-size: 0.9rem;
+  font-weight: 800;
+}
+
+.excel-schedule-view .excel-schedule-table td.excel-fleet-code-cell,
+.excel-schedule-view .excel-schedule-table td.excel-freq-cell,
+.excel-schedule-view .excel-schedule-table td.excel-make-cell {
+  color: var(--mx-text);
+  font-size: 0.86rem;
+  font-weight: 700;
+}
+
+.excel-schedule-view .excel-schedule-table .excel-event-chip {
+  font-size: 0.72rem;
+  font-weight: 700;
+}
+
+/* ── History & Docs: cost, insights and timeline ──
+   Left column stacks cost + insights so the taller timeline no longer leaves a gap. */
+.mx-records {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  align-items: start;
+  gap: 16px;
+  margin-bottom: 18px;
+}
+
+.mx-records-col { display: grid; gap: 16px; min-width: 0; }
+
+.maintenance-page-shell .mx-records-card { margin: 0; padding: 0; overflow: hidden; }
+
+.mx-records-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 16px 12px;
+  border-bottom: 1px solid var(--mx-border);
+}
+
+.mx-records-head h2 { margin: 0; color: var(--mx-text); font-size: 1rem; font-weight: 700; }
+.mx-records-meta { color: var(--mx-text-3); font-size: 0.8rem; font-weight: 600; white-space: nowrap; }
+.mx-records-empty { margin: 0; padding: 16px; color: var(--mx-text-3); font-size: 0.86rem; }
+.mx-muted { color: var(--mx-text-3); }
+.mx-warn { color: var(--mx-warning) !important; font-weight: 600; }
+
+.mx-records-hint {
+  margin: 0;
+  padding: 10px 16px;
+  border-top: 1px solid var(--mx-border);
+  background: var(--mx-surface-2);
+  color: var(--mx-text-2);
+  font-size: 0.8rem;
+}
+
+.mx-records-table-shell { overflow-x: auto; }
+
+.mx-records-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.86rem;
+}
+
+.mx-records-table th {
+  padding: 8px 16px;
+  border-bottom: 1px solid var(--mx-border);
+  background: var(--mx-surface-2);
+  color: var(--mx-text-2);
+  font-size: 0.78rem;
+  font-weight: 700;
+  text-align: left;
+  white-space: nowrap;
+}
+
+.mx-records-table td {
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--mx-border);
+  color: var(--mx-text);
+  vertical-align: middle;
+}
+
+.mx-records-table tr:last-child td { border-bottom: 0; }
+.mx-records-table .num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.mx-records-table td strong { display: block; font-weight: 700; }
+.mx-records-table td small { display: block; color: var(--mx-text-3); font-size: 0.76rem; }
+
+/* Insights: three compact columns */
+.mx-insights {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.mx-insights > div { min-width: 0; padding: 12px 16px 14px; }
+.mx-insights > div + div { border-left: 1px solid var(--mx-border); }
+.mx-insights h3 { margin: 0 0 8px; color: var(--mx-text-2); font-size: 0.8rem; font-weight: 700; }
+
+.mx-insights p {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  margin: 0 0 4px;
+  font-size: 0.84rem;
+}
+
+.mx-insights p strong { font-weight: 700; }
+.mx-insights p.mx-muted { display: block; }
+
+/* Timeline: date tile, title, one quiet meta line */
+.mx-timeline { margin: 0; padding: 4px 16px 8px; list-style: none; }
+
+.mx-timeline-item {
+  display: flex;
+  gap: 12px;
+  padding: 10px 0;
+}
+
+.mx-timeline-item + .mx-timeline-item { border-top: 1px solid var(--mx-border); }
+
+.mx-timeline-date {
+  display: grid;
+  flex: none;
+  place-items: center;
+  align-content: center;
+  width: 46px;
+  height: 46px;
+  border-radius: 6px;
+  background: var(--mx-success-tint);
+  color: var(--mx-success);
+  line-height: 1.05;
+}
+
+.mx-timeline-item.defect .mx-timeline-date { background: var(--mx-danger-tint); color: var(--mx-danger); }
+.mx-timeline-date strong { font-size: 1rem; font-weight: 800; }
+.mx-timeline-date small { font-size: 0.68rem; font-weight: 700; text-transform: uppercase; }
+
+.mx-timeline-body { min-width: 0; }
+
+.mx-timeline-title {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 8px;
+  margin: 0;
+}
+
+.mx-timeline-title strong { color: var(--mx-text); font-size: 0.9rem; font-weight: 700; }
+
+.mx-kind {
+  padding: 0 6px;
+  border-radius: 4px;
+  background: var(--mx-success-tint);
+  color: var(--mx-success);
+  font-size: 0.72rem;
+  font-weight: 700;
+}
+
+.mx-kind.defect { background: var(--mx-danger-tint); color: var(--mx-danger); }
+
+.mx-timeline-meta { margin: 2px 0 0; color: var(--mx-text-2); font-size: 0.8rem; }
+.mx-timeline-note { margin: 2px 0 0; color: var(--mx-text-3); font-size: 0.8rem; }
+
+.mx-reg {
+  margin-right: 4px;
+  padding: 0 6px;
+  border: 1px solid #C9A600;
+  border-radius: 3px;
+  background: #FFD200;
+  color: #111;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.74rem;
+  font-weight: 700;
+}
+
+/* Defect workflow: sentence-case step buttons */
+.mx-defect-workflow .section-head h2 { font-size: 1rem; font-weight: 700; }
+.mx-defect-workflow .finance-row-actions .header-action-button { text-transform: capitalize; }
+
+@media (max-width: 1100px) {
+  .mx-records { grid-template-columns: minmax(0, 1fr); }
+}
+
+@media (max-width: 640px) {
+  .mx-insights { grid-template-columns: 1fr; }
+  .mx-insights > div + div { border-left: 0; border-top: 1px solid var(--mx-border); }
+  .mx-records-table th:nth-child(2),
+  .mx-records-table td:nth-child(2),
+  .mx-records-table th:nth-child(3),
+  .mx-records-table td:nth-child(3) { display: none; }
+}
+
+@media (max-width: 900px) {
+  /* Global mobile grid is plain 1fr; the wide schedule made the page ~6000px wide,
+     so the view tabs could not scroll and "History & Docs" was unreachable on phones. */
+  .maintenance-page-shell.panel-shell { grid-template-columns: minmax(0, 1fr); }
+}

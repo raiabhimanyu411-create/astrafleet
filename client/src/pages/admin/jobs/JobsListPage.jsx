@@ -13,11 +13,12 @@ import { AdminWorkspaceLayout } from "../AdminWorkspaceLayout";
 import { getAuthSession } from "../../../utils/authSession";
 import { formatUkWall, ukMinutes, ukNow } from "../../../utils/ukJobTime";
 import JobRouteMapModal from "./JobRouteMapModal";
+import "./JobsListPage.css";
 import { ImportJobsModal } from "./ImportJobsModal";
 import { JobStopsEditor } from "./JobStopsEditor";
 
 const STATUS_OPTIONS = [
-  { value: "", label: "All Statuses" },
+  { value: "", label: "All statuses" },
   { value: "planned", label: "Planned" },
   { value: "loading", label: "Loading" },
   { value: "active", label: "Active" },
@@ -28,26 +29,21 @@ const STATUS_OPTIONS = [
 ];
 
 const PRIORITY_OPTIONS = [
-  { value: "", label: "All Priorities" },
+  { value: "", label: "All priorities" },
   { value: "standard", label: "Standard" },
   { value: "priority", label: "Priority" },
   { value: "critical", label: "Critical" }
 ];
 
 const SORT_OPTIONS = [
-  { value: "date_asc", label: "Start Date ↑" },
-  { value: "date_desc", label: "Start Date ↓" },
+  { value: "date_asc", label: "Start date ↑" },
+  { value: "date_desc", label: "Start date ↓" },
   { value: "freight_desc", label: "Freight (High–Low)" },
   { value: "freight_asc", label: "Freight (Low–High)" },
   { value: "driver", label: "Driver A–Z" },
   { value: "customer", label: "Customer A–Z" },
   { value: "status", label: "Status" }
 ];
-
-const LOAD_ICONS = {
-  general: "📦", hazardous: "⚠️", refrigerated: "❄️",
-  oversized: "🔩", fragile: "🫙", palletised: "🧱", bulk: "🏗️"
-};
 
 const DRIVER_STATUS_LABEL = {
   offered: "Offered", accepted: "Accepted", arrived_pickup: "At pickup",
@@ -67,6 +63,13 @@ const STOP_STATUS_TONE = {
   completed: "success",
   skipped: "neutral"
 };
+
+const JOB_TABS = [
+  { key: "upcoming", label: "Upcoming" },
+  { key: "intransit", label: "In transit" },
+  { key: "completed", label: "Completed" },
+  { key: "history", label: "All jobs" }
+];
 
 const TAB_STATUSES = {
   upcoming: ["planned", "loading"],
@@ -706,9 +709,9 @@ export function JobsListPage() {
   const weekLabel = fmtWeekLabel(weekRange.start, weekRange.end);
 
   const ATTENTION_CHIPS = [
-    { key: "eta_risk",    label: "ETA Risk",     tone: "danger"  },
+    { key: "eta_risk",    label: "ETA risk",     tone: "danger"  },
     { key: "unassigned",  label: "Unassigned",   tone: "warning" },
-    { key: "pod_pending", label: "POD Pending",  tone: "warning" },
+    { key: "pod_pending", label: "POD pending",  tone: "warning" },
     { key: "blocked",     label: "Blocked",      tone: "danger"  },
     { key: "critical",    label: "Critical",     tone: "danger"  }
   ];
@@ -716,139 +719,107 @@ export function JobsListPage() {
   return (
     <AdminWorkspaceLayout
       badge="Jobs control"
-      title="Transport jobs"
-      // description="Create, monitor, and manage every customer transport order from one operational workspace."
+      title="Jobs"
       highlights={[]}
+      hideHeaderIntro
       className="jobs-page-shell"
     >
       <div className="relay-page">
 
-        <section className="jobs-command-overview" aria-label="Jobs overview">
-          <div className="jobs-command-intro">
-            <span className="jobs-command-kicker">
-              <span aria-hidden="true" />
-              Live operations
-            </span>
-            <h2>Today’s job control</h2>
-            <p>Keep orders, assignments and delivery exceptions moving without losing context.</p>
-          </div>
-          <div className="jobs-command-metrics">
-            <article className="jobs-command-metric neutral">
-              <span>All jobs</span>
-              <strong>{tabCounts.history}</strong>
-              <small>Complete workload</small>
-            </article>
-            <article className="jobs-command-metric live">
-              <span>In transit</span>
-              <strong>{tabCounts.intransit}</strong>
-              <small>Moving now</small>
-            </article>
-            <article className="jobs-command-metric warning">
-              <span>Unassigned</span>
-              <strong>{attentionCounts.unassigned}</strong>
-              <small>Needs allocation</small>
-            </article>
-            <article className="jobs-command-metric danger">
-              <span>Needs attention</span>
-              <strong>{attentionCounts.eta_risk + attentionCounts.blocked + attentionCounts.critical}</strong>
-              <small>Operational risks</small>
-            </article>
-          </div>
-        </section>
-
         <section className="jobs-workspace-card">
-        {/* ── Top tab bar ── */}
-        <div className="relay-tabs">
-          <button className={tab === "upcoming" ? "active" : ""} type="button" onClick={() => { setTab("upcoming"); setAttentionFilter(""); }}>
-            Upcoming
-            {tabCounts.upcoming > 0 && <span className="relay-tab-count">{tabCounts.upcoming}</span>}
-          </button>
-          <button className={tab === "intransit" ? "active" : ""} type="button" onClick={() => { setTab("intransit"); setAttentionFilter(""); }}>
-            In Transit
-            {tabCounts.intransit > 0 && <span className="relay-tab-count relay-tab-count--live">{tabCounts.intransit}</span>}
-          </button>
-          <button className={tab === "completed" ? "active" : ""} type="button" onClick={() => { setTab("completed"); setAttentionFilter(""); }}>
-            Completed Jobs
-            {tabCounts.completed > 0 && <span className="relay-tab-count">{tabCounts.completed}</span>}
-          </button>
-          <button className={tab === "history" ? "active" : ""} type="button" onClick={() => { setTab("history"); setAttentionFilter(""); }}>
-            All Jobs
-            {tabCounts.history > 0 && <span className="relay-tab-count">{tabCounts.history}</span>}
-          </button>
-          <div className="relay-tabs-spacer" />
-          <button className="relay-import-btn" type="button" onClick={() => setShowImport(true)}>↑ Upload CSV</button>
-          <button className="relay-new-btn" type="button" onClick={() => navigate("/admin/jobs/new")}>
-            + New Job
-          </button>
+        {/* ── Command bar: view tabs + page actions ── */}
+        <div className="jb-command-bar">
+          <div className="jb-tabs" role="tablist" aria-label="Job views">
+            {JOB_TABS.map(item => (
+              <button
+                key={item.key}
+                className={tab === item.key ? "active" : ""}
+                type="button"
+                role="tab"
+                aria-selected={tab === item.key}
+                onClick={() => { setTab(item.key); setAttentionFilter(""); }}
+              >
+                {item.label}
+                <span className={`jb-tab-count${item.key === "intransit" && tabCounts.intransit ? " live" : ""}`}>{tabCounts[item.key]}</span>
+              </button>
+            ))}
+          </div>
+          <div className="jb-actions">
+            <button className="jb-btn subtle" type="button" onClick={load}>
+              <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M16 10a6 6 0 1 1-1.8-4.3M16 3.5V6h-2.5" /></svg>
+              Refresh
+            </button>
+            <button className="jb-btn subtle" type="button" onClick={exportJobs}>
+              <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M10 3v9m0 0-3.5-3.5M10 12l3.5-3.5M4 14.5V16h12v-1.5" /></svg>
+              Export
+            </button>
+            <button className="jb-btn subtle" type="button" onClick={() => setShowImport(true)}>
+              <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M10 13V4m0 0L6.5 7.5M10 4l3.5 3.5M4 14.5V16h12v-1.5" /></svg>
+              Upload CSV
+            </button>
+            <button className="jb-btn primary" type="button" onClick={() => navigate("/admin/jobs/new")}>
+              <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M10 4v12M4 10h12" /></svg>
+              New job
+            </button>
+          </div>
         </div>
 
-        {/* ── Filter bar ── */}
-        <div className="relay-filter-bar">
-          <div className="relay-search-wrap">
-            <svg className="relay-search-icon" viewBox="0 0 20 20" fill="none">
-              <circle cx="9" cy="9" r="6" stroke="#5F6B7A" strokeWidth="1.5" />
-              <path d="M15 15l-3-3" stroke="#5F6B7A" strokeWidth="1.5" strokeLinecap="round" />
-            </svg>
+        {/* ── Filters ── */}
+        <div className="jb-filters">
+          <label className="jb-search">
+            <svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="9" cy="9" r="5.5" /><path d="m13 13 3.5 3.5" /></svg>
             <input
-              className="relay-search-input"
-              placeholder="Search by IDs, reference, load ID, location, drivers"
+              placeholder="Search job, reference, load ID, place or driver"
               type="search"
               value={search}
               onChange={e => setSearch(e.target.value)}
             />
-          </div>
+          </label>
 
-          <div className="relay-date-nav">
-            <button className="relay-date-arrow" type="button" onClick={() => { setSelectedDate(""); setWeekOffset(o => o - 1); }}>‹</button>
-            <span className="relay-date-label">{selectedDate ? fmtDateInputLabel(selectedDate) : weekLabel}</span>
-            <button className="relay-date-arrow" type="button" onClick={() => { setSelectedDate(""); setWeekOffset(o => o + 1); }}>›</button>
+          <div className="jb-week" aria-label="Week">
+            <button type="button" aria-label="Previous week" onClick={() => { setSelectedDate(""); setWeekOffset(o => o - 1); }}>‹</button>
+            <span>{selectedDate ? fmtDateInputLabel(selectedDate) : weekLabel}</span>
+            <button type="button" aria-label="Next week" onClick={() => { setSelectedDate(""); setWeekOffset(o => o + 1); }}>›</button>
           </div>
 
           <input
-            className="relay-date-picker"
+            className="jb-input"
             aria-label="Filter jobs by exact date"
             type="date"
             value={selectedDate}
             onChange={e => setSelectedDate(e.target.value)}
           />
 
-          {selectedDate && (
-            <button className="relay-date-clear" type="button" onClick={() => setSelectedDate("")}>
-              Clear Date
-            </button>
-          )}
-
-          <select className="relay-filter-select" value={statusFilter} onChange={e => setStatusFilter(e.target.value)}>
+          <select className="jb-input" aria-label="Status" value={statusFilter} onChange={e => setStatusFilter(e.target.value)}>
             {STATUS_OPTIONS.map(opt => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
           </select>
 
-          <select className="relay-filter-select" value={priorityFilter} onChange={e => setPriorityFilter(e.target.value)}>
+          <select className="jb-input" aria-label="Priority" value={priorityFilter} onChange={e => setPriorityFilter(e.target.value)}>
             {PRIORITY_OPTIONS.map(opt => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
           </select>
 
-          <div className="relay-toggle-wrap">
-            <span className="relay-toggle-label">Show Unassigned Only</span>
-            <button
-              className={`relay-toggle ${showUnassignedOnly ? "on" : ""}`}
-              type="button"
-              role="switch"
-              aria-checked={showUnassignedOnly}
-              onClick={() => setShowUnassignedOnly(v => !v)}
-            >
-              <span className="relay-toggle-thumb" />
-            </button>
-          </div>
+          <select className="jb-input" aria-label="Sort by" value={sortBy} onChange={e => setSortBy(e.target.value)}>
+            {SORT_OPTIONS.map(opt => <option key={opt.value} value={opt.value}>Sort: {opt.label}</option>)}
+          </select>
+
+          <label className="jb-switch">
+            <input type="checkbox" role="switch" checked={showUnassignedOnly} onChange={() => setShowUnassignedOnly(v => !v)} />
+            <span className="jb-switch-track" aria-hidden="true"><span /></span>
+            Unassigned only
+          </label>
         </div>
 
-        {/* ── Attention chips (Disruptions filter) ── */}
-        <div className="relay-attention-strip">
+        {/* ── Attention filters + result count ── */}
+        <div className="jb-attention">
+          <span className="jb-attention-label">Needs attention</span>
           {ATTENTION_CHIPS.map(chip => {
             const count = attentionCounts[chip.key];
             return (
               <button
                 key={chip.key}
-                className={`relay-attention-chip ${chip.tone}${attentionFilter === chip.key ? " active" : ""}${count === 0 ? " empty" : ""}`}
+                className={`jb-chip ${chip.tone}${attentionFilter === chip.key ? " active" : ""}${count === 0 ? " empty" : ""}`}
                 type="button"
+                aria-pressed={attentionFilter === chip.key}
                 onClick={() => toggleAttention(chip.key)}
               >
                 {chip.label}
@@ -857,34 +828,28 @@ export function JobsListPage() {
             );
           })}
           {hasActiveFilters && (
-            <button className="relay-attention-chip clear" type="button" onClick={clearAllFilters}>
-              Clear Filters
-            </button>
+            <button className="jb-link-btn" type="button" onClick={clearAllFilters}>Clear filters</button>
           )}
-        </div>
-
-        {/* ── Results bar ── */}
-        <div className="relay-results-bar">
-          <span className="relay-results-count">
-            {loading ? "Loading…" : `1–${jobs.length} of ${jobs.length} results`}
-            {hasActiveFilters && <span className="relay-filter-active-dot" />}
-          </span>
-          <div className="relay-results-actions">
-            <button className="header-action-button" type="button" onClick={load}>Refresh</button>
-            <button className="header-action-button" type="button" onClick={exportJobs}>Export</button>
-            <div className="relay-sort-wrap">
-              <span className="relay-sort-label">Sort By:</span>
-              <select className="relay-sort-select" value={sortBy} onChange={e => setSortBy(e.target.value)}>
-                {SORT_OPTIONS.map(opt => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
-              </select>
-            </div>
-          </div>
+          <span className="jb-results">{loading ? "Loading…" : `${jobs.length} ${jobs.length === 1 ? "job" : "jobs"}`}</span>
         </div>
 
         <StateNotice loading={loading} error={error} />
 
         {/* ── Job list ── */}
         <div className="relay-job-list">
+          {jobs.length > 0 && (
+            <div className="jb-list-head" aria-hidden="true">
+              <span />
+              <span>Job</span>
+              <span>Route</span>
+              <span>Distance</span>
+              <span>Truck · trailer</span>
+              <span>Driver</span>
+              <span>Status</span>
+              <span className="jb-right">Freight</span>
+              <span />
+            </div>
+          )}
           {!loading && jobs.length === 0 && (
             <div className="relay-empty">
               <p>
@@ -939,9 +904,12 @@ export function JobsListPage() {
                 point
               };
             });
+            const routeFirst = routeTimelinePoints[0] || null;
+            const routeEnd = routeTimelinePoints.filter(point => point.point.kind !== "return");
+            const routeLast = routeEnd.length > 1 ? routeEnd[routeEnd.length - 1] : routeTimelinePoints[1] || null;
+            const extraStops = Math.max(0, routeEnd.length - 2);
             const hasGap = ["planned", "loading", "active"].includes(job.status) && (!job.driverAssigned || !job.vehicleAssigned);
             const podPending = isPodPending(job);
-            const loadIcon = LOAD_ICONS[job.loadType] || "📦";
             const chatDriver = chatDrivers.find(driver => Number(driver.id) === Number(job.driverId));
             const chatUnreadCount = Number(chatDriver?.unreadCount || 0);
 
@@ -970,136 +938,115 @@ export function JobsListPage() {
                   podPending ? "pod-pending" : ""
                 ].filter(Boolean).join(" ")}
               >
-                {/* ── Collapsed header row ── */}
+                {/* ── Collapsed row ── */}
                 <div
-                  className="relay-job-header"
+                  className="relay-job-header jb-row"
                   role="button"
                   tabIndex={0}
+                  aria-expanded={isExpanded}
                   onClick={() => toggleExpanded(job.id)}
                   onKeyDown={e => e.key === "Enter" && toggleExpanded(job.id)}
                 >
-                  <span className={`relay-chevron${isExpanded ? " open" : ""}`}>›</span>
+                  <span className={`relay-chevron${isExpanded ? " open" : ""}`} aria-hidden="true">›</span>
 
-                  <button
-                    className="relay-job-code"
-                    type="button"
-                    onClick={e => { e.stopPropagation(); navigate(`/admin/jobs/${job.id}`); }}
-                  >
-                    {job.code}
-                  </button>
+                  <div className="jb-cell jb-job">
+                    <button
+                      className="jb-code"
+                      type="button"
+                      onClick={e => { e.stopPropagation(); navigate(`/admin/jobs/${job.id}`); }}
+                    >
+                      {job.code}
+                    </button>
+                    <small>{job.customer || "No customer"}</small>
+                    {(job.reference || job.loadId) && (
+                      <small className="jb-refs">
+                        {job.reference && <>Ref {job.reference}</>}
+                        {job.reference && job.loadId && " · "}
+                        {job.loadId && <>Load {job.loadId}</>}
+                      </small>
+                    )}
+                  </div>
 
-                  <div className="relay-job-meta-badges">
-                    <span className="relay-meta-badge ref">
-                      Ref: {job.reference || ""}
+                  <div className="jb-cell jb-route">
+                    {routeFirst ? (
+                      <>
+                        <span className="jb-route-line" title={routeTimelinePoints.map(point => point.title).join("\n")}>
+                          <span className={routeFirst.point.state === "late" || routeFirst.point.state === "overdue" ? "late" : ""}>{routeFirst.name}</span>
+                          <span className="jb-route-arrow" aria-hidden="true">→</span>
+                          <span className={routeLast?.point.state === "late" || routeLast?.point.state === "overdue" ? "late" : ""}>{routeLast?.name || "—"}</span>
+                          {extraStops > 0 && <span className="jb-route-more">+{extraStops} {extraStops === 1 ? "stop" : "stops"}</span>}
+                        </span>
+                        <small>
+                          Collect {routeFirst.arrival.text}
+                          {routeFirst.arrival.kind === "Actual" && <em> · actual</em>}
+                        </small>
+                      </>
+                    ) : <span className="jb-muted">Route not set</span>}
+                  </div>
+
+                  <div className="jb-cell jb-num">
+                    <span>{job.distanceKm ? `${Math.round(job.distanceKm * 0.621371)} mi` : "—"}</span>
+                    <small>{job.totalJobDurationMins ? fmtMins(job.totalJobDurationMins) : job.etaHours ? `${job.etaHours}h route` : ""}</small>
+                  </div>
+
+                  <div className="jb-cell">
+                    <span>{job.vehicleAssigned ? job.vehicle : <em className="jb-missing">No truck</em>}</span>
+                    <small>{job.trailerAssigned ? job.trailerCode : "No trailer"}</small>
+                  </div>
+
+                  <div className="jb-cell">
+                    <span>{job.driverAssigned ? job.driver : <em className="jb-missing">Unassigned</em>}</span>
+                    {driverStatusLabel && <small className={`jb-tone ${driverStatusToneVal}`}>{driverStatusLabel}</small>}
+                  </div>
+
+                  <div className="jb-cell jb-status">
+                    <span className={`jb-badge ${STATUS_TONE[job.status] || "neutral"}`}>{job.status}</span>
+                    <span className="jb-flags">
+                      {job.priority !== "standard" && <span className={`jb-flag ${PRIORITY_TONE[job.priority] || "neutral"}`}>{job.priority}</span>}
+                      {hasGap && <span className="jb-flag warning">Assignment gap</span>}
+                      {podPending && <span className="jb-flag warning">POD pending</span>}
+                      {job.hasDriverEtaUpdate && <span className="jb-flag info">Driver ETA {job.etaTime}</span>}
                     </span>
-                    <span className="relay-meta-badge load">
-                      Load: {job.loadId || ""}
-                    </span>
-                    {job.hasDriverEtaUpdate && (
-                      <span className="relay-meta-badge eta">
-                        Driver ETA: {job.etaTime}
-                      </span>
-                    )}
-                  </div>
-
-                  {/* Route visualization */}
-                  <div className="relay-route-vis">
-                    {routeTimelinePoints.map((point, index) => (
-                      <div className="relay-route-segment" key={point.key}>
-                        <div className="relay-stop-node">
-                          <span className={`relay-stop-bubble${point.point.state === "late" || point.point.state === "overdue" ? " late" : ""}`}>{point.index}</span>
-                          <span className="relay-stop-name" title={point.title}>{point.name}</span>
-                          <span className="relay-route-time-line"><strong>Arr</strong> {point.arrival.text} <em>{point.arrival.kind}</em></span>
-                          <span className="relay-route-time-line"><strong>Dep</strong> {point.departure.text} <em>{point.departure.kind}</em></span>
-                        </div>
-                        {index < routeTimelinePoints.length - 1 && (
-                          <div className="relay-route-arrow">
-                            <span className="relay-route-line" />
-                            <span className="relay-route-arrowhead">→</span>
-                          </div>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-
-                  {/* Distance / ETA */}
-                  <div className="relay-job-stats">
-                    {job.distanceKm && <span>{Math.round(job.distanceKm * 0.621371)} mi</span>}
-                    {job.totalJobDurationMins
-                      ? <span>{fmtMins(job.totalJobDurationMins)} job</span>
-                      : job.etaHours && <span>{job.etaHours}h route</span>}
-                  </div>
-
-                  {/* Load icon + vehicle / trailer */}
-                  <div className="relay-job-vehicle-cell">
-                    <span>
-                      <span className="relay-load-icon">{loadIcon}</span>
-                      {job.vehicleAssigned ? job.vehicle : <em className="relay-unassigned">No truck</em>}
-                    </span>
-                    <small>Trailer ID {job.trailerAssigned ? job.trailerCode : "—"}</small>
-                  </div>
-
-                  {/* Driver chat */}
-                  <button
-                    className="relay-job-chat-btn"
-                    type="button"
-                    title={job.driverAssigned ? `Open chat with ${job.driver}` : "Assign driver to chat"}
-                    disabled={!job.driverAssigned}
-                    onClick={e => { e.stopPropagation(); setChatModalJob(job); }}
-                  >
-                    <svg viewBox="0 0 20 20" fill="none" width="16" height="16">
-                      <path d="M17 2H3a1 1 0 00-1 1v11a1 1 0 001 1h2v3l4-3h8a1 1 0 001-1V3a1 1 0 00-1-1z" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round"/>
-                      <path d="M6 7h8M6 10h5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
-                    </svg>
-                    {chatUnreadCount > 0 && (
-                      <span className="relay-chat-count">{chatUnreadCount > 9 ? "9+" : chatUnreadCount}</span>
-                    )}
-                  </button>
-
-                  {/* Driver + driver status */}
-                  <div className="relay-job-driver-cell">
-                    <span>{job.driverAssigned ? job.driver : <em className="relay-unassigned">Unassigned</em>}</span>
-                    {driverStatusLabel && (
-                      <small className={`relay-driver-status-badge ${driverStatusToneVal}`}>{driverStatusLabel}</small>
-                    )}
-                  </div>
-
-                  {/* Status pills */}
-                  <div className="relay-job-status-cell">
-                    <StatusPill tone={STATUS_TONE[job.status] || "neutral"}>{job.status}</StatusPill>
-                    {job.priority !== "standard" && (
-                      <StatusPill tone={PRIORITY_TONE[job.priority] || "neutral"}>{job.priority}</StatusPill>
-                    )}
-                    {hasGap && <StatusPill tone="warning">Gap</StatusPill>}
                     <PunctualityPill summary={job.punctuality?.summary} />
-                    {podPending && <StatusPill tone="warning">POD</StatusPill>}
                   </div>
 
-                  {/* Notes icon button */}
-                  <button
-                    className="relay-notes-icon-btn"
-                    type="button"
-                    title="View job notes & details"
-                    onClick={e => { e.stopPropagation(); setNotesModalJob(job); }}
-                  >
-                    <svg viewBox="0 0 20 20" fill="none" width="16" height="16" aria-hidden="true">
-                      <path d="M6 3.5h8.2c.7 0 1.3.6 1.3 1.3v10.4c0 .7-.6 1.3-1.3 1.3H5.8c-.7 0-1.3-.6-1.3-1.3V4.8c0-.7.6-1.3 1.3-1.3H6z" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round"/>
-                      <path d="M7.5 7h5M7.5 10h5M7.5 13h3.2" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
-                      <path d="M7 2.5h6" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
-                    </svg>
-                  </button>
-
-                  {/* Freight + Profit/Loss */}
-                  <div className="relay-job-freight">
+                  <div className="jb-cell jb-money">
                     <span>{job.freight}</span>
                     {job.profitLoss && (
-                      <span className={`relay-profit-badge ${job.isProfitable ? "profit" : "loss"}`}>
-                        {job.isProfitable ? "▲" : "▼"} {job.economics?.basis === "actual" ? "" : "Est. "}{job.profitLoss}
-                      </span>
+                      <small className={job.isProfitable ? "profit" : "loss"}>
+                        {job.isProfitable ? "+" : "−"}{job.profitLoss.replace(/^[-−]/, "")} {job.economics?.basis === "actual" ? "" : "est."}
+                      </small>
                     )}
-                    {!job.profitLoss && job.economics && (
-                      <span className="relay-profit-badge pending">P&amp;L unavailable</span>
-                    )}
+                    {!job.profitLoss && job.economics && <small className="jb-muted">P&amp;L unavailable</small>}
+                  </div>
+
+                  <div className="jb-row-actions">
+                    <button
+                      className="jb-icon-btn"
+                      type="button"
+                      title={job.driverAssigned ? `Chat with ${job.driver}` : "Assign a driver to chat"}
+                      aria-label={job.driverAssigned ? `Chat with ${job.driver}` : "Assign a driver to chat"}
+                      disabled={!job.driverAssigned}
+                      onClick={e => { e.stopPropagation(); setChatModalJob(job); }}
+                    >
+                      <svg viewBox="0 0 20 20" aria-hidden="true">
+                        <path d="M16.5 3h-13a1 1 0 0 0-1 1v9.5a1 1 0 0 0 1 1h2V17l3.5-2.5h7.5a1 1 0 0 0 1-1V4a1 1 0 0 0-1-1z" />
+                        <path d="M6.5 7.5h7M6.5 10.5h4.5" />
+                      </svg>
+                      {chatUnreadCount > 0 && <span className="jb-unread">{chatUnreadCount > 9 ? "9+" : chatUnreadCount}</span>}
+                    </button>
+                    <button
+                      className="jb-icon-btn"
+                      type="button"
+                      title="Notes and details"
+                      aria-label="Notes and details"
+                      onClick={e => { e.stopPropagation(); setNotesModalJob(job); }}
+                    >
+                      <svg viewBox="0 0 20 20" aria-hidden="true">
+                        <path d="M5.5 3h9a1 1 0 0 1 1 1v12a1 1 0 0 1-1 1h-9a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1z" />
+                        <path d="M7.5 7h5M7.5 10h5M7.5 13h3" />
+                      </svg>
+                    </button>
                   </div>
                 </div>
 

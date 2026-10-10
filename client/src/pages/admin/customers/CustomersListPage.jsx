@@ -2,8 +2,8 @@ import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { deleteCustomer, getCustomers, updateCustomerInline } from "../../../api/customerApi";
 import { StateNotice } from "../../../components/StateNotice";
-import { StatusPill } from "../../../components/StatusPill";
 import { AdminWorkspaceLayout } from "../AdminWorkspaceLayout";
+import "./CustomersListPage.css";
 
 function exportCsv(name, rows) {
   const csv = rows
@@ -23,6 +23,148 @@ function getCompanyInitials(name = "") {
   return parts.slice(0, 2).map(part => part[0]).join("").toUpperCase();
 }
 
+const STATUS_TONE = { active: "success", suspended: "warning", closed: "neutral" };
+
+function blank(value) {
+  return value === "—" ? "" : value ?? "";
+}
+
+// Edits save field by field on blur, as before; the panel only reshapes the layout.
+function CustomerPanel({ customer: c, savingCell, onClose, saveOnBlur, updateCell, closeAccount, navigate }) {
+  useEffect(() => {
+    function onKey(e) {
+      if (e.key === "Escape") onClose();
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
+
+  const saving = savingCell.startsWith(`${c.id}-`);
+
+  return (
+    <div className="cu-panel-backdrop" onMouseDown={e => { if (e.target === e.currentTarget) onClose(); }}>
+      <aside className="cu-panel" role="dialog" aria-modal="true" aria-labelledby="cu-panel-title">
+        <header className="cu-panel-head">
+          <div className="cu-company">
+            <span className="cu-avatar large" aria-hidden="true">{getCompanyInitials(c.companyName)}</span>
+            <div>
+              <h2 id="cu-panel-title">{c.companyName}</h2>
+              <p>Customer since {c.since || "—"} · <span className={`cu-badge ${STATUS_TONE[c.status] || "neutral"}`}>{c.status}</span></p>
+            </div>
+          </div>
+          <button className="cu-icon-btn" type="button" aria-label="Close" onClick={onClose}>×</button>
+        </header>
+
+        <div className="cu-panel-body">
+          <dl className="cu-figures">
+            <div><dt>Jobs</dt><dd>{c.totalTrips}</dd></div>
+            <div><dt>Invoices</dt><dd>{c.totalInvoices}</dd></div>
+            <div><dt>Total billed</dt><dd>{c.billedAmount}</dd></div>
+            <div><dt>Outstanding</dt><dd className={c.outstandingValue > 0 ? "warning" : ""}>{c.outstandingAmount}</dd></div>
+            <div><dt>Overdue</dt><dd className={c.overdueValue > 0 ? "danger" : ""}>{c.overdueAmount}</dd></div>
+            <div><dt>Last activity</dt><dd>{c.lastActivity}</dd></div>
+          </dl>
+
+          <section className="cu-section">
+            <div className="cu-section-head">
+              <h3>Contact and company</h3>
+              <span className="cu-save-state" aria-live="polite">{saving ? "Saving…" : "Changes save automatically"}</span>
+            </div>
+            <div className="cu-fields">
+              <label className="cu-field wide">
+                <span>Company name</span>
+                <input className="cu-input" defaultValue={c.companyName || ""} onBlur={saveOnBlur(c, "companyName", c.companyName)} />
+              </label>
+              <label className="cu-field">
+                <span>Primary contact</span>
+                <input className="cu-input" defaultValue={blank(c.contactName)} onBlur={saveOnBlur(c, "contactName", blank(c.contactName))} />
+              </label>
+              <label className="cu-field">
+                <span>Phone</span>
+                <input className="cu-input" defaultValue={blank(c.phone)} onBlur={saveOnBlur(c, "phone", blank(c.phone))} />
+              </label>
+              <label className="cu-field">
+                <span>Email</span>
+                <input className="cu-input" type="email" defaultValue={blank(c.email)} onBlur={saveOnBlur(c, "email", blank(c.email))} />
+              </label>
+              <label className="cu-field">
+                <span>Postcode</span>
+                <input className="cu-input" defaultValue={blank(c.postcode)} onBlur={saveOnBlur(c, "postcode", blank(c.postcode))} />
+              </label>
+              <label className="cu-field">
+                <span>Account status</span>
+                <select className="cu-input" value={c.status || "active"} disabled={savingCell === `${c.id}-status`} onChange={e => updateCell(c, "status", e.target.value)}>
+                  <option value="active">Active</option>
+                  <option value="suspended">Suspended</option>
+                  <option value="closed">Closed</option>
+                </select>
+              </label>
+              <label className="cu-field wide">
+                <span>Company address</span>
+                <textarea className="cu-input" rows={2} defaultValue={blank(c.address)} onBlur={saveOnBlur(c, "address", blank(c.address))} />
+              </label>
+            </div>
+          </section>
+
+          <section className="cu-section">
+            <h3>Billing and terms</h3>
+            <div className="cu-fields">
+              <label className="cu-field">
+                <span>Payment terms (days)</span>
+                <input className="cu-input" type="number" min="0" defaultValue={c.paymentTermsDays || 30} onBlur={saveOnBlur(c, "paymentTermsDays", c.paymentTermsDays || 30)} />
+              </label>
+              <label className="cu-field">
+                <span>Credit limit (£)</span>
+                <input className="cu-input" type="number" step="0.01" defaultValue={c.creditLimitRaw || ""} onBlur={saveOnBlur(c, "creditLimitGbp", c.creditLimitRaw || "")} />
+              </label>
+              <label className="cu-field">
+                <span>VAT number</span>
+                <input className="cu-input" defaultValue={blank(c.vatNumber)} onBlur={saveOnBlur(c, "vatNumber", blank(c.vatNumber))} />
+              </label>
+              <label className="cu-field">
+                <span>Tax / reference</span>
+                <input className="cu-input" defaultValue={blank(c.taxDetails)} onBlur={saveOnBlur(c, "taxDetails", blank(c.taxDetails))} />
+              </label>
+              <label className="cu-field wide">
+                <span>Billing address</span>
+                <textarea className="cu-input" rows={2} defaultValue={blank(c.billingAddress)} onBlur={saveOnBlur(c, "billingAddress", blank(c.billingAddress))} />
+              </label>
+            </div>
+          </section>
+
+          <section className="cu-section">
+            <h3>Saved locations and rates</h3>
+            <div className="cu-fields">
+              <label className="cu-field wide">
+                <span>Saved pickup notes</span>
+                <textarea className="cu-input" rows={2} defaultValue={blank(c.savedPickupAddresses)} onBlur={saveOnBlur(c, "savedPickupAddresses", blank(c.savedPickupAddresses))} />
+              </label>
+              <label className="cu-field wide">
+                <span>Saved drop notes</span>
+                <textarea className="cu-input" rows={2} defaultValue={blank(c.savedDropAddresses)} onBlur={saveOnBlur(c, "savedDropAddresses", blank(c.savedDropAddresses))} />
+              </label>
+              <label className="cu-field wide">
+                <span>Rate contract</span>
+                <textarea className="cu-input" rows={3} defaultValue={blank(c.rateContract)} onBlur={saveOnBlur(c, "rateContract", blank(c.rateContract))} />
+              </label>
+            </div>
+          </section>
+        </div>
+
+        <footer className="cu-panel-foot">
+          <button className="cu-btn primary" type="button" onClick={() => navigate(`/admin/customers/${c.id}`)}>Open full account</button>
+          <button className="cu-btn" type="button" onClick={() => navigate(`/admin/customers/${c.id}/edit`)}>Edit page</button>
+          {c.status !== "closed" && (
+            <button className="cu-btn danger" disabled={savingCell === `${c.id}-close`} type="button" onClick={() => closeAccount(c)}>
+              Close account
+            </button>
+          )}
+        </footer>
+      </aside>
+    </div>
+  );
+}
+
 export function CustomersListPage() {
   const navigate = useNavigate();
   const [data, setData] = useState(null);
@@ -32,10 +174,11 @@ export function CustomersListPage() {
   const [status, setStatus] = useState("");
   const [risk, setRisk] = useState("");
   const [savingCell, setSavingCell] = useState("");
+  const [openId, setOpenId] = useState(null);
 
+  // Only the first load shows the loading notice; saves refresh quietly.
   function load() {
-    setLoading(true);
-    getCustomers()
+    return getCustomers()
       .then(r => {
         setData(r.data);
         setError("");
@@ -46,24 +189,35 @@ export function CustomersListPage() {
 
   useEffect(() => { load(); }, []);
 
+  const allCustomers = useMemo(() => data?.customers || [], [data]);
+
   const customers = useMemo(() => {
     const query = search.trim().toLowerCase();
-    return (data?.customers || []).filter(c => {
+    return allCustomers.filter(c => {
       if (status && c.status !== status) return false;
       if (risk === "overdue" && c.overdueValue <= 0) return false;
       if (risk === "outstanding" && c.outstandingValue <= 0) return false;
       if (risk === "inactive" && c.totalTrips > 0) return false;
       if (!query) return true;
-      return (
-        c.companyName.toLowerCase().includes(query) ||
-        (c.contactName || "").toLowerCase().includes(query) ||
-        (c.email || "").toLowerCase().includes(query) ||
-        (c.phone || "").toLowerCase().includes(query) ||
-        (c.postcode || "").toLowerCase().includes(query)
-      );
+      return [c.companyName, c.contactName, c.email, c.phone, c.postcode]
+        .some(value => String(value || "").toLowerCase().includes(query));
     });
-  }, [data, risk, search, status]);
+  }, [allCustomers, risk, search, status]);
 
+  const counts = useMemo(() => ({
+    active: allCustomers.filter(c => c.status === "active").length,
+    outstanding: allCustomers.filter(c => c.outstandingValue > 0).length,
+    overdue: allCustomers.filter(c => c.overdueValue > 0).length
+  }), [allCustomers]);
+
+  const summaryCards = [
+    { key: "all", label: "All customers", value: allCustomers.length, tone: "neutral", active: !status && !risk, apply: () => { setStatus(""); setRisk(""); } },
+    { key: "active", label: "Active", value: counts.active, tone: "success", active: status === "active" && !risk, apply: () => { setStatus("active"); setRisk(""); } },
+    { key: "outstanding", label: "With balance due", value: counts.outstanding, tone: counts.outstanding ? "warning" : "neutral", active: risk === "outstanding" && !status, apply: () => { setStatus(""); setRisk("outstanding"); } },
+    { key: "overdue", label: "Overdue", value: counts.overdue, tone: counts.overdue ? "danger" : "neutral", active: risk === "overdue" && !status, apply: () => { setStatus(""); setRisk("overdue"); } }
+  ];
+
+  const openCustomer = allCustomers.find(c => c.id === openId) || null;
   const hasFilters = Boolean(search || status || risk);
 
   function clearFilters() {
@@ -133,193 +287,137 @@ export function CustomersListPage() {
   return (
     <AdminWorkspaceLayout
       badge="Customer accounts"
-      title="Customer management"
-      description="Manage client companies, contact details, payment terms, account status, and receivable risk."
+      title="Customers"
       highlights={[]}
+      hideHeaderIntro
+      className="customers-page-shell"
     >
-      <div className="finance-command-bar">
-        <button className="header-action-button" type="button" onClick={load}>Refresh</button>
-        <button className="header-action-button" type="button" onClick={exportCustomers}>Export CSV</button>
-        <button className="af-submit-btn" type="button" onClick={() => navigate("/admin/customers/new")}>
-          + Add Customer
-        </button>
+      <div className="cu-command-bar">
+        <div className="cu-summary" aria-label="Customer summary">
+          {summaryCards.map(card => (
+            <button
+              className={`cu-summary-card ${card.tone}${card.active ? " active" : ""}`}
+              key={card.key}
+              type="button"
+              aria-pressed={card.active}
+              onClick={card.apply}
+            >
+              <span>{card.label}</span>
+              <strong>{card.value}</strong>
+            </button>
+          ))}
+        </div>
+        <div className="cu-actions">
+          <button className="cu-btn subtle" type="button" onClick={load}>Refresh</button>
+          <button className="cu-btn subtle" type="button" onClick={exportCustomers}>Export</button>
+          <button className="cu-btn primary" type="button" onClick={() => navigate("/admin/customers/new")}>
+            <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M10 4v12M4 10h12" /></svg>
+            Add customer
+          </button>
+        </div>
       </div>
 
-      <StateNotice loading={loading} error={error} />
+      <StateNotice loading={loading && !data} error={error} />
 
-      <section className="content-card customer-filter-card">
-        <input
-          className="af-input"
-          type="text"
-          placeholder="Search By Company, Contact, Email, Phone, Or Postcode..."
-          value={search}
-          onChange={e => setSearch(e.target.value)}
+      <section className="cu-card">
+        <div className="cu-toolbar">
+          <label className="cu-search">
+            <svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="9" cy="9" r="5.5" /><path d="m13 13 3.5 3.5" /></svg>
+            <input
+              type="search"
+              placeholder="Search company, contact, email, phone or postcode"
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+            />
+          </label>
+          <select className="cu-input" aria-label="Status" value={status} onChange={e => setStatus(e.target.value)}>
+            <option value="">All statuses</option>
+            <option value="active">Active</option>
+            <option value="suspended">Suspended</option>
+            <option value="closed">Closed</option>
+          </select>
+          <select className="cu-input" aria-label="Account state" value={risk} onChange={e => setRisk(e.target.value)}>
+            <option value="">All balances</option>
+            <option value="outstanding">Balance due</option>
+            <option value="overdue">Overdue</option>
+            <option value="inactive">No jobs booked</option>
+          </select>
+          <button className="cu-btn subtle" disabled={!hasFilters} type="button" onClick={clearFilters}>Clear filters</button>
+          <span className="cu-count">{customers.length} of {allCustomers.length}</span>
+        </div>
+
+        <div className="cu-table-shell">
+          <table className="cu-table">
+            <thead>
+              <tr>
+                <th>Company</th>
+                <th>Phone</th>
+                <th>Terms</th>
+                <th className="num">Jobs</th>
+                <th className="num">Billed</th>
+                <th className="num">Outstanding</th>
+                <th>Last activity</th>
+                <th>Status</th>
+                <th aria-label="Open" />
+              </tr>
+            </thead>
+            <tbody>
+              {customers.map(c => (
+                <tr
+                  key={c.id}
+                  tabIndex={0}
+                  onClick={() => setOpenId(c.id)}
+                  onKeyDown={e => { if (e.key === "Enter") setOpenId(c.id); }}
+                >
+                  <td>
+                    <div className="cu-company">
+                      <span className="cu-avatar" aria-hidden="true">{getCompanyInitials(c.companyName)}</span>
+                      <div>
+                        <strong>{c.companyName}</strong>
+                        <small>{[blank(c.contactName), blank(c.email)].filter(Boolean).join(" · ") || "No contact"}</small>
+                      </div>
+                    </div>
+                  </td>
+                  <td className="nowrap">{blank(c.phone) || "—"}</td>
+                  <td className="nowrap">{c.paymentTerms}</td>
+                  <td className="num">{c.totalTrips}</td>
+                  <td className="num">{c.billedAmount}</td>
+                  <td className="num">
+                    <span className={c.overdueValue > 0 ? "danger" : c.outstandingValue > 0 ? "warning" : "cu-muted"}>{c.outstandingAmount}</span>
+                    {c.overdueValue > 0 && <small className="danger">{c.overdueAmount} overdue</small>}
+                  </td>
+                  <td className="nowrap">{c.lastActivity}</td>
+                  <td><span className={`cu-badge ${STATUS_TONE[c.status] || "neutral"}`}>{c.status}</span></td>
+                  <td className="cu-open-cell"><span className="cu-chevron" aria-hidden="true">›</span></td>
+                </tr>
+              ))}
+              {!loading && customers.length === 0 && (
+                <tr className="cu-empty-row">
+                  <td colSpan="9">
+                    {hasFilters ? "No customers match these filters." : "No customers yet."}
+                    {hasFilters
+                      ? <button className="cu-link-btn" type="button" onClick={clearFilters}>Clear filters</button>
+                      : <button className="cu-link-btn" type="button" onClick={() => navigate("/admin/customers/new")}>Add your first customer</button>}
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      {openCustomer && (
+        <CustomerPanel
+          key={openCustomer.id}
+          customer={openCustomer}
+          savingCell={savingCell}
+          onClose={() => setOpenId(null)}
+          saveOnBlur={saveOnBlur}
+          updateCell={updateCell}
+          closeAccount={closeAccount}
+          navigate={navigate}
         />
-        <select className="af-select" value={status} onChange={e => setStatus(e.target.value)}>
-          <option value="">All Statuses</option>
-          <option value="active">Active</option>
-          <option value="suspended">Suspended</option>
-          <option value="closed">Closed</option>
-        </select>
-        <select className="af-select" value={risk} onChange={e => setRisk(e.target.value)}>
-          <option value="">All Account States</option>
-          <option value="outstanding">Outstanding Balance</option>
-          <option value="overdue">Overdue Balance</option>
-          <option value="inactive">No Trips Booked</option>
-        </select>
-        <button className="header-action-button" disabled={!hasFilters} type="button" onClick={clearFilters}>Clear Filters</button>
-      </section>
-
-      <section className="content-card customer-register-card">
-        <div className="section-head">
-          <div>
-            <span className="card-label">Customer Register</span>
-            <h2>Customer Account Directory</h2>
-          </div>
-          <StatusPill tone={customers.length ? "success" : "neutral"}>{customers.length} visible</StatusPill>
-        </div>
-
-        <div className="customer-account-list">
-          {customers.map(c => (
-            <details className="customer-account-card" key={c.id}>
-              <summary className="customer-account-summary">
-                <span className="customer-company-avatar" aria-hidden="true">{getCompanyInitials(c.companyName)}</span>
-                <div className="customer-company-primary">
-                  <strong>{c.companyName}</strong>
-                  <span>{c.contactName} · {c.email}</span>
-                </div>
-                <div className="customer-summary-stat">
-                  <span>Activity</span>
-                  <strong>{c.totalTrips} trips · {c.totalInvoices} invoices</strong>
-                </div>
-                <div className="customer-summary-stat">
-                  <span>Outstanding</span>
-                  <strong className={c.outstandingValue > 0 ? "warning" : ""}>{c.outstandingAmount}</strong>
-                </div>
-                <StatusPill tone={c.status === "active" ? "success" : c.status === "suspended" ? "warning" : "neutral"}>{c.status}</StatusPill>
-                <span className="customer-expand-control">
-                  <span className="customer-expand-label">Details</span>
-                  <span className="customer-expand-chevron" aria-hidden="true">⌄</span>
-                </span>
-              </summary>
-
-              <div className="customer-account-body">
-                <div className="customer-account-section-head">
-                  <div>
-                    <span className="card-label">Editable account profile</span>
-                    <h3>Contact &amp; company information</h3>
-                  </div>
-                  {savingCell.startsWith(`${c.id}-`) && <span className="customer-saving-state">Saving…</span>}
-                </div>
-
-                <div className="customer-edit-grid">
-                  <label className="customer-edit-field">
-                    <span>Company name</span>
-                    <input className="customer-table-input strong" defaultValue={c.companyName || ""} onBlur={saveOnBlur(c, "companyName", c.companyName)} />
-                  </label>
-                  <label className="customer-edit-field">
-                    <span>Primary contact</span>
-                    <input className="customer-table-input" defaultValue={c.contactName === "—" ? "" : c.contactName || ""} onBlur={saveOnBlur(c, "contactName", c.contactName === "—" ? "" : c.contactName)} />
-                  </label>
-                  <label className="customer-edit-field">
-                    <span>Email address</span>
-                    <input className="customer-table-input" type="email" defaultValue={c.email === "—" ? "" : c.email || ""} onBlur={saveOnBlur(c, "email", c.email === "—" ? "" : c.email)} />
-                  </label>
-                  <label className="customer-edit-field">
-                    <span>Phone</span>
-                    <input className="customer-table-input" defaultValue={c.phone === "—" ? "" : c.phone || ""} onBlur={saveOnBlur(c, "phone", c.phone === "—" ? "" : c.phone)} />
-                  </label>
-                  <label className="customer-edit-field">
-                    <span>Postcode</span>
-                    <input className="customer-table-input code" defaultValue={c.postcode === "—" ? "" : c.postcode || ""} onBlur={saveOnBlur(c, "postcode", c.postcode === "—" ? "" : c.postcode)} />
-                  </label>
-                  <label className="customer-edit-field">
-                    <span>Account status</span>
-                    <select className="customer-table-select" value={c.status || "active"} disabled={savingCell === `${c.id}-status`} onChange={e => updateCell(c, "status", e.target.value)}>
-                      <option value="active">Active</option>
-                      <option value="suspended">Suspended</option>
-                      <option value="closed">Closed</option>
-                    </select>
-                  </label>
-                </div>
-
-                <div className="customer-account-section-head compact">
-                  <div>
-                    <span className="card-label">Commercial setup</span>
-                    <h3>Billing, tax &amp; terms</h3>
-                  </div>
-                </div>
-                <div className="customer-edit-grid commercial">
-                  <label className="customer-edit-field">
-                    <span>Payment terms (days)</span>
-                    <input className="customer-table-input number" type="number" min="0" defaultValue={c.paymentTermsDays || 30} onBlur={saveOnBlur(c, "paymentTermsDays", c.paymentTermsDays || 30)} />
-                  </label>
-                  <label className="customer-edit-field">
-                    <span>Credit limit (£)</span>
-                    <input className="customer-table-input money" type="number" step="0.01" defaultValue={c.creditLimitRaw || ""} onBlur={saveOnBlur(c, "creditLimitGbp", c.creditLimitRaw || "")} />
-                  </label>
-                  <label className="customer-edit-field">
-                    <span>VAT number</span>
-                    <input className="customer-table-input code" defaultValue={c.vatNumber === "—" ? "" : c.vatNumber || ""} onBlur={saveOnBlur(c, "vatNumber", c.vatNumber === "—" ? "" : c.vatNumber)} />
-                  </label>
-                  <label className="customer-edit-field">
-                    <span>Tax / reference</span>
-                    <input className="customer-table-input" defaultValue={c.taxDetails === "—" ? "" : c.taxDetails || ""} onBlur={saveOnBlur(c, "taxDetails", c.taxDetails === "—" ? "" : c.taxDetails)} />
-                  </label>
-                </div>
-
-                <div className="customer-edit-grid notes">
-                  <label className="customer-edit-field">
-                    <span>Company address</span>
-                    <textarea className="customer-table-textarea" defaultValue={c.address === "—" ? "" : c.address || ""} onBlur={saveOnBlur(c, "address", c.address === "—" ? "" : c.address)} />
-                  </label>
-                  <label className="customer-edit-field">
-                    <span>Billing address</span>
-                    <textarea className="customer-table-textarea" defaultValue={c.billingAddress === "—" ? "" : c.billingAddress || ""} onBlur={saveOnBlur(c, "billingAddress", c.billingAddress === "—" ? "" : c.billingAddress)} />
-                  </label>
-                  <label className="customer-edit-field">
-                    <span>Saved pickup notes</span>
-                    <textarea className="customer-table-textarea" defaultValue={c.savedPickupAddresses === "—" ? "" : c.savedPickupAddresses || ""} onBlur={saveOnBlur(c, "savedPickupAddresses", c.savedPickupAddresses === "—" ? "" : c.savedPickupAddresses)} />
-                  </label>
-                  <label className="customer-edit-field">
-                    <span>Saved drop notes</span>
-                    <textarea className="customer-table-textarea" defaultValue={c.savedDropAddresses === "—" ? "" : c.savedDropAddresses || ""} onBlur={saveOnBlur(c, "savedDropAddresses", c.savedDropAddresses === "—" ? "" : c.savedDropAddresses)} />
-                  </label>
-                  <label className="customer-edit-field wide">
-                    <span>Rate contract</span>
-                    <textarea className="customer-table-textarea" defaultValue={c.rateContract === "—" ? "" : c.rateContract || ""} onBlur={saveOnBlur(c, "rateContract", c.rateContract === "—" ? "" : c.rateContract)} />
-                  </label>
-                </div>
-
-                <div className="customer-finance-strip">
-                  <div><span>Trips</span><strong>{c.totalTrips}</strong></div>
-                  <div><span>Invoices</span><strong>{c.totalInvoices}</strong></div>
-                  <div><span>Total billed</span><strong>{c.billedAmount}</strong></div>
-                  <div><span>Outstanding</span><strong>{c.outstandingAmount}</strong></div>
-                  <div><span>Overdue</span><strong className={c.overdueValue > 0 ? "danger" : "success"}>{c.overdueAmount}</strong></div>
-                  <div><span>Last activity</span><strong>{c.lastActivity}</strong></div>
-                </div>
-
-                <div className="customer-account-actions">
-                  <button className="af-submit-btn" type="button" onClick={() => navigate(`/admin/customers/${c.id}`)}>Open Full Account</button>
-                  <button className="header-action-button" type="button" onClick={() => navigate(`/admin/customers/${c.id}/edit`)}>Edit Page</button>
-                  {c.status !== "closed" && (
-                    <button className="header-action-button danger" disabled={savingCell === `${c.id}-close`} type="button" onClick={() => closeAccount(c)}>
-                      Close Account
-                    </button>
-                  )}
-                </div>
-              </div>
-            </details>
-          ))}
-          {!loading && customers.length === 0 && (
-            <div className="customer-account-empty">
-              <p>{hasFilters ? "No customers match your filters." : "No customers yet. Add your first customer."}</p>
-              {hasFilters && <button className="header-action-button" type="button" onClick={clearFilters}>Clear Filters</button>}
-            </div>
-          )}
-        </div>
-      </section>
+      )}
     </AdminWorkspaceLayout>
   );
 }

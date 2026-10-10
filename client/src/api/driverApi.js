@@ -6,6 +6,7 @@ export const createDriver     = (data)          => api.post("/api/drivers", data
 export const updateDriver     = (id, data)      => api.put(`/api/drivers/${id}`, data);
 export const updateDriverInline = (id, data)    => api.patch(`/api/drivers/${id}/inline`, data);
 export const deleteDriver     = (id)            => api.delete(`/api/drivers/${id}`);
+export const setDriverArchived = (id, archived) => api.patch(`/api/drivers/${id}/archive`, { archived });
 export const addDocument      = (id, data)      => api.post(`/api/drivers/${id}/documents`, data);
 export const updateDocument   = (id, docId, data) => api.put(`/api/drivers/${id}/documents/${docId}`, data);
 export const deleteDocument   = (id, docId)    => api.delete(`/api/drivers/${id}/documents/${docId}`);

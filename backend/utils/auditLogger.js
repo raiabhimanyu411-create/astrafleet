@@ -159,18 +159,34 @@ function tokenHash(token) {
   return crypto.createHash("sha256").update(String(token || "")).digest("hex");
 }
 
+// Throws on failure: a token without a session row would be rejected on every request.
 async function createUserSession(req, user, sessionToken) {
-  try {
-    await ensureSessionSchema();
-    const meta = requestMeta(req);
-    await db.query(
-      `INSERT INTO user_sessions (user_id, session_token_hash, role, login_at, last_activity_at, ip_address, user_agent)
-       VALUES (?, ?, ?, NOW(), NOW(), ?, ?)`,
-      [user.id, tokenHash(sessionToken), user.role, meta.ip, meta.userAgent]
-    );
-  } catch (error) {
-    console.error("Session create error:", error.message);
-  }
+  await ensureSessionSchema();
+  const meta = requestMeta(req);
+  await db.query(
+    `INSERT INTO user_sessions (user_id, session_token_hash, role, login_at, last_activity_at, ip_address, user_agent)
+     VALUES (?, ?, ?, NOW(), NOW(), ?, ?)`,
+    [user.id, tokenHash(sessionToken), user.role, meta.ip, meta.userAgent]
+  );
+}
+
+async function isUserSessionActive(token) {
+  if (!token) return false;
+  await ensureSessionSchema();
+  const [[session]] = await db.query(
+    `SELECT id FROM user_sessions WHERE session_token_hash=? AND logout_at IS NULL LIMIT 1`,
+    [tokenHash(token)]
+  );
+  return Boolean(session);
+}
+
+async function revokeUserSessions(userId, { exceptToken = null } = {}) {
+  await ensureSessionSchema();
+  await db.query(
+    `UPDATE user_sessions SET logout_at=NOW()
+     WHERE user_id=? AND logout_at IS NULL AND session_token_hash <> ?`,
+    [userId, exceptToken ? tokenHash(exceptToken) : ""]
+  );
 }
 
 async function touchUserSession(req) {
@@ -278,6 +294,8 @@ module.exports = {
   buildChangeSet,
   closeUserSession,
   createUserSession,
+  isUserSessionActive,
+  revokeUserSessions,
   ensureActivitySchema,
   ensureSessionSchema,
   getActor,

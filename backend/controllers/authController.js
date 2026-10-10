@@ -1,7 +1,9 @@
 const bcrypt = require("bcrypt");
 const crypto = require("crypto");
+const fs = require("fs");
+const path = require("path");
 const pool = require("../db/connection");
-const { closeUserSession, createUserSession, logActivity } = require("../utils/auditLogger");
+const { closeUserSession, createUserSession, isUserSessionActive, logActivity, revokeUserSessions } = require("../utils/auditLogger");
 
 const employeeModules = new Set(["jobs", "customers", "trips", "drivers", "vehicles", "maintenance", "finance", "billing", "tracking", "alerts"]);
 
@@ -37,15 +39,45 @@ function parseAccessModules(value) {
   }
 }
 
+const SESSION_SECRET_FILE = path.join(__dirname, "..", ".session-secret");
+const SESSION_TTL_MS = {
+  admin: 12 * 60 * 60 * 1000,
+  employee: 12 * 60 * 60 * 1000,
+  driver: 30 * 24 * 60 * 60 * 1000
+};
+let cachedSessionSecret = null;
+
+// Never fall back to a hardcoded secret: anyone with the source could forge admin tokens.
+// Without SESSION_SECRET, a random secret is generated once and kept in a gitignored file
+// (survives `git reset --hard` deploys) so tokens stay valid across restarts.
 function sessionSecret() {
-  return process.env.SESSION_SECRET || process.env.JWT_SECRET || "astrafleet-local-session-secret";
+  if (cachedSessionSecret) return cachedSessionSecret;
+  const fromEnv = process.env.SESSION_SECRET || process.env.JWT_SECRET;
+  if (fromEnv) {
+    cachedSessionSecret = fromEnv;
+    return cachedSessionSecret;
+  }
+  try {
+    cachedSessionSecret = fs.readFileSync(SESSION_SECRET_FILE, "utf8").trim() || null;
+  } catch (error) {
+    if (error.code !== "ENOENT") throw error;
+  }
+  if (!cachedSessionSecret) {
+    cachedSessionSecret = crypto.randomBytes(48).toString("base64url");
+    fs.writeFileSync(SESSION_SECRET_FILE, cachedSessionSecret, { mode: 0o600 });
+    console.warn(`SESSION_SECRET is not set; generated one in ${SESSION_SECRET_FILE}.`);
+  }
+  return cachedSessionSecret;
 }
 
 function signSessionToken(user) {
+  const issuedAt = Date.now();
   const payload = {
     id: user.id,
     role: user.role,
-    issuedAt: Date.now()
+    issuedAt,
+    expiresAt: issuedAt + (SESSION_TTL_MS[user.role] || SESSION_TTL_MS.admin),
+    nonce: crypto.randomBytes(8).toString("base64url")
   };
   const encoded = Buffer.from(JSON.stringify(payload)).toString("base64url");
   const signature = crypto.createHmac("sha256", sessionSecret()).update(encoded).digest("base64url");
@@ -61,10 +93,20 @@ function verifySessionToken(token) {
   try {
     const payload = JSON.parse(Buffer.from(encoded, "base64url").toString("utf8"));
     if (!payload?.id || !payload?.role) return null;
+    // Tokens issued before expiry existed carry no expiresAt and are rejected (one-time re-login).
+    if (!Number.isFinite(payload.expiresAt) || Date.now() >= payload.expiresAt) return null;
     return payload;
   } catch {
     return null;
   }
+}
+
+// Signature + expiry + a live user_sessions row (logout and password change revoke it).
+async function verifyActiveSession(token) {
+  const payload = verifySessionToken(token);
+  if (!payload) return null;
+  if (!(await isUserSessionActive(token))) return null;
+  return payload;
 }
 
 async function login(req, res) {
@@ -93,7 +135,19 @@ async function login(req, res) {
     }
 
     if (user.role === "employee" && user.approval_status !== "active") {
-      return res.status(403).json({ error: "Your employee account is waiting for admin approval." });
+      return res.status(403).json({
+        error: user.approval_status === "rejected"
+          ? "Your employee access has been turned off. Contact your admin."
+          : "Your employee account is waiting for admin approval."
+      });
+    }
+
+    if (user.role === "driver") {
+      // SELECT * so this still works before the archived_at column has been added.
+      const [[driver]] = await pool.execute(`SELECT * FROM drivers WHERE user_id = ? LIMIT 1`, [user.id]);
+      if (driver?.archived_at) {
+        return res.status(403).json({ error: "This driver account has been archived. Contact your transport office." });
+      }
     }
 
     const sessionToken = signSessionToken(user);
@@ -139,12 +193,36 @@ async function logout(req, res) {
   }
 }
 
+// Lets the client refresh role/pages without a re-login after admin changes access.
+async function getMySession(req, res) {
+  try {
+    const payload = await verifyActiveSession(req.headers["x-session-token"]);
+    if (!payload) return res.status(401).json({ code: "SESSION_EXPIRED", message: "Login session has expired." });
+
+    const [[user]] = await pool.execute(
+      `SELECT id, name, role, approval_status, access_modules FROM users WHERE id = ?`,
+      [payload.id]
+    );
+    if (!user) return res.status(401).json({ code: "SESSION_EXPIRED", message: "Login session has expired." });
+
+    res.json({
+      id: user.id,
+      name: user.name,
+      role: user.role,
+      approvalStatus: user.approval_status,
+      accessModules: parseAccessModules(user.access_modules)
+    });
+  } catch (err) {
+    res.status(500).json({ message: "Session check error", error: err.message });
+  }
+}
+
 async function getMyProfile(req, res) {
   try {
-    const payload = verifySessionToken(req.headers["x-session-token"]);
+    const payload = await verifyActiveSession(req.headers["x-session-token"]);
     const userId = Number(req.headers["x-session-user-id"] || 0);
     if (!payload || payload.role !== "admin" || payload.id !== userId) {
-      return res.status(403).json({ message: "Admin session is required." });
+      return res.status(401).json({ code: "SESSION_EXPIRED", message: "Admin session is required." });
     }
 
     const [[user]] = await pool.execute(
@@ -167,10 +245,10 @@ async function getMyProfile(req, res) {
 
 async function updateMyProfile(req, res) {
   try {
-    const payload = verifySessionToken(req.headers["x-session-token"]);
+    const payload = await verifyActiveSession(req.headers["x-session-token"]);
     const userId = Number(req.headers["x-session-user-id"] || 0);
     if (!payload || payload.role !== "admin" || payload.id !== userId) {
-      return res.status(403).json({ message: "Admin session is required." });
+      return res.status(401).json({ code: "SESSION_EXPIRED", message: "Admin session is required." });
     }
 
     const name = String(req.body.name || "").trim();
@@ -208,6 +286,10 @@ async function updateMyProfile(req, res) {
       `UPDATE users SET name=?, email=?, password=? WHERE id=? AND role='admin'`,
       [name, email, nextHash, userId]
     );
+    if (newPassword) {
+      // Sign out every other device that still holds a token from the old password.
+      await revokeUserSessions(userId, { exceptToken: req.headers["x-session-token"] });
+    }
 
     await logActivity(req, {
       actor: { id: userId, name, role: "admin" },
@@ -280,4 +362,4 @@ async function registerEmployee(req, res) {
   }
 }
 
-module.exports = { login, logout, getMyProfile, updateMyProfile, registerEmployee, ensureEmployeeAuthSchema, employeeModules, parseAccessModules, signSessionToken, verifySessionToken };
+module.exports = { verifyActiveSession, login, logout, getMySession, getMyProfile, updateMyProfile, registerEmployee, ensureEmployeeAuthSchema, employeeModules, parseAccessModules, signSessionToken, verifySessionToken };
