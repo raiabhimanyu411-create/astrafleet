@@ -450,3 +450,382 @@
   .ov-metric-value { font-size: 1.35rem; }
   .ov-head h1 { font-size: 1.25rem; }
 }
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   Overview v2 — hero band, icon tiles, trend charts and live fleet map.
+   Brand colour leads the page; data colour comes from the validated chart palette.
+═══════════════════════════════════════════════════════════════════════════ */
+
+.overview-page-shell {
+  --ov-navy: #0B2545;
+  --ov-series-1: #2a78d6;
+  --ov-series-2: #eb6834;
+  --ov-good: #0ca30c;
+  --ov-critical: #d03b3b;
+  --ov-grid: #EDEDED;
+  --ov-axis: #C7C7C7;
+}
+
+/* ── Hero band ────────────────────────────────────────────────────────────── */
+.ov-hero {
+  position: relative;
+  overflow: hidden;
+  padding: 24px 24px 20px;
+  border-radius: 12px;
+  background:
+    radial-gradient(circle at 88% -20%, rgba(80, 160, 255, 0.45), transparent 45%),
+    linear-gradient(120deg, var(--ov-navy) 0%, #0E3B73 55%, var(--mx-brand) 100%);
+  box-shadow: 0 10px 30px rgba(11, 37, 69, 0.28);
+  color: #fff;
+}
+
+.ov-hero-art {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
+.ov-hero-art path { fill: none; stroke: rgba(255, 255, 255, 0.10); stroke-width: 2; stroke-dasharray: 2 8; stroke-linecap: round; }
+.ov-hero-art circle { fill: rgba(255, 255, 255, 0.25); }
+
+.ov-hero-top {
+  position: relative;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.ov-hero h1 { margin: 2px 0 0; color: #fff; font-size: 1.75rem; font-weight: 700; letter-spacing: -0.01em; }
+.ov-hero-date { margin: 0; color: rgba(255, 255, 255, 0.75); font-size: 0.84rem; font-weight: 600; }
+.ov-hero-summary { margin: 6px 0 0; color: rgba(255, 255, 255, 0.9); font-size: 0.95rem; }
+
+.ov-hero-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+
+.ov-hero-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 34px;
+  padding: 0 14px;
+  border: 1px solid rgba(255, 255, 255, 0.35);
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.10);
+  color: #fff;
+  font: inherit;
+  font-size: 0.86rem;
+  font-weight: 600;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.ov-hero-btn svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; }
+.ov-hero-btn:hover { background: rgba(255, 255, 255, 0.2); }
+.ov-hero-btn.primary { border-color: #fff; background: #fff; color: var(--ov-navy); }
+.ov-hero-btn.primary:hover { background: #EAF2FD; }
+.ov-hero-btn.ghost { border-color: transparent; background: transparent; color: rgba(255, 255, 255, 0.85); font-weight: 500; }
+.ov-hero-btn:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
+.ov-hero .ov-live-dot { background: #5BE37D; box-shadow: 0 0 0 3px rgba(91, 227, 125, 0.25); }
+
+.ov-hero-metrics {
+  position: relative;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+  margin-top: 20px;
+}
+
+.ov-hero-metric {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  grid-template-areas: "icon label" "value value" "hint hint";
+  align-items: center;
+  gap: 2px 8px;
+  min-width: 0;
+  padding: 14px 16px;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.08);
+  backdrop-filter: blur(6px);
+  color: #fff;
+  text-decoration: none;
+  transition: background 0.15s, transform 0.15s;
+}
+
+.ov-hero-metric:hover { background: rgba(255, 255, 255, 0.15); transform: translateY(-1px); }
+.ov-hero-metric:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
+
+.ov-hero-metric-icon {
+  grid-area: icon;
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.16);
+}
+
+.ov-hero-metric-icon svg,
+.ov-tile-icon svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
+
+.ov-hero-metric-label { grid-area: label; color: rgba(255, 255, 255, 0.85); font-size: 0.84rem; font-weight: 600; }
+.ov-hero-metric strong { grid-area: value; margin-top: 6px; font-size: 2rem; font-weight: 700; line-height: 1.1; overflow-wrap: anywhere; }
+.ov-hero-metric small { grid-area: hint; color: rgba(255, 255, 255, 0.7); font-size: 0.78rem; }
+.ov-hero-metric.flagged { border-color: rgba(255, 140, 120, 0.7); background: rgba(208, 59, 59, 0.28); }
+.ov-hero-metric.flagged .ov-hero-metric-icon { background: #d03b3b; }
+
+/* ── Icon tiles ───────────────────────────────────────────────────────────── */
+.ov-tiles {
+  display: grid;
+  grid-template-columns: repeat(8, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.ov-tile {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  padding: 12px;
+  border: 1px solid var(--mx-border);
+  border-radius: 10px;
+  background: var(--mx-surface);
+  box-shadow: var(--mx-shadow-2);
+  color: var(--mx-text);
+  text-decoration: none;
+  transition: box-shadow 0.15s, transform 0.15s;
+}
+
+.ov-tile:hover { box-shadow: 0 6px 16px rgba(0, 0, 0, 0.10); transform: translateY(-1px); }
+.ov-tile:focus-visible { outline: 2px solid var(--mx-brand); outline-offset: 1px; }
+
+.ov-tile-icon {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  background: var(--mx-brand-tint);
+  color: var(--mx-brand);
+}
+
+.ov-tile.flagged.warning .ov-tile-icon { background: var(--mx-warning-tint); color: var(--mx-warning); }
+.ov-tile.flagged.danger .ov-tile-icon { background: var(--mx-danger-tint); color: var(--mx-danger); }
+.ov-tile-text { display: grid; min-width: 0; }
+.ov-tile-label { overflow: hidden; color: var(--mx-text-3); font-size: 0.78rem; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
+.ov-tile-value { font-size: 1.25rem; font-weight: 700; line-height: 1.2; overflow-wrap: anywhere; }
+.ov-tile.flagged.warning .ov-tile-value { color: var(--mx-warning); }
+.ov-tile.flagged.danger .ov-tile-value { color: var(--mx-danger); }
+
+/* ── Charts ───────────────────────────────────────────────────────────────── */
+.ov-charts,
+.ov-fleet {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.ov-fleet { grid-template-columns: minmax(0, 1.6fr) minmax(300px, 1fr); }
+
+.ov-card-sub { margin: -4px 16px 8px; color: var(--mx-text-3); font-size: 0.84rem; }
+
+.ov-legend { display: flex; gap: 16px; margin: 0 16px 4px; color: var(--mx-text-2); font-size: 0.8rem; font-weight: 600; }
+.ov-legend span { display: inline-flex; align-items: center; gap: 6px; }
+.ov-legend i { width: 10px; height: 10px; border-radius: 3px; }
+
+.ovc-chart { position: relative; padding: 0 12px 12px; }
+.ovc-chart svg { display: block; overflow: visible; }
+.ovc-grid { stroke: var(--ov-grid); stroke-width: 1; }
+.ovc-baseline { stroke: var(--ov-axis); stroke-width: 1; }
+.ovc-tick { fill: var(--mx-text-3); font-size: 11px; font-weight: 600; }
+.ovc-hit { fill: transparent; cursor: default; }
+.ovc-hit.active { fill: rgba(15, 108, 189, 0.06); }
+
+.ovc-empty {
+  position: absolute;
+  inset: 40% 0 auto;
+  margin: 0;
+  color: var(--mx-text-3);
+  font-size: 0.86rem;
+  text-align: center;
+  pointer-events: none;
+}
+
+.ovc-tooltip {
+  position: absolute;
+  z-index: 5;
+  display: grid;
+  gap: 4px;
+  width: 150px;
+  padding: 8px 10px;
+  border: 1px solid var(--mx-border);
+  border-radius: 6px;
+  background: #fff;
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.14);
+  color: var(--mx-text);
+  font-size: 0.78rem;
+  pointer-events: none;
+}
+
+.ovc-tooltip strong { font-size: 0.8rem; }
+.ovc-tooltip span { display: flex; align-items: center; gap: 6px; color: var(--mx-text-2); }
+.ovc-tooltip i { width: 8px; height: 8px; border-radius: 2px; }
+.ovc-tooltip b { margin-left: auto; color: var(--mx-text); }
+
+/* ── Map + availability ───────────────────────────────────────────────────── */
+.ov-map-card { overflow: hidden; }
+.ovc-map-wrap { position: relative; }
+.ovc-map { height: 320px; border-top: 1px solid var(--mx-border); }
+.ovc-map .leaflet-control-attribution { font-size: 10px; }
+
+.ovc-map-empty {
+  position: absolute;
+  inset: 50% 0 auto;
+  z-index: 500;
+  margin: 0;
+  color: var(--mx-text-2);
+  font-size: 0.86rem;
+  font-weight: 600;
+  text-align: center;
+}
+
+.ovc-meter { padding: 4px 16px 12px; }
+
+.ovc-meter-bar {
+  display: flex;
+  gap: 2px;
+  height: 14px;
+  overflow: hidden;
+  border-radius: 7px;
+  background: var(--mx-surface-3);
+}
+
+.ovc-meter-bar span { min-width: 6px; }
+.ovc-meter-empty { flex: 1; }
+
+.ovc-meter-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 16px;
+  margin: 10px 0 0;
+  padding: 0;
+  list-style: none;
+  color: var(--mx-text-2);
+  font-size: 0.82rem;
+  font-weight: 600;
+}
+
+.ovc-meter-legend li { display: inline-flex; align-items: center; gap: 6px; }
+.ovc-meter-legend i { width: 10px; height: 10px; border-radius: 3px; }
+.ovc-meter-legend b { color: var(--mx-text); font-size: 0.95rem; }
+
+.ov-truck-list { margin: 0; padding: 0 16px 8px; list-style: none; border-top: 1px solid var(--mx-border); }
+
+.ov-truck-list li {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 0;
+}
+
+.ov-truck-list li + li { border-top: 1px solid var(--mx-border); }
+.ov-truck-driver { flex: 1; min-width: 0; overflow: hidden; color: var(--mx-text-2); font-size: 0.84rem; text-overflow: ellipsis; white-space: nowrap; }
+
+.ov-plate {
+  flex: none;
+  padding: 1px 7px;
+  border: 1px solid #C9A600;
+  border-radius: 4px;
+  background: #FFD200;
+  color: #111;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.76rem;
+  font-weight: 700;
+}
+
+/* The old Fluent metric groups are replaced by the hero + tiles. */
+.ov-metric-groups { display: none; }
+
+@media (max-width: 1400px) {
+  .ov-tiles { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+}
+
+@media (max-width: 1100px) {
+  .ov-charts,
+  .ov-fleet { grid-template-columns: minmax(0, 1fr); }
+  .ov-hero-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+@media (max-width: 640px) {
+  .ov-hero { padding: 18px 16px; }
+  .ov-hero h1 { font-size: 1.35rem; }
+  .ov-hero-metric strong { font-size: 1.5rem; }
+  .ov-tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .ovc-map { height: 240px; }
+}
+
+/* Bars sit above the column hit area; let the pointer through so hovering a bar keeps its tooltip. */
+.ovc-chart svg path,
+.ovc-chart svg rect:not(.ovc-hit),
+.ovc-chart svg text { pointer-events: none; }
+
+/* ── Calmer pass: flatter hero, no glow or lift ── */
+.ov-hero {
+  background: linear-gradient(120deg, #0F2747 0%, #133A6B 100%);
+  box-shadow: var(--mx-shadow-2);
+}
+
+.ov-hero-art path { stroke: rgba(255, 255, 255, 0.06); }
+.ov-hero-art circle { fill: rgba(255, 255, 255, 0.12); }
+
+.ov-hero-metric {
+  border-color: rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.06);
+  backdrop-filter: none;
+}
+
+.ov-hero-metric:hover { background: rgba(255, 255, 255, 0.1); transform: none; }
+.ov-hero-metric-icon { background: rgba(255, 255, 255, 0.1); }
+
+.ov-hero-metric.flagged {
+  border-color: rgba(255, 255, 255, 0.12);
+  border-left: 3px solid #F28B82;
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.ov-hero-metric.flagged .ov-hero-metric-icon { background: rgba(242, 139, 130, 0.22); color: #FFB4AB; }
+.ov-hero-metric.flagged strong { color: #FFB4AB; }
+
+.ov-hero .ov-live-dot { background: #6CCB8A; box-shadow: none; }
+
+.ov-tile:hover { box-shadow: var(--mx-shadow-2); transform: none; border-color: var(--mx-border-strong); }
+
+/* ── One column grid for every row, so right-hand cards share the same left and right edges ── */
+.overview-page-shell { --ov-cols: minmax(0, 2fr) minmax(340px, 1fr); }
+
+.ov-charts,
+.ov-fleet,
+.ov-layout {
+  grid-template-columns: var(--ov-cols);
+  gap: 16px;
+}
+
+.ov-fleet { align-items: stretch; }
+.ov-fleet > .ov-card { display: flex; flex-direction: column; }
+.ov-map-card .ovc-map-wrap { flex: 1; }
+.ov-map-card .ovc-map { height: 100%; min-height: 320px; }
+
+@media (max-width: 1100px) {
+  .ov-charts,
+  .ov-fleet,
+  .ov-layout { grid-template-columns: minmax(0, 1fr); }
+}
+
+/* Both columns of the lower row end on the same line: the last card in each column takes the slack. */
+.ov-layout { align-items: stretch; }
+.ov-layout > .ov-col { display: flex; flex-direction: column; }
+.ov-layout > .ov-col > .ov-card:last-child { flex: 1; }

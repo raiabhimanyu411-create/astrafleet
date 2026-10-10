@@ -6,20 +6,20 @@ import { PanelLayout } from "../../components/PanelLayout";
 import { clearAuthSession, getAuthSession, saveAuthSession } from "../../utils/authSession";
 
 export const adminMenu = [
-  { to: "/admin",           label: "Overview",      end: true },
-  { to: "/admin/activity",  label: "Activity Report" },
-  { to: "/admin/employees", label: "Employees" },
-  { to: "/admin/jobs",      label: "Jobs" },
-  { to: "/admin/customers", label: "Customers" },
-  { to: "/admin/trips",     label: "Dispatch" },
-  { to: "/admin/drivers",   label: "Drivers" },
-  { to: "/admin/vehicles",  label: "Vehicles" },
-  { to: "/admin/maintenance", label: "Maintenance" },
-  { to: "/admin/finance",   label: "Finance" },
-  { to: "/admin/billing",   label: "Billing" },
-  { to: "/admin/tracking",  label: "Live Tracking" },
-  { to: "/admin/alerts",    label: "Alerts" },
-  { to: "/admin/notifications", label: "Notifications" }
+  { to: "/admin",           label: "Overview",      end: true, icon: "overview" },
+  { to: "/admin/jobs",      label: "Jobs",           icon: "jobs",          group: "Operations" },
+  { to: "/admin/trips",     label: "Dispatch",       icon: "dispatch",      group: "Operations" },
+  { to: "/admin/tracking",  label: "Live tracking",  icon: "tracking",      group: "Operations" },
+  { to: "/admin/customers", label: "Customers",      icon: "customers",     group: "Operations" },
+  { to: "/admin/vehicles",  label: "Vehicles",       icon: "vehicles",      group: "Fleet" },
+  { to: "/admin/drivers",   label: "Drivers",        icon: "drivers",       group: "Fleet" },
+  { to: "/admin/maintenance", label: "Maintenance",  icon: "maintenance",   group: "Fleet" },
+  { to: "/admin/finance",   label: "Finance",        icon: "finance",       group: "Money" },
+  { to: "/admin/billing",   label: "Billing",        icon: "billing",       group: "Money" },
+  { to: "/admin/alerts",    label: "Alerts",         icon: "alerts",        group: "Team & system" },
+  { to: "/admin/notifications", label: "Notifications", icon: "notifications", group: "Team & system" },
+  { to: "/admin/employees", label: "Employees",      icon: "employees",     group: "Team & system" },
+  { to: "/admin/activity",  label: "Activity report", icon: "activity",     group: "Team & system" }
 ];
 
 const menuAccessKey = {
@@ -89,8 +89,9 @@ export function AdminWorkspaceLayout({ badge, title, description, highlights, hi
       highlights={highlights}
       hideHeaderIntro={hideHeaderIntro}
       menu={visibleMenu}
-      roleLabel={isEmployee ? "Employee Workspace" : "Admin Workspace"}
+      roleLabel={isEmployee ? "Employee workspace" : "Admin workspace"}
       scopeNote={null}
+      account={{ name: session?.name, role: isEmployee ? "Employee" : "Administrator", onLogout: handleLogout }}
       headerContent={(
         <>
           {!isEmployee && <NotificationBell fetchUrl="/api/admin/notifications" viewAllTo="/admin/notifications" />}

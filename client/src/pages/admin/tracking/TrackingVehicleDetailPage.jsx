@@ -67,6 +67,10 @@ export function TrackingVehicleDetailPage() {
     e.preventDefault();
     setSubmitError("");
     setSaving(true);
+    // Only a changed position counts as a new ping; a status or speed edit must not make the truck look live.
+    const original = vehicle?.form || {};
+    const positionChanged = ["current_location", "gps_latitude", "gps_longitude"]
+      .some(key => String(fields[key] ?? "") !== String(original[key] ?? ""));
     try {
       await updateTrackingVehicle(id, {
         current_location: fields.current_location,
@@ -75,7 +79,7 @@ export function TrackingVehicleDetailPage() {
         gps_latitude: fields.gps_latitude,
         gps_longitude: fields.gps_longitude,
         gps_accuracy_m: fields.gps_accuracy_m,
-        mark_ping_now: true
+        mark_ping_now: positionChanged
       });
       load();
     } catch (err) {
@@ -88,12 +92,8 @@ export function TrackingVehicleDetailPage() {
   async function quickStatus(status) {
     setSubmitError("");
     try {
-      await updateTrackingVehicle(id, {
-        ...fields,
-        speed_kph: Number(fields.speed_kph),
-        status,
-        mark_ping_now: true
-      });
+      // Status only: resending the form would overwrite a fresher driver ping and fake a new one.
+      await updateTrackingVehicle(id, { status });
       load();
     } catch (err) {
       setSubmitError(err?.response?.data?.message || "Status could not be updated.");

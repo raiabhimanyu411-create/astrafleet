@@ -1,0 +1,196 @@
+/* ═══════════════════════════════════════════════════════════════════════════
+   Sidebar v2 — brand header, grouped navigation with icons, glowing active
+   item, signed-in account card. Selectors are scoped under .panel-sidebar so
+   they outrank the older App.css rules regardless of import order.
+═══════════════════════════════════════════════════════════════════════════ */
+
+.panel-shell .panel-sidebar {
+  padding: 16px 12px 12px;
+  background:
+    radial-gradient(120% 40% at 0% 0%, rgba(42, 120, 214, 0.28), transparent 60%),
+    radial-gradient(90% 30% at 100% 100%, rgba(124, 92, 255, 0.16), transparent 60%),
+    linear-gradient(180deg, #0D1B33 0%, #0B1526 100%);
+  border-right: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+/* ── Brand ────────────────────────────────────────────────────────────────── */
+.panel-sidebar .brand-stack {
+  margin-bottom: 6px;
+  padding: 4px 8px 16px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.panel-sidebar .sidebar-brand { gap: 12px; }
+.panel-sidebar .astra-brand-mark { width: 40px; height: 40px; border-radius: 12px; }
+.panel-sidebar .sidebar-brand-text { display: grid; line-height: 1.2; }
+.panel-sidebar .sidebar-brand-text > span { font-size: 1.08rem; font-weight: 800; letter-spacing: -0.02em; }
+
+.panel-sidebar .sidebar-brand-text small {
+  justify-self: start;
+  margin-top: 4px;
+  padding: 1px 8px;
+  border: 1px solid rgba(125, 185, 242, 0.35);
+  border-radius: 999px;
+  background: rgba(83, 159, 229, 0.14);
+  color: #A9D1F7;
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+/* ── Navigation ───────────────────────────────────────────────────────────── */
+.panel-sidebar .sidebar-nav { gap: 2px; padding-top: 4px; }
+
+.panel-sidebar .sidebar-group-label {
+  display: block;
+  margin: 14px 12px 6px;
+  color: #6F87A3;
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.panel-sidebar .sidebar-nav a {
+  position: relative;
+  gap: 12px;
+  padding: 9px 12px;
+  border: 0;
+  border-radius: 8px;
+  color: #C9D4E2;
+  font-size: 0.88rem;
+  font-weight: 500;
+}
+
+.panel-sidebar .sidebar-nav .nav-icon {
+  flex: none;
+  width: 18px;
+  height: 18px;
+  fill: none;
+  stroke: #8AA2BF;
+  stroke-width: 1.6;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  transition: stroke 150ms;
+}
+
+.panel-sidebar .sidebar-nav a:hover {
+  background: rgba(255, 255, 255, 0.07);
+  color: #fff;
+  transform: translateX(2px);
+}
+
+.panel-sidebar .sidebar-nav a:hover .nav-icon { stroke: #fff; }
+
+.panel-sidebar .sidebar-nav a.active {
+  border: 0;
+  background: linear-gradient(90deg, #1E6FD9 0%, #3B8BEB 100%);
+  box-shadow: 0 6px 16px rgba(30, 111, 217, 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.18);
+  color: #fff;
+  font-weight: 700;
+  transform: none;
+}
+
+.panel-sidebar .sidebar-nav a.active .nav-icon { stroke: #fff; }
+
+.panel-sidebar .sidebar-nav a:focus-visible {
+  outline: 2px solid #7DB9F2;
+  outline-offset: 1px;
+}
+
+/* ── Account card ─────────────────────────────────────────────────────────── */
+.panel-sidebar .sidebar-account {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 14px;
+  padding: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.panel-sidebar .sidebar-avatar {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #3B8BEB, #7C5CFF);
+  color: #fff;
+  font-size: 0.8rem;
+  font-weight: 800;
+}
+
+.panel-sidebar .sidebar-account-text { display: grid; flex: 1; min-width: 0; line-height: 1.25; }
+
+.panel-sidebar .sidebar-account-text strong {
+  overflow: hidden;
+  color: #fff;
+  font-size: 0.86rem;
+  font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.panel-sidebar .sidebar-account-text small { color: #8AA2BF; font-size: 0.74rem; }
+
+.panel-sidebar .sidebar-logout {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: #C9D4E2;
+  cursor: pointer;
+}
+
+.panel-sidebar .sidebar-logout svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
+.panel-sidebar .sidebar-logout:hover { background: rgba(255, 90, 90, 0.16); color: #FF9A9A; }
+.panel-sidebar .sidebar-logout:focus-visible { outline: 2px solid #7DB9F2; outline-offset: 1px; }
+
+/* ── Footer ───────────────────────────────────────────────────────────────── */
+.panel-sidebar .sidebar-footer {
+  margin-top: 10px;
+  padding: 10px 6px 2px;
+  border-top: 0;
+}
+
+.panel-sidebar .sidebar-footer p { color: #7F95AF; font-size: 0.66rem; font-weight: 600; }
+.panel-sidebar .sidebar-footer small { margin-top: 2px; color: #6F87A3; font-size: 0.64rem; }
+.panel-sidebar .sidebar-footer strong { display: inline; color: #7DB9F2; font-size: inherit; }
+
+@media (prefers-reduced-motion: reduce) {
+  .panel-sidebar .sidebar-nav a,
+  .panel-sidebar .sidebar-nav a:hover { transition: none; transform: none; }
+}
+
+/* ── Calmer pass: no glow, flat active state, quiet background ── */
+.panel-shell .panel-sidebar {
+  background: linear-gradient(180deg, #0F1D33 0%, #0C1728 100%);
+}
+
+.panel-sidebar .sidebar-brand-text small {
+  border-color: rgba(255, 255, 255, 0.14);
+  background: rgba(255, 255, 255, 0.06);
+  color: #A8B8CC;
+  font-weight: 600;
+}
+
+.panel-sidebar .sidebar-nav a:hover { background: rgba(255, 255, 255, 0.06); transform: none; }
+
+.panel-sidebar .sidebar-nav a.active {
+  background: rgba(83, 159, 229, 0.16);
+  box-shadow: inset 3px 0 0 #5AA2E8;
+  color: #fff;
+  font-weight: 600;
+}
+
+.panel-sidebar .sidebar-nav a.active .nav-icon { stroke: #8EC3F5; }
+
+.panel-sidebar .sidebar-avatar { background: #2D5E9C; }
+.panel-sidebar .sidebar-account { background: rgba(255, 255, 255, 0.04); }
