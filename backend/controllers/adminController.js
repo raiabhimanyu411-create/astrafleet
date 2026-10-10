@@ -1,4 +1,5 @@
 const db = require("../db/connection");
+const { ukNowDateTimeKey } = require("../utils/jobDateTimes");
 const { ensureEmployeeAuthSchema, employeeModules, parseAccessModules } = require("./authController");
 const { emitDriverChatMessage, emitDriverLocationUpdate, emitJobUpdate } = require("../realtime");
 const { buildChangeSet, ensureActivitySchema, ensureSessionSchema, getActor, logActivity, requireDeleteReason, revokeUserSessions } = require("../utils/auditLogger");
@@ -1337,6 +1338,15 @@ exports.deleteInvoice = async (req, res) => {
   }
 };
 
+// "236206 minutes ago" is unreadable; round to the largest sensible unit.
+function humanMinutesAgo(minutes) {
+  const m = Math.max(0, Number(minutes) || 0);
+  if (m < 60) return `${m} ${m === 1 ? "minute" : "minutes"} ago`;
+  if (m < 1440) { const h = Math.floor(m / 60); return `${h} ${h === 1 ? "hour" : "hours"} ago`; }
+  const d = Math.floor(m / 1440);
+  return `${d} ${d === 1 ? "day" : "days"} ago`;
+}
+
 exports.getTracking = async (req, res) => {
   try {
     await ensureDriverOpsSchema();
@@ -1514,7 +1524,7 @@ exports.getTracking = async (req, res) => {
           .map(r => ({
             title: `${r.registration_number} stale ping`,
             description: r.last_ping_at
-              ? `Last GPS ping was ${r.ping_minutes} minutes ago.`
+              ? `Last GPS ping was ${humanMinutesAgo(r.ping_minutes)}.`
               : "No GPS ping has been recorded for this vehicle.",
             tone: "warning",
             vehicleId: r.id
@@ -1542,11 +1552,13 @@ exports.getTrackingVehicleById = async (req, res) => {
               r.origin_hub, r.destination_hub,
               d.full_name AS driver_name, d.phone AS driver_phone
        FROM vehicles v
-       LEFT JOIN trips t ON t.vehicle_id = v.id AND t.dispatch_status IN ('loading','active','planned')
+       LEFT JOIN trips t ON t.vehicle_id = v.id AND t.deleted_at IS NULL
+         AND t.dispatch_status IN ('loading','active','blocked','planned')
        LEFT JOIN routes r ON r.id = t.route_id
        LEFT JOIN drivers d ON d.id = t.driver_id
        WHERE v.id = ?
-       ORDER BY FIELD(t.dispatch_status, 'active', 'loading', 'planned')`,
+       ORDER BY FIELD(t.dispatch_status, 'active', 'loading', 'blocked', 'planned'), t.planned_departure ASC
+       LIMIT 1`,
       [id]
     );
 
@@ -1572,7 +1584,7 @@ exports.getTrackingVehicleById = async (req, res) => {
       accuracy: vehicle.gps_accuracy_m != null ? Number(vehicle.gps_accuracy_m) : null,
       accuracyLabel: vehicle.gps_accuracy_m != null ? `±${Math.round(Number(vehicle.gps_accuracy_m))} m` : "Accuracy unknown",
       speedKph: vehicle.speed_kph,
-      lastPingAt: fmtDate(vehicle.last_ping_at),
+      lastPingAt: vehicle.last_ping_at ? fmtDateTime(vehicle.last_ping_at) : "Never",
       lastPingAtRaw: rawDateTime(vehicle.last_ping_at),
       lastPingMinutes: mins,
       stale: mins == null || mins > 15,
@@ -1603,24 +1615,33 @@ exports.getTrackingVehicleById = async (req, res) => {
   }
 };
 
+// Partial update: only fields present in the body change. Quick status buttons used to resend the page's
+// cached location/speed/GPS, overwriting a fresher driver ping that arrived after the page loaded.
+// last_ping_at moves only when a position is actually supplied with mark_ping_now, so a status change can
+// no longer make a stale truck look live.
 exports.updateTrackingVehicle = async (req, res) => {
   try {
     const { id } = req.params;
-    const { current_location, speed_kph, status, mark_ping_now, gps_latitude, gps_longitude, gps_accuracy_m } = req.body;
+    const body = req.body || {};
+    const has = key => Object.prototype.hasOwnProperty.call(body, key);
     const valid = ["available", "planned", "in_transit", "maintenance", "stopped"];
-    if (status && !valid.includes(status)) {
+    if (has("status") && !valid.includes(body.status)) {
       return res.status(400).json({ message: "Invalid vehicle status." });
     }
-    const speed = Number(speed_kph ?? 0);
-    const latitude = gps_latitude !== "" && gps_latitude != null ? Number(gps_latitude) : null;
-    const longitude = gps_longitude !== "" && gps_longitude != null ? Number(gps_longitude) : null;
-    const accuracy = gps_accuracy_m !== "" && gps_accuracy_m != null ? Number(gps_accuracy_m) : null;
-    if (!Number.isFinite(speed) || speed < 0 || speed > 200) {
+    const toNumber = value => (value !== "" && value != null ? Number(value) : null);
+    const speed = has("speed_kph") ? Number(body.speed_kph ?? 0) : null;
+    const latitude = has("gps_latitude") ? toNumber(body.gps_latitude) : null;
+    const longitude = has("gps_longitude") ? toNumber(body.gps_longitude) : null;
+    const accuracy = has("gps_accuracy_m") ? toNumber(body.gps_accuracy_m) : null;
+    if (has("speed_kph") && (!Number.isFinite(speed) || speed < 0 || speed > 200)) {
       return res.status(400).json({ message: "Speed must be between 0 and 200 km/h." });
     }
     if ((latitude != null && (!Number.isFinite(latitude) || latitude < -90 || latitude > 90))
       || (longitude != null && (!Number.isFinite(longitude) || longitude < -180 || longitude > 180))) {
       return res.status(400).json({ message: "GPS latitude or longitude is invalid." });
+    }
+    if ((latitude == null) !== (longitude == null) && (has("gps_latitude") || has("gps_longitude"))) {
+      return res.status(400).json({ message: "Enter both latitude and longitude, or leave both empty." });
     }
     if (accuracy != null && (!Number.isFinite(accuracy) || accuracy < 0)) {
       return res.status(400).json({ message: "GPS accuracy cannot be negative." });
@@ -1634,26 +1655,35 @@ exports.updateTrackingVehicle = async (req, res) => {
     );
     if (!vehicle) return res.status(404).json({ message: "Vehicle not found." });
 
+    // A truck that is loading or on the road cannot be marked free or off road behind dispatch's back.
+    if (has("status") && ["available", "maintenance", "stopped"].includes(body.status) && body.status !== vehicle.status) {
+      const [[onJob]] = await db.query(
+        `SELECT trip_code FROM trips
+         WHERE vehicle_id = ? AND deleted_at IS NULL AND dispatch_status IN ('loading','active') LIMIT 1`,
+        [id]
+      );
+      if (onJob) {
+        return res.status(409).json({ message: `${vehicle.registration_number} is on job ${onJob.trip_code}. Finish or reassign the job before changing it to ${body.status.replace("_", " ")}.` });
+      }
+    }
+
+    const next = { ...vehicle };
+    if (has("current_location")) next.current_location = String(body.current_location || "").trim() || null;
+    if (has("speed_kph")) next.speed_kph = speed;
+    if (has("status")) next.status = body.status;
+    if (has("gps_latitude") || has("gps_longitude")) {
+      next.gps_latitude = latitude;
+      next.gps_longitude = longitude;
+    }
+    if (has("gps_accuracy_m")) next.gps_accuracy_m = accuracy;
+    const positionSupplied = has("current_location") || has("gps_latitude") || has("gps_longitude");
+    const markPing = Boolean(body.mark_ping_now) && positionSupplied;
+
     await db.query(
-      `UPDATE vehicles SET
-         current_location=?,
-         speed_kph=?,
-         status=?,
-         gps_latitude=?,
-         gps_longitude=?,
-         gps_accuracy_m=?,
-         last_ping_at=?
+      `UPDATE vehicles SET current_location=?, speed_kph=?, status=?, gps_latitude=?, gps_longitude=?,
+         gps_accuracy_m=?, last_ping_at=${markPing ? "NOW()" : "last_ping_at"}
        WHERE id=?`,
-      [
-        current_location || null,
-        speed,
-        status || vehicle.status,
-        latitude,
-        longitude,
-        accuracy,
-        mark_ping_now ? new Date() : vehicle.last_ping_at,
-        id
-      ]
+      [next.current_location, next.speed_kph, next.status, next.gps_latitude, next.gps_longitude, next.gps_accuracy_m, id]
     );
 
     await logActivity(req, {
@@ -1663,15 +1693,8 @@ exports.updateTrackingVehicle = async (req, res) => {
       entityId: id,
       entityLabel: vehicle.registration_number,
       details: {
-        changes: buildChangeSet(vehicle, {
-          ...vehicle,
-          current_location: current_location || null,
-          speed_kph: speed,
-          status: status || vehicle.status,
-          gps_latitude: latitude,
-          gps_longitude: longitude,
-          gps_accuracy_m: accuracy
-        }, ["current_location", "speed_kph", "status", "gps_latitude", "gps_longitude", "gps_accuracy_m"])
+        changes: buildChangeSet(vehicle, next, ["current_location", "speed_kph", "status", "gps_latitude", "gps_longitude", "gps_accuracy_m"]),
+        manualPing: markPing
       }
     });
     emitDriverLocationUpdate({ vehicleId: Number(id), source: "admin-manual-update" });
@@ -3065,7 +3088,8 @@ exports.getOverview = async (req, res) => {
        LIMIT 6`
     );
     const [trackingRows] = await db.query(
-      `SELECT v.registration_number, v.current_location, v.speed_kph, v.last_ping_at, v.status,
+      `SELECT v.id, v.registration_number, v.current_location, v.speed_kph, v.last_ping_at, v.status,
+              v.gps_latitude, v.gps_longitude,
               d.full_name AS driver_name,
               t.eta
        FROM vehicles v
@@ -3081,6 +3105,41 @@ exports.getOverview = async (req, res) => {
        ORDER BY FIELD(severity, 'critical', 'high', 'medium', 'low'), created_at DESC
        LIMIT 6`
     );
+
+    // Last 12 UK calendar months (DB sessions run on UK time), oldest first, with empty months kept.
+    const ukMonth = ukNowDateTimeKey().slice(0, 7);
+    const trendMonths = Array.from({ length: 12 }, (_, i) => {
+      const [y, m] = ukMonth.split("-").map(Number);
+      const d = new Date(Date.UTC(y, m - 1 - (11 - i), 1));
+      return d.toISOString().slice(0, 7);
+    });
+    const [jobTrendRows] = await db.query(
+      `SELECT DATE_FORMAT(planned_departure, '%Y-%m') AS month,
+              COUNT(*) AS jobs,
+              COALESCE(SUM(dispatch_status = 'completed'), 0) AS completed
+       FROM trips
+       WHERE deleted_at IS NULL AND planned_departure >= ?
+       GROUP BY month`,
+      [`${trendMonths[0]}-01`]
+    );
+    const [revenueTrendRows] = await db.query(
+      `SELECT DATE_FORMAT(COALESCE(issued_at, created_at), '%Y-%m') AS month,
+              COALESCE(SUM(COALESCE(total_gbp, amount_gbp)), 0) AS invoiced
+       FROM invoices
+       WHERE deleted_at IS NULL AND COALESCE(issued_at, created_at) >= ?
+       GROUP BY month`,
+      [`${trendMonths[0]}-01`]
+    );
+    const jobsByMonth = new Map(jobTrendRows.map(r => [r.month, r]));
+    const revenueByMonth = new Map(revenueTrendRows.map(r => [r.month, Number(r.invoiced || 0)]));
+    const monthlyTrend = trendMonths.map(month => ({
+      month,
+      label: new Date(`${month}-01T12:00:00Z`).toLocaleDateString("en-GB", { month: "short", timeZone: "UTC" }),
+      year: Number(month.slice(0, 4)),
+      jobs: Number(jobsByMonth.get(month)?.jobs || 0),
+      completed: Number(jobsByMonth.get(month)?.completed || 0),
+      invoiced: Math.round((revenueByMonth.get(month) || 0) * 100) / 100
+    }));
 
     const complianceTone = { clear: "success", review: "warning", blocked: "danger" };
     const dispatchTone = { active: "success", loading: "warning", blocked: "danger", planned: "neutral", completed: "neutral" };
@@ -3192,6 +3251,19 @@ exports.getOverview = async (req, res) => {
         status: i.payment_status,
         tone: invoiceTone[i.payment_status] || "neutral"
       })),
+      monthlyTrend,
+      fleetMap: trackingRows
+        .filter(v => v.gps_latitude != null && v.gps_longitude != null)
+        .map(v => ({
+          id: v.id,
+          truck: v.registration_number,
+          lat: Number(v.gps_latitude),
+          lng: Number(v.gps_longitude),
+          status: v.status,
+          driver: v.driver_name || "Unassigned",
+          speed: v.speed_kph != null ? Number(v.speed_kph) : null,
+          lastPing: v.last_ping_at ? fmtDateTime(v.last_ping_at) : null
+        })),
       trackingBoard: trackingRows.map(v => ({
         truck: v.registration_number,
         driver: v.driver_name || "Unassigned",
