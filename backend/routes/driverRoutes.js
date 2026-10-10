@@ -3,7 +3,9 @@ const router  = express.Router();
 const d       = require("../controllers/driverController");
 const push    = require("../controllers/driverPushController");
 const geofence = require("../controllers/driverGeofenceController");
-const { requireModuleAccess } = require("../middleware/accessControl");
+const { requireDriverSession, requireModuleAccess } = require("../middleware/accessControl");
+
+router.use("/me", requireDriverSession);
 
 router.get("/me/panel",                    d.getMyDriverPanel);
 router.get("/me/notifications",            d.getMyNotifications);
@@ -33,6 +35,7 @@ router.post("/",                         requireModuleAccess("drivers"), d.creat
 router.patch("/:id/inline",              requireModuleAccess("drivers"), d.updateDriverInline);
 router.put("/:id",                       requireModuleAccess("drivers"), d.updateDriver);
 router.delete("/:id",                    requireModuleAccess("drivers"), d.deleteDriver);
+router.patch("/:id/archive",              requireModuleAccess("drivers"), d.setDriverArchived);
 router.post("/:id/documents",            requireModuleAccess("drivers"), d.addDocument);
 router.put("/:id/documents/:docId",      requireModuleAccess("drivers"), d.updateDocument);
 router.delete("/:id/documents/:docId",   requireModuleAccess("drivers"), d.deleteDocument);

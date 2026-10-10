@@ -226,6 +226,32 @@ function combinedModelName(make, model, modelName) {
   return String(modelName || [make, model].filter(Boolean).join(" ")).trim();
 }
 
+// UK plates are stored without spaces in upper case, so "mx22 kht" and "MX22KHT" are the same vehicle.
+function normalizeRegistration(value) {
+  return String(value || "").toUpperCase().replace(/\s+/g, "").trim();
+}
+
+// Rows that cascade-delete with the asset. Inspection and maintenance records must be kept (DVSA: at least 15 months).
+async function assetHistoryCounts(checks, id) {
+  const counts = {};
+  for (const [table, column] of checks) {
+    try {
+      const [[row]] = await db.query(`SELECT COUNT(*) AS n FROM ${table} WHERE ${column} = ?`, [id]);
+      if (Number(row.n) > 0) counts[table] = Number(row.n);
+    } catch (error) {
+      if (!["ER_NO_SUCH_TABLE", "ER_BAD_FIELD_ERROR"].includes(error.code)) throw error;
+    }
+  }
+  return counts;
+}
+
+const VEHICLE_HISTORY = [
+  ["maintenance_records", "vehicle_id"], ["maintenance_jobs", "vehicle_id"], ["vehicle_inspections", "vehicle_id"],
+  ["defect_reports", "vehicle_id"], ["vehicle_documents", "vehicle_id"], ["vehicle_tyres", "vehicle_id"]
+];
+const TRAILER_HISTORY = [["trailer_inspections", "trailer_id"], ["trailer_maintenance_records", "trailer_id"]];
+const TRAILER_STATUSES = ["available", "planned", "in_use", "maintenance"];
+
 function nextFleetCode(registrationNumber) {
   const suffix = String(registrationNumber || Date.now()).replace(/[^A-Z0-9]/gi, "").slice(-6).toUpperCase();
   return `TRK-${suffix || Date.now().toString().slice(-5)}`;
@@ -321,7 +347,13 @@ exports.listVehicles = async (req, res) => {
       in_transit: "warning", maintenance: "danger", stopped: "danger"
     };
 
-    const [trailerRows] = await db.query(`SELECT * FROM trailers ORDER BY created_at DESC`);
+    const [trailerRows] = await db.query(
+      `SELECT tr.*,
+              (SELECT COUNT(*) FROM trips t WHERE t.trailer_id = tr.id AND t.deleted_at IS NULL) AS total_trips,
+              (SELECT t.trip_code FROM trips t WHERE t.trailer_id = tr.id AND t.deleted_at IS NULL
+                 AND t.dispatch_status IN ('planned','loading','active') ORDER BY t.id DESC LIMIT 1) AS current_job
+       FROM trailers tr ORDER BY tr.created_at DESC`
+    );
     const complianceAssessments = rows.map(vehicleComplianceAssessment);
     const blockedVehicles = complianceAssessments.filter((assessment) => assessment.tone === "danger").length;
     const reviewVehicles = complianceAssessments.filter((assessment) => assessment.tone === "warning").length;
@@ -347,6 +379,8 @@ exports.listVehicles = async (req, res) => {
         capacityTonnes: t.capacity_tonnes || "—",
         status: t.status,
         currentLocation: t.current_location || "—",
+        totalTrips: Number(t.total_trips || 0),
+        currentJob: t.current_job || null,
         since: fmtDate(t.created_at)
       })),
       vehicles: rows.map(v => {
@@ -597,11 +631,12 @@ exports.createVehicle = async (req, res) => {
       odometer_reading, next_service_due, company_name, inspection_frequency_weeks
     } = req.body;
     const finalModelName = combinedModelName(make, model, model_name);
+    const registration = normalizeRegistration(registration_number);
 
-    if (!registration_number || !truck_type) {
+    if (!registration || !truck_type) {
       return res.status(400).json({ message: "Registration number and vehicle type are required." });
     }
-    const finalFleetCode = fleet_code || nextFleetCode(registration_number);
+    const finalFleetCode = fleet_code || nextFleetCode(registration);
 
     const [result] = await db.query(
       `INSERT INTO vehicles
@@ -611,7 +646,7 @@ exports.createVehicle = async (req, res) => {
           odometer_reading, next_service_due, company_name, inspection_frequency_weeks)
        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
       [
-        registration_number, finalFleetCode, make || null, model || null, finalModelName || truck_type, truck_type,
+        registration, finalFleetCode, make || null, model || null, finalModelName || truck_type, truck_type,
         status || "available",
         fuel_type || null, capacity_tonnes || null, year_of_manufacture || null, colour || null,
         mot_expiry || null, insurance_expiry || null, road_tax_expiry || null,
@@ -626,8 +661,8 @@ exports.createVehicle = async (req, res) => {
       action: "create",
       entityType: "vehicle",
       entityId: result.insertId,
-      entityLabel: registration_number,
-      details: { registration_number, fleet_code: finalFleetCode, make, model, model_name: finalModelName || truck_type, truck_type, status: status || "available" }
+      entityLabel: registration,
+      details: { registration_number: registration, fleet_code: finalFleetCode, make, model, model_name: finalModelName || truck_type, truck_type, status: status || "available" }
     });
     res.status(201).json({ message: "Vehicle created.", id: result.insertId });
   } catch (err) {
@@ -649,15 +684,17 @@ exports.createTrolley = async (req, res) => {
       status = "available"
     } = req.body;
 
-    if (!registration_number || !trailer_type) {
+    const registration = normalizeRegistration(registration_number);
+    if (!registration || !trailer_type) {
       return res.status(400).json({ message: "Trailer registration and type are required." });
     }
+    if (!TRAILER_STATUSES.includes(status)) return res.status(400).json({ message: "Invalid trailer status." });
 
-    const finalCode = trailer_code || nextTrolleyCode(registration_number);
+    const finalCode = String(trailer_code || "").trim() || nextTrolleyCode(registration);
     const [result] = await db.query(
       `INSERT INTO trailers (trailer_code, registration_number, trailer_type, capacity_tonnes, status)
        VALUES (?, ?, ?, ?, ?)`,
-      [finalCode, registration_number, trailer_type, capacity_tonnes || null, status || "available"]
+      [finalCode, registration, trailer_type, capacity_tonnes || null, status]
     );
 
     await logActivity(req, {
@@ -665,8 +702,8 @@ exports.createTrolley = async (req, res) => {
       action: "create",
       entityType: "trolley",
       entityId: result.insertId,
-      entityLabel: registration_number,
-      details: { trailer_code: finalCode, registration_number, trailer_type, status: status || "available" }
+      entityLabel: registration,
+      details: { trailer_code: finalCode, registration_number: registration, trailer_type, status }
     });
     res.status(201).json({ message: "Trailer created.", id: result.insertId });
   } catch (err) {
@@ -691,6 +728,7 @@ exports.updateVehicle = async (req, res) => {
       odometer_reading, next_service_due, current_location, company_name, inspection_frequency_weeks
     } = req.body;
     const finalModelName = combinedModelName(make, model, model_name);
+    const registration = normalizeRegistration(registration_number) || existing.registration_number;
 
     await db.query(
       `UPDATE vehicles SET
@@ -701,7 +739,7 @@ exports.updateVehicle = async (req, res) => {
          next_service_due=?, current_location=?, company_name=?, inspection_frequency_weeks=?
        WHERE id=?`,
       [
-        registration_number, fleet_code, make || null, model || null, finalModelName, truck_type,
+        registration, fleet_code || existing.fleet_code, make || null, model || null, finalModelName, truck_type || existing.truck_type,
         status || "available",
         fuel_type || null, capacity_tonnes || null, year_of_manufacture || null, colour || null,
         mot_expiry || null, insurance_expiry || null, road_tax_expiry || null,
@@ -765,13 +803,24 @@ exports.updateVehicleInline = async (req, res) => {
     const updates = [];
     const values = [];
 
-    Object.entries(req.body || {}).forEach(([field, value]) => {
+    for (const [field, rawValue] of Object.entries(req.body || {})) {
       const column = fieldMap[field];
-      if (!column) return;
-      if (field === "status" && !validStatus.includes(value)) return;
+      if (!column) continue;
+      let value = rawValue;
+      if (field === "status" && !validStatus.includes(value)) continue;
+      if (field === "registrationNumber") {
+        value = normalizeRegistration(value);
+        if (!value) return res.status(400).json({ message: "Registration number cannot be empty." });
+      }
+      if (["fleetCode", "truckType"].includes(field) && !String(value || "").trim()) {
+        return res.status(400).json({ message: field === "fleetCode" ? "Fleet code cannot be empty." : "Vehicle type cannot be empty." });
+      }
+      if (["capacityTonnes", "odometerReading", "yearOfManufacture", "inspectionFrequencyWeeks"].includes(field) && value !== "" && value != null && !Number.isFinite(Number(value))) {
+        return res.status(400).json({ message: "Enter a number." });
+      }
       updates.push(`${column} = ?`);
       values.push(value === "" ? null : value);
-    });
+    }
 
     if (!updates.length) {
       return res.status(400).json({ message: "No valid vehicle fields supplied." });
@@ -1024,8 +1073,14 @@ exports.deleteVehicle = async (req, res) => {
     if (Number(usage.open_trip_count || 0) > 0) {
       return res.status(409).json({ message: "Vehicle has an open trip. Reassign or close the trip before deleting it." });
     }
-    if (Number(usage.trip_count || 0) > 0) {
-      return res.status(409).json({ message: "Vehicle has trip history and cannot be permanently deleted. Set its status to Stopped instead." });
+    const history = await assetHistoryCounts(VEHICLE_HISTORY, id);
+    if (Number(usage.trip_count || 0) > 0) history.trips = Number(usage.trip_count);
+    if (Object.keys(history).length) {
+      return res.status(409).json({
+        code: "VEHICLE_HAS_HISTORY",
+        message: `${existing.registration_number} has job, maintenance or inspection records, so it cannot be deleted. Set its status to Stopped instead.`,
+        history
+      });
     }
     await db.query(`DELETE FROM vehicles WHERE id = ?`, [id]);
     await logActivity(req, { module: "vehicles", action: "delete", entityType: "vehicle", entityId: id, entityLabel: existing.registration_number, details: { registration_number: existing.registration_number } });
@@ -1035,12 +1090,82 @@ exports.deleteVehicle = async (req, res) => {
   }
 };
 
+// PATCH /api/vehicles/trolleys/:id — trailers could not be edited at all before.
+exports.updateTrolleyInline = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const [[existing]] = await db.query(`SELECT * FROM trailers WHERE id = ?`, [id]);
+    if (!existing) return res.status(404).json({ message: "Trailer not found." });
+
+    const fieldMap = {
+      registrationNumber: "registration_number",
+      trailerCode: "trailer_code",
+      trailerType: "trailer_type",
+      capacityTonnes: "capacity_tonnes",
+      status: "status",
+      currentLocation: "current_location"
+    };
+    const updates = [];
+    const values = [];
+    for (const [field, rawValue] of Object.entries(req.body || {})) {
+      const column = fieldMap[field];
+      if (!column) continue;
+      let value = typeof rawValue === "string" ? rawValue.trim() : rawValue;
+      if (field === "registrationNumber") value = normalizeRegistration(value);
+      if (["registrationNumber", "trailerCode", "trailerType"].includes(field) && !value) {
+        return res.status(400).json({ message: "Registration, code and type cannot be empty." });
+      }
+      if (field === "status" && !TRAILER_STATUSES.includes(value)) return res.status(400).json({ message: "Invalid trailer status." });
+      if (field === "capacityTonnes" && value !== "" && value != null && !Number.isFinite(Number(value))) {
+        return res.status(400).json({ message: "Enter capacity in tonnes." });
+      }
+      updates.push(`${column} = ?`);
+      values.push(value === "" ? null : value);
+    }
+    if (!updates.length) return res.status(400).json({ message: "No valid trailer fields supplied." });
+
+    await db.query(`UPDATE trailers SET ${updates.join(", ")} WHERE id = ?`, [...values, id]);
+    const [[updated]] = await db.query(`SELECT * FROM trailers WHERE id = ?`, [id]);
+    await logActivity(req, {
+      module: "vehicles",
+      action: "inline_update",
+      entityType: "trolley",
+      entityId: id,
+      entityLabel: updated.registration_number,
+      details: { changes: buildChangeSet(existing, updated, Object.values(fieldMap)) }
+    });
+    res.json({ message: "Trailer updated." });
+  } catch (err) {
+    if (err.code === "ER_DUP_ENTRY") return res.status(409).json({ message: "Trailer code or registration already exists." });
+    res.status(500).json({ message: "Trailer update error", error: err.message });
+  }
+};
+
 // DELETE /api/vehicles/trolleys/:id
 exports.deleteTrolley = async (req, res) => {
   try {
     const { id } = req.params;
     const [[existing]] = await db.query(`SELECT registration_number, trailer_code FROM trailers WHERE id = ?`, [id]);
     if (!existing) return res.status(404).json({ message: "Trailer not found." });
+    // trips.trailer_id has no foreign key, so a deleted trailer used to leave jobs pointing at nothing.
+    const [[usage]] = await db.query(
+      `SELECT COUNT(*) AS trip_count,
+              COALESCE(SUM(dispatch_status IN ('planned','loading','active')), 0) AS open_trip_count
+       FROM trips WHERE trailer_id = ? AND deleted_at IS NULL`,
+      [id]
+    );
+    if (Number(usage.open_trip_count || 0) > 0) {
+      return res.status(409).json({ message: "Trailer is on an open job. Reassign or close the job before deleting it." });
+    }
+    const history = await assetHistoryCounts(TRAILER_HISTORY, id);
+    if (Number(usage.trip_count || 0) > 0) history.trips = Number(usage.trip_count);
+    if (Object.keys(history).length) {
+      return res.status(409).json({
+        code: "TRAILER_HAS_HISTORY",
+        message: `${existing.registration_number} has job, inspection or maintenance records, so it cannot be deleted. Set it to Maintenance to take it out of use.`,
+        history
+      });
+    }
     await db.query(`DELETE FROM trailers WHERE id = ?`, [id]);
     await logActivity(req, { module: "vehicles", action: "delete", entityType: "trolley", entityId: id, entityLabel: existing.registration_number, details: { registration_number: existing.registration_number, trailer_code: existing.trailer_code } });
     res.json({ message: "Trailer deleted." });

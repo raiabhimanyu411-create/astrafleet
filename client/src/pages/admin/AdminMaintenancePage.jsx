@@ -3047,48 +3047,111 @@ export function AdminMaintenancePage() {
       )}
 
       {activeView === "records" && (
-      <section className="content-grid">
-        <article className="content-card">
-          <div className="section-head">
-            <div>
-              <span className="card-label">Cost Dashboard</span>
-              <h2>Maintenance Cost Per Vehicle</h2>
-            </div>
-            <StatusPill tone="neutral">Actual / estimate</StatusPill>
-          </div>
-          <div className="maintenance-cost-list">
-            {(data?.costByVehicle || []).slice(0, 8).map((item) => (
-              <div className="maintenance-cost-item" key={item.assetId || item.vehicle}>
-                <div>
-                  <strong>{item.vehicle}</strong>
-                  <p>{item.assetType === "trailer" ? "Trailer" : "Vehicle"} · {item.completedJobs} completed · {item.openJobs} open</p>
-                  {item.unpricedJobs > 0 && <p>{item.unpricedJobs} completed job(s): cost not recorded</p>}
-                </div>
-                <span>Recorded actual: {item.amountLabel}<br />Open estimate: {item.estimatedLabel}</span>
+      <section className="mx-records">
+        <div className="mx-records-col">
+          <article className="content-card mx-records-card">
+            <header className="mx-records-head">
+              <h2>Maintenance cost by vehicle</h2>
+              <span className="mx-records-meta">Recorded cost and open estimates</span>
+            </header>
+            {(data?.costByVehicle || []).length > 0 ? (
+              <div className="mx-records-table-shell">
+                <table className="mx-records-table">
+                  <thead>
+                    <tr>
+                      <th>Vehicle</th>
+                      <th className="num">Completed</th>
+                      <th className="num">Open</th>
+                      <th className="num">Recorded cost</th>
+                      <th className="num">Open estimate</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {(data?.costByVehicle || []).slice(0, 8).map((item) => (
+                      <tr key={item.assetId || item.vehicle}>
+                        <td>
+                          <strong>{item.vehicle}</strong>
+                          <small>{item.assetType === "trailer" ? "Trailer" : "Vehicle"}</small>
+                        </td>
+                        <td className="num">{item.completedJobs}</td>
+                        <td className="num">{item.openJobs}</td>
+                        <td className="num">
+                          <span className={Number(item.actual || 0) ? "" : "mx-muted"}>{item.amountLabel}</span>
+                          {item.unpricedJobs > 0 && <small className="mx-warn">{item.unpricedJobs} without a cost</small>}
+                        </td>
+                        <td className="num"><span className={Number(item.estimated || 0) ? "" : "mx-muted"}>{item.estimatedLabel}</span></td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
               </div>
-            ))}
-            {!loading && (data?.costByVehicle || []).length === 0 && <p className="finance-empty">Cost trend will appear after jobs are added or completed.</p>}
-          </div>
-        </article>
+            ) : (
+              !loading && <p className="mx-records-empty">Costs appear here once jobs are added or completed.</p>
+            )}
+            {(data?.costByVehicle || []).length > 0 && (data?.costByVehicle || []).every((item) => !Number(item.actual || 0) && !Number(item.estimated || 0)) && (
+              <p className="mx-records-hint">No costs recorded yet. Add the bill amount when completing a job to see spend here.</p>
+            )}
+          </article>
 
-        <article className="content-card">
-          <div className="section-head">
-            <div>
-              <span className="card-label">Service History Timeline</span>
-              <h2>Recent Services, Inspections And Defects</h2>
-            </div>
-            <StatusPill tone="neutral">{Math.min(10, (data?.history || []).length)} of {(data?.history || []).length} events</StatusPill>
-          </div>
-          <div className="maintenance-timeline global">
-            {(data?.history || []).slice(0, 10).map((item, index) => (
-              <div className="maintenance-timeline-item" key={item.id || `${item.source}-${index}`}>
-                <StatusPill tone={item.tone}>{item.source}</StatusPill>
-                <strong>{item.title}</strong>
-                <p>{item.source === "defect" ? "Reported date" : "Service / inspection date"}: {item.date} · {item.assetType === "trailer" ? "Trailer" : "Vehicle"} {item.vehicle} · {item.garageName} · {item.cost}</p>
+          <article className="content-card mx-records-card">
+            <header className="mx-records-head">
+              <h2>Defects, vendors and running cost</h2>
+            </header>
+            <div className="mx-insights">
+              <div>
+                <h3>Repeated defects</h3>
+                {(data?.analytics?.repeatedDefects || []).length
+                  ? (data.analytics.repeatedDefects).map((item) => <p key={item.type}><strong>{item.type}</strong><span>{item.count}×</span></p>)
+                  : <p className="mx-muted">None repeated</p>}
               </div>
-            ))}
-            {!loading && (data?.history || []).length === 0 && <p className="finance-empty">No maintenance history yet.</p>}
-          </div>
+              <div>
+                <h3>Vendor spend</h3>
+                {(data?.analytics?.vendorSpend || []).length
+                  ? (data.analytics.vendorSpend).map((item) => <p key={item.vendor}><strong>{item.vendor}</strong><span>{item.amountLabel}</span></p>)
+                  : <p className="mx-muted">No vendor spend yet</p>}
+              </div>
+              <div>
+                <h3>Cost per km</h3>
+                {(data?.analytics?.costPerKm || []).some((item) => item.costPerKm && item.costPerKm !== "-")
+                  ? (data.analytics.costPerKm).slice(0, 5).map((item) => <p key={item.vehicle}><strong>{item.vehicle}</strong><span>{item.costPerKm && item.costPerKm !== "-" ? item.costPerKm : "—"}</span></p>)
+                  : <p className="mx-muted">Needs costs and odometer readings</p>}
+              </div>
+            </div>
+          </article>
+        </div>
+
+        <article className="content-card mx-records-card">
+          <header className="mx-records-head">
+            <h2>Recent services, inspections and defects</h2>
+            <span className="mx-records-meta">{Math.min(10, (data?.history || []).length)} of {(data?.history || []).length}</span>
+          </header>
+          <ol className="mx-timeline">
+            {(data?.history || []).slice(0, 10).map((item, index) => {
+              const [day, month] = String(item.date || "").split(" ");
+              const details = [
+                item.assetType === "trailer" ? "Trailer" : "Vehicle",
+                item.garageName && item.garageName !== "-" ? item.garageName : null,
+                item.cost && item.cost !== "£0.00" ? item.cost : null
+              ].filter(Boolean).join(" · ");
+              return (
+                <li className={`mx-timeline-item ${item.source}`} key={item.id || `${item.source}-${index}`}>
+                  <span className="mx-timeline-date" aria-label={item.date}>
+                    <strong>{day}</strong>
+                    <small>{month}</small>
+                  </span>
+                  <div className="mx-timeline-body">
+                    <p className="mx-timeline-title">
+                      <strong>{item.title}</strong>
+                      <span className={`mx-kind ${item.source}`}>{item.source === "defect" ? "Defect reported" : "Service"}</span>
+                    </p>
+                    <p className="mx-timeline-meta"><span className="mx-reg">{item.vehicle}</span> {details}</p>
+                    {item.description && item.description !== "-" && <p className="mx-timeline-note">{item.description}</p>}
+                  </div>
+                </li>
+              );
+            })}
+          </ol>
+          {!loading && (data?.history || []).length === 0 && <p className="mx-records-empty">No maintenance history yet.</p>}
         </article>
       </section>
       )}
@@ -3131,43 +3194,12 @@ export function AdminMaintenancePage() {
       </section>
       )}
 
-      {activeView === "records" && (
-      <section className="content-grid">
-        <article className="content-card">
-          <div className="section-head">
-            <div>
-              <span className="card-label">Maintenance Analytics</span>
-              <h2>Cost, Defects And Vendors</h2>
-            </div>
-            <StatusPill tone="neutral">Live</StatusPill>
-          </div>
-          <div className="maintenance-analytics-grid">
-            <div>
-              <span className="card-label">Repeated Defects</span>
-              {(data?.analytics?.repeatedDefects || []).map((item) => <p key={item.type}><strong>{item.type}</strong> · {item.count}</p>)}
-              {(data?.analytics?.repeatedDefects || []).length === 0 && <p>No repeated defects.</p>}
-            </div>
-            <div>
-              <span className="card-label">Vendor Spend</span>
-              {(data?.analytics?.vendorSpend || []).map((item) => <p key={item.vendor}><strong>{item.vendor}</strong> · {item.amountLabel}</p>)}
-              {(data?.analytics?.vendorSpend || []).length === 0 && <p>No vendor spend yet.</p>}
-            </div>
-            <div>
-              <span className="card-label">Cost / km</span>
-              {(data?.analytics?.costPerKm || []).slice(0, 5).map((item) => <p key={item.vehicle}><strong>{item.vehicle}</strong> · {item.costPerKm}</p>)}
-            </div>
-          </div>
-        </article>
-      </section>
-      )}
-
-      <section className="content-card">
+      <section className="content-card mx-defect-workflow">
         <div className="section-head">
           <div>
-            <span className="card-label">Defect-To-Repair Workflow</span>
-            <h2>Driver Defects Awaiting Maintenance</h2>
+            <h2>Driver defects awaiting repair</h2>
           </div>
-          <StatusPill tone={(data?.defects || []).length ? "warning" : "success"}>{(data?.defects || []).length} defects</StatusPill>
+          <StatusPill tone={(data?.defects || []).length ? "warning" : "success"}>{(data?.defects || []).length ? `${(data?.defects || []).length} open` : "All clear"}</StatusPill>
         </div>
         <div className="data-rows">
           {(data?.defects || []).slice(0, 8).map((defect) => (
@@ -3197,7 +3229,7 @@ export function AdminMaintenancePage() {
               </div>
             </div>
           ))}
-          {!loading && (data?.defects || []).length === 0 && <p className="finance-empty">No open defects.</p>}
+          {!loading && (data?.defects || []).length === 0 && <p className="mx-records-empty">No open driver defects. New walkaround defects will appear here.</p>}
         </div>
       </section>
 

@@ -8,6 +8,7 @@ router.use(requireModuleAccess("vehicles"));
 
 router.get("/",    v.listVehicles);
 router.post("/trolleys", v.createTrolley);
+router.patch("/trolleys/:id", v.updateTrolleyInline);
 router.delete("/trolleys/:id", v.deleteTrolley);
 router.get("/:id", v.getVehicleById);
 router.post("/",   v.createVehicle);

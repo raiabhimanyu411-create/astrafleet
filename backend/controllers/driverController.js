@@ -2,7 +2,8 @@ const db = require("../db/connection");
 const { ukDaysUntil } = require("../utils/maintenanceDates");
 const { verifySessionToken } = require("./authController");
 const { emitDriverChatMessage, emitDriverLocationUpdate, emitJobUpdate } = require("../realtime");
-const { buildChangeSet, logActivity } = require("../utils/auditLogger");
+const bcrypt = require("bcrypt");
+const { buildChangeSet, logActivity, revokeUserSessions } = require("../utils/auditLogger");
 const { attachJobCoordinates } = require("../utils/postcodeGeo");
 const { snapshotCostSettings } = require("../utils/jobCostSettings");
 const { dateTimeKey, fmtUkDateTime, fmtUkTime, isDateTimeKey, ukNowDateTimeKey, wallMinutesBetween, addWallMinutes } = require("../utils/jobDateTimes");
@@ -42,9 +43,35 @@ function expiryTone(dateStr) {
   return "success";
 }
 
+// Next code after the highest DRV-### in use (ids and codes drift apart once codes are imported or edited).
 async function nextDriverCode(conn) {
-  const [[row]] = await conn.query(`SELECT COALESCE(MAX(id), 0) + 1 AS next_id FROM drivers`);
-  return `DRV-${String(row.next_id).padStart(3, "0")}`;
+  const [[row]] = await conn.query(
+    `SELECT COALESCE(MAX(CAST(SUBSTRING(employee_code, 5) AS UNSIGNED)), 0) + 1 AS next_no
+     FROM drivers WHERE employee_code REGEXP '^DRV-[0-9]+$'`
+  );
+  return `DRV-${String(row.next_no).padStart(3, "0")}`;
+}
+
+const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const MIN_DRIVER_PASSWORD = 8;
+
+// Records that cascade-delete with the driver. Any of these means the driver must be archived, not deleted.
+const driverHistoryTables = [
+  "trips", "proof_of_delivery", "driver_walkarounds", "vehicle_inspections", "driver_shifts",
+  "driver_expenses", "defect_reports", "driver_odometer_logs", "driver_messages"
+];
+
+async function driverHistoryCounts(conn, driverId) {
+  const counts = {};
+  for (const table of driverHistoryTables) {
+    try {
+      const [[row]] = await conn.query(`SELECT COUNT(*) AS n FROM ${table} WHERE driver_id = ?`, [driverId]);
+      if (Number(row.n) > 0) counts[table] = Number(row.n);
+    } catch (error) {
+      if (error.code !== "ER_NO_SUCH_TABLE") throw error;
+    }
+  }
+  return counts;
 }
 
 const driverStatusFlow = [
@@ -152,6 +179,7 @@ async function ensureDriverOpsSchema() {
   await addColumnIfMissing("drivers", "internal_score", "INT DEFAULT NULL");
   await addColumnIfMissing("drivers", "accident_incident_record", "TEXT DEFAULT NULL");
   await addColumnIfMissing("drivers", "penalty_deduction_record", "TEXT DEFAULT NULL");
+  await addColumnIfMissing("drivers", "archived_at", "DATETIME DEFAULT NULL");
 
   for (const [column, definition] of Object.entries(tripColumnDefinitions)) {
     await addColumnIfMissing("trips", column, definition);
@@ -370,7 +398,9 @@ async function getDriverFromSession(req) {
      WHERE d.user_id = ?`,
     [userId]
   );
-  return driver || null;
+  // Archived drivers keep their history but lose the driver app.
+  if (!driver || driver.archived_at) return null;
+  return driver;
 }
 
 function mapDriverJob(row, stops = []) {
@@ -1592,6 +1622,22 @@ exports.getMyNotifications = async (req, res) => {
 };
 
 // GET /api/drivers
+// Soonest licence/medical/CPC/tacho expiry; the 2099 placeholder used for "not recorded" is ignored.
+function nextDocumentExpiry(row) {
+  const docs = [
+    ["Licence", row.license_expiry],
+    ["Medical", row.medical_expiry],
+    ["CPC", row.cpc_expiry],
+    ["Tacho card", row.tacho_card_expiry]
+  ]
+    .map(([label, date]) => ({ label, date, days: daysUntil(date) }))
+    .filter(doc => doc.days !== null && rawDate(doc.date) < "2099-01-01")
+    .sort((a, b) => a.days - b.days);
+  if (!docs.length) return null;
+  const soonest = docs[0];
+  return { label: soonest.label, date: fmtDate(soonest.date), days: soonest.days, tone: expiryTone(soonest.date) };
+}
+
 exports.listDrivers = async (req, res) => {
   try {
     await ensureDriverOpsSchema();
@@ -1615,7 +1661,8 @@ exports.listDrivers = async (req, res) => {
           OR cpc_expiry BETWEEN CURDATE() AND DATE_ADD(CURDATE(), INTERVAL 90 DAY)
           OR tacho_card_expiry BETWEEN CURDATE() AND DATE_ADD(CURDATE(), INTERVAL 90 DAY)
         ), 0) as expiring_docs
-       FROM drivers`
+       FROM drivers
+       WHERE archived_at IS NULL`
     );
 
     const [rows] = await db.query(
@@ -1624,7 +1671,7 @@ exports.listDrivers = async (req, res) => {
               d.cpc_number, d.cpc_expiry, d.tacho_card_number, d.tacho_card_expiry,
               d.onboarding_status, d.shift_status, d.compliance_status,
               d.assigned_vehicle_id, d.salary_gbp, d.commission_rate, d.internal_score,
-              d.created_at,
+              d.created_at, d.archived_at, d.user_id,
               u.email,
               av.registration_number AS assigned_vehicle,
               COALESCE(t.total_trips, 0) AS total_trips,
@@ -1708,6 +1755,10 @@ exports.listDrivers = async (req, res) => {
           const days = daysUntil(date);
           return days !== null && days < 90;
         }),
+        nextExpiry: nextDocumentExpiry(r),
+        hasLogin: Boolean(r.user_id),
+        archived: Boolean(r.archived_at),
+        archivedAt: fmtDate(r.archived_at),
         since: fmtDate(r.created_at)
       }))
     });
@@ -1755,6 +1806,10 @@ exports.updateDriverInline = async (req, res) => {
       if (column === "internal_score") value = value === "" || value == null ? null : Number(value);
       if (["license_expiry", "medical_expiry", "cpc_expiry", "tacho_card_expiry"].includes(column)) value = value || null;
       if (["phone", "home_depot"].includes(column)) value = value || null;
+      if (column === "full_name") {
+        value = String(value || "").trim();
+        if (!value) return res.status(400).json({ message: "Driver name cannot be empty." });
+      }
       updates.push(`${column}=?`);
       values.push(value);
     }
@@ -1765,6 +1820,9 @@ exports.updateDriverInline = async (req, res) => {
 
     await db.query(`UPDATE drivers SET ${updates.join(", ")} WHERE id=?`, [...values, id]);
     const [[updated]] = await db.query(`SELECT * FROM drivers WHERE id = ?`, [id]);
+    if (updated.user_id && updated.full_name !== existing.full_name) {
+      await db.query(`UPDATE users SET name=? WHERE id=? AND role='driver'`, [updated.full_name, updated.user_id]);
+    }
     await logActivity(req, {
       module: "drivers",
       action: "inline_update",
@@ -1908,9 +1966,29 @@ exports.getDriverById = async (req, res) => {
 
 // POST /api/drivers
 exports.createDriver = async (req, res) => {
+  const fullName = String(req.body.full_name || "").trim();
+  const loginEmail = String(req.body.email || "").trim().toLowerCase();
+  const loginPassword = String(req.body.password || "");
+
+  // Validated before a pooled connection opens a transaction (an early return used to leave it open).
+  if (!fullName) return res.status(400).json({ message: "Driver name is required." });
+  if (loginEmail || loginPassword) {
+    if (!loginEmail || !loginPassword) {
+      return res.status(400).json({ message: "Enter both an email and a password to create the driver login, or leave both empty." });
+    }
+    if (!EMAIL_PATTERN.test(loginEmail)) return res.status(400).json({ message: "Enter a valid email address." });
+    if (loginPassword.length < MIN_DRIVER_PASSWORD) {
+      return res.status(400).json({ message: `Password must be at least ${MIN_DRIVER_PASSWORD} characters.` });
+    }
+  }
+
   const conn = await db.getConnection();
   try {
     await ensureDriverOpsSchema();
+    if (loginEmail) {
+      const [[taken]] = await conn.query(`SELECT id FROM users WHERE email = ?`, [loginEmail]);
+      if (taken) return res.status(409).json({ message: "An account with this email already exists." });
+    }
     await conn.beginTransaction();
 
     let {
@@ -1924,13 +2002,9 @@ exports.createDriver = async (req, res) => {
       bank_sort_code, bank_account_number,
       assigned_vehicle_id, salary_gbp, commission_rate, internal_score,
       accident_incident_record, penalty_deduction_record,
-      onboarding_status, compliance_status,
-      email, password
+      onboarding_status, compliance_status
     } = req.body;
-
-    if (!full_name) {
-      return res.status(400).json({ message: "Driver name is required." });
-    }
+    full_name = fullName;
 
     employee_code = employee_code || await nextDriverCode(conn);
     license_number = license_number || "Pending";
@@ -1939,13 +2013,11 @@ exports.createDriver = async (req, res) => {
 
     let userId = null;
 
-    // Create user account if email + password provided
-    if (email && password) {
-      const bcrypt = require("bcrypt");
-      const hash = await bcrypt.hash(password, 10);
+    if (loginEmail) {
+      const hash = await bcrypt.hash(loginPassword, 10);
       const [uRes] = await conn.query(
         `INSERT INTO users (name, email, password, role) VALUES (?, ?, ?, 'driver')`,
-        [full_name, email, hash]
+        [full_name, loginEmail, hash]
       );
       userId = uRes.insertId;
     }
@@ -2001,6 +2073,34 @@ exports.createDriver = async (req, res) => {
     conn.release();
   }
 };
+
+// Optional login changes on edit: create a login for a driver without one, or reset the password.
+// Resetting signs the driver out of every device.
+async function updateDriverLogin(driver, body) {
+  const password = String(body.password || "");
+  const email = String(body.email || "").trim().toLowerCase();
+  if (!password) return {};
+  if (password.length < MIN_DRIVER_PASSWORD) {
+    return { status: 400, error: `Password must be at least ${MIN_DRIVER_PASSWORD} characters.` };
+  }
+  const hash = await bcrypt.hash(password, 10);
+
+  if (driver.user_id) {
+    await db.query(`UPDATE users SET password=? WHERE id=? AND role='driver'`, [hash, driver.user_id]);
+    await revokeUserSessions(driver.user_id);
+    return { message: "Password reset; the driver must sign in again." };
+  }
+
+  if (!EMAIL_PATTERN.test(email)) return { status: 400, error: "Enter a valid email to create the driver login." };
+  const [[taken]] = await db.query(`SELECT id FROM users WHERE email = ?`, [email]);
+  if (taken) return { status: 409, error: "An account with this email already exists." };
+  const [created] = await db.query(
+    `INSERT INTO users (name, email, password, role) VALUES (?, ?, ?, 'driver')`,
+    [driver.full_name, email, hash]
+  );
+  await db.query(`UPDATE drivers SET user_id=? WHERE id=?`, [created.insertId, driver.id]);
+  return { message: "Driver login created." };
+}
 
 // PUT /api/drivers/:id
 exports.updateDriver = async (req, res) => {
@@ -2067,7 +2167,13 @@ exports.updateDriver = async (req, res) => {
       ]
     );
 
+    const loginResult = await updateDriverLogin(existing, req.body);
+    if (loginResult.error) return res.status(loginResult.status).json({ message: loginResult.error });
+
     const [[updated]] = await db.query(`SELECT * FROM drivers WHERE id = ?`, [id]);
+    if (updated.user_id) {
+      await db.query(`UPDATE users SET name=? WHERE id=? AND role='driver'`, [updated.full_name, updated.user_id]);
+    }
     await logActivity(req, {
       module: "drivers",
       action: "update",
@@ -2076,14 +2182,17 @@ exports.updateDriver = async (req, res) => {
       entityLabel: updated.full_name,
       details: { changes: buildChangeSet(existing, updated, ["full_name", "employee_code", "phone", "home_depot", "license_number", "license_expiry", "medical_expiry", "assigned_vehicle_id", "salary_gbp", "commission_rate", "internal_score", "accident_incident_record", "penalty_deduction_record", "onboarding_status", "shift_status", "compliance_status"]) }
     });
-    res.json({ message: "Driver updated." });
+    res.json({ message: loginResult.message ? `Driver updated. ${loginResult.message}` : "Driver updated." });
   } catch (err) {
+    if (err.code === "ER_DUP_ENTRY") return res.status(409).json({ message: "Employee code or email already exists." });
     console.error("Driver update error:", err);
     res.status(500).json({ message: "Driver update error", error: err.message });
   }
 };
 
 // DELETE /api/drivers/:id
+// Only for drivers with no history (e.g. created by mistake). Deleting cascades PODs, walkaround checks,
+// shifts, expenses and messages, so anyone who has worked is archived instead.
 exports.deleteDriver = async (req, res) => {
   const conn = await db.getConnection();
   try {
@@ -2092,18 +2201,80 @@ exports.deleteDriver = async (req, res) => {
     const [[driver]] = await conn.query(`SELECT id, user_id, full_name, employee_code FROM drivers WHERE id = ?`, [id]);
     if (!driver) return res.status(404).json({ message: "Driver not found." });
 
-    await conn.beginTransaction();
-    await conn.query(`UPDATE trips SET driver_id = NULL WHERE driver_id = ?`, [id]);
-    await conn.query(`DELETE FROM drivers WHERE id = ?`, [id]);
-    await conn.commit();
+    const history = await driverHistoryCounts(conn, id);
+    if (Object.keys(history).length) {
+      return res.status(409).json({
+        code: "DRIVER_HAS_HISTORY",
+        message: `${driver.full_name} has job or compliance history, so they cannot be deleted. Archive the driver instead.`,
+        history
+      });
+    }
 
-    await logActivity(req, { module: "drivers", action: "delete", entityType: "driver", entityId: id, entityLabel: driver.full_name, details: { employee_code: driver.employee_code } });
+    await conn.beginTransaction();
+    try {
+      await conn.query(`DELETE FROM driver_push_tokens WHERE driver_id = ?`, [id]);
+    } catch (error) {
+      if (error.code !== "ER_NO_SUCH_TABLE") throw error;
+    }
+    await conn.query(`DELETE FROM drivers WHERE id = ?`, [id]);
+    // The login goes with the driver; it used to be left behind and could still sign in.
+    if (driver.user_id) await conn.query(`DELETE FROM users WHERE id = ? AND role = 'driver'`, [driver.user_id]);
+    await conn.commit();
+    if (driver.user_id) await revokeUserSessions(driver.user_id);
+
+    await logActivity(req, { module: "drivers", action: "delete", entityType: "driver", entityId: id, entityLabel: driver.full_name, details: { employee_code: driver.employee_code, removedLogin: Boolean(driver.user_id) } });
     res.json({ message: "Driver deleted." });
   } catch (err) {
     await conn.rollback();
     res.status(500).json({ message: "Driver delete error", error: err.message });
   } finally {
     conn.release();
+  }
+};
+
+// PATCH /api/drivers/:id/archive  { archived: true|false }
+// Archiving keeps every record, blocks dispatch and the driver app; restoring sends the driver back to compliance review.
+exports.setDriverArchived = async (req, res) => {
+  try {
+    await ensureDriverOpsSchema();
+    const { id } = req.params;
+    const archived = req.body.archived !== false;
+    const [[driver]] = await db.query(`SELECT id, user_id, full_name, archived_at FROM drivers WHERE id = ?`, [id]);
+    if (!driver) return res.status(404).json({ message: "Driver not found." });
+
+    if (archived) {
+      const [[onRoad]] = await db.query(
+        `SELECT trip_code FROM trips WHERE driver_id = ? AND deleted_at IS NULL AND dispatch_status IN ('loading','active') LIMIT 1`,
+        [id]
+      );
+      if (onRoad) return res.status(409).json({ message: `${driver.full_name} is on job ${onRoad.trip_code}. Reassign or finish it before archiving.` });
+
+      await db.query(
+        `UPDATE trips SET driver_id = NULL WHERE driver_id = ? AND deleted_at IS NULL AND dispatch_status = 'planned'`,
+        [id]
+      );
+      await db.query(
+        `UPDATE drivers SET archived_at = NOW(), compliance_status = 'blocked', shift_status = 'review' WHERE id = ?`,
+        [id]
+      );
+      if (driver.user_id) await revokeUserSessions(driver.user_id);
+    } else {
+      await db.query(
+        `UPDATE drivers SET archived_at = NULL, compliance_status = 'review', shift_status = 'review' WHERE id = ?`,
+        [id]
+      );
+    }
+
+    await logActivity(req, {
+      module: "drivers",
+      action: archived ? "archive" : "restore",
+      entityType: "driver",
+      entityId: id,
+      entityLabel: driver.full_name
+    });
+    res.json({ message: archived ? "Driver archived." : "Driver restored for compliance review." });
+  } catch (err) {
+    res.status(500).json({ message: "Driver archive error", error: err.message });
   }
 };
 

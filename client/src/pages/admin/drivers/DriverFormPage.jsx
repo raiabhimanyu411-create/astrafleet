@@ -27,6 +27,7 @@ export function DriverFormPage() {
   const isEdit = Boolean(id);
 
   const [fields, setFields]       = useState(empty);
+  const [hasLogin, setHasLogin]   = useState(false);
   const [loading, setLoading]     = useState(isEdit);
   const [loadErr, setLoadErr]     = useState("");
   const [submitting, setSubmitting] = useState(false);
@@ -42,6 +43,7 @@ export function DriverFormPage() {
           phone: d.phone || "",
           email: d.email || "", password: ""
         });
+        setHasLogin(Boolean(d.email));
       })
       .catch(() => setLoadErr("Could not load driver. Please go back and try again."))
       .finally(() => setLoading(false));
@@ -53,15 +55,24 @@ export function DriverFormPage() {
     e.preventDefault();
     setSubmitErr("");
 
-    const payload = {
-      full_name: fields.full_name,
-      phone: fields.phone,
-      email: fields.email,
-      password: fields.password
-    };
-    if (!payload.email || !payload.password) {
-      delete payload.email;
-      delete payload.password;
+    const email = fields.email.trim();
+    const password = fields.password;
+    const payload = { full_name: fields.full_name.trim(), phone: fields.phone.trim() };
+
+    // Login fields go together; a lone email used to be dropped without telling anyone.
+    if (hasLogin) {
+      if (password) payload.password = password;
+    } else if (email || password) {
+      if (!email || !password) {
+        setSubmitErr("Enter both an email and a password to create the driver login, or leave both empty.");
+        return;
+      }
+      payload.email = email;
+      payload.password = password;
+    }
+    if (payload.password && payload.password.length < 8) {
+      setSubmitErr("Password must be at least 8 characters.");
+      return;
     }
 
     setSubmitting(true);
@@ -119,26 +130,26 @@ export function DriverFormPage() {
                 <Field label="Contact Number">
                   <input className="af-input" type="tel" placeholder="e.g. 07700 900000" value={fields.phone} onChange={e => set("phone", e.target.value)} />
                 </Field>
-                <Field label="Email Address" hint={isEdit ? "Driver login email" : "Optional. Used for the driver login account if you set a password below."}>
-                  <input className="af-input" type="email" placeholder="driver@company.co.uk" value={fields.email} onChange={e => set("email", e.target.value)} disabled={isEdit} />
-                </Field>
               </div>
             </div>
 
-            {/* Login account (create only) */}
-            {!isEdit && (
-              <div className="af-section">
-                <p className="af-section-title">Driver Account Login</p>
-                <p style={{ fontSize: "0.82rem", color: "#5F6B7A", margin: "0 0 14px" }}>
-                  Admin can create the driver web panel login here. Add an email above and set an initial password.
-                </p>
-                <div className="af-grid-3">
-                  <Field label="Password" hint="Minimum 8 characters">
-                    <input className="af-input" type="password" placeholder="Set initial password" value={fields.password} onChange={e => set("password", e.target.value)} />
-                  </Field>
-                </div>
+            {/* Driver app login: create one, or reset the password of an existing one */}
+            <div className="af-section">
+              <p className="af-section-title">Driver App Login</p>
+              <p style={{ fontSize: "0.82rem", color: "#5F6B7A", margin: "0 0 14px" }}>
+                {hasLogin
+                  ? "This driver already has a login. Enter a new password only if you want to reset it; they will be signed out of every device."
+                  : "Optional. Add an email and an initial password so the driver can use the driver app. Leave both empty to skip."}
+              </p>
+              <div className="af-grid-3">
+                <Field label="Login email" hint={hasLogin ? "Login email cannot be changed here." : undefined}>
+                  <input className="af-input" type="email" placeholder="driver@company.co.uk" value={fields.email} onChange={e => set("email", e.target.value)} disabled={hasLogin} autoComplete="off" />
+                </Field>
+                <Field label={hasLogin ? "New password" : "Password"} hint="Minimum 8 characters">
+                  <input className="af-input" type="password" placeholder={hasLogin ? "Leave blank to keep current" : "Set initial password"} value={fields.password} onChange={e => set("password", e.target.value)} autoComplete="new-password" />
+                </Field>
               </div>
-            )}
+            </div>
 
             {submitErr && (
               <div className="state-card error">

@@ -6,3 +6,5 @@ client/dist
 **/.env
 **/.env.local
 *.log
+.session-secret
+**/.session-secret

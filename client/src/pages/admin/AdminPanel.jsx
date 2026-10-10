@@ -7,6 +7,7 @@ import { StatusPill } from "../../components/StatusPill";
 import { usePanelData } from "../../hooks/usePanelData";
 import { AdminWorkspaceLayout } from "./AdminWorkspaceLayout";
 import { DriverChatWidget } from "./DriverChatWidget";
+import "./AdminOverview.css";
 import { getAuthSession, saveAuthSession } from "../../utils/authSession";
 
 const overviewStatRoutes = {
@@ -24,70 +25,83 @@ const overviewStatRoutes = {
   "profit / loss": "/admin/finance"
 };
 
-const overviewMetricSets = {
-  operations: ["Total bookings / jobs", "Active trips", "Pending trips", "Completed trips"],
-  finance: ["Profit / loss", "Today's revenue", "Pending invoices", "Fuel expense"],
-  health: ["Available drivers", "Available vehicles", "Cancelled trips", "Delayed deliveries"]
+const overviewMetricGroups = [
+  { key: "operations", title: "Operations", labels: ["Active trips", "Pending trips", "Delayed deliveries", "Completed trips", "Cancelled trips", "Total bookings / jobs"] },
+  { key: "fleet", title: "Fleet & finance", labels: ["Available drivers", "Available vehicles", "Pending invoices", "Today's revenue", "Fuel expense", "Profit / loss"] }
+];
+
+const metricDisplayLabels = {
+  "Total bookings / jobs": "Total jobs"
 };
 
-function OverviewGlyph({ type }) {
-  if (type === "finance") {
-    return (
-      <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
-        <path d="M5 18V9m7 9V5m7 13v-6" />
-        <path d="M3.5 20h17" />
-      </svg>
-    );
-  }
+// Exceptions only draw colour when there is something to act on.
+const attentionLabels = new Set(["Delayed deliveries", "Cancelled trips", "Pending invoices", "Pending trips"]);
 
-  if (type === "health") {
-    return (
-      <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
-        <path d="M4 12h3l2-5 4 10 2-5h5" />
-      </svg>
-    );
-  }
+const ukDateLabel = new Intl.DateTimeFormat("en-GB", { timeZone: "Europe/London", weekday: "long", day: "numeric", month: "long" });
+const ukTimeLabel = new Intl.DateTimeFormat("en-GB", { timeZone: "Europe/London", hour: "2-digit", minute: "2-digit", hourCycle: "h23" });
+const ukHour = new Intl.DateTimeFormat("en-GB", { timeZone: "Europe/London", hour: "numeric", hourCycle: "h23" });
 
-  return (
-    <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
-      <rect x="4" y="7" width="16" height="11" rx="2" />
-      <path d="M9 7V5.5h6V7M4 12h16" />
-    </svg>
-  );
+function greeting(date) {
+  const hour = Number(ukHour.format(date));
+  if (hour < 12) return "Good morning";
+  if (hour < 18) return "Good afternoon";
+  return "Good evening";
 }
 
-function OverviewMetricLink({ item, variant = "compact" }) {
+function isZero(value) {
+  return Number(String(value ?? "").replace(/[^0-9.-]/g, "")) === 0;
+}
+
+function OvBadge({ tone = "neutral", children }) {
+  return <span className={`ov-badge ${tone || "neutral"}`}>{children}</span>;
+}
+
+function OvMetric({ item, label }) {
   if (!item) return null;
-
-  const route = overviewStatRoutes[item.label.toLowerCase()] || "/admin/activity";
-
+  const route = overviewStatRoutes[label.toLowerCase()] || "/admin/activity";
+  const flagged = attentionLabels.has(label) && !isZero(item.value);
   return (
-    <Link
-      className={`overview-metric-link overview-metric-${variant} tone-${item.tone || "neutral"}`}
-      to={route}
-      aria-label={`${item.label}: ${item.value}. Open details`}
-    >
-      <div className="overview-metric-copy">
-        <span className="overview-metric-label">{item.label}</span>
-        <strong>{item.value}</strong>
-        {variant === "featured" && <p>{item.description}</p>}
-      </div>
-      <div className="overview-metric-meta">
-        {item.change && <span>{item.change}</span>}
-        <span className="overview-metric-arrow" aria-hidden="true">→</span>
-      </div>
+    <Link className={`ov-metric${flagged ? ` flagged ${item.tone || "warning"}` : ""}`} to={route} aria-label={`${item.label}: ${item.value}. Open details`}>
+      <span className="ov-metric-label">{metricDisplayLabels[label] || item.label}</span>
+      <strong className="ov-metric-value">{item.value}</strong>
+      <span className="ov-metric-hint">{item.description}</span>
     </Link>
   );
 }
 
-function OverviewPanelFooter({ total, visible, label }) {
-  const remaining = Math.max(0, total - visible);
-
+function OvCard({ title, count, to, linkLabel = "View all", className = "", children }) {
   return (
-    <div className="overview-panel-footer">
-      <span>{remaining ? `+${remaining} more in queue` : "Workspace synced"}</span>
-      <strong>{label} <span aria-hidden="true">→</span></strong>
-    </div>
+    <section className={`ov-card ${className}`}>
+      <header className="ov-card-head">
+        <h2>
+          {title}
+          {count !== undefined && <span className="ov-count">{count}</span>}
+        </h2>
+        {to && <Link className="ov-link" to={to}>{linkLabel}</Link>}
+      </header>
+      {children}
+    </section>
+  );
+}
+
+function OvEmpty({ children }) {
+  return <p className="ov-empty">{children}</p>;
+}
+
+function AttentionIcon({ tone }) {
+  if (tone === "danger") {
+    return (
+      <svg viewBox="0 0 20 20" aria-hidden="true">
+        <circle cx="10" cy="10" r="8" />
+        <path d="M10 5.5v5.5M10 13.8v.2" />
+      </svg>
+    );
+  }
+  return (
+    <svg viewBox="0 0 20 20" aria-hidden="true">
+      <path d="M10 2.8 18 17H2z" />
+      <path d="M10 8v4M10 14.4v.2" />
+    </svg>
   );
 }
 
@@ -184,10 +198,23 @@ function AdminProfileSettings() {
 
 export function AdminPanel() {
   const { data, error, loading, refetch } = usePanelData("/api/admin/overview");
+  const [lastSync, setLastSync] = useState(null);
   const statsByLabel = new Map((data?.stats || []).map((item) => [item.label, item]));
-  const metrics = Object.fromEntries(
-    Object.entries(overviewMetricSets).map(([group, labels]) => [group, labels.map((label) => statsByLabel.get(label))])
-  );
+  const session = getAuthSession();
+  const firstName = String(session?.name || "").trim().split(/\s+/)[0];
+  const now = lastSync || new Date();
+
+  const alerts = data?.alerts || [];
+  const tripPlans = data?.tripPlans || [];
+  const trackingBoard = data?.trackingBoard || [];
+  const driverQueue = data?.driverQueue || [];
+  const employeeRequests = data?.employeeRequests || [];
+  const invoices = data?.finance || [];
+  const pendingEmployees = employeeRequests.filter((employee) => String(employee.status).toLowerCase() === "pending");
+
+  useEffect(() => {
+    if (data) setLastSync(new Date());
+  }, [data]);
 
   useEffect(() => {
     const socket = getRealtimeSocket();
@@ -209,315 +236,186 @@ export function AdminPanel() {
   return (
     <AdminWorkspaceLayout
       badge={data?.header?.badge || "Admin control tower"}
-      title={data?.header?.title || "Transport management system admin panel"}
-      description={
-        data?.header?.description ||
-        "Manage fleet, drivers, routes, billing, and live truck movement from one admin workspace."
-      }
-      highlights={
-        data?.highlights || [
-          "Admins get a consolidated view of dispatch, compliance, finance, and live tracking.",
-          "Driver approvals, trip planning, and truck availability are visible in one control layer.",
-          "All payments and billing values are now tracked in pound sterling."
-        ]
-      }
+      title="Overview"
+      description="Today across dispatch, fleet and finance."
+      highlights={[]}
+      hideHeaderIntro
+      className="overview-page-shell"
     >
-      <div className="admin-overview">
-      <StateNotice loading={loading} error={error} />
-
-      <div className="overview-metrics-head">
-        <div>
-          <span className="card-label">Live business snapshot</span>
-          <h2>Key performance overview</h2>
-          <p>Operational and financial metrics, updated from your workspace data.</p>
-        </div>
-        <span className="overview-live-status">
-          <span aria-hidden="true" />
-          Live data
-        </span>
-      </div>
-
-      <section className="overview-dashboard" aria-label="Key performance metrics">
-        <article className="overview-cluster overview-operations-cluster">
-          <header className="overview-cluster-head">
-            <span className="overview-cluster-icon"><OverviewGlyph type="operations" /></span>
-            <div>
-              <span>Operations</span>
-              <h3>Trip activity</h3>
-            </div>
-            <span className="overview-cluster-note">Live workflow</span>
-          </header>
-          <div className="overview-operations-body">
-            <OverviewMetricLink item={metrics.operations[0]} variant="featured" />
-            <div className="overview-operations-list">
-              {metrics.operations.slice(1).filter(Boolean).map((item) => (
-                <OverviewMetricLink item={item} key={item.label} />
-              ))}
-            </div>
-          </div>
-        </article>
-
-        <article className="overview-cluster overview-finance-cluster">
-          <header className="overview-cluster-head">
-            <span className="overview-cluster-icon"><OverviewGlyph type="finance" /></span>
-            <div>
-              <span>Finance</span>
-              <h3>Money at a glance</h3>
-            </div>
-            <span className="overview-cluster-note">GBP</span>
-          </header>
-          <OverviewMetricLink item={metrics.finance[0]} variant="finance" />
-          <div className="overview-finance-list">
-            {metrics.finance.slice(1).filter(Boolean).map((item) => (
-              <OverviewMetricLink item={item} variant="mini" key={item.label} />
-            ))}
-          </div>
-        </article>
-
-        <article className="overview-cluster overview-health-cluster">
-          <header className="overview-cluster-head">
-            <span className="overview-cluster-icon"><OverviewGlyph type="health" /></span>
-            <div>
-              <span>Fleet health</span>
-              <h3>Capacity &amp; exceptions</h3>
-            </div>
-            <span className="overview-cluster-note">Actionable</span>
-          </header>
-          <div className="overview-health-list">
-            {metrics.health.filter(Boolean).map((item) => (
-              <OverviewMetricLink item={item} variant="health" key={item.label} />
-            ))}
-          </div>
-        </article>
-      </section>
-
-      <div className="overview-workspace-head">
-        <div>
-          <span className="card-label">Live workspace</span>
-          <h2>Action centre</h2>
-          <p>Priority queues, fleet movement and approvals in one compact view.</p>
-        </div>
-        <Link to="/admin/activity">
-          Open activity report
-          <span aria-hidden="true">→</span>
-        </Link>
-      </div>
-
-      <section className="overview-bento-grid" aria-label="Operations action centre">
-        <Link className="content-card content-card-link overview-bento-card overview-bento-alerts tone-danger" to="/admin/alerts">
-          <div className="section-head">
-            <div>
-              <span className="card-label">Control room alerts</span>
-              <h2>Priority Watchlist</h2>
-            </div>
-            <StatusPill tone="danger">Take action</StatusPill>
-          </div>
-
-          <div className="alert-stack">
-            {(data?.alerts || []).slice(0, 6).map((alert, index) => (
-              <div className="alert-card" key={`${alert.title}-${index}`}>
-                <div className={`alert-bar ${alert.tone}`} />
-                <div>
-                  <strong>{alert.title}</strong>
-                  <p>{alert.description}</p>
-                </div>
-              </div>
-            ))}
-            {!loading && (data?.alerts || []).length === 0 && (
-              <div className="overview-panel-empty">
-                <strong>No active alerts</strong>
-                <p>The control-room queue is clear.</p>
-              </div>
-            )}
-          </div>
-          <OverviewPanelFooter total={(data?.alerts || []).length} visible={6} label="Open alerts" />
-        </Link>
-
-        <Link className="content-card content-card-link overview-bento-card overview-bento-tracking tone-success" to="/admin/tracking">
-          <div className="section-head">
-            <div>
-              <span className="card-label">GPS / live tracking</span>
-              <h2>Where Every Truck Is Right Now</h2>
-            </div>
-            <StatusPill tone="success">Live feed</StatusPill>
-          </div>
-
-          <div className="data-rows">
-            {(data?.trackingBoard || []).slice(0, 6).map((truck) => (
-              <div className="data-row" key={truck.truck}>
-                <div>
-                  <strong>{truck.truck}</strong>
-                  <p>{truck.driver} · {truck.location}</p>
-                </div>
-                <div>
-                  <span>{truck.status}</span>
-                  <p>{truck.note} · ETA {truck.eta}</p>
-                </div>
-                <StatusPill tone={truck.tone}>{truck.status}</StatusPill>
-              </div>
-            ))}
-            {!loading && (data?.trackingBoard || []).length === 0 && (
-              <div className="overview-panel-empty">
-                <strong>No vehicles reporting</strong>
-                <p>Live GPS updates will appear here.</p>
-              </div>
-            )}
-          </div>
-          <OverviewPanelFooter total={(data?.trackingBoard || []).length} visible={6} label="Open live map" />
-        </Link>
-        <Link className="content-card content-card-link overview-bento-card overview-bento-employee tone-warning" to="/admin/employees">
-          <div className="section-head">
-            <div>
-              <span className="card-label">Employee access</span>
-              <h2>Registration Approvals</h2>
-            </div>
-            <StatusPill tone="warning">Admin controlled</StatusPill>
-          </div>
-
-          <div className="data-rows">
-            {(data?.employeeRequests || []).slice(0, 4).map((employee) => (
-              <div className="data-row" key={employee.id}>
-                <div>
-                  <strong>{employee.name}</strong>
-                  <p>{employee.email} · {employee.identity}</p>
-                </div>
-                <div>
-                  <span>{employee.department}</span>
-                  <p>{employee.access.length ? employee.access.join(", ") : "No access yet"}</p>
-                </div>
-                <StatusPill tone={employee.tone}>{employee.status}</StatusPill>
-              </div>
-            ))}
-            {!loading && (data?.employeeRequests || []).length === 0 && (
-              <div className="data-row">
-                <div>
-                  <strong>No employee access requests</strong>
-                  <p>New self-registrations will appear here for admin approval.</p>
-                </div>
-                <div>
-                  <span>Queue clear</span>
-                  <p>Access control is up to date</p>
-                </div>
-                <StatusPill tone="success">Clear</StatusPill>
-              </div>
-            )}
-          </div>
-          <OverviewPanelFooter total={(data?.employeeRequests || []).length} visible={4} label="Manage access" />
-        </Link>
-
-        <Link className="content-card content-card-link overview-bento-card overview-bento-drivers tone-warning" to="/admin/drivers">
-          <div className="section-head">
-            <div>
-              <span className="card-label">Driver management</span>
-              <h2>Approvals And Assignment Queue</h2>
-            </div>
-            <StatusPill tone="warning">Needs admin review</StatusPill>
-          </div>
-
-          <div className="data-rows">
-            {(data?.driverQueue || []).slice(0, 4).map((driver) => (
-              <div className="data-row" key={driver.name}>
-                <div>
-                  <strong>{driver.name}</strong>
-                  <p>{driver.assignment}</p>
-                </div>
-                <div>
-                  <span>Compliance</span>
-                  <p>{driver.compliance}</p>
-                </div>
-                <StatusPill tone={driver.tone}>{driver.status}</StatusPill>
-              </div>
-            ))}
-            {!loading && (data?.driverQueue || []).length === 0 && (
-              <div className="overview-panel-empty">
-                <strong>No driver reviews</strong>
-                <p>Driver approvals and compliance are clear.</p>
-              </div>
-            )}
-          </div>
-          <OverviewPanelFooter total={(data?.driverQueue || []).length} visible={4} label="Open drivers" />
-        </Link>
-        <Link className="content-card content-card-link overview-bento-card overview-bento-dispatch tone-neutral" to="/admin/trips">
-          <div className="section-head">
-            <div>
-              <span className="card-label">Trip / route planning</span>
-              <h2>Dispatch Planning Board</h2>
-            </div>
-            <StatusPill tone="neutral">Planner synced</StatusPill>
-          </div>
-
-          <div className="data-rows">
-            {(data?.tripPlans || []).slice(0, 4).map((trip) => (
-              <div className="data-row" key={trip.route}>
-                <div>
-                  <strong>{trip.route}</strong>
-                  <p>{trip.vehicle}</p>
-                </div>
-                <div>
-                  <span>{trip.status}</span>
-                  <p>{trip.schedule}</p>
-                </div>
-                <StatusPill tone={trip.tone}>{trip.status}</StatusPill>
-              </div>
-            ))}
-            {!loading && (data?.tripPlans || []).length === 0 && (
-              <div className="overview-panel-empty">
-                <strong>No open trip plans</strong>
-                <p>The dispatch planning queue is clear.</p>
-              </div>
-            )}
-          </div>
-          <OverviewPanelFooter total={(data?.tripPlans || []).length} visible={4} label="Open dispatch" />
-        </Link>
-
-        <Link className="content-card content-card-link overview-bento-card overview-bento-finance tone-warning" to="/admin/finance">
-          <div className="section-head">
-            <div>
-              <span className="card-label">Finance snapshot</span>
-              <h2>Pound-Denominated Invoice Watch</h2>
-            </div>
-            <StatusPill tone="warning">Pound mode</StatusPill>
-          </div>
-
-          <div className="data-rows compact">
-            {(data?.finance || []).slice(0, 4).map((invoice) => (
-              <div className="data-row" key={invoice.invoice}>
-                <div>
-                  <strong>{invoice.invoice}</strong>
-                  <p>{invoice.client}</p>
-                </div>
-                <div>
-                  <span>{invoice.amount}</span>
-                  <p>{invoice.due}</p>
-                </div>
-                <StatusPill tone={invoice.tone}>{invoice.status}</StatusPill>
-              </div>
-            ))}
-            {!loading && (data?.finance || []).length === 0 && (
-              <div className="overview-panel-empty">
-                <strong>No pending invoices</strong>
-                <p>The finance watchlist is clear.</p>
-              </div>
-            )}
-          </div>
-          <OverviewPanelFooter total={(data?.finance || []).length} visible={4} label="Open finance" />
-        </Link>
-      </section>
-
-      <h3 className="overview-group-label">Support &amp; Account Tools</h3>
-      <details className="content-card overview-tools overview-standalone-card">
-        <summary className="overview-tools-summary">
+      <div className="ov-page">
+        <header className="ov-head">
           <div>
-            <span className="card-label">Driver support &amp; profile</span>
-            <h2>Chat With Drivers, Manage Your Admin Account</h2>
+            <h1>{greeting(now)}{firstName ? `, ${firstName}` : ""}</h1>
+            <p>{ukDateLabel.format(now)} · UK time</p>
           </div>
-          <span className="overview-tools-chevron" aria-hidden="true" />
-        </summary>
-        <div className="overview-tools-body">
-          <DriverChatWidget />
-          <AdminProfileSettings />
+          <div className="ov-head-actions">
+            <span className="ov-sync">
+              <span className="ov-live-dot" aria-hidden="true" />
+              {lastSync ? `Updated ${ukTimeLabel.format(lastSync)}` : "Connecting…"}
+            </span>
+            <button className="ov-btn" type="button" onClick={() => refetch(false)}>Refresh</button>
+          </div>
+        </header>
+
+        <StateNotice loading={loading && !data} error={error} />
+
+        <section className="ov-metric-groups" aria-label="Key metrics">
+          {overviewMetricGroups.map((group) => (
+            <div className="ov-card ov-metric-card" key={group.key}>
+              <h2 className="ov-metric-title">{group.title}</h2>
+              <div className="ov-metric-grid">
+                {group.labels.map((label) => (
+                  <OvMetric item={statsByLabel.get(label)} key={label} label={label} />
+                ))}
+              </div>
+            </div>
+          ))}
+        </section>
+
+        <div className="ov-layout">
+          <div className="ov-col">
+            <OvCard title="Needs attention" count={alerts.length} to="/admin/alerts" className="ov-attention">
+              {alerts.length ? (
+                <ul className="ov-attention-list">
+                  {alerts.slice(0, 6).map((alert, index) => (
+                    <li className={`ov-attention-item ${alert.tone || "warning"}`} key={`${alert.title}-${index}`}>
+                      <span className="ov-attention-icon"><AttentionIcon tone={alert.tone} /></span>
+                      <div>
+                        <strong>{alert.title}</strong>
+                        <p>{alert.description}</p>
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                !loading && <OvEmpty>You're all caught up. Nothing needs action right now.</OvEmpty>
+              )}
+            </OvCard>
+
+            <OvCard title="Dispatch" count={tripPlans.length} to="/admin/trips">
+              {tripPlans.length ? (
+                <div className="ov-table-shell">
+                  <table className="ov-table ov-dispatch-table">
+                    <thead>
+                      <tr><th>Route</th><th>Vehicle · trailer · driver</th><th>Date</th><th>Status</th></tr>
+                    </thead>
+                    <tbody>
+                      {tripPlans.slice(0, 5).map((trip) => (
+                        <tr key={trip.id || trip.route}>
+                          <td className="ov-strong">{trip.route}</td>
+                          <td className="ov-muted-cell">{trip.vehicle}</td>
+                          <td className="ov-nowrap">{trip.schedule}</td>
+                          <td><OvBadge tone={trip.tone}>{trip.status}</OvBadge></td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              ) : (
+                !loading && <OvEmpty>No open trips in the dispatch queue.</OvEmpty>
+              )}
+            </OvCard>
+
+            <OvCard title="Live vehicles" count={trackingBoard.length} to="/admin/tracking" linkLabel="Open map">
+              {trackingBoard.length ? (
+                <div className="ov-table-shell">
+                  <table className="ov-table ov-vehicle-table">
+                    <thead>
+                      <tr><th>Vehicle</th><th>Driver</th><th>Last location</th><th>Speed</th><th>ETA</th><th>Status</th></tr>
+                    </thead>
+                    <tbody>
+                      {trackingBoard.slice(0, 6).map((truck) => (
+                        <tr key={truck.truck}>
+                          <td className="ov-strong ov-nowrap">{truck.truck}</td>
+                          <td className="ov-nowrap">{truck.driver}</td>
+                          <td className="ov-muted-cell">{truck.location}</td>
+                          <td className="ov-nowrap">{truck.note}</td>
+                          <td className="ov-nowrap">{truck.eta}</td>
+                          <td><OvBadge tone={truck.tone}>{truck.status}</OvBadge></td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              ) : (
+                !loading && <OvEmpty>No vehicles are reporting GPS right now.</OvEmpty>
+              )}
+            </OvCard>
+          </div>
+
+          <div className="ov-col ov-side">
+            <OvCard title="Driver compliance" count={driverQueue.length} to="/admin/drivers">
+              {driverQueue.length ? (
+                <ul className="ov-list">
+                  {driverQueue.slice(0, 4).map((driver) => (
+                    <li key={driver.name}>
+                      <div>
+                        <strong>{driver.name}</strong>
+                        <small>{driver.assignment}</small>
+                      </div>
+                      <OvBadge tone={driver.tone}>{driver.compliance}</OvBadge>
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                !loading && <OvEmpty>All drivers are compliant.</OvEmpty>
+              )}
+            </OvCard>
+
+            <OvCard title="Unpaid invoices" count={invoices.length} to="/admin/finance">
+              {invoices.length ? (
+                <ul className="ov-list">
+                  {invoices.slice(0, 4).map((invoice) => (
+                    <li key={invoice.invoice}>
+                      <div>
+                        <strong>{invoice.client}</strong>
+                        <small>{invoice.invoice} · due {invoice.due}</small>
+                      </div>
+                      <div className="ov-list-end">
+                        <strong>{invoice.amount}</strong>
+                        <OvBadge tone={invoice.tone}>{invoice.status}</OvBadge>
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                !loading && <OvEmpty>No unpaid invoices.</OvEmpty>
+              )}
+            </OvCard>
+
+            <OvCard title="Employee approvals" count={pendingEmployees.length} to="/admin/employees" linkLabel="Manage">
+              {pendingEmployees.length ? (
+                <ul className="ov-list">
+                  {pendingEmployees.slice(0, 4).map((employee) => (
+                    <li key={employee.id}>
+                      <div>
+                        <strong>{employee.name}</strong>
+                        <small>{employee.department || employee.email}</small>
+                      </div>
+                      <OvBadge tone="warning">Pending review</OvBadge>
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                !loading && <OvEmpty>No registrations waiting for review.</OvEmpty>
+              )}
+            </OvCard>
+          </div>
         </div>
-      </details>
+
+        <details className="ov-card ov-tools">
+          <summary>
+            <span>
+              <strong>Driver chat and account settings</strong>
+              <small>Message drivers or change your admin name, email and password.</small>
+            </span>
+            <span className="ov-chevron" aria-hidden="true" />
+          </summary>
+          <div className="ov-tools-body">
+            <DriverChatWidget />
+            <AdminProfileSettings />
+          </div>
+        </details>
       </div>
     </AdminWorkspaceLayout>
   );

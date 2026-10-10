@@ -1,8 +1,9 @@
-import { useNavigate } from "react-router-dom";
-import { logout } from "../../api/authApi";
+import { useEffect, useState } from "react";
+import { useLocation, useNavigate } from "react-router-dom";
+import { getMySession, logout } from "../../api/authApi";
 import { NotificationBell } from "../../components/NotificationBell";
 import { PanelLayout } from "../../components/PanelLayout";
-import { clearAuthSession, getAuthSession } from "../../utils/authSession";
+import { clearAuthSession, getAuthSession, saveAuthSession } from "../../utils/authSession";
 
 export const adminMenu = [
   { to: "/admin",           label: "Overview",      end: true },
@@ -36,8 +37,36 @@ const menuAccessKey = {
 
 export function AdminWorkspaceLayout({ badge, title, description, highlights, hideHeaderIntro = false, className = "", children }) {
   const navigate = useNavigate();
-  const session = getAuthSession();
+  const location = useLocation();
+  const [session, setSession] = useState(() => getAuthSession());
   const isEmployee = session?.role === "employee";
+
+  // Employee pages are assigned by admin at any time; refresh them instead of trusting the login-time copy.
+  useEffect(() => {
+    if (!isEmployee) return undefined;
+    let cancelled = false;
+    getMySession()
+      .then(({ data }) => {
+        if (cancelled) return;
+        if (data.role !== "employee" || data.approvalStatus !== "active") {
+          clearAuthSession();
+          navigate("/", { replace: true });
+          return;
+        }
+        const current = getAuthSession() || {};
+        const next = { ...current, name: data.name, approvalStatus: data.approvalStatus, accessModules: data.accessModules };
+        saveAuthSession(next);
+        setSession(next);
+        const routeKey = menuAccessKey[location.pathname.replace(/\/$/, "")];
+        if (routeKey && !data.accessModules.includes(routeKey)) {
+          navigate(data.accessModules[0] ? `/admin/${data.accessModules[0]}` : "/", { replace: true });
+        }
+      })
+      .catch(() => {
+        // Expired sessions are handled by the axios interceptor; keep the cached menu otherwise.
+      });
+    return () => { cancelled = true; };
+  }, [isEmployee, location.pathname, navigate]);
   const visibleMenu = session?.role === "employee"
     ? adminMenu.filter((item) => session.accessModules?.includes(menuAccessKey[item.to]))
     : adminMenu;

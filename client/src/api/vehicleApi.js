@@ -9,6 +9,7 @@ export const updateVehicleInline    = (id, data)          => api.patch(`/api/veh
 export const updateVehicleStatus    = (id, data)          => api.patch(`/api/vehicles/${id}/status`, data);
 export const deleteVehicle          = (id)                => api.delete(`/api/vehicles/${id}`);
 export const deleteTrolley          = (id)                => api.delete(`/api/vehicles/trolleys/${id}`);
+export const updateTrolleyInline    = (id, data)          => api.patch(`/api/vehicles/trolleys/${id}`, data);
 
 export const addVehicleDocument     = (id, data)          => api.post(`/api/vehicles/${id}/documents`, data);
 export const updateVehicleDocument  = (id, docId, data)   => api.put(`/api/vehicles/${id}/documents/${docId}`, data);
