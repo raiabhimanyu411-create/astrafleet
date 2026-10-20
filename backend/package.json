@@ -10,6 +10,7 @@
     "test:compliance:integration": "node scripts/complianceIntegrationTest.js"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.134.0",
     "@tesseract.js-data/eng": "^1.0.0",
     "bcrypt": "^6.0.0",
     "cors": "^2.8.6",
