@@ -3,6 +3,7 @@ const router  = express.Router();
 const d       = require("../controllers/driverController");
 const push    = require("../controllers/driverPushController");
 const geofence = require("../controllers/driverGeofenceController");
+const assist  = require("../utils/driverAssist");
 const { requireDriverSession, requireModuleAccess } = require("../middleware/accessControl");
 
 router.use("/me", requireDriverSession);
@@ -28,6 +29,8 @@ router.post("/me/messages",                d.sendMyMessage);
 router.post("/me/location",                d.updateMyLocation);
 router.post("/me/push-token",              push.registerMyPushToken);
 router.delete("/me/push-token",            push.removeMyPushToken);
+router.get("/me/assist",                   assist.status);
+router.post("/me/assist",                  assist.assist);
 
 router.get("/",                          requireModuleAccess("drivers"), d.listDrivers);
 router.get("/:id",                       requireModuleAccess("drivers"), d.getDriverById);
