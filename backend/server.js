@@ -3,6 +3,8 @@ const http = require("http");
 const path = require("path");
 const express = require("express");
 const { Server } = require("socket.io");
+const { ROOM_MODULES, canJoinAdminRoom, canJoinDriverRoom } = require("./utils/socketAccess");
+const { getSettingsMap } = require("./controllers/settingsController");
 const adminRoutes = require("./routes/adminRoutes");
 const cors = require("cors");
 const panelRoutes = require("./routes/panelRoutes");
@@ -68,40 +70,22 @@ const io = new Server(httpServer, {
 });
 
 io.on("connection", (socket) => {
-  socket.on("admin-tracking:join", () => {
-    socket.join("admin-tracking");
-  });
-
-  socket.on("admin-tracking:leave", () => {
-    socket.leave("admin-tracking");
-  });
-
-  socket.on("admin-chat:join", () => {
-    socket.join("admin-chat");
-  });
-
-  socket.on("admin-chat:leave", () => {
-    socket.leave("admin-chat");
-  });
-
-  socket.on("admin-audit:join", () => {
-    socket.join("admin-audit");
-  });
-
-  socket.on("admin-audit:leave", () => {
-    socket.leave("admin-audit");
-  });
-
-  socket.on("admin-jobs:join", () => {
-    socket.join("admin-jobs");
-  });
-
-  socket.on("admin-jobs:leave", () => {
-    socket.leave("admin-jobs");
-  });
+  // Admin rooms carry every driver's GPS, chat and the audit log, so each join is checked
+  // against the caller's login. A refused join is simply ignored (no events arrive).
+  for (const room of Object.keys(ROOM_MODULES)) {
+    socket.on(`${room}:join`, () => {
+      canJoinAdminRoom(socket, room)
+        .then((allowed) => { if (allowed) socket.join(room); })
+        .catch((error) => console.error(`[Realtime] ${room} join check failed:`, error.message));
+    });
+    socket.on(`${room}:leave`, () => socket.leave(room));
+  }
 
   socket.on("driver-chat:join", (driverId) => {
-    if (driverId) socket.join(chatRoom(driverId));
+    if (!driverId) return;
+    canJoinDriverRoom(socket, driverId)
+      .then((allowed) => { if (allowed) socket.join(chatRoom(driverId)); })
+      .catch((error) => console.error("[Realtime] driver-chat join check failed:", error.message));
   });
 
   socket.on("driver-chat:leave", (driverId) => {
@@ -129,6 +113,8 @@ if (require.main === module) {
       }
     })
     .catch((error) => console.error("[UK time] Conversion check failed:", error.message))
+    // Load admin Settings before serving, so the first maintenance refresh uses the saved intervals.
+    .then(() => getSettingsMap().catch((error) => console.error("[Settings] load failed, using defaults:", error.message)))
     .finally(() => {
       httpServer.listen(PORT, () => {
         console.log(`Astra Fleet backend listening on http://localhost:${PORT}`);

@@ -95,7 +95,7 @@ export function InvoiceDetailPage() {
 
   return (
     <AdminWorkspaceLayout
-      badge="Invoicing & Billing"
+      badge="Invoicing & billing"
       title={invoice ? invoice.invoiceNo : "Invoice detail"}
       description={invoice ? `${invoice.clientName} · ${invoice.amountFormatted}` : "Invoice detail with trip, POD, and payment tracking."}
       highlights={[]}
@@ -103,7 +103,7 @@ export function InvoiceDetailPage() {
       <div style={{ maxWidth: 900 }}>
         <div className="af-back-row">
           <button className="af-back-btn" type="button" onClick={() => navigate("/admin/billing")}>
-            ← Back To Billing
+            ← Back to billing
           </button>
         </div>
 
@@ -146,7 +146,7 @@ export function InvoiceDetailPage() {
                   )
                 ))}
                 <button className="header-action-button" style={{ height: 30, padding: "0 10px", fontSize: "0.78rem" }} type="button" onClick={handlePodToggle}>
-                  {invoice.podVerified ? "Mark POD Pending" : "Verify POD"}
+                  {invoice.podVerified ? "Mark POD pending" : "Verify POD"}
                 </button>
               </div>
 
@@ -163,7 +163,7 @@ export function InvoiceDetailPage() {
                 <div className="section-head">
                   <div>
                     <span className="card-label">Billing</span>
-                    <h2>Customer And Payment</h2>
+                    <h2>Customer and payment</h2>
                   </div>
                 </div>
                 <div className="detail-grid">
@@ -176,10 +176,10 @@ export function InvoiceDetailPage() {
                   <DetailBlock label="Currency" value={invoice.currency} />
                   <DetailBlock label="Issued" value={invoice.issuedAt} />
                   <DetailBlock label="Due" value={invoice.dueDate} />
-                  <DetailBlock label="Supply / Tax Point" value={invoice.supplyDate} />
+                  <DetailBlock label="Supply / tax point" value={invoice.supplyDate} />
                   <DetailBlock label="PO Reference" value={invoice.purchaseOrderRef} />
-                  <div className="detail-wide"><DetailBlock label="Customer Address" value={invoice.customerAddress} /></div>
-                  <DetailBlock label="Customer VAT No." value={invoice.customerVatNumber} />
+                  <div className="detail-wide"><DetailBlock label="Customer address" value={invoice.customerAddress} /></div>
+                  <DetailBlock label="Customer VAT no." value={invoice.customerVatNumber} />
                   <div className="detail-wide"><DetailBlock label="Description" value={invoice.serviceDescription} /></div>
                 </div>
               </article>
@@ -187,12 +187,12 @@ export function InvoiceDetailPage() {
               <article className="content-card">
                 <div className="section-head">
                   <div>
-                    <span className="card-label">Trip Link</span>
-                    <h2>Dispatch And POD</h2>
+                    <span className="card-label">Trip link</span>
+                    <h2>Dispatch and POD</h2>
                   </div>
                 </div>
                 <div className="detail-grid">
-                  <DetailBlock label="Trip Code" value={invoice.tripCode} />
+                  <DetailBlock label="Trip code" value={invoice.tripCode} />
                   <DetailBlock label="POD Status" value={invoice.tripPodStatus} />
                   <div className="detail-wide"><DetailBlock label="Lane" value={invoice.lane} /></div>
                 </div>
@@ -202,20 +202,20 @@ export function InvoiceDetailPage() {
             <div className="content-grid" style={{ marginBottom: 16 }}>
               <article className="content-card">
                 <div className="section-head">
-                  <div><span className="card-label">Supplier</span><h2>Legal And Remittance Details</h2></div>
+                  <div><span className="card-label">Supplier</span><h2>Legal and remittance details</h2></div>
                 </div>
                 <div className="detail-grid">
-                  <DetailBlock label="Legal Name" value={invoice.supplierName} />
+                  <DetailBlock label="Legal name" value={invoice.supplierName} />
                   <DetailBlock label="VAT Number" value={invoice.supplierVatNumber} />
                   <div className="detail-wide"><DetailBlock label="Address" value={invoice.supplierAddress} /></div>
-                  <div className="detail-wide"><DetailBlock label="Payment Terms" value={invoice.paymentTerms} /></div>
-                  <div className="detail-wide"><DetailBlock label="Bank Details" value={invoice.bankDetails} /></div>
+                  <div className="detail-wide"><DetailBlock label="Payment terms" value={invoice.paymentTerms} /></div>
+                  <div className="detail-wide"><DetailBlock label="Bank details" value={invoice.bankDetails} /></div>
                 </div>
               </article>
 
               <article className="content-card">
                 <div className="section-head">
-                  <div><span className="card-label">Receipts</span><h2>Payment Ledger</h2></div>
+                  <div><span className="card-label">Receipts</span><h2>Payment ledger</h2></div>
                 </div>
                 <div className="data-rows compact">
                   {(invoice.payments || []).map(item => (
@@ -242,7 +242,7 @@ export function InvoiceDetailPage() {
                       <input className="af-input" placeholder="Payment reference" value={payment.payment_reference} onChange={e => setPayment(prev => ({ ...prev, payment_reference: e.target.value }))} required />
                     </div>
                     <button className="af-submit-btn" type="submit" disabled={recordingPayment}>
-                      {recordingPayment ? "Recording..." : "Record Payment"}
+                      {recordingPayment ? "Recording..." : "Record payment"}
                     </button>
                   </form>
                 )}
@@ -253,7 +253,7 @@ export function InvoiceDetailPage() {
               <div className="section-head">
                 <div>
                   <span className="card-label">Notes</span>
-                  <h2>Billing Notes</h2>
+                  <h2>Billing notes</h2>
                 </div>
               </div>
               <p style={{ margin: 0, color: "#424650", fontSize: "0.9rem" }}>{invoice.notes || "No notes recorded."}</p>
@@ -261,16 +261,16 @@ export function InvoiceDetailPage() {
 
             <div className="af-actions">
               <button className="header-action-button" type="button" onClick={() => window.print()}>
-                Print / Save PDF
+                Print / save PDF
               </button>
               <button className="header-action-button" type="button" onClick={() => navigate(`/admin/billing/${id}/edit`)}>
-                Edit Invoice
+                Edit invoice
               </button>
               <button className="af-submit-btn" type="button" onClick={() => navigate("/admin/billing/new")}>
-                + Create Invoice
+                + Create invoice
               </button>
               <button className="header-action-button danger" type="button" onClick={() => setShowDeleteModal(true)}>
-                Delete Invoice
+                Delete invoice
               </button>
             </div>
           </>
@@ -278,7 +278,7 @@ export function InvoiceDetailPage() {
       </div>
       <DeleteReasonModal
         open={showDeleteModal}
-        title="Delete Invoice"
+        title="Delete invoice"
         recordLabel={invoice ? `${invoice.invoiceNo} · ${invoice.clientName}` : ""}
         loading={deleting}
         onCancel={() => setShowDeleteModal(false)}

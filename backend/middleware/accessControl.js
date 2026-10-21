@@ -63,6 +63,23 @@ function requireModuleAccess(moduleKey) {
   };
 }
 
+// Admin, or an active employee assigned to at least one of these pages.
+function requireAnyModule(moduleKeys) {
+  return (req, res, next) => {
+    readSessionUser(req)
+      .then((user) => {
+        if (!user) return res.status(401).json({ code: "SESSION_EXPIRED", message: "Login session has expired." });
+        const allowed = user.role === "admin"
+          || (user.role === "employee" && user.approvalStatus === "active" && moduleKeys.some((key) => user.accessModules.includes(key)));
+        if (!allowed) return res.status(403).json({ message: "This page is not assigned to you." });
+        req.sessionUser = user;
+        touchUserSession(req);
+        return next();
+      })
+      .catch((error) => res.status(500).json({ message: "Access check error", error: error.message }));
+  };
+}
+
 // Driver "/me" endpoints resolve the driver from the token; this rejects expired or revoked ones first.
 function requireDriverSession(req, res, next) {
   verifyActiveSession(req.headers["x-session-token"])
@@ -76,6 +93,7 @@ function requireDriverSession(req, res, next) {
 
 module.exports = {
   requireAdmin,
+  requireAnyModule,
   requireDriverSession,
   requireModuleAccess
 };

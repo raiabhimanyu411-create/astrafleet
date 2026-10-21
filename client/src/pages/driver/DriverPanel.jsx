@@ -26,27 +26,27 @@ import { PanelLayout } from "../../components/PanelLayout";
 import { StatCard } from "../../components/StatCard";
 import { StateNotice } from "../../components/StateNotice";
 import { StatusPill } from "../../components/StatusPill";
-import { clearAuthSession, getAuthSession } from "../../utils/authSession";
+import { clearAuthSession, firstNameOf, getAuthSession } from "../../utils/authSession";
 import { gpsErrorMessage, positionToPayload, requestDriverGpsAccess, watchDriverGps } from "../../utils/driverGps";
 
 const WALKAROUND_CHECKS = [
-  { key: "tyres",       label: "Tyres – Pressure And Condition" },
-  { key: "lights",      label: "Lights And Indicators" },
-  { key: "brakes",      label: "Brakes – Service And Parking" },
-  { key: "mirrors",     label: "Mirrors And Windscreen" },
-  { key: "fluids",      label: "Oil, Coolant, And Fluid Levels" },
-  { key: "coupling",    label: "Coupling And Trailer Security" },
-  { key: "load",        label: "Load Security And Weight" },
-  { key: "docs",        label: "Driver Docs And Vehicle Paperwork" },
-  { key: "bodywork",    label: "Bodywork And Chassis" },
-  { key: "horn",        label: "Horn And Warning Devices" },
-  { key: "wipers",      label: "Wipers And Washers" },
-  { key: "speedometer", label: "Speedometer And Instruments" },
+  { key: "tyres",       label: "Tyres – pressure and condition" },
+  { key: "lights",      label: "Lights and indicators" },
+  { key: "brakes",      label: "Brakes – service and parking" },
+  { key: "mirrors",     label: "Mirrors and windscreen" },
+  { key: "fluids",      label: "Oil, coolant, and fluid levels" },
+  { key: "coupling",    label: "Coupling and trailer security" },
+  { key: "load",        label: "Load security and weight" },
+  { key: "docs",        label: "Driver docs and vehicle paperwork" },
+  { key: "bodywork",    label: "Bodywork and chassis" },
+  { key: "horn",        label: "Horn and warning devices" },
+  { key: "wipers",      label: "Wipers and washers" },
+  { key: "speedometer", label: "Speedometer and instruments" },
 ];
 
 const driverMenu = [
   { href: "#overview",   label: "Overview" },
-  { href: "#live",       label: "Live Work" },
+  { href: "#live",       label: "Live work" },
   { href: "#notifications", label: "Notifications" },
   { href: "#pod",        label: "POD" },
   { href: "#reports",    label: "Reports" },
@@ -55,7 +55,7 @@ const driverMenu = [
 ];
 
 const driverWorkspaces = [
-  { key: "live", label: "Live Work", detail: "Jobs + status + route" },
+  { key: "live", label: "Live work", detail: "Jobs + status + route" },
   { key: "pod", label: "POD + Shift", detail: "Proof and shift" },
   { key: "reports", label: "Reports", detail: "Expense or defect" },
   { key: "history", label: "History", detail: "Past activity" },
@@ -209,7 +209,7 @@ function SignatureCanvas({ onCapture }) {
         onTouchMove={draw}
         onTouchEnd={endDraw}
       />
-      <button type="button" className="header-action-button" onClick={clearCanvas}>Clear Signature</button>
+      <button type="button" className="header-action-button" onClick={clearCanvas}>Clear signature</button>
     </div>
   );
 }
@@ -672,14 +672,20 @@ export function DriverPanel() {
           ? "Signature or delivery photo is required before POD submission."
           : "";
 
+  // Show whoever is signed in: the live driver record first, the login copy as a fallback.
+  const driverName = data?.driver?.name || session?.name || "";
+  const driverFirstName = firstNameOf(driverName);
+
   return (
     <PanelLayout
-      badge={data?.header?.badge || "Driver Panel"}
-      title={data?.header?.title || "Driver Workspace"}
+      badge={data?.header?.badge || "Driver panel"}
+      title={driverFirstName ? `Welcome, ${driverFirstName}` : (data?.header?.title || "Driver workspace")}
       description={data?.header?.description || "Daily driver operations in one browser panel."}
       highlights={[]}
       menu={driverPanelMenu}
-      roleLabel="Driver Workspace"
+      roleLabel="Driver workspace"
+      scopeNote={null}
+      account={{ name: driverName, role: "Driver", onLogout: handleLogout }}
       className="driver-panel-shell"
       headerContent={(
         <>
@@ -725,7 +731,7 @@ export function DriverPanel() {
       {/* ── Document expiry warnings ── */}
       {(data?.docWarnings || []).length > 0 && (
         <div className="doc-expiry-banner">
-          <strong>Document Expiry Alert</strong>
+          <strong>Document expiry alert</strong>
           <div className="doc-expiry-list">
             {data.docWarnings.map(w => (
               <span key={w.label} className={`doc-expiry-chip ${w.tone}`}>
@@ -739,7 +745,7 @@ export function DriverPanel() {
       {notice && (
         <div className={`state-card ${noticeError ? "error" : "driver-notice"}`} aria-live="polite">
           <span className={`state-dot ${noticeError ? "error" : "success"}`} />
-          <div><strong>{noticeError ? "Action Needed" : "Driver Update"}</strong><p>{notice}</p></div>
+          <div><strong>{noticeError ? "Action needed" : "Driver update"}</strong><p>{notice}</p></div>
           {gpsBlocked && (
             <button className="header-action-button" disabled={busy === "gps"} onClick={handleRetryGps} type="button">
               {busy === "gps" ? "Checking..." : "Retry GPS"}
@@ -767,8 +773,8 @@ export function DriverPanel() {
           fetchUrl="/api/drivers/me/notifications"
           paramKey="userId"
           paramValue={userId}
-          title="Driver Notification Inbox"
-          eyebrow="Driver Alerts"
+          title="Driver notification inbox"
+          eyebrow="Driver alerts"
           emptyBody="No driver jobs, POD reminders, or shift alerts need attention right now."
         />
       )}
@@ -807,7 +813,7 @@ export function DriverPanel() {
           {/* ── Break / rest timer ── */}
           <section className="break-timer-bar">
             <div className="break-timer-info">
-              <span className="card-label">Break / Rest Timer</span>
+              <span className="card-label">Break / rest timer</span>
               <strong className={`break-timer-display ${breakActive ? "running" : ""}`}>
                 {fmtTimer(breakSeconds)}
               </strong>
@@ -822,7 +828,7 @@ export function DriverPanel() {
                 disabled={breakActive}
                 onClick={startBreak}
               >
-                Start Break
+                Start break
               </button>
               <button
                 className="header-action-button danger"
@@ -830,7 +836,7 @@ export function DriverPanel() {
                 disabled={!breakActive}
                 onClick={endBreak}
               >
-                End Break
+                End break
               </button>
             </div>
           </section>
@@ -842,10 +848,10 @@ export function DriverPanel() {
         <article className="content-card">
           <div className="section-head">
             <div>
-              <span className="card-label">Today&apos;s Duties</span>
-              <h2>Assigned Jobs</h2>
+              <span className="card-label">Today&apos;s duties</span>
+              <h2>Assigned jobs</h2>
             </div>
-            <StatusPill tone={data?.shift ? "success" : "warning"}>{data?.shift ? "Shift Active" : "Off Shift"}</StatusPill>
+            <StatusPill tone={data?.shift ? "success" : "warning"}>{data?.shift ? "Shift active" : "Off shift"}</StatusPill>
           </div>
           <div className="driver-job-tabs" role="tablist" aria-label="Job filters">
             <button className={jobFilter === "open" ? "active" : ""} onClick={() => setJobFilter("open")} type="button">Open ({incompleteJobs.length})</button>
@@ -868,7 +874,7 @@ export function DriverPanel() {
         <article className="content-card trip-spotlight">
           <div className="section-head">
             <div>
-              <span className="card-label">Selected Job</span>
+              <span className="card-label">Selected job</span>
               <h2>{selectedJob?.code || "No job selected"}</h2>
             </div>
             {selectedJob && <StatusPill tone={selectedJob.statusTone}>{selectedJob.statusLabel}</StatusPill>}
@@ -929,7 +935,7 @@ export function DriverPanel() {
                             onClick={() => handlePrimaryDropStatus(point, "completed")}
                             type="button"
                           >
-                            {busy === "primary-drop-completed" ? "Updating..." : "Complete Drop 1"}
+                            {busy === "primary-drop-completed" ? "Updating..." : "Complete drop 1"}
                           </button>
                         </div>
                       )}
@@ -967,7 +973,7 @@ export function DriverPanel() {
                 <Detail label="Load ID"      value={selectedJob.loadId} />
                 <Detail label="Vehicle"      value={selectedJob.vehicle} />
                 <Detail label="Trailer" value={selectedJob.trailer} />
-                <Detail label="Load Detail"  value={selectedJob.load.description} />
+                <Detail label="Load detail"  value={selectedJob.load.description} />
               </div>
 
               {/* ETA update */}
@@ -995,8 +1001,8 @@ export function DriverPanel() {
                   onChange={e => setOdometer(o => ({ ...o, type: e.target.value }))}
                   style={{ width: "auto" }}
                 >
-                  <option value="start">Trip Start</option>
-                  <option value="end">Trip End</option>
+                  <option value="start">Trip start</option>
+                  <option value="end">Trip end</option>
                 </select>
                 <input
                   className="af-input"
@@ -1014,7 +1020,7 @@ export function DriverPanel() {
               </form>
 
               <div className="driver-action-row">
-                <a className="af-submit-btn driver-nav-link" href={selectedJob.route.navigationUrl} rel="noreferrer" target="_blank">Open Navigation</a>
+                <a className="af-submit-btn driver-nav-link" href={selectedJob.route.navigationUrl} rel="noreferrer" target="_blank">Open navigation</a>
                 {pendingDeliveryStops.length === 0 && selectedJob.status === "arrived_drop" && selectedJob.podStatus !== "verified" && (
                   <button className="header-action-button" type="button" onClick={() => setActiveSection("pod")}>
                     Submit POD
@@ -1030,10 +1036,10 @@ export function DriverPanel() {
       {activeSection === "live" && <section className="content-card" id="status" style={{ marginBottom: 16 }}>
         <div className="section-head">
           <div>
-            <span className="card-label">Job Status Update</span>
-            <h2>Move Job Through Delivery Flow</h2>
+            <span className="card-label">Job status update</span>
+            <h2>Move job through delivery flow</h2>
           </div>
-          <StatusPill tone="neutral">Dispatch Sync</StatusPill>
+          <StatusPill tone="neutral">Dispatch sync</StatusPill>
         </div>
         {(
           <>
@@ -1082,13 +1088,13 @@ export function DriverPanel() {
           <form className="reschedule-form" onSubmit={handleRescheduleSubmit}>
             <div className="section-head" style={{ marginBottom: 10 }}>
               <div>
-                <span className="card-label">Reschedule Delivery</span>
-                <h3>Set New Delivery Date</h3>
+                <span className="card-label">Reschedule delivery</span>
+                <h3>Set new delivery date</h3>
               </div>
             </div>
             <div className="af-grid-2">
               <div className="af-field">
-                <label className="af-label">New Delivery Date / Time</label>
+                <label className="af-label">New delivery date / time</label>
                 <input
                   className="af-input"
                   type="datetime-local"
@@ -1098,7 +1104,7 @@ export function DriverPanel() {
                 />
               </div>
               <div className="af-field">
-                <label className="af-label">Reschedule Reason</label>
+                <label className="af-label">Reschedule reason</label>
                 <input
                   className="af-input"
                   value={reschedule.reason}
@@ -1109,7 +1115,7 @@ export function DriverPanel() {
             </div>
             <div className="driver-action-row">
               <button className="af-submit-btn" type="submit" disabled={!reschedule.date || busy === "reschedule"}>
-                {busy === "reschedule" ? "Rescheduling..." : "Confirm Reschedule"}
+                {busy === "reschedule" ? "Rescheduling..." : "Confirm reschedule"}
               </button>
               <button
                 type="button"
@@ -1128,8 +1134,8 @@ export function DriverPanel() {
         <article className="content-card">
           <div className="section-head">
             <div>
-              <span className="card-label">Proof Of Delivery</span>
-              <h2>Signature, Photo, Notes</h2>
+              <span className="card-label">Proof of delivery</span>
+              <h2>Signature, photo, notes</h2>
             </div>
             <StatusPill tone={selectedJob?.podStatus === "verified" ? "success" : "warning"}>
               POD: {selectedJob?.podStatus || "pending"}
@@ -1140,14 +1146,14 @@ export function DriverPanel() {
             {/* Signature — canvas or file */}
             <div className="af-field">
               <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8 }}>
-                <label className="af-label" style={{ margin: 0 }}>Customer Signature</label>
+                <label className="af-label" style={{ margin: 0 }}>Customer signature</label>
                 <button
                   type="button"
                   className="header-action-button"
                   style={{ padding: "3px 10px", fontSize: "0.75rem" }}
                   onClick={() => setUseSigPad(v => !v)}
                 >
-                  {useSigPad ? "Use File Upload" : "Use Signature Pad"}
+                  {useSigPad ? "Use file upload" : "Use signature pad"}
                 </button>
                 {pod.signatureData && (
                   <button
@@ -1156,7 +1162,7 @@ export function DriverPanel() {
                     style={{ padding: "3px 10px", fontSize: "0.75rem" }}
                     onClick={() => setPod(p => ({ ...p, signatureData: "" }))}
                   >
-                    Clear Signature
+                    Clear signature
                   </button>
                 )}
               </div>
@@ -1176,14 +1182,14 @@ export function DriverPanel() {
 
             <div className="af-field">
               <div className="pod-field-head">
-                <label className="af-label">Delivery Photo</label>
+                <label className="af-label">Delivery photo</label>
                 {pod.photoData && (
                   <button
                     className="header-action-button danger"
                     type="button"
                     onClick={() => setPod(p => ({ ...p, photoData: "" }))}
                   >
-                    Delete Photo
+                    Delete photo
                   </button>
                 )}
               </div>
@@ -1197,7 +1203,7 @@ export function DriverPanel() {
             </div>
 
             <div className="af-field">
-              <label className="af-label">Delivery Notes</label>
+              <label className="af-label">Delivery notes</label>
               <textarea
                 className="af-input"
                 value={pod.deliveryNotes}
@@ -1208,14 +1214,14 @@ export function DriverPanel() {
 
             <div className="pod-preview-grid">
               <div>
-                <span className="card-label">Signature Preview</span>
+                <span className="card-label">Signature preview</span>
                 {pod.signatureData
                   ? <img alt="Signature preview" src={pod.signatureData} />
                   : <p>No signature captured.</p>}
               </div>
               <div>
                 <div className="pod-preview-head">
-                  <span className="card-label">Delivery Photo Preview</span>
+                  <span className="card-label">Delivery photo preview</span>
                   {pod.photoData && (
                     <button
                       className="header-action-button danger"
@@ -1247,13 +1253,13 @@ export function DriverPanel() {
           <div className="section-head">
             <div>
               <span className="card-label">Shift</span>
-              <h2>Start / End Shift</h2>
+              <h2>Start / end shift</h2>
             </div>
             <StatusPill tone={data?.shift ? "success" : "neutral"}>{data?.shift?.startedAt || "Not started"}</StatusPill>
           </div>
 
           <div className="driver-shift-panel">
-            <Detail label="Current State" value={data?.shift ? "Shift Active" : "Off Shift"} />
+            <Detail label="Current state" value={data?.shift ? "Shift active" : "Off shift"} />
             <Detail label="Started"       value={data?.shift?.startedAt} />
           </div>
 
@@ -1264,14 +1270,14 @@ export function DriverPanel() {
             placeholder="Optional shift note: vehicle checks, handover, delay reason..."
           />
           <div className="driver-action-row">
-            <button className="af-submit-btn"           disabled={Boolean(data?.shift) || Boolean(busy)} onClick={handleShiftStart} type="button">Start Shift</button>
-            <button className="header-action-button danger" disabled={!data?.shift || Boolean(busy)}       onClick={handleShiftEnd}   type="button">End Shift</button>
+            <button className="af-submit-btn"           disabled={Boolean(data?.shift) || Boolean(busy)} onClick={handleShiftStart} type="button">Start shift</button>
+            <button className="header-action-button danger" disabled={!data?.shift || Boolean(busy)}       onClick={handleShiftEnd}   type="button">End shift</button>
           </div>
 
           {/* Shift history */}
           {(data?.shiftHistory || []).length > 0 && (
             <div style={{ marginTop: 16 }}>
-              <span className="card-label">Recent Shifts</span>
+              <span className="card-label">Recent shifts</span>
               <div className="data-rows compact" style={{ marginTop: 8 }}>
                 {data.shiftHistory.map(s => (
                   <div className="data-row" key={s.id}>
@@ -1296,8 +1302,8 @@ export function DriverPanel() {
         <article className="content-card">
           <div className="section-head">
             <div>
-              <span className="card-label">Expense / Fuel Entry</span>
-              <h2>Record Cost</h2>
+              <span className="card-label">Expense / fuel entry</span>
+              <h2>Record cost</h2>
             </div>
           </div>
           <form className="af-form" onSubmit={handleExpenseSubmit}>
@@ -1318,15 +1324,15 @@ export function DriverPanel() {
             </div>
             <input className="af-input" type="file" accept="image/*,.pdf" onChange={e => readFileAsDataUrl(e.target.files?.[0], value => setExpense(p => ({ ...p, receiptData: value })))} />
             <textarea className="af-input" value={expense.notes} onChange={e => setExpense(p => ({ ...p, notes: e.target.value }))} placeholder={expense.expenseType === "fuel" ? "Receipt ref, pump number, notes..." : "Receipt ref, notes..."} />
-            <button className="af-submit-btn" disabled={busy === "expense"} type="submit">{busy === "expense" ? "Saving..." : "Save Expense"}</button>
+            <button className="af-submit-btn" disabled={busy === "expense"} type="submit">{busy === "expense" ? "Saving..." : "Save expense"}</button>
           </form>
         </article>
 
         <article className="content-card">
           <div className="section-head">
             <div>
-              <span className="card-label">Vehicle Defect Report</span>
-              <h2>Report Issue</h2>
+              <span className="card-label">Vehicle defect report</span>
+              <h2>Report issue</h2>
             </div>
           </div>
           <form className="af-form" onSubmit={handleDefectSubmit}>
@@ -1340,7 +1346,7 @@ export function DriverPanel() {
               </select>
             </div>
             <textarea className="af-input" value={defect.description} onChange={e => setDefect(p => ({ ...p, description: e.target.value }))} placeholder="Describe the issue..." required />
-            <button className="af-submit-btn" disabled={busy === "defect"} type="submit">{busy === "defect" ? "Submitting..." : "Submit Defect"}</button>
+            <button className="af-submit-btn" disabled={busy === "defect"} type="submit">{busy === "defect" ? "Submitting..." : "Submit defect"}</button>
           </form>
         </article>
       </section>}
@@ -1350,8 +1356,8 @@ export function DriverPanel() {
         <article className="content-card">
           <div className="section-head">
             <div>
-              <span className="card-label">Recent Expenses</span>
-              <h2>Submitted Costs</h2>
+              <span className="card-label">Recent expenses</span>
+              <h2>Submitted costs</h2>
             </div>
             <StatusPill tone="neutral">{data?.expenses?.length || 0} entries</StatusPill>
           </div>
@@ -1375,8 +1381,8 @@ export function DriverPanel() {
         <article className="content-card">
           <div className="section-head">
             <div>
-              <span className="card-label">Upcoming Work</span>
-              <h2>Next Assigned Jobs</h2>
+              <span className="card-label">Upcoming work</span>
+              <h2>Next assigned jobs</h2>
             </div>
             <StatusPill tone="neutral">{data?.upcomingJobs?.length || 0} jobs</StatusPill>
           </div>
@@ -1399,8 +1405,8 @@ export function DriverPanel() {
         <article className="content-card">
           <div className="section-head">
             <div>
-              <span className="card-label">Defect History</span>
-              <h2>Recent Vehicle Reports</h2>
+              <span className="card-label">Defect history</span>
+              <h2>Recent vehicle reports</h2>
             </div>
             <StatusPill tone="neutral">{data?.defectHistory?.length || 0} reports</StatusPill>
           </div>
@@ -1424,7 +1430,7 @@ export function DriverPanel() {
           <div className="section-head">
             <div>
               <span className="card-label">POD History</span>
-              <h2>Delivered Jobs</h2>
+              <h2>Delivered jobs</h2>
             </div>
             <StatusPill tone="neutral">{data?.podHistory?.length || 0} deliveries</StatusPill>
           </div>
@@ -1449,8 +1455,8 @@ export function DriverPanel() {
       {activeSection === "messages" && <section className="content-card" id="messages" style={{ marginBottom: 16 }}>
         <div className="section-head">
           <div>
-            <span className="card-label">In-App Messaging</span>
-            <h2>Driver ↔ Admin Support</h2>
+            <span className="card-label">In-app messaging</span>
+            <h2>Driver ↔ admin support</h2>
           </div>
           <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
             <button className="header-action-button" type="button" onClick={loadMessages}>Refresh</button>
@@ -1484,7 +1490,7 @@ export function DriverPanel() {
             disabled={!newMessage.trim() || msgSending}
             style={{ width: "auto" }}
           >
-            {msgSending ? "Sending..." : "Send To Admin"}
+            {msgSending ? "Sending..." : "Send to admin"}
           </button>
         </form>
       </section>}

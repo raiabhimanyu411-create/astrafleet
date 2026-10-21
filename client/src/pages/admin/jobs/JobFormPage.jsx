@@ -422,7 +422,7 @@ export function JobFormPage() {
   return (
     <AdminWorkspaceLayout
       badge="Job management"
-      title={isEdit ? "Edit Job" : "Add Job"}
+      title={isEdit ? "Edit job" : "Add job"}
       description="Simple job booking with automatic ETA when a saved route is selected."
       highlights={[]}
     >
@@ -448,20 +448,20 @@ export function JobFormPage() {
         ) : (
           <form className="af-form" onSubmit={handleSubmit} noValidate>
             <div className="af-section">
-              <p className="af-section-title">Client Details</p>
+              <p className="af-section-title">Client details</p>
               <div className="af-grid-2">
-                <Field label="Customer Account" hint="Optional. Select if this client already exists.">
+                <Field label="Customer account" hint="Optional. Select if this client already exists.">
                   <select className="af-select" value={fields.customer_id} onChange={e => handleCustomerChange(e.target.value)}>
-                    <option value="">No Account / Enter Manually</option>
+                    <option value="">No account / enter manually</option>
                     {formData.customers.map(c => <option key={c.id} value={c.id}>{c.company_name}</option>)}
                   </select>
                 </Field>
-                <Field label="Client Name" required error={fieldErrors.client_name}>
+                <Field label="Client name" required error={fieldErrors.client_name}>
                   <input className="af-input" type="text" placeholder="e.g. Northline Retail" value={fields.client_name} onChange={e => set("client_name", e.target.value)} aria-invalid={Boolean(fieldErrors.client_name)} />
                 </Field>
                 {selectedCustomer && (
                   <div style={{ gridColumn: "1 / -1", padding: 12, border: "1px solid #E9EBED", borderRadius: 8, background: "#FAFAFA" }}>
-                    <span className="card-label">Auto-Filled From Customer</span>
+                    <span className="card-label">Auto-filled from customer</span>
                     <p style={{ margin: "5px 0 0", color: "#424650", fontSize: "0.86rem" }}>
                       {selectedCustomer.contact_name || "Contact not set"} · {selectedCustomer.phone || "Phone not set"} · {selectedCustomer.email || "Email not set"}
                     </p>
@@ -479,39 +479,39 @@ export function JobFormPage() {
                 <Field label="Load ID">
                   <input className="af-input" type="text" placeholder="e.g. 656-953" value={fields.load_id} onChange={e => set("load_id", e.target.value)} />
                 </Field>
-                <Field label="Freight Amount (£)">
+                <Field label="Freight amount (£)">
                   <div className="af-input-prefix-wrap">
                     <span className="af-prefix">£</span>
                     <input className="af-input af-input-prefixed" type="number" min="0" step="0.01" placeholder="e.g. 1800.00" value={fields.freight_amount} onChange={e => set("freight_amount", e.target.value)} />
                   </div>
                 </Field>
-                <Field label="Goods / Load Details" required error={fieldErrors.load_description}>
+                <Field label="Goods / load details" required error={fieldErrors.load_description}>
                   <textarea className="af-input" style={{ minHeight: 38, maxHeight: 38, resize: "none", overflow: "hidden" }} placeholder="e.g. 20 pallets of retail goods" value={fields.load_description} onChange={e => set("load_description", e.target.value)} aria-invalid={Boolean(fieldErrors.load_description)} />
                 </Field>
               </div>
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 16 }}>
-                <Field label="Collection Address" required error={fieldErrors.pickup_address}>
+                <Field label="Collection address" required error={fieldErrors.pickup_address}>
                   <textarea className="af-input" style={{ minHeight: 72, resize: "vertical" }} placeholder="Full collection address" value={fields.pickup_address} onChange={e => set("pickup_address", e.target.value)} aria-invalid={Boolean(fieldErrors.pickup_address)} />
                 </Field>
-                <Field label="Collection Arrival (UK Date & Time)" hint="When the truck reaches pickup/loading. Uses UK local time." required error={fieldErrors.planned_departure}>
+                <Field label="Collection arrival (UK date & time)" hint="When the truck reaches pickup/loading. Uses UK local time." required error={fieldErrors.planned_departure}>
                   <input className="af-input" type="datetime-local" value={fields.planned_departure} onChange={e => handleArrivalChange(e.target.value)} />
                 </Field>
-                <Field label="Collection Departure (UK Time)" hint="Same date as collection arrival. Used for ETA and estimated cost." required error={fieldErrors.loading_done_time}>
+                <Field label="Collection departure (UK time)" hint="Same date as collection arrival. Used for ETA and estimated cost." required error={fieldErrors.loading_done_time}>
                   <input className="af-input" type="datetime-local" value={fields.loading_done_time} onChange={e => set("loading_done_time", e.target.value)} />
                 </Field>
-                <Field label={<>Delivery Address <span style={{ fontWeight: 700, fontSize: "0.72rem", color: "#0972D3", background: "#F0FBFF", border: "1px solid #A8D2F4", borderRadius: 20, padding: "1px 8px", marginLeft: 6, verticalAlign: "middle" }}>Stop 1</span></>} required error={fieldErrors.drop_address}>
+                <Field label={<>Delivery address <span style={{ fontWeight: 700, fontSize: "0.72rem", color: "#0972D3", background: "#F0FBFF", border: "1px solid #A8D2F4", borderRadius: 20, padding: "1px 8px", marginLeft: 6, verticalAlign: "middle" }}>Stop 1</span></>} required error={fieldErrors.drop_address}>
                   {dropOptions.length > 0 && (
                     <select className="af-select" style={{ marginBottom: 8 }} value="" onChange={e => e.target.value && set("drop_address", e.target.value)}>
-                      <option value="">Choose Saved Delivery Address</option>
+                      <option value="">Choose saved delivery address</option>
                       {dropOptions.map((address, index) => <option key={`${address}-${index}`} value={address}>{address}</option>)}
                     </select>
                   )}
                   <textarea className="af-input" style={{ minHeight: 72, resize: "vertical" }} placeholder="Full delivery address" value={fields.drop_address} onChange={e => set("drop_address", e.target.value)} aria-invalid={Boolean(fieldErrors.drop_address)} />
                 </Field>
-                <Field label="Delivery Arrival (UK Date & Time)" hint="When the truck reaches the delivery point. Auto-calculated if left blank." error={fieldErrors.delivery_arrival_time}>
+                <Field label="Delivery arrival (UK date & time)" hint="When the truck reaches the delivery point. Auto-calculated if left blank." error={fieldErrors.delivery_arrival_time}>
                   <input className="af-input" type="datetime-local" value={fields.delivery_arrival_time} onChange={e => set("delivery_arrival_time", e.target.value)} />
                 </Field>
-                <Field label="Delivery Departure (UK Time)" hint="Same date as delivery arrival. Auto-calculated if left blank." error={fieldErrors.delivery_departure_time}>
+                <Field label="Delivery departure (UK time)" hint="Same date as delivery arrival. Auto-calculated if left blank." error={fieldErrors.delivery_departure_time}>
                   <input className="af-input" type="datetime-local" value={fields.delivery_departure_time} onChange={e => set("delivery_departure_time", e.target.value)} />
                 </Field>
               </div>
@@ -519,7 +519,7 @@ export function JobFormPage() {
               <div style={{ marginTop: 16, borderTop: "1px solid #E9EBED", paddingTop: 16 }}>
                 <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
                   <p className="af-section-title" style={{ margin: 0 }}>
-                    Intermediate Stops
+                    Intermediate stops
                     {validStops.length > 0 && (
                       <span style={{ marginLeft: 8, fontSize: "0.75rem", fontWeight: 600, color: "#0972D3", background: "#F0FBFF", borderRadius: 20, padding: "2px 8px" }}>
                         {validStops.length} stop{validStops.length > 1 ? "s" : ""} · calculate route for exact miles
@@ -531,7 +531,7 @@ export function JobFormPage() {
                     className="header-action-button"
                     onClick={() => { clearRouteEstimate(); setStops(prev => [...prev, { ...emptyStop }]); }}
                   >
-                    + Add Stop
+                    + Add stop
                   </button>
                 </div>
                 {stops.length === 0 && (
@@ -554,13 +554,13 @@ export function JobFormPage() {
                       </button>
                     </div>
                     <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 16 }}>
-                      <Field label="Delivery Address" required>
+                      <Field label="Delivery address" required>
                         <textarea className="af-input" style={{ minHeight: 60, resize: "vertical" }} placeholder="Full address for this stop" value={stop.address} onChange={e => updateStop(i, { address: e.target.value }, true)} />
                       </Field>
-                      <Field label="Arrival Date & Time">
+                      <Field label="Arrival date & time">
                         <input className="af-input" type="datetime-local" value={stop.planned_arrival} onChange={e => updateStop(i, { planned_arrival: e.target.value })} />
                       </Field>
-                      <Field label="Departure Time">
+                      <Field label="Departure time">
                         <input className="af-input" type="datetime-local" value={stop.planned_departure} onChange={e => updateStop(i, { planned_departure: e.target.value })} />
                       </Field>
                     </div>
@@ -596,14 +596,14 @@ export function JobFormPage() {
                     </strong>
                   </div>
                   <div>
-                    <span className="card-label">Suggested Delivery</span>
+                    <span className="card-label">Suggested delivery</span>
                     <strong style={{ display: "block", color: "#1e3a8a" }}>{displayDateTime(etaPreview)}</strong>
                   </div>
                 </div>
                 {(!selectedRoute || validStops.length > 0) && (
                   <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 14, flexWrap: "wrap" }}>
                     <button className="header-action-button" type="button" disabled={estimateBusy} onClick={calculateRouteEstimate}>
-                      {estimateBusy ? "Calculating..." : validStops.length > 0 ? "Calculate With Stops" : "Calculate Distance"}
+                      {estimateBusy ? "Calculating..." : validStops.length > 0 ? "Calculate with stops" : "Calculate distance"}
                     </button>
                     {routeEstimate && (
                       <span style={{ color: "#1e40af", fontSize: "0.84rem", fontWeight: 700 }}>
@@ -619,9 +619,9 @@ export function JobFormPage() {
 
             {/* ── Time Calculation Section ── */}
             <div className="af-section">
-              <p className="af-section-title">Time & Cost Calculation</p>
+              <p className="af-section-title">Time & cost calculation</p>
               <div className="af-grid-2">
-                <Field label="Loading Duration (Minutes)" hint="Default: 90 min. Included in driver cost.">
+                <Field label="Loading duration (minutes)" hint="Default: 90 min. Included in driver cost.">
                   <input
                     className="af-input"
                     type="number"
@@ -632,7 +632,7 @@ export function JobFormPage() {
                     onChange={e => set("loading_duration_mins", e.target.value)}
                   />
                 </Field>
-                <Field label="Unloading Duration (Minutes)" hint="Default: 90 min. Included in driver cost.">
+                <Field label="Unloading duration (minutes)" hint="Default: 90 min. Included in driver cost.">
                   <input
                     className="af-input"
                     type="number"
@@ -655,22 +655,22 @@ export function JobFormPage() {
                     </div>
                     <div className="job-timing-sep">→</div>
                     <div className="job-timing-item">
-                      <span className="job-timing-label">Travel Time</span>
+                      <span className="job-timing-label">Travel time</span>
                       <strong>{fmtMins(timingCalc?.travelMins)}</strong>
                       <small>{routeEstimate ? "Road-route estimate" : "Saved route duration"}</small>
                     </div>
                     <div className="job-timing-sep">→</div>
                     <div className="job-timing-item">
-                      <span className="job-timing-label">Arrive At Drop</span>
+                      <span className="job-timing-label">Arrive at drop</span>
                       <strong>{fields.delivery_arrival_time ? formatUkWall(fields.delivery_arrival_time) : timingCalc ? formatUkWall(ukNow(timingCalc.arrival)) : "—"}</strong>
                     </div>
                     <div className="job-timing-sep">→</div>
                     <div className="job-timing-item">
-                      <span className="job-timing-label">Depart Drop</span>
+                      <span className="job-timing-label">Depart drop</span>
                       <strong>{fields.delivery_departure_time ? formatUkWall(fields.delivery_departure_time) : timingCalc ? formatUkWall(ukNow(timingCalc.unloadEnd)) : "—"}</strong>
                     </div>
                     <div className="job-timing-total">
-                      <span className="job-timing-label">Total Job Time</span>
+                      <span className="job-timing-label">Total job time</span>
                       <strong>{fmtMins(estimatedTotalMins)}</strong>
                       <small>Collection arrival through final scheduled departure</small>
                     </div>
@@ -685,7 +685,7 @@ export function JobFormPage() {
               {/* Cost preview */}
               {costCalc && (
                 <div className="job-economics-card" style={{ marginTop: 16 }}>
-                  <div className="job-economics-title">Job Cost Estimate</div>
+                  <div className="job-economics-title">Job cost estimate</div>
                   <div className="job-economics-grid">
                     <div className="job-economics-row">
                       <span>Fuel ({distanceMiles?.toFixed(1)} mi × {fmtGBP(costCalc.fuelCostPerMile)}/mi)</span>
@@ -701,12 +701,12 @@ export function JobFormPage() {
                     </div>
                     {costCalc.tollCost > 0 && (
                       <div className="job-economics-row">
-                        <span>Route Toll Estimate</span>
+                        <span>Route toll estimate</span>
                         <strong>{fmtGBP(costCalc.tollCost)}</strong>
                       </div>
                     )}
                     <div className="job-economics-row total">
-                      <span>Total Cost</span>
+                      <span>Total cost</span>
                       <strong>{fmtGBP(costCalc.totalCost)}</strong>
                     </div>
                     <div className="job-economics-row suggested">
@@ -739,7 +739,7 @@ export function JobFormPage() {
                 Cancel
               </button>
               <button type="submit" className="af-submit-btn" disabled={submitting}>
-                {submitting ? "Saving..." : isEdit ? "Save Changes →" : "Create Job →"}
+                {submitting ? "Saving..." : isEdit ? "Save changes →" : "Create job →"}
               </button>
             </div>
           </form>

@@ -1,4 +1,5 @@
 const db = require("../db/connection");
+const { releaseTrailer, releaseVehicle, setTrailerStatus, setVehicleStatus } = require("../utils/assetStatus");
 const { ukDaysUntil } = require("../utils/maintenanceDates");
 const { verifySessionToken } = require("./authController");
 const { emitDriverChatMessage, emitDriverLocationUpdate, emitJobUpdate } = require("../realtime");
@@ -665,7 +666,7 @@ exports.getMyDriverPanel = async (req, res) => {
 
     res.json({
       header: {
-        badge: "Driver Panel",
+        badge: "Driver panel",
         title: `Welcome, ${driver.full_name || driver.user_name || "Driver"}`,
         description: "Today duties, assigned jobs, route details, status updates, POD, shifts, expenses, and defect reports."
       },
@@ -828,9 +829,9 @@ exports.updateMyJobStatus = async (req, res) => {
 
     if (job.vehicle_id && dispatchStatus) {
       const vehicleStatus = dispatchStatus === "active" ? "in_transit" : dispatchStatus === "completed" || dispatchStatus === "blocked" ? "available" : "planned";
-      await db.query(`UPDATE vehicles SET status=? WHERE id=?`, [vehicleStatus, job.vehicle_id]);
+      await setVehicleStatus(db, job.vehicle_id, vehicleStatus, jobId);
     }
-    if (job.trailer_id && dispatchStatus) await db.query('UPDATE trailers SET status=? WHERE id=?', [['active','loading'].includes(dispatchStatus) ? 'in_use' : ['blocked','completed'].includes(dispatchStatus) ? 'available' : 'planned', job.trailer_id]);
+    if (job.trailer_id && dispatchStatus) await setTrailerStatus(db, job.trailer_id, ['active','loading'].includes(dispatchStatus) ? 'in_use' : ['blocked','completed'].includes(dispatchStatus) ? 'available' : 'planned', jobId);
 
     if (status === "failed_delivery" || status === "declined") {
       await createControlRoomAlert({
@@ -926,9 +927,9 @@ exports.submitMyProofOfDelivery = async (req, res) => {
       );
     }
     if (job.vehicle_id) {
-      await db.query(`UPDATE vehicles SET status='available' WHERE id=?`, [job.vehicle_id]);
+      await releaseVehicle(db, job.vehicle_id, jobId);
     }
-    if (job.trailer_id) await db.query(`UPDATE trailers SET status='available' WHERE id=?`, [job.trailer_id]);
+    if (job.trailer_id) await releaseTrailer(db, job.trailer_id, jobId);
 
     await snapshotCostSettings(db, jobId);
 

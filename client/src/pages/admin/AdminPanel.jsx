@@ -9,7 +9,7 @@ import { AdminWorkspaceLayout } from "./AdminWorkspaceLayout";
 import { DriverChatWidget } from "./DriverChatWidget";
 import "./AdminOverview.css";
 import { ColumnChart, FleetMap, formatGbp, SERIES, StatusMeter } from "./OverviewCharts";
-import { getAuthSession, saveAuthSession } from "../../utils/authSession";
+import { firstNameOf, getAuthSession, saveAuthSession, useAuthSession } from "../../utils/authSession";
 
 const overviewStatRoutes = {
   "total bookings / jobs": "/admin/jobs",
@@ -26,9 +26,8 @@ const overviewStatRoutes = {
   "profit / loss": "/admin/finance"
 };
 
-// Four headline numbers ride in the hero band; the rest sit in a compact tile strip.
-const heroMetricLabels = ["Active trips", "Delayed deliveries", "Available vehicles", "Profit / loss"];
-const tileMetricLabels = ["Total bookings / jobs", "Pending trips", "Completed trips", "Cancelled trips", "Available drivers", "Today's revenue", "Pending invoices", "Fuel expense"];
+// Only the four numbers people act on every day; everything else lives on its own page.
+const kpiLabels = ["Active trips", "Delayed deliveries", "Available vehicles", "Profit / loss"];
 
 const metricDisplayLabels = {
   "Total bookings / jobs": "Total jobs",
@@ -89,31 +88,18 @@ function OvBadge({ tone = "neutral", children }) {
   return <span className={`ov-badge ${tone || "neutral"}`}>{children}</span>;
 }
 
-function OvMetric({ item, label }) {
+function KpiCard({ item, label }) {
   if (!item) return null;
   const route = overviewStatRoutes[label.toLowerCase()] || "/admin/activity";
   const flagged = attentionLabels.has(label) && !isZero(item.value);
   return (
-    <Link className={`ov-tile${flagged ? ` flagged ${item.tone || "warning"}` : ""}`} to={route} aria-label={`${item.label}: ${item.value}. Open details`}>
-      <span className="ov-tile-icon"><MetricIcon label={label} /></span>
-      <span className="ov-tile-text">
-        <span className="ov-tile-label">{metricDisplayLabels[label] || item.label}</span>
-        <strong className="ov-tile-value">{item.value}</strong>
+    <Link className={`ov-kpi${flagged ? " flagged" : ""}`} to={route} aria-label={`${item.label}: ${item.value}. Open details`}>
+      <span className="ov-kpi-top">
+        <span className="ov-kpi-label">{metricDisplayLabels[label] || item.label}</span>
+        <span className="ov-kpi-icon"><MetricIcon label={label} /></span>
       </span>
-    </Link>
-  );
-}
-
-function HeroMetric({ item, label }) {
-  if (!item) return null;
-  const route = overviewStatRoutes[label.toLowerCase()] || "/admin/activity";
-  const flagged = attentionLabels.has(label) && !isZero(item.value);
-  return (
-    <Link className={`ov-hero-metric${flagged ? " flagged" : ""}`} to={route} aria-label={`${item.label}: ${item.value}. Open details`}>
-      <span className="ov-hero-metric-icon"><MetricIcon label={label} /></span>
-      <span className="ov-hero-metric-label">{metricDisplayLabels[label] || item.label}</span>
-      <strong>{item.value}</strong>
-      <small>{item.description}</small>
+      <strong className="ov-kpi-value">{item.value}</strong>
+      {item.description && <small className="ov-kpi-hint">{item.description}</small>}
     </Link>
   );
 }
@@ -248,9 +234,10 @@ function AdminProfileSettings() {
 export function AdminPanel() {
   const { data, error, loading, refetch } = usePanelData("/api/admin/overview");
   const [lastSync, setLastSync] = useState(null);
+  const [chartView, setChartView] = useState("jobs");
   const statsByLabel = new Map((data?.stats || []).map((item) => [item.label, item]));
-  const session = getAuthSession();
-  const firstName = String(session?.name || "").trim().split(/\s+/)[0];
+  const session = useAuthSession();
+  const firstName = firstNameOf(session?.name);
   const now = lastSync || new Date();
 
   const alerts = data?.alerts || [];
@@ -314,102 +301,38 @@ export function AdminPanel() {
       className="overview-page-shell"
     >
       <div className="ov-page">
-        <section className="ov-hero" aria-label="Today">
-          <svg className="ov-hero-art" viewBox="0 0 600 200" preserveAspectRatio="none" aria-hidden="true">
-            <path d="M-20 160 C 120 60, 220 190, 340 110 S 560 40, 640 90" />
-            <path d="M-20 190 C 140 110, 260 220, 380 140 S 580 90, 640 130" />
-            <circle cx="340" cy="110" r="5" />
-            <circle cx="560" cy="58" r="5" />
-          </svg>
-          <div className="ov-hero-top">
-            <div>
-              <p className="ov-hero-date">{ukDateLabel.format(now)} · UK time</p>
-              <h1>{greeting(now)}{firstName ? `, ${firstName}` : ""}</h1>
-              <p className="ov-hero-summary">{summaryParts.join(" · ")}</p>
-            </div>
-            <div className="ov-hero-actions">
-              <Link className="ov-hero-btn primary" to="/admin/jobs/new">
-                <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M10 4v12M4 10h12" /></svg>
-                New job
-              </Link>
-              <Link className="ov-hero-btn" to="/admin/trips">Dispatch</Link>
-              <Link className="ov-hero-btn" to="/admin/tracking">Live map</Link>
-              <button className="ov-hero-btn ghost" type="button" onClick={() => refetch(false)}>
-                <span className="ov-live-dot" aria-hidden="true" />
-                {lastSync ? `Updated ${ukTimeLabel.format(lastSync)}` : "Connecting…"}
-              </button>
-            </div>
+        <header className="ov-head">
+          <div className="ov-head-text">
+            <p className="ov-head-date">{ukDateLabel.format(now)} · UK time</p>
+            <h1>{greeting(now)}{firstName ? `, ${firstName}` : ""}</h1>
+            <p className="ov-head-summary">{summaryParts.join(" · ")}</p>
           </div>
-          <div className="ov-hero-metrics">
-            {heroMetricLabels.map((label) => <HeroMetric item={statsByLabel.get(label)} key={label} label={label} />)}
+          <div className="ov-head-actions">
+            <button className="ov-sync" type="button" onClick={() => refetch(false)} title="Refresh now">
+              <span className="ov-live-dot" aria-hidden="true" />
+              {lastSync ? `Updated ${ukTimeLabel.format(lastSync)}` : "Connecting…"}
+            </button>
+            <Link className="ov-btn" to="/admin/tracking">Live map</Link>
+            <Link className="ov-btn" to="/admin/trips">Dispatch</Link>
+            <Link className="ov-btn primary" to="/admin/jobs/new">
+              <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M10 4v12M4 10h12" /></svg>
+              New job
+            </Link>
           </div>
-        </section>
+        </header>
 
         <StateNotice loading={loading && !data} error={error} />
 
-        <section className="ov-tiles" aria-label="More metrics">
-          {tileMetricLabels.map((label) => <OvMetric item={statsByLabel.get(label)} key={label} label={label} />)}
+        <section className="ov-kpis" aria-label="Today at a glance">
+          {kpiLabels.map((label) => <KpiCard item={statsByLabel.get(label)} key={label} label={label} />)}
         </section>
 
-        <div className="ov-charts">
-          <OvCard title="Jobs per month" to="/admin/jobs" linkLabel="All jobs">
-            <p className="ov-card-sub">{yearJobs} {yearJobs === 1 ? "job" : "jobs"} in the last 12 months</p>
-            <div className="ov-legend">
-              <span><i style={{ background: SERIES[0] }} />Completed</span>
-              <span><i style={{ background: SERIES[1] }} />Not completed</span>
-            </div>
-            <ColumnChart
-              data={trendJobs}
-              series={[
-                { key: "completed", label: "Completed", color: SERIES[0] },
-                { key: "open", label: "Not completed", color: SERIES[1] }
-              ]}
-              formatAxis={(v) => (Number.isInteger(v) ? String(v) : "")}
-              ariaLabel="Jobs per month for the last 12 months, completed and not completed"
-            />
-          </OvCard>
-          <OvCard title="Invoiced revenue" to="/admin/billing" linkLabel="Billing">
-            <p className="ov-card-sub">{formatGbp(yearInvoiced)} invoiced in the last 12 months</p>
-            <ColumnChart
-              data={trend}
-              series={[{ key: "invoiced", label: "Invoiced", color: SERIES[0] }]}
-              formatValue={(v) => formatGbp(v)}
-              formatAxis={(v) => formatGbp(v, true)}
-              ariaLabel="Invoiced revenue per month for the last 12 months"
-            />
-          </OvCard>
-        </div>
-
-        <div className="ov-fleet">
-          <OvCard title="Live fleet" count={fleetMap.length} to="/admin/tracking" linkLabel="Open live map" className="ov-map-card">
-            <FleetMap points={fleetMap} />
-          </OvCard>
-          <OvCard title="Fleet availability" to="/admin/vehicles" linkLabel="Vehicles" className="ov-availability">
-            <StatusMeter
-              parts={[
-                { label: "Available", value: fleetCounts.available, color: "#0ca30c" },
-                { label: "On a job", value: fleetCounts.onJob, color: SERIES[0] },
-                { label: "Off road", value: fleetCounts.offRoad, color: "#d03b3b" }
-              ]}
-            />
-            <ul className="ov-truck-list">
-              {trackingBoard.slice(0, 5).map((truck) => (
-                <li key={truck.truck}>
-                  <span className="ov-plate">{truck.truck}</span>
-                  <span className="ov-truck-driver">{truck.driver}</span>
-                  <OvBadge tone={truck.tone}>{truck.status}</OvBadge>
-                </li>
-              ))}
-            </ul>
-          </OvCard>
-        </div>
-
-        <div className="ov-layout">
+        <div className="ov-grid">
           <div className="ov-col">
-            <OvCard title="Needs attention" count={alerts.length} to="/admin/alerts" className="ov-attention">
+            <OvCard title="Needs attention" count={alerts.length} to="/admin/alerts">
               {alerts.length ? (
                 <ul className="ov-attention-list">
-                  {alerts.slice(0, 6).map((alert, index) => (
+                  {alerts.slice(0, 5).map((alert, index) => (
                     <li className={`ov-attention-item ${alert.tone || "warning"}`} key={`${alert.title}-${index}`}>
                       <span className="ov-attention-icon"><AttentionIcon tone={alert.tone} /></span>
                       <div>
@@ -447,9 +370,73 @@ export function AdminPanel() {
                 !loading && <OvEmpty>No open trips in the dispatch queue.</OvEmpty>
               )}
             </OvCard>
+
+            <section className="ov-card">
+              <header className="ov-card-head">
+                <div>
+                  <h2>Last 12 months</h2>
+                  <p className="ov-card-sub">
+                    {chartView === "jobs"
+                      ? `${yearJobs} ${yearJobs === 1 ? "job" : "jobs"} booked`
+                      : `${formatGbp(yearInvoiced)} invoiced`}
+                  </p>
+                </div>
+                <div className="ov-segment" role="tablist" aria-label="Chart">
+                  <button type="button" role="tab" aria-selected={chartView === "jobs"} className={chartView === "jobs" ? "active" : ""} onClick={() => setChartView("jobs")}>Jobs</button>
+                  <button type="button" role="tab" aria-selected={chartView === "revenue"} className={chartView === "revenue" ? "active" : ""} onClick={() => setChartView("revenue")}>Revenue</button>
+                </div>
+              </header>
+              {chartView === "jobs" ? (
+                <>
+                  <div className="ov-legend">
+                    <span><i style={{ background: SERIES[0] }} />Completed</span>
+                    <span><i style={{ background: SERIES[1] }} />Not completed</span>
+                  </div>
+                  <ColumnChart
+                    data={trendJobs}
+                    height={200}
+                    series={[
+                      { key: "completed", label: "Completed", color: SERIES[0] },
+                      { key: "open", label: "Not completed", color: SERIES[1] }
+                    ]}
+                    formatAxis={(v) => (Number.isInteger(v) ? String(v) : "")}
+                    ariaLabel="Jobs per month for the last 12 months, completed and not completed"
+                  />
+                </>
+              ) : (
+                <ColumnChart
+                  data={trend}
+                  height={200}
+                  series={[{ key: "invoiced", label: "Invoiced", color: SERIES[0] }]}
+                  formatValue={(v) => formatGbp(v)}
+                  formatAxis={(v) => formatGbp(v, true)}
+                  ariaLabel="Invoiced revenue per month for the last 12 months"
+                />
+              )}
+            </section>
           </div>
 
-          <div className="ov-col ov-side">
+          <div className="ov-col">
+            <OvCard title="Fleet" count={trackingBoard.length} to="/admin/tracking" linkLabel="Live map" className="ov-fleet-card">
+              <StatusMeter
+                parts={[
+                  { label: "Available", value: fleetCounts.available, color: "#0ca30c" },
+                  { label: "On a job", value: fleetCounts.onJob, color: SERIES[0] },
+                  { label: "Off road", value: fleetCounts.offRoad, color: "#d03b3b" }
+                ]}
+              />
+              <FleetMap points={fleetMap} />
+              <ul className="ov-truck-list">
+                {trackingBoard.slice(0, 4).map((truck) => (
+                  <li key={truck.truck}>
+                    <span className="ov-plate">{truck.truck}</span>
+                    <span className="ov-truck-driver">{truck.driver}</span>
+                    <OvBadge tone={truck.tone}>{truck.status}</OvBadge>
+                  </li>
+                ))}
+              </ul>
+            </OvCard>
+
             <OvCard title="Driver compliance" count={driverQueue.length} to="/admin/drivers">
               {driverQueue.length ? (
                 <ul className="ov-list">
@@ -489,8 +476,8 @@ export function AdminPanel() {
               )}
             </OvCard>
 
-            <OvCard title="Employee approvals" count={pendingEmployees.length} to="/admin/employees" linkLabel="Manage">
-              {pendingEmployees.length ? (
+            {pendingEmployees.length > 0 && (
+              <OvCard title="Employee approvals" count={pendingEmployees.length} to="/admin/employees" linkLabel="Manage">
                 <ul className="ov-list">
                   {pendingEmployees.slice(0, 4).map((employee) => (
                     <li key={employee.id}>
@@ -502,10 +489,8 @@ export function AdminPanel() {
                     </li>
                   ))}
                 </ul>
-              ) : (
-                !loading && <OvEmpty>No registrations waiting for review.</OvEmpty>
-              )}
-            </OvCard>
+              </OvCard>
+            )}
           </div>
         </div>
 

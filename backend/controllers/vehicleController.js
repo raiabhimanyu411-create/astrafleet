@@ -1,6 +1,7 @@
 const db = require("../db/connection");
 const { ukDaysUntil } = require("../utils/maintenanceDates");
 const { buildChangeSet, logActivity } = require("../utils/auditLogger");
+const { settingNumber } = require("./settingsController");
 
 const vehicleColumns = [
   ["make", "make VARCHAR(80) DEFAULT NULL"],
@@ -182,9 +183,9 @@ function vehicleComplianceAssessment(vehicle) {
     if (days < 0) {
       tone = "danger";
       reasons.push(`${label} expired`);
-    } else if (days <= 30) {
+    } else if (days <= settingNumber("due_soon_days")) {
       if (tone !== "danger") tone = "warning";
-      reasons.push(`${label} due within 30 days`);
+      reasons.push(`${label} due within ${settingNumber("due_soon_days")} days`);
     } else if (days < 90) {
       if (tone === "success") tone = "warning";
       reasons.push(`${label} due within 90 days`);
@@ -652,7 +653,7 @@ exports.createVehicle = async (req, res) => {
         mot_expiry || null, insurance_expiry || null, road_tax_expiry || null,
         permit_expiry || null, pollution_expiry || null, fitness_expiry || null,
         odometer_reading || null, next_service_due || null,
-        company_name || null, inspection_frequency_weeks ? Number(inspection_frequency_weeks) : 6
+        company_name || null, inspection_frequency_weeks ? Number(inspection_frequency_weeks) : settingNumber("new_vehicle_inspection_weeks")
       ]
     );
 
@@ -745,7 +746,7 @@ exports.updateVehicle = async (req, res) => {
         mot_expiry || null, insurance_expiry || null, road_tax_expiry || null,
         permit_expiry || null, pollution_expiry || null, fitness_expiry || null, odometer_reading || null,
         next_service_due || null, current_location || null,
-        company_name || null, inspection_frequency_weeks ? Number(inspection_frequency_weeks) : 6,
+        company_name || null, inspection_frequency_weeks ? Number(inspection_frequency_weeks) : (existing.inspection_frequency_weeks || 6),
         id
       ]
     );

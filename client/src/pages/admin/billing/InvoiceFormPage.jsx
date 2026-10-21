@@ -3,6 +3,7 @@ import { useNavigate, useParams } from "react-router-dom";
 import { createInvoice, getBillingFormData, getInvoiceById, updateInvoice } from "../../../api/adminApi";
 import { AdminWorkspaceLayout } from "../AdminWorkspaceLayout";
 import { ukNow } from "../../../utils/ukJobTime";
+import { getSettingsDefaults } from "../../../api/settingsApi";
 
 const empty = {
   invoice_no: "",
@@ -50,16 +51,24 @@ export function InvoiceFormPage() {
   const [loadError, setLoadError] = useState("");
   const [submitError, setSubmitError] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  // Payment terms from admin Settings, used when the customer has none of their own.
+  const [defaultTermsDays, setDefaultTermsDays] = useState(30);
 
   useEffect(() => {
     Promise.all([
       getBillingFormData(),
-      isEdit ? getInvoiceById(id) : Promise.resolve(null)
+      isEdit ? getInvoiceById(id) : Promise.resolve(null),
+      getSettingsDefaults().catch(() => null)
     ])
-      .then(([fdRes, invoiceRes]) => {
+      .then(([fdRes, invoiceRes, defaultsRes]) => {
         setFormData(fdRes.data);
+        const defaults = defaultsRes?.data;
+        if (defaults?.invoicePaymentTermsDays) setDefaultTermsDays(defaults.invoicePaymentTermsDays);
         if (invoiceRes) {
           setFields(invoiceRes.data.form);
+        } else if (defaults && Number.isFinite(defaults.invoiceVatRate)) {
+          // New invoice only: start from the admin's default VAT rate.
+          setFields(prev => ({ ...prev, vat_rate: String(defaults.invoiceVatRate) }));
         }
       })
       .catch(() => setLoadError("Billing form data could not be loaded."))
@@ -78,7 +87,7 @@ export function InvoiceFormPage() {
   function handleTripChange(value) {
     const trip = formData.trips.find(item => String(item.id) === value);
     const issuedDate = new Date(`${fields.issued_at}T12:00:00`);
-    issuedDate.setDate(issuedDate.getDate() + Number(trip?.paymentTermsDays || 30));
+    issuedDate.setDate(issuedDate.getDate() + Number(trip?.paymentTermsDays || defaultTermsDays));
     setFields(prev => ({
       ...prev,
       trip_id: value,
@@ -88,7 +97,7 @@ export function InvoiceFormPage() {
       net_amount_gbp: trip?.freightAmountGbp || prev.net_amount_gbp,
       service_description: trip ? `Road freight transport · ${trip.tripCode} · ${trip.lane}` : prev.service_description,
       due_date: trip ? issuedDate.toISOString().slice(0, 10) : prev.due_date,
-      payment_terms: trip ? `Net ${trip.paymentTermsDays || 30} days` : prev.payment_terms,
+      payment_terms: trip ? `Net ${trip.paymentTermsDays || defaultTermsDays} days` : prev.payment_terms,
       pod_verified: trip?.podStatus === "verified" ? true : prev.pod_verified
     }));
   }
@@ -128,8 +137,8 @@ export function InvoiceFormPage() {
 
   return (
     <AdminWorkspaceLayout
-      badge="Invoicing & Billing"
-      title={isEdit ? "Edit Invoice" : "Create Invoice"}
+      badge="Invoicing & billing"
+      title={isEdit ? "Edit invoice" : "Create invoice"}
       description={isEdit ? "Update invoice amount, due date, POD verification, and payment status." : "Raise a freight invoice and optionally link it to a dispatch trip."}
       highlights={[]}
     >
@@ -155,14 +164,14 @@ export function InvoiceFormPage() {
         ) : (
           <form className="af-form" onSubmit={handleSubmit}>
             <div className="af-section">
-              <p className="af-section-title">Invoice Details</p>
+              <p className="af-section-title">Invoice details</p>
               <div className="af-grid-3">
-                <Field label="Invoice Number">
+                <Field label="Invoice number">
                   <input className="af-input" value={fields.invoice_no} onChange={e => set("invoice_no", e.target.value.toUpperCase())} placeholder="e.g. INV-5001" required />
                 </Field>
-                <Field label="Linked Trip" hint={selectedTrip ? `${selectedTrip.lane} · POD ${selectedTrip.podStatus}` : "Optional, but useful for POD tracking"}>
+                <Field label="Linked trip" hint={selectedTrip ? `${selectedTrip.lane} · POD ${selectedTrip.podStatus}` : "Optional, but useful for POD tracking"}>
                   <select className="af-select" value={fields.trip_id || ""} onChange={e => handleTripChange(e.target.value)}>
-                    <option value="">No Linked Trip</option>
+                    <option value="">No linked trip</option>
                     {formData.trips.map(trip => (
                       <option key={trip.id} value={trip.id}>
                         {trip.tripCode} · {trip.clientName || "Internal dispatch"}
@@ -170,34 +179,34 @@ export function InvoiceFormPage() {
                     ))}
                   </select>
                 </Field>
-                <Field label="Client Name">
+                <Field label="Client name">
                   <input className="af-input" value={fields.client_name} onChange={e => set("client_name", e.target.value)} placeholder="Customer or billing entity" required />
                 </Field>
-                <Field label="Customer Billing Address">
+                <Field label="Customer billing address">
                   <textarea className="af-input" value={fields.customer_address || ""} onChange={e => set("customer_address", e.target.value)} placeholder="Registered or billing address" required={fields.payment_status !== "draft"} />
                 </Field>
-                <Field label="Customer VAT Number" hint="Required where applicable">
+                <Field label="Customer VAT number" hint="Required where applicable">
                   <input className="af-input" value={fields.customer_vat_number || ""} onChange={e => set("customer_vat_number", e.target.value.toUpperCase())} placeholder="GB 123 4567 89" />
                 </Field>
-                <Field label="Supplier Legal Name">
+                <Field label="Supplier legal name">
                   <input className="af-input" value={fields.supplier_name || ""} onChange={e => set("supplier_name", e.target.value)} required={fields.payment_status !== "draft"} />
                 </Field>
-                <Field label="Supplier Address">
+                <Field label="Supplier address">
                   <textarea className="af-input" value={fields.supplier_address || ""} onChange={e => set("supplier_address", e.target.value)} placeholder="Registered business address" required={fields.payment_status !== "draft"} />
                 </Field>
-                <Field label="Supplier VAT Number">
+                <Field label="Supplier VAT number">
                   <input className="af-input" value={fields.supplier_vat_number || ""} onChange={e => set("supplier_vat_number", e.target.value.toUpperCase())} placeholder="GB 123 4567 89" />
                 </Field>
-                <Field label="Service Description">
+                <Field label="Service description">
                   <textarea className="af-input" value={fields.service_description || ""} onChange={e => set("service_description", e.target.value)} required={fields.payment_status !== "draft"} />
                 </Field>
-                <Field label="Supply / Tax Point Date">
+                <Field label="Supply / tax point date">
                   <input className="af-input" type="date" value={fields.supply_date || ""} onChange={e => set("supply_date", e.target.value)} required={fields.payment_status !== "draft"} />
                 </Field>
-                <Field label="Customer PO Reference">
+                <Field label="Customer PO reference">
                   <input className="af-input" value={fields.purchase_order_ref || ""} onChange={e => set("purchase_order_ref", e.target.value)} placeholder="Optional PO / booking reference" />
                 </Field>
-                <Field label="Net Amount (£)">
+                <Field label="Net amount (£)">
                   <input className="af-input" type="number" min="0.01" step="0.01" value={fields.net_amount_gbp} onChange={e => set("net_amount_gbp", e.target.value)} required />
                 </Field>
                 <Field label="VAT Rate">
@@ -210,16 +219,16 @@ export function InvoiceFormPage() {
                 <Field label="VAT Amount">
                   <input className="af-input" value={`£${vatAmount.toFixed(2)}`} readOnly />
                 </Field>
-                <Field label="Total Due">
+                <Field label="Total due">
                   <input className="af-input" value={`£${grossAmount.toFixed(2)}`} readOnly />
                 </Field>
-                <Field label="Issued Date">
+                <Field label="Issued date">
                   <input className="af-input" type="date" value={fields.issued_at} onChange={e => set("issued_at", e.target.value)} required />
                 </Field>
-                <Field label="Due Date">
+                <Field label="Due date">
                   <input className="af-input" type="date" value={fields.due_date} onChange={e => set("due_date", e.target.value)} required />
                 </Field>
-                <Field label="Payment Status">
+                <Field label="Payment status">
                   <select className="af-select" value={fields.payment_status} onChange={e => set("payment_status", e.target.value)}>
                     <option value="draft">Draft</option>
                     <option value="sent">Sent</option>
@@ -237,10 +246,10 @@ export function InvoiceFormPage() {
                 </Field>
               </div>
               <div className="af-grid-3">
-                <Field label="Payment Terms">
+                <Field label="Payment terms">
                   <input className="af-input" value={fields.payment_terms || ""} onChange={e => set("payment_terms", e.target.value)} />
                 </Field>
-                <Field label="Bank / Remittance Details">
+                <Field label="Bank / remittance details">
                   <textarea className="af-input" value={fields.bank_details || ""} onChange={e => set("bank_details", e.target.value)} placeholder="Account name, sort code and account number" />
                 </Field>
               </div>
@@ -261,7 +270,7 @@ export function InvoiceFormPage() {
                 Cancel
               </button>
               <button className="af-submit-btn" type="submit" disabled={submitting}>
-                {submitting ? "Saving..." : isEdit ? "Save Invoice →" : "Create Invoice →"}
+                {submitting ? "Saving..." : isEdit ? "Save invoice →" : "Create invoice →"}
               </button>
             </div>
           </form>

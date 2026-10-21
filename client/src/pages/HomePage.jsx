@@ -6,261 +6,127 @@ import { getAuthSession, saveAuthSession } from "../utils/authSession";
 import { gpsErrorMessage, positionToPayload, requestDriverGpsAccess } from "../utils/driverGps";
 import astraLogo from "../../images/Logo1.png";
 
-function BrandLogo({ compact = false }) {
+/* Icons use currentColor so CSS controls their colour. */
+function Svg({ size = 18, children, ...rest }) {
   return (
-    <img
-      className={`lp-logo-img${compact ? " compact" : ""}`}
-      src={astraLogo}
-      alt="AstraFleet TMS"
-    />
-  );
-}
-
-function TruckIllustration() {
-  return (
-    <svg viewBox="0 0 580 210" fill="none" xmlns="http://www.w3.org/2000/svg" className="truck-svg">
-      {/* Ground shadow */}
-      <ellipse cx="290" cy="196" rx="260" ry="8" fill="rgba(0,0,0,0.3)" />
-
-      {/* Road */}
-      <rect x="0" y="188" width="580" height="22" rx="0" fill="rgba(0,0,0,0.25)" />
-      {/* Road dashes */}
-      {[40, 100, 160, 220, 280, 340, 400, 460, 520].map((x) => (
-        <rect key={x} x={x} y="197" width="40" height="4" rx="2" fill="rgba(255,255,255,0.12)" />
-      ))}
-
-      {/* ── Trailer ── */}
-      {/* Trailer main body */}
-      <rect x="22" y="78" width="358" height="108" rx="5" fill="rgba(255,255,255,0.10)" stroke="rgba(255,255,255,0.22)" strokeWidth="1.5" />
-      {/* Trailer top highlight */}
-      <rect x="22" y="78" width="358" height="8" rx="5" fill="rgba(255,255,255,0.08)" />
-      {/* Trailer bottom rail */}
-      <rect x="22" y="174" width="358" height="6" rx="2" fill="rgba(255,255,255,0.14)" />
-      {/* Trailer ribs */}
-      {[70, 116, 162, 208, 254, 300, 346].map((x) => (
-        <line key={x} x1={x} y1="86" x2={x} y2="180" stroke="rgba(255,255,255,0.07)" strokeWidth="1.5" />
-      ))}
-      {/* Trailer rear door */}
-      <rect x="24" y="80" width="28" height="102" rx="2" fill="rgba(255,255,255,0.05)" stroke="rgba(255,255,255,0.14)" strokeWidth="1" />
-      {/* Rear door handle */}
-      <rect x="33" y="126" width="10" height="4" rx="2" fill="rgba(255,255,255,0.3)" />
-
-      {/* ── Hitch / Kingpin connector ── */}
-      <rect x="374" y="120" width="24" height="30" rx="3" fill="rgba(255,255,255,0.10)" stroke="rgba(255,255,255,0.18)" strokeWidth="1" />
-      <rect x="380" y="144" width="12" height="12" rx="2" fill="rgba(255,255,255,0.12)" />
-
-      {/* ── Cab ── */}
-      {/* Cab main body */}
-      <path
-        d="M396 186 L396 88 Q398 70 418 62 L490 62 Q508 62 516 74 L524 88 L524 186 Z"
-        fill="rgba(255,255,255,0.11)"
-        stroke="rgba(255,255,255,0.24)"
-        strokeWidth="1.5"
-      />
-      {/* Cab top highlight */}
-      <path d="M418 63 Q445 58 490 62 Q508 62 516 74 L510 68 Q502 62 490 63 Q460 59 418 63 Z" fill="rgba(255,255,255,0.08)" />
-
-      {/* Windshield */}
-      <path
-        d="M490 64 L516 78 L516 118 L490 110 Z"
-        fill="rgba(147,197,253,0.18)"
-        stroke="rgba(255,255,255,0.2)"
-        strokeWidth="1"
-      />
-      {/* Windshield glare */}
-      <path d="M492 66 L508 75 L508 90 L492 83 Z" fill="rgba(255,255,255,0.07)" />
-
-      {/* Cab door */}
-      <rect x="398" y="100" width="84" height="76" rx="3" fill="rgba(255,255,255,0.04)" stroke="rgba(255,255,255,0.12)" strokeWidth="1" />
-      {/* Door window */}
-      <rect x="402" y="104" width="72" height="38" rx="3" fill="rgba(147,197,253,0.14)" stroke="rgba(255,255,255,0.14)" strokeWidth="1" />
-      {/* Window frame top */}
-      <rect x="402" y="104" width="72" height="4" rx="2" fill="rgba(255,255,255,0.06)" />
-      {/* Door handle */}
-      <rect x="472" y="146" width="12" height="4" rx="2" fill="rgba(255,255,255,0.28)" />
-
-      {/* Side mirror */}
-      <rect x="516" y="72" width="18" height="12" rx="3" fill="rgba(255,255,255,0.18)" stroke="rgba(255,255,255,0.2)" strokeWidth="1" />
-      <line x1="518" y1="78" x2="516" y2="78" stroke="rgba(255,255,255,0.3)" strokeWidth="1" />
-
-      {/* Exhaust stack */}
-      <rect x="485" y="30" width="8" height="34" rx="4" fill="rgba(255,255,255,0.14)" stroke="rgba(255,255,255,0.16)" strokeWidth="1" />
-      <ellipse cx="489" cy="30" rx="5" ry="3" fill="rgba(255,255,255,0.2)" />
-      {/* Exhaust smoke */}
-      <ellipse cx="489" cy="22" rx="4" ry="5" fill="rgba(255,255,255,0.04)" />
-      <ellipse cx="491" cy="14" rx="3" ry="4" fill="rgba(255,255,255,0.03)" />
-
-      {/* Headlight */}
-      <rect x="516" y="106" width="10" height="16" rx="3" fill="rgba(255,245,180,0.55)" stroke="rgba(255,230,100,0.3)" strokeWidth="1" />
-      {/* Headlight glow */}
-      <ellipse cx="526" cy="114" rx="12" ry="8" fill="rgba(255,240,150,0.1)" />
-
-      {/* Front bumper */}
-      <rect x="516" y="154" width="14" height="18" rx="3" fill="rgba(255,255,255,0.18)" stroke="rgba(255,255,255,0.22)" strokeWidth="1" />
-      {/* Grille bars */}
-      {[158, 163, 168].map((y) => (
-        <line key={y} x1="518" y1={y} x2="528" y2={y} stroke="rgba(255,255,255,0.3)" strokeWidth="1" />
-      ))}
-
-      {/* Running boards */}
-      <rect x="398" y="180" width="124" height="6" rx="2" fill="rgba(255,255,255,0.14)" />
-
-      {/* ── Wheels ── */}
-      {/* Rear trailer wheel group */}
-      {[82, 130].map((cx) => (
-        <g key={cx}>
-          <circle cx={cx} cy="188" r="22" fill="rgba(15,25,45,0.95)" stroke="rgba(255,255,255,0.22)" strokeWidth="2" />
-          <circle cx={cx} cy="188" r="14" fill="none" stroke="rgba(255,255,255,0.1)" strokeWidth="1.5" />
-          <circle cx={cx} cy="188" r="8" fill="rgba(255,255,255,0.08)" stroke="rgba(255,255,255,0.14)" strokeWidth="1" />
-          <circle cx={cx} cy="188" r="3" fill="rgba(255,255,255,0.25)" />
-          {[0, 60, 120, 180, 240, 300].map((angle) => {
-            const rad = (angle * Math.PI) / 180;
-            return (
-              <line
-                key={angle}
-                x1={cx + 4 * Math.cos(rad)}
-                y1={188 + 4 * Math.sin(rad)}
-                x2={cx + 12 * Math.cos(rad)}
-                y2={188 + 12 * Math.sin(rad)}
-                stroke="rgba(255,255,255,0.1)"
-                strokeWidth="1.2"
-              />
-            );
-          })}
-        </g>
-      ))}
-
-      {/* Front trailer wheel group */}
-      {[248, 296].map((cx) => (
-        <g key={cx}>
-          <circle cx={cx} cy="188" r="22" fill="rgba(15,25,45,0.95)" stroke="rgba(255,255,255,0.22)" strokeWidth="2" />
-          <circle cx={cx} cy="188" r="14" fill="none" stroke="rgba(255,255,255,0.1)" strokeWidth="1.5" />
-          <circle cx={cx} cy="188" r="8" fill="rgba(255,255,255,0.08)" stroke="rgba(255,255,255,0.14)" strokeWidth="1" />
-          <circle cx={cx} cy="188" r="3" fill="rgba(255,255,255,0.25)" />
-        </g>
-      ))}
-
-      {/* Cab rear wheel */}
-      <circle cx="420" cy="188" r="22" fill="rgba(15,25,45,0.95)" stroke="rgba(255,255,255,0.22)" strokeWidth="2" />
-      <circle cx="420" cy="188" r="14" fill="none" stroke="rgba(255,255,255,0.1)" strokeWidth="1.5" />
-      <circle cx="420" cy="188" r="8" fill="rgba(255,255,255,0.08)" stroke="rgba(255,255,255,0.14)" strokeWidth="1" />
-      <circle cx="420" cy="188" r="3" fill="rgba(255,255,255,0.25)" />
-
-      {/* Cab front wheel */}
-      <circle cx="498" cy="188" r="22" fill="rgba(15,25,45,0.95)" stroke="rgba(255,255,255,0.22)" strokeWidth="2" />
-      <circle cx="498" cy="188" r="14" fill="none" stroke="rgba(255,255,255,0.1)" strokeWidth="1.5" />
-      <circle cx="498" cy="188" r="8" fill="rgba(255,255,255,0.08)" stroke="rgba(255,255,255,0.14)" strokeWidth="1" />
-      <circle cx="498" cy="188" r="3" fill="rgba(255,255,255,0.25)" />
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.8"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+      {...rest}
+    >
+      {children}
     </svg>
   );
 }
 
-function IconFleet() {
-  return (
-    <svg width="28" height="28" viewBox="0 0 28 28" fill="none">
-      <rect x="2" y="10" width="18" height="12" rx="2" stroke="rgba(147,197,253,0.9)" strokeWidth="1.6" fill="none" />
-      <path d="M20 14 L24 14 L26 17 L26 22 L20 22 Z" stroke="rgba(147,197,253,0.9)" strokeWidth="1.6" fill="none" strokeLinejoin="round" />
-      <circle cx="7" cy="23" r="2.5" stroke="rgba(147,197,253,0.9)" strokeWidth="1.6" fill="none" />
-      <circle cx="15" cy="23" r="2.5" stroke="rgba(147,197,253,0.9)" strokeWidth="1.6" fill="none" />
-      <circle cx="23" cy="23" r="2.5" stroke="rgba(147,197,253,0.9)" strokeWidth="1.6" fill="none" />
-    </svg>
-  );
-}
-
-function IconRoute() {
-  return (
-    <svg width="28" height="28" viewBox="0 0 28 28" fill="none">
-      <circle cx="7" cy="8" r="3" stroke="rgba(147,197,253,0.9)" strokeWidth="1.6" fill="none" />
-      <circle cx="21" cy="20" r="3" stroke="rgba(147,197,253,0.9)" strokeWidth="1.6" fill="none" />
-      <path d="M7 11 C7 18 14 10 21 17" stroke="rgba(147,197,253,0.9)" strokeWidth="1.6" strokeLinecap="round" fill="none" />
-    </svg>
-  );
-}
-
-function IconBox() {
-  return (
-    <svg width="28" height="28" viewBox="0 0 28 28" fill="none">
-      <path d="M14 3 L24 8 L24 20 L14 25 L4 20 L4 8 Z" stroke="rgba(147,197,253,0.9)" strokeWidth="1.6" fill="none" strokeLinejoin="round" />
-      <path d="M14 3 L14 25" stroke="rgba(147,197,253,0.9)" strokeWidth="1.4" strokeDasharray="2 2" />
-      <path d="M4 8 L14 13 L24 8" stroke="rgba(147,197,253,0.9)" strokeWidth="1.6" fill="none" />
-    </svg>
-  );
-}
-
-function IconChart() {
-  return (
-    <svg width="28" height="28" viewBox="0 0 28 28" fill="none">
-      <rect x="4" y="16" width="5" height="9" rx="1.5" stroke="rgba(147,197,253,0.9)" strokeWidth="1.6" fill="none" />
-      <rect x="11.5" y="10" width="5" height="15" rx="1.5" stroke="rgba(147,197,253,0.9)" strokeWidth="1.6" fill="none" />
-      <rect x="19" y="5" width="5" height="20" rx="1.5" stroke="rgba(147,197,253,0.9)" strokeWidth="1.6" fill="none" />
-      <path d="M4 4 L4 26 L26 26" stroke="rgba(147,197,253,0.5)" strokeWidth="1.4" strokeLinecap="round" />
-    </svg>
-  );
-}
-
-function IconGlobe() {
-  return (
-    <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-      <circle cx="8" cy="8" r="6.5" stroke="#5F6B7A" strokeWidth="1.3" />
-      <ellipse cx="8" cy="8" rx="3" ry="6.5" stroke="#5F6B7A" strokeWidth="1.3" />
-      <line x1="1.5" y1="8" x2="14.5" y2="8" stroke="#5F6B7A" strokeWidth="1.3" />
-    </svg>
-  );
-}
-
-function IconChevron() {
-  return (
-    <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
-      <path d="M3 5 L7 9 L11 5" stroke="#5F6B7A" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-    </svg>
-  );
-}
-
-function IconPerson() {
-  return (
-    <svg width="17" height="17" viewBox="0 0 17 17" fill="none">
-      <circle cx="8.5" cy="5.5" r="3" stroke="#8C8C94" strokeWidth="1.4" fill="none" />
-      <path d="M2 15 C2 11.5 5 9.5 8.5 9.5 C12 9.5 15 11.5 15 15" stroke="#8C8C94" strokeWidth="1.4" strokeLinecap="round" fill="none" />
-    </svg>
-  );
-}
-
-function IconLock() {
-  return (
-    <svg width="17" height="17" viewBox="0 0 17 17" fill="none">
-      <rect x="3" y="8" width="11" height="8" rx="2" stroke="#8C8C94" strokeWidth="1.4" fill="none" />
-      <path d="M5.5 8 L5.5 5.5 C5.5 3.57 6.57 2 8.5 2 C10.43 2 11.5 3.57 11.5 5.5 L11.5 8" stroke="#8C8C94" strokeWidth="1.4" strokeLinecap="round" fill="none" />
-      <circle cx="8.5" cy="12" r="1.2" fill="#8C8C94" />
-    </svg>
-  );
-}
+const IconRadar = () => (
+  <Svg>
+    <circle cx="12" cy="10" r="3" />
+    <path d="M12 21s-7-6.2-7-11a7 7 0 0 1 14 0c0 4.8-7 11-7 11Z" />
+  </Svg>
+);
+const IconDispatch = () => (
+  <Svg>
+    <path d="M3 7h11v9H3z" />
+    <path d="M14 10h4l3 3v3h-7" />
+    <circle cx="7" cy="18" r="2" />
+    <circle cx="17" cy="18" r="2" />
+  </Svg>
+);
+const IconShield = ({ size = 18 }) => (
+  <Svg size={size}>
+    <path d="M12 3 4 6v6c0 4.5 3.4 8.3 8 9 4.6-.7 8-4.5 8-9V6l-8-3Z" />
+    <path d="m9 12 2 2 4-4" />
+  </Svg>
+);
+const IconInvoice = () => (
+  <Svg>
+    <path d="M6 3h12v18l-3-2-3 2-3-2-3 2V3Z" />
+    <path d="M9 8h6M9 12h6M9 16h3" />
+  </Svg>
+);
+const IconLockSmall = ({ size = 13 }) => (
+  <Svg size={size}>
+    <rect x="5" y="11" width="14" height="10" rx="2" />
+    <path d="M8 11V8a4 4 0 0 1 8 0v3" />
+  </Svg>
+);
+const IconUsers = ({ size = 13 }) => (
+  <Svg size={size}>
+    <circle cx="9" cy="8" r="3.5" />
+    <path d="M2.5 20c0-3.6 2.9-6 6.5-6s6.5 2.4 6.5 6" />
+    <path d="M16 4.5a3.5 3.5 0 0 1 0 7M21.5 20c0-2.8-1.6-4.9-4-5.7" />
+  </Svg>
+);
+const IconClock = ({ size = 13 }) => (
+  <Svg size={size}>
+    <circle cx="12" cy="12" r="9" />
+    <path d="M12 7v5l3 2" />
+  </Svg>
+);
+const IconMail = () => (
+  <Svg size={17}>
+    <rect x="3" y="5" width="18" height="14" rx="2.5" />
+    <path d="m4 7 8 6 8-6" />
+  </Svg>
+);
+const IconUser = () => (
+  <Svg size={17}>
+    <circle cx="12" cy="8" r="4" />
+    <path d="M4 21c0-4 3.6-7 8-7s8 3 8 7" />
+  </Svg>
+);
+const IconPhone = () => (
+  <Svg size={17}>
+    <path d="M5 3h4l2 5-2.5 1.5a11 11 0 0 0 6 6L16 13l5 2v4a2 2 0 0 1-2 2A16 16 0 0 1 3 5a2 2 0 0 1 2-2Z" />
+  </Svg>
+);
+const IconBadge = () => (
+  <Svg size={17}>
+    <rect x="3" y="7" width="18" height="13" rx="2.5" />
+    <path d="M8 7V5a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+  </Svg>
+);
+const IconLock = () => (
+  <Svg size={17}>
+    <rect x="4" y="10" width="16" height="11" rx="2.5" />
+    <path d="M8 10V7a4 4 0 0 1 8 0v3" />
+    <circle cx="12" cy="15.5" r="1" fill="currentColor" />
+  </Svg>
+);
+const IconArrow = () => (
+  <Svg size={18} strokeWidth="2">
+    <path d="M5 12h14M13 6l6 6-6 6" />
+  </Svg>
+);
 
 function IconEye({ show, onClick }) {
   return (
-    <button type="button" className="eye-btn" onClick={onClick} tabIndex={-1}>
+    <button
+      type="button"
+      className="eye-btn"
+      onClick={onClick}
+      aria-label={show ? "Hide password" : "Show password"}
+    >
       {show ? (
-        <svg width="17" height="17" viewBox="0 0 17 17" fill="none">
-          <path d="M1 8.5 C3 5 5.5 3 8.5 3 C11.5 3 14 5 16 8.5 C14 12 11.5 14 8.5 14 C5.5 14 3 12 1 8.5 Z" stroke="#8C8C94" strokeWidth="1.4" fill="none" />
-          <circle cx="8.5" cy="8.5" r="2.2" stroke="#8C8C94" strokeWidth="1.4" fill="none" />
-        </svg>
+        <Svg size={17}>
+          <path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12Z" />
+          <circle cx="12" cy="12" r="3" />
+        </Svg>
       ) : (
-        <svg width="17" height="17" viewBox="0 0 17 17" fill="none">
-          <path d="M1 8.5 C3 5 5.5 3 8.5 3 C11.5 3 14 5 16 8.5" stroke="#8C8C94" strokeWidth="1.4" strokeLinecap="round" fill="none" />
-          <path d="M2 13 L14 4" stroke="#8C8C94" strokeWidth="1.4" strokeLinecap="round" />
-          <path d="M7 13.7 C7.5 13.9 8 14 8.5 14 C11.5 14 14 12 16 8.5" stroke="#8C8C94" strokeWidth="1.4" strokeLinecap="round" fill="none" />
-        </svg>
+        <Svg size={17}>
+          <path d="M10.6 5.1A10 10 0 0 1 12 5c6.4 0 10 7 10 7a17 17 0 0 1-2.6 3.4M6.6 6.6A17 17 0 0 0 2 12s3.6 7 10 7a9.7 9.7 0 0 0 5.4-1.6" />
+          <path d="M9.9 9.9a3 3 0 0 0 4.2 4.2M3 3l18 18" />
+        </Svg>
       )}
     </button>
-  );
-}
-
-function IconLogin() {
-  return (
-    <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
-      <path d="M7 3 H3 C2.4 3 2 3.4 2 4 V14 C2 14.6 2.4 15 3 15 H7" stroke="white" strokeWidth="1.6" strokeLinecap="round" fill="none" />
-      <path d="M12 6 L16 9 L12 12" stroke="white" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" fill="none" />
-      <line x1="6" y1="9" x2="16" y2="9" stroke="white" strokeWidth="1.6" strokeLinecap="round" />
-    </svg>
   );
 }
 
@@ -283,12 +149,37 @@ function IconCheckCircle({ color = "currentColor" }) {
   );
 }
 
+/* Decorative orbit rings in the brand panel — echoes the logo's globe and arrows. */
+function OrbitArt() {
+  return (
+    <svg className="lp-orbit" viewBox="0 0 520 520" fill="none" aria-hidden="true">
+      <defs>
+        <linearGradient id="lpViolet" x1="0" y1="1" x2="1" y2="0">
+          <stop offset="0" stopColor="#7C3AED" stopOpacity="0" />
+          <stop offset="0.6" stopColor="#8B5CF6" stopOpacity="0.9" />
+          <stop offset="1" stopColor="#C4B5FD" />
+        </linearGradient>
+      </defs>
+      <circle cx="260" cy="260" r="250" stroke="rgba(124,58,237,0.07)" />
+      <circle cx="260" cy="260" r="190" stroke="rgba(124,58,237,0.09)" />
+      <circle cx="260" cy="260" r="130" stroke="rgba(124,58,237,0.08)" />
+      <ellipse cx="260" cy="260" rx="190" ry="70" stroke="rgba(124,58,237,0.08)" transform="rotate(-30 260 260)" />
+      <g className="lp-orbit-spin">
+        <circle cx="260" cy="260" r="190" stroke="rgba(124,58,237,0.3)" strokeDasharray="2 12" />
+        <circle cx="450" cy="260" r="4" fill="#A78BFA" />
+        <circle cx="94" cy="168" r="3" fill="#C4B5FD" />
+      </g>
+      <path d="M40 360 C 150 300, 300 230, 430 110" stroke="url(#lpViolet)" strokeWidth="6" strokeLinecap="round" />
+      <path d="M412 96 L446 96 L438 130 Z" fill="#A78BFA" transform="rotate(8 430 110)" />
+    </svg>
+  );
+}
 
-const features = [
-  { Icon: IconFleet, label: "Fleet\nManagement" },
-  { Icon: IconRoute, label: "Trip & Route\nOptimization" },
-  { Icon: IconBox, label: "Load & Order\nManagement" },
-  { Icon: IconChart, label: "Real-time\nVisibility" },
+const pillars = [
+  { Icon: IconRadar, title: "Live fleet tracking", text: "Real-time GPS for every vehicle and driver" },
+  { Icon: IconDispatch, title: "Dispatch & job control", text: "Plan trips, assign loads, track proof of delivery" },
+  { Icon: IconShield, title: "Compliance & maintenance", text: "Documents, checks and service history in one place" },
+  { Icon: IconInvoice, title: "Billing & finance", text: "From completed job to invoice without re-keying" },
 ];
 
 export function HomePage() {
@@ -395,113 +286,103 @@ export function HomePage() {
     }
   }
 
+
+  function switchMode(next) {
+    setMode(next);
+    setError("");
+    setSuccess("");
+  }
+
+  const isLogin = mode === "login";
+
   return (
     <div className="lp-page">
       <div className="lp-card">
-        {/* ── Left dark panel ── */}
-        <div className="lp-left">
+        {/* ── Brand panel ── */}
+        <aside className="lp-left">
+          <OrbitArt />
           <div className="lp-left-inner">
-            {/* Brand */}
-            <div className="lp-brand">
-              <BrandLogo />
-            </div>
+            <img className="lp-hero-logo" src={astraLogo} alt="AstraFleet TMS" />
 
-            <div className="lp-status-badge">
-              <span className="lp-status-dot" />
-              All systems operational
-            </div>
+            <div className="lp-eyebrow">Transport Management System</div>
+            <h1 className="lp-headline">
+              Every load. Every driver.
+              <br />
+              <span>One command centre.</span>
+            </h1>
+            <p className="lp-lede">
+              AstraFleet brings dispatch, live tracking, compliance and billing together, so your
+              operation runs on time, every time.
+            </p>
 
-            {/* Tagline */}
-            <div className="lp-tagline">
-              <h1>Smarter Logistics.<br />Stronger Business.</h1>
-              <p>Streamline operations, optimize fleet performance and deliver more.</p>
-            </div>
-
-            <div className="lp-stats">
-              <div className="lp-stat">
-                <strong>2,400+</strong>
-                <span>Trips</span>
-              </div>
-              <div className="lp-stat">
-                <strong>98%</strong>
-                <span>On-time</span>
-              </div>
-              <div className="lp-stat">
-                <strong>500+</strong>
-                <span>Drivers</span>
-              </div>
-            </div>
-
-            {/* Truck */}
-            <div className="lp-truck">
-              <TruckIllustration />
-            </div>
-
-            {/* Features */}
-            <div className="lp-features">
-              {features.map(({ Icon, label }, i) => (
-                <div className="lp-feature" key={i}>
-                  <Icon />
-                  <span>{label}</span>
-                </div>
+            <ul className="lp-pillars">
+              {pillars.map(({ Icon, title, text }) => (
+                <li className="lp-pillar" key={title}>
+                  <span className="lp-pillar-icon"><Icon /></span>
+                  <div>
+                    <strong>{title}</strong>
+                    <small>{text}</small>
+                  </div>
+                </li>
               ))}
+            </ul>
+
+            <div className="lp-left-foot">
+              <span><IconLockSmall /> Encrypted sessions</span>
+              <span><IconUsers /> Role-based access</span>
+              <span><IconClock /> UK time, always</span>
             </div>
           </div>
-        </div>
+        </aside>
 
-        {/* ── Right light panel ── */}
-        <div className="lp-right">
-          {/* Language */}
-          <div className="lp-lang">
-            <IconGlobe />
-            <span>English</span>
-            <IconChevron />
-          </div>
-
+        {/* ── Form panel ── */}
+        <main className="lp-right">
           <div className="lp-form-wrap">
-            <div className="lp-right-top-brand">
-              <BrandLogo compact />
-            </div>
+            <img className="lp-mobile-logo" src={astraLogo} alt="AstraFleet TMS" />
+
             <div className="lp-form-head">
-              <h1>{mode === "login" ? "Welcome Back" : "Employee Registration"}</h1>
-              <p>{mode === "login" ? "Login to your AstraFleet TMS account" : "Create your TMS login and wait for admin access"}</p>
+              <span className="lp-kicker"><IconLockSmall size={11} /> {isLogin ? "Secure sign-in" : "Staff access request"}</span>
+              <h2>{isLogin ? "Welcome back" : "Request employee access"}</h2>
+              <p>
+                {isLogin
+                  ? "Sign in to your AstraFleet TMS workspace."
+                  : "Create your login. An admin will approve your access."}
+              </p>
             </div>
 
-            <div className="lp-role-tabs">
+            <div className="lp-role-tabs" role="tablist">
               <button
                 type="button"
-                className={`lp-role-tab${mode === "login" ? " active" : ""}`}
-                onClick={() => {
-                  setMode("login");
-                  setError("");
-                  setSuccess("");
-                }}
+                role="tab"
+                aria-selected={isLogin}
+                className={`lp-role-tab${isLogin ? " active" : ""}`}
+                onClick={() => switchMode("login")}
               >
-                Login
+                Sign in
               </button>
               <button
                 type="button"
-                className={`lp-role-tab${mode === "register" ? " active" : ""}`}
-                onClick={() => {
-                  setMode("register");
-                  setError("");
-                  setSuccess("");
-                }}
+                role="tab"
+                aria-selected={!isLogin}
+                className={`lp-role-tab${!isLogin ? " active" : ""}`}
+                onClick={() => switchMode("register")}
               >
-                Employee Register
+                Employee register
               </button>
             </div>
 
-            <form className="lp-form" onSubmit={mode === "login" ? handleSubmit : handleRegister}>
-              {mode === "register" && (
+            <form className="lp-form" onSubmit={isLogin ? handleSubmit : handleRegister}>
+              {!isLogin && (
                 <>
                   <div className="lp-field">
-                    <label>Full Name</label>
+                    <label htmlFor="lp-name">Full name</label>
                     <div className="lp-input-wrap">
-                      <span className="lp-input-icon"><IconPerson /></span>
+                      <span className="lp-input-icon"><IconUser /></span>
                       <input
+                        id="lp-name"
                         type="text"
-                        placeholder="Enter Your Full Name"
+                        autoComplete="name"
+                        placeholder="Your full name"
                         value={name}
                         onChange={(e) => setName(e.target.value)}
                         required
@@ -510,9 +391,9 @@ export function HomePage() {
                   </div>
 
                   <div className="lp-field">
-                    <label>Work Area</label>
+                    <label htmlFor="lp-dept">Work area</label>
                     <div className="lp-input-wrap">
-                      <select value={department} onChange={(e) => setDepartment(e.target.value)} required>
+                      <select id="lp-dept" value={department} onChange={(e) => setDepartment(e.target.value)} required>
                         <option value="finance">Finance</option>
                         <option value="trips">Dispatch Planning</option>
                         <option value="jobs">Job Management</option>
@@ -525,10 +406,13 @@ export function HomePage() {
                   </div>
 
                   <div className="lp-field">
-                    <label>Job Title</label>
+                    <label htmlFor="lp-title">Job title</label>
                     <div className="lp-input-wrap">
+                      <span className="lp-input-icon"><IconBadge /></span>
                       <input
+                        id="lp-title"
                         type="text"
+                        autoComplete="organization-title"
                         placeholder="e.g. Finance executive"
                         value={jobTitle}
                         onChange={(e) => setJobTitle(e.target.value)}
@@ -538,11 +422,14 @@ export function HomePage() {
                   </div>
 
                   <div className="lp-field">
-                    <label>Phone</label>
+                    <label htmlFor="lp-phone">Phone</label>
                     <div className="lp-input-wrap">
+                      <span className="lp-input-icon"><IconPhone /></span>
                       <input
+                        id="lp-phone"
                         type="tel"
-                        placeholder="Enter Phone Number"
+                        autoComplete="tel"
+                        placeholder="Phone number"
                         value={phone}
                         onChange={(e) => setPhone(e.target.value)}
                       />
@@ -551,14 +438,15 @@ export function HomePage() {
                 </>
               )}
 
-              {/* Email */}
               <div className="lp-field">
-                <label>Email Address</label>
+                <label htmlFor="lp-email">{isLogin ? "Email address" : "Work email"}</label>
                 <div className="lp-input-wrap">
-                  <span className="lp-input-icon"><IconPerson /></span>
+                  <span className="lp-input-icon"><IconMail /></span>
                   <input
+                    id="lp-email"
                     type="email"
-                    placeholder="Enter Your Email"
+                    autoComplete="email"
+                    placeholder="name@company.com"
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
                     required
@@ -566,14 +454,18 @@ export function HomePage() {
                 </div>
               </div>
 
-              {/* Password */}
               <div className="lp-field">
-                <label>Password</label>
+                <div className="lp-field-row">
+                  <label htmlFor="lp-password">Password</label>
+                  {isLogin && <a className="lp-forgot" href="#">Forgot password?</a>}
+                </div>
                 <div className="lp-input-wrap">
                   <span className="lp-input-icon"><IconLock /></span>
                   <input
+                    id="lp-password"
                     type={showPass ? "text" : "password"}
-                    placeholder="Enter Your Password"
+                    autoComplete={isLogin ? "current-password" : "new-password"}
+                    placeholder={isLogin ? "Enter your password" : "Create a password"}
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
                     required
@@ -581,13 +473,6 @@ export function HomePage() {
                   <IconEye show={showPass} onClick={() => setShowPass(!showPass)} />
                 </div>
               </div>
-
-              {/* Forgot */}
-              {mode === "login" && (
-                <div className="lp-forgot">
-                  <a href="#">Forgot Password?</a>
-                </div>
-              )}
 
               {error && (
                 <div className="lp-alert lp-error" role="alert">
@@ -602,26 +487,34 @@ export function HomePage() {
                 </div>
               )}
 
-              {/* Login btn */}
               <button type="submit" className="lp-login-btn" disabled={loading}>
-                <IconLogin />
-                {loading ? "Please wait..." : mode === "login" ? "Login" : "Submit For Admin Approval"}
+                {loading ? (
+                  <>
+                    <span className="lp-spinner" />
+                    Please wait…
+                  </>
+                ) : (
+                  <>
+                    {isLogin ? "Sign in to AstraFleet" : "Submit for admin approval"}
+                    <IconArrow />
+                  </>
+                )}
               </button>
 
               <div className="lp-trust-strip">
-                <span className="lp-trust-dot" />
-                SSL secured · Enterprise grade · Private
+                <IconShield size={14} />
+                Protected by encrypted, role-based access
               </div>
             </form>
           </div>
 
           <footer className="lp-footer">
-            <span>© 2026 AstraFleet. All rights reserved.</span>
+            <span>© {new Intl.DateTimeFormat("en-GB", { year: "numeric", timeZone: "Europe/London" }).format(new Date())} AstraFleet TMS. All rights reserved.</span>
             <span className="lp-footer-credit">
-              Designed and developed by <strong>Devmora Technology</strong>
+              Built by <strong>Devmora Technology</strong>
             </span>
           </footer>
-        </div>
+        </main>
       </div>
     </div>
   );
