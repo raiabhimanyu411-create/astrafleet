@@ -103,8 +103,8 @@ export function AdminAlertsPage() {
 
   return (
     <AdminWorkspaceLayout
-      badge={data?.header?.badge || "Control Room Alerts"}
-      title={data?.header?.title || "Delay, Breakdown And Compliance Escalations"}
+      badge={data?.header?.badge || "Control room alerts"}
+      title={data?.header?.title || "Delay, breakdown and compliance escalations"}
       description={
         data?.header?.description ||
         "A dedicated admin view for delay, breakdown, compliance breach, and reassignment escalations."
@@ -126,7 +126,7 @@ export function AdminAlertsPage() {
         </div>
       )}
 
-      <section className="alerts-command-strip" aria-label="Alert Operations Summary">
+      <section className="alerts-command-strip" aria-label="Alert operations summary">
         {[...(data?.stats || []), ...(data?.operations || [])].map(item => (
           <button
             className={`alerts-command-item ${item.tone}`}
@@ -150,25 +150,25 @@ export function AdminAlertsPage() {
       <section className="content-card alert-filter-card">
         <input
           className="af-input"
-          placeholder="Search Alert Code, Owner, Module, Title, Or Description..."
+          placeholder="Search alert code, owner, module, title, or description..."
           value={search}
           onChange={e => setSearch(e.target.value)}
         />
         <select className="af-select" value={severity} onChange={e => setSeverity(e.target.value)}>
-          <option value="">All Severities</option>
+          <option value="">All severities</option>
           <option value="critical">Critical</option>
           <option value="high">High</option>
           <option value="medium">Medium</option>
           <option value="low">Low</option>
         </select>
         <select className="af-select" value={status} onChange={e => setStatus(e.target.value)}>
-          <option value="">All Statuses</option>
+          <option value="">All statuses</option>
           <option value="open">Open</option>
           <option value="watch">Watch</option>
           <option value="resolved">Resolved</option>
         </select>
         <select className="af-select" value={module} onChange={e => setModule(e.target.value)}>
-          <option value="">All Modules</option>
+          <option value="">All modules</option>
           <option value="drivers">Drivers</option>
           <option value="vehicles">Vehicles</option>
           <option value="trips">Trips</option>
@@ -177,17 +177,17 @@ export function AdminAlertsPage() {
           <option value="finance">Finance</option>
           <option value="alerts">Alerts</option>
         </select>
-        <button className="header-action-button" disabled={!hasFilters} type="button" onClick={clearFilters}>Clear Filters</button>
+        <button className="header-action-button" disabled={!hasFilters} type="button" onClick={clearFilters}>Clear filters</button>
       </section>
 
       <section className="alerts-workbench">
         <article className="content-card alerts-register-panel">
           <div className="section-head">
             <div>
-              <span className="card-label">Unified Alert Queue</span>
-              <h2>Operational Incidents And Exceptions</h2>
+              <span className="card-label">Unified alert queue</span>
+              <h2>Operational incidents and exceptions</h2>
             </div>
-            <StatusPill tone="neutral">{allAlerts.length} Visible</StatusPill>
+            <StatusPill tone="neutral">{allAlerts.length} visible</StatusPill>
           </div>
           <div className="alerts-register-list">
             {allAlerts.map(item => {
@@ -204,7 +204,7 @@ export function AdminAlertsPage() {
                 </button>
               );
             })}
-            {!loading && allAlerts.length === 0 && <p className="finance-empty">{hasFilters ? "No Alerts Match Your Filters." : "No Alert Workload Is Available Yet."}</p>}
+            {!loading && allAlerts.length === 0 && <p className="finance-empty">{hasFilters ? "No alerts match your filters." : "No alert workload is available yet."}</p>}
           </div>
         </article>
 
@@ -212,7 +212,7 @@ export function AdminAlertsPage() {
           {selectedAlert ? (
             <>
               <div className="section-head">
-                <div><span className="card-label">Incident Inspector</span><h2>{selectedAlert.code}</h2></div>
+                <div><span className="card-label">Incident inspector</span><h2>{selectedAlert.code}</h2></div>
                 <StatusPill tone={selectedAlert.tone}>{selectedAlert.severity}</StatusPill>
               </div>
               <div className="alerts-inspector-heading"><h3>{selectedAlert.title}</h3><p>{selectedAlert.description}</p></div>
@@ -224,21 +224,21 @@ export function AdminAlertsPage() {
                 <div><dt>Owner</dt><dd>{selectedAlert.owner}</dd></div>
                 <div><dt>Updated</dt><dd>{selectedAlert.updated || selectedAlert.created}</dd></div>
               </dl>
-              {alertTarget(selectedAlert) && <button className="header-action-button alerts-context-button" type="button" onClick={() => navigate(alertTarget(selectedAlert))}>Open Affected Record</button>}
+              {alertTarget(selectedAlert) && <button className="header-action-button alerts-context-button" type="button" onClick={() => navigate(alertTarget(selectedAlert))}>Open affected record</button>}
               {selectedAlert.id ? (
                 <div className="alerts-workflow-form">
-                  <label><span>Assigned Owner</span><input className="af-input" value={ownerName} onChange={event => setOwnerName(event.target.value)} placeholder="e.g. Dispatch Desk Or Team Member" /></label>
-                  <label><span>Resolution Note</span><textarea className="af-input" value={resolutionNote} onChange={event => setResolutionNote(event.target.value)} placeholder="Action Taken, Outcome, And Closure Evidence..." rows={4} /></label>
+                  <label><span>Assigned owner</span><input className="af-input" value={ownerName} onChange={event => setOwnerName(event.target.value)} placeholder="e.g. Dispatch Desk Or Team Member" /></label>
+                  <label><span>Resolution note</span><textarea className="af-input" value={resolutionNote} onChange={event => setResolutionNote(event.target.value)} placeholder="Action taken, outcome, and closure evidence..." rows={4} /></label>
                   <div className="alerts-workflow-actions">
                     {selectedAlert.status !== "open" && <button className="header-action-button" disabled={saving} type="button" onClick={() => handleStatus(selectedAlert, "open", { owner_name: ownerName, resolution_note: resolutionNote })}>Reopen</button>}
-                    {selectedAlert.status !== "watch" && selectedAlert.status !== "resolved" && <button className="header-action-button" disabled={saving} type="button" onClick={() => handleStatus(selectedAlert, "watch", { owner_name: ownerName, resolution_note: resolutionNote })}>Assign And Watch</button>}
-                    {selectedAlert.status !== "resolved" && <button className="af-submit-btn" disabled={saving} type="button" onClick={() => handleStatus(selectedAlert, "resolved", { owner_name: ownerName, resolution_note: resolutionNote })}>{saving ? "Saving..." : "Resolve Alert"}</button>}
+                    {selectedAlert.status !== "watch" && selectedAlert.status !== "resolved" && <button className="header-action-button" disabled={saving} type="button" onClick={() => handleStatus(selectedAlert, "watch", { owner_name: ownerName, resolution_note: resolutionNote })}>Assign and watch</button>}
+                    {selectedAlert.status !== "resolved" && <button className="af-submit-btn" disabled={saving} type="button" onClick={() => handleStatus(selectedAlert, "resolved", { owner_name: ownerName, resolution_note: resolutionNote })}>{saving ? "Saving..." : "Resolve alert"}</button>}
                   </div>
-                  <p className="af-hint">Watch Requires An Owner. Resolve Requires A Closure Note.</p>
+                  <p className="af-hint">Watch requires an owner. Resolve requires a closure note.</p>
                 </div>
-              ) : <div className="alerts-live-source-note"><strong>Live Source Alert</strong><p>Resolve The Failed Delivery Or Vehicle Defect In Its Source Record. The Alert Will Clear When The Source Workflow Is Completed.</p></div>}
+              ) : <div className="alerts-live-source-note"><strong>Live source alert</strong><p>Resolve the failed delivery or vehicle defect in its source record. The alert will clear when the source workflow is completed.</p></div>}
             </>
-          ) : <p className="finance-empty">Select An Alert To Review Its Workflow.</p>}
+          ) : <p className="finance-empty">Select an alert to review its workflow.</p>}
         </aside>
       </section>
     </AdminWorkspaceLayout>

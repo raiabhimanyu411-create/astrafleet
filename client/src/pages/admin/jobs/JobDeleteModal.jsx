@@ -92,12 +92,12 @@ export function JobDeleteModal({ job, loading, onCancel, onConfirm }) {
   return (
     <DeleteReasonModal
       open={Boolean(job)}
-      title="Delete Job"
+      title="Delete job"
       recordLabel={job ? [job.code, job.customer].filter(Boolean).join(" · ") : ""}
       body="The job is removed from the jobs list, planner and driver app. A planned job's truck and trailer are released. Everything is soft-deleted and logged with this reason, so it can be recovered."
       details={details}
       confirmDisabled={!preview || Boolean(preview.blocker)}
-      confirmLabel={invoices.length ? `Delete Job + ${invoices.length} Invoice${invoices.length > 1 ? "s" : ""}` : "Delete Job"}
+      confirmLabel={invoices.length ? `Delete Job + ${invoices.length} Invoice${invoices.length > 1 ? "s" : ""}` : "Delete job"}
       loading={loading}
       onCancel={onCancel}
       onConfirm={payload => onConfirm({ ...payload, includeRelated: true })}

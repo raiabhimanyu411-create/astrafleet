@@ -143,8 +143,8 @@ export function AdminBillingPage() {
 
   return (
     <AdminWorkspaceLayout
-      badge={data?.header?.badge || "Invoicing & Billing"}
-      title={data?.header?.title || "Freight Invoices And POD Billing"}
+      badge={data?.header?.badge || "Invoicing & billing"}
+      title={data?.header?.title || "Freight invoices and POD billing"}
       description={
         data?.header?.description ||
         "Manage invoice generation, POD-linked billing, and payment status tracking in pound sterling."
@@ -156,7 +156,7 @@ export function AdminBillingPage() {
         <button className="header-action-button" type="button" onClick={() => refetch(false)}>Refresh</button>
         <button className="header-action-button" type="button" onClick={exportInvoices}>Export CSV</button>
         <button className="af-submit-btn" type="button" onClick={() => navigate("/admin/billing/new")}>
-          + Create Invoice
+          + Create invoice
         </button>
       </div>
 
@@ -169,7 +169,7 @@ export function AdminBillingPage() {
         </div>
       )}
 
-      <section className="billing-command-strip" aria-label="Billing Summary">
+      <section className="billing-command-strip" aria-label="Billing summary">
         {[...(data?.amountSummary || []), ...workflow].map(item => (
           <button className={`billing-command-item ${item.tone}`} key={item.label} type="button" onClick={() => {
             setQueue("");
@@ -178,28 +178,28 @@ export function AdminBillingPage() {
             if (item.label === "POD needed") { setStatus(""); setPod(""); setQueue("pod"); }
             if (item.label === "Payment risk") { setStatus(""); setPod(""); setQueue("risk"); }
           }}>
-            <span>{item.label}</span><strong>{item.value}</strong><small>{item.description || "Invoice Workflow"}</small>
+            <span>{item.label}</span><strong>{item.value}</strong><small>{item.description || "Invoice workflow"}</small>
           </button>
         ))}
       </section>
 
       {(data?.blockers || []).length > 0 && (
         <section className="billing-exception-bar">
-          <div><span className="card-label">Billing Exceptions</span><strong>{data.blockers.length} Items Need Review</strong></div>
+          <div><span className="card-label">Billing exceptions</span><strong>{data.blockers.length} Items need review</strong></div>
           <div className="billing-exception-list">{data.blockers.map(item => <span key={item.title}>{item.title}</span>)}</div>
-          <button className="header-action-button" type="button" onClick={() => setStatus("hold")}>Review Exceptions</button>
+          <button className="header-action-button" type="button" onClick={() => setStatus("hold")}>Review exceptions</button>
         </section>
       )}
 
       <section className="content-card finance-filter-card billing-filter-card">
         <input
           className="af-input"
-          placeholder="Search Invoice, Client, Trip, Or Lane..."
+          placeholder="Search invoice, client, trip, or lane..."
           value={search}
           onChange={e => setSearch(e.target.value)}
         />
         <select className="af-select" value={status} onChange={e => { setStatus(e.target.value); setQueue(""); }}>
-          <option value="">All Statuses</option>
+          <option value="">All statuses</option>
           <option value="draft">Draft</option>
           <option value="sent">Sent</option>
           <option value="pending">Pending</option>
@@ -208,50 +208,50 @@ export function AdminBillingPage() {
           <option value="hold">Hold</option>
         </select>
         <select className="af-select" value={pod} onChange={e => { setPod(e.target.value); setQueue(""); }}>
-          <option value="">All POD States</option>
+          <option value="">All POD states</option>
           <option value="verified">POD Verified</option>
           <option value="pending">POD Pending</option>
         </select>
         <input className="af-input" type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} />
         <input className="af-input" type="date" value={dateTo} onChange={e => setDateTo(e.target.value)} />
-        <button className="header-action-button" type="button" onClick={clearFilters} disabled={!hasFilters}>Clear Filters</button>
+        <button className="header-action-button" type="button" onClick={clearFilters} disabled={!hasFilters}>Clear filters</button>
       </section>
 
       <section className="billing-workbench">
         <article className="content-card billing-register-panel">
-          <div className="section-head"><div><span className="card-label">Invoice Register</span><h2>Customer Receivables</h2></div><StatusPill tone="neutral">{invoices.length} Visible</StatusPill></div>
-          <div className="billing-register-head"><span>Invoice And Customer</span><span>Gross / Balance</span><span>Due And POD</span><span>Status</span></div>
+          <div className="section-head"><div><span className="card-label">Invoice register</span><h2>Customer receivables</h2></div><StatusPill tone="neutral">{invoices.length} visible</StatusPill></div>
+          <div className="billing-register-head"><span>Invoice and customer</span><span>Gross / balance</span><span>Due and POD</span><span>Status</span></div>
           <div className="billing-register-list">
             {invoices.map(item => (
               <button className={`billing-register-item${item.id === selectedInvoice?.id ? " active" : ""}`} key={item.id} type="button" onClick={() => setSelectedInvoiceId(item.id)}>
-                <span><strong>{item.invoice}</strong><small>{item.client} · {item.tripCode || "No Trip Link"}</small></span>
+                <span><strong>{item.invoice}</strong><small>{item.client} · {item.tripCode || "No trip link"}</small></span>
                 <span><strong>{item.amount}</strong><small>{item.balanceAmount} Outstanding</small></span>
                 <span><strong>{item.dueLabel}</strong><small>{item.podVerified ? "POD Verified" : "POD Pending"}</small></span>
                 <span><StatusPill tone={item.tone}>{item.status}</StatusPill><small>{item.lane}</small></span>
               </button>
             ))}
-            {!loading && invoices.length === 0 && <p className="finance-empty">{hasFilters ? "No Invoices Match Your Filters." : "No Invoices Yet. Create Your First Invoice."}</p>}
+            {!loading && invoices.length === 0 && <p className="finance-empty">{hasFilters ? "No invoices match your filters." : "No invoices yet. Create your first invoice."}</p>}
           </div>
         </article>
 
         <aside className="content-card billing-inspector">
           {selectedInvoice ? <>
-            <div className="section-head"><div><span className="card-label">Invoice Inspector</span><h2>{selectedInvoice.invoice}</h2></div><StatusPill tone={selectedInvoice.tone}>{selectedInvoice.status}</StatusPill></div>
-            <div className="billing-inspector-client"><strong>{selectedInvoice.client}</strong><p>{selectedInvoice.tripCode || "No Trip Link"} · {selectedInvoice.lane}</p></div>
+            <div className="section-head"><div><span className="card-label">Invoice inspector</span><h2>{selectedInvoice.invoice}</h2></div><StatusPill tone={selectedInvoice.tone}>{selectedInvoice.status}</StatusPill></div>
+            <div className="billing-inspector-client"><strong>{selectedInvoice.client}</strong><p>{selectedInvoice.tripCode || "No trip link"} · {selectedInvoice.lane}</p></div>
             <dl className="billing-inspector-facts">
               <div><dt>Net</dt><dd>{selectedInvoice.netAmount}</dd></div><div><dt>VAT ({selectedInvoice.vatRate}%)</dt><dd>{selectedInvoice.vatAmount}</dd></div>
               <div><dt>Gross</dt><dd>{selectedInvoice.amount}</dd></div><div><dt>Paid</dt><dd>{selectedInvoice.paidAmount}</dd></div>
               <div><dt>Balance</dt><dd>{selectedInvoice.balanceAmount}</dd></div><div><dt>Due</dt><dd>{selectedInvoice.dueLabel}</dd></div>
             </dl>
-            <div className={`billing-pod-state ${selectedInvoice.podVerified ? "verified" : "pending"}`}><span>{selectedInvoice.podVerified ? "POD Verified" : "POD Pending"}</span><button type="button" onClick={() => togglePod(selectedInvoice)}>{selectedInvoice.podVerified ? "Mark Pending" : "Verify POD"}</button></div>
+            <div className={`billing-pod-state ${selectedInvoice.podVerified ? "verified" : "pending"}`}><span>{selectedInvoice.podVerified ? "POD Verified" : "POD Pending"}</span><button type="button" onClick={() => togglePod(selectedInvoice)}>{selectedInvoice.podVerified ? "Mark pending" : "Verify POD"}</button></div>
             <div className="billing-inspector-actions">
-              <button className="af-submit-btn" type="button" onClick={() => navigate(`/admin/billing/${selectedInvoice.id}`)}>{selectedInvoice.status === "paid" ? "Open Invoice" : "Open And Record Payment"}</button>
-              {selectedInvoice.status !== "sent" && selectedInvoice.status !== "paid" && <button className="header-action-button" type="button" onClick={() => updateStatus(selectedInvoice.id, "sent")}>Send Invoice</button>}
-              {selectedInvoice.status !== "hold" && selectedInvoice.status !== "paid" && <button className="header-action-button" type="button" onClick={() => updateStatus(selectedInvoice.id, "hold")}>Place On Hold</button>}
-              <button className="header-action-button" type="button" onClick={() => navigate(`/admin/billing/${selectedInvoice.id}/edit`)}>Edit Invoice</button>
-              <button className="header-action-button danger" type="button" onClick={() => setDeleteTarget(selectedInvoice)}>Delete Invoice</button>
+              <button className="af-submit-btn" type="button" onClick={() => navigate(`/admin/billing/${selectedInvoice.id}`)}>{selectedInvoice.status === "paid" ? "Open invoice" : "Open and record payment"}</button>
+              {selectedInvoice.status !== "sent" && selectedInvoice.status !== "paid" && <button className="header-action-button" type="button" onClick={() => updateStatus(selectedInvoice.id, "sent")}>Send invoice</button>}
+              {selectedInvoice.status !== "hold" && selectedInvoice.status !== "paid" && <button className="header-action-button" type="button" onClick={() => updateStatus(selectedInvoice.id, "hold")}>Place on hold</button>}
+              <button className="header-action-button" type="button" onClick={() => navigate(`/admin/billing/${selectedInvoice.id}/edit`)}>Edit invoice</button>
+              <button className="header-action-button danger" type="button" onClick={() => setDeleteTarget(selectedInvoice)}>Delete invoice</button>
             </div>
-          </> : <p className="finance-empty">Select An Invoice To Review.</p>}
+          </> : <p className="finance-empty">Select an invoice to review.</p>}
         </aside>
       </section>
       <DeleteReasonModal

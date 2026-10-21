@@ -254,13 +254,13 @@ export function NotificationCenter({
               </dl>
             </div>
             <div className="notification-detail-actions">
-              {selected.link && <button className="af-submit-btn" onClick={() => openLinkedRecord(selected)} type="button">Open Linked Record</button>}
+              {selected.link && <button className="af-submit-btn" onClick={() => openLinkedRecord(selected)} type="button">Open linked record</button>}
               <button className={`header-action-button${selected.isPriority ? " active" : ""}`} onClick={() => togglePriority(selected)} type="button">
-                {selected.isPriority ? "Remove Priority" : "Mark Priority"}
+                {selected.isPriority ? "Remove priority" : "Mark priority"}
               </button>
               {!selected.acknowledged && <button className="header-action-button" onClick={() => acknowledge(selected)} type="button">Acknowledge</button>}
               <button className="header-action-button" onClick={() => setRead(selected, !selected.isRead)} type="button">
-                {selected.isRead ? "Mark Unread" : "Mark Read"}
+                {selected.isRead ? "Mark unread" : "Mark read"}
               </button>
               <button className="header-action-button danger" onClick={() => removeNotification(selected)} type="button">Delete</button>
             </div>

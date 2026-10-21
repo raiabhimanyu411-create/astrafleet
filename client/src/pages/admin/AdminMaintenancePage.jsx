@@ -25,6 +25,7 @@ import {
   extractMaintenanceDocument
 } from "../../api/maintenanceApi";
 import { getAuthSession } from "../../utils/authSession";
+import { getSettingsDefaults } from "../../api/settingsApi";
 import { StateNotice } from "../../components/StateNotice";
 import { StatusPill } from "../../components/StatusPill";
 import { AdminWorkspaceLayout } from "./AdminWorkspaceLayout";
@@ -81,11 +82,36 @@ const allMaintenanceItems = [
   { value: "Insurance", label: "Insurance", interval: "Every 12 months", months: 12, trailerOk: false },
   { value: "Full Service", label: "Full Service", interval: "Every 6 months / 85,000 km", months: 6, mileageKm: 85000, trailerOk: false }
 ];
+// Intervals the admin can change in Settings; these defaults match the list above.
+let maintenanceIntervals = { trailerInspectionWeeks: 10, serviceKm: 85000 };
+
+function everyMonths(months) {
+  if (months === 12) return "Every 12 months";
+  if (months % 12 === 0) return `Every ${months / 12} years`;
+  return `Every ${months} months`;
+}
+
+// Same rules the server uses, so on-screen due dates match the saved ones.
+function applyMaintenanceIntervals(settings) {
+  if (!settings) return;
+  maintenanceIntervals = { ...maintenanceIntervals, ...settings };
+  const update = (value, patch) => Object.assign(allMaintenanceItems.find((item) => item.value === value), patch);
+  update("MOT", { months: settings.motMonths, interval: everyMonths(settings.motMonths) });
+  update("Tacho Calibration", { months: settings.tachoMonths, interval: everyMonths(settings.tachoMonths) });
+  update("Insurance", { months: settings.insuranceMonths, interval: everyMonths(settings.insuranceMonths) });
+  update("Full Service", {
+    months: settings.serviceMonths,
+    mileageKm: settings.serviceKm,
+    interval: `${everyMonths(settings.serviceMonths)} / ${Number(settings.serviceKm).toLocaleString("en-GB")} km`
+  });
+}
+
 function getMaintenanceItems(assetType) {
+  const trailerWeeks = maintenanceIntervals.trailerInspectionWeeks;
   return assetType === "trailer"
     ? allMaintenanceItems
         .filter((item) => item.trailerOk)
-        .map((item) => item.value === "Safety inspection" ? { ...item, interval: "Every 10 weeks", days: 70 } : item)
+        .map((item) => item.value === "Safety inspection" ? { ...item, interval: `Every ${trailerWeeks} weeks`, days: trailerWeeks * 7 } : item)
     : allMaintenanceItems;
 }
 const maintenanceItems = allMaintenanceItems;
@@ -454,7 +480,7 @@ function nextDueForItem(serviceType, serviceDate, roadTaxIntervalMonths, assetTy
 
 function nextMileageForItem(serviceType, completedMileageKm) {
   if (serviceType !== "Full Service" || !completedMileageKm) return "";
-  return String(Number(completedMileageKm) + 85000);
+  return String(Number(completedMileageKm) + Number(maintenanceIntervals.serviceKm));
 }
 
 function readFileAsDataUrl(file, onDone) {
@@ -892,7 +918,7 @@ function JobModal({ vehicles, defects, editingJob, initialForm, onClose, onSaved
                 <input className="af-input" type="number" min="0" value={form.completed_mileage_km} onChange={(e) => set("completed_mileage_km", e.target.value)} placeholder="e.g. 185000" />
               </Field>
               <Field label="Next Due Mileage (km)">
-                <input className="af-input" type="number" min="0" value={form.next_due_mileage_km} onChange={(e) => set("next_due_mileage_km", e.target.value)} placeholder="Auto +85,000 km" />
+                <input className="af-input" type="number" min="0" value={form.next_due_mileage_km} onChange={(e) => set("next_due_mileage_km", e.target.value)} placeholder={`Auto +${Number(maintenanceIntervals.serviceKm).toLocaleString("en-GB")} km`} />
               </Field>
             </>
           )}
@@ -2658,6 +2684,8 @@ export function AdminMaintenancePage() {
     if (reconcile) setSavingAction("fleet-refresh");
     const reconcileRequest = reconcile ? reconcileMaintenanceFleet() : Promise.resolve();
     return reconcileRequest
+      // Intervals from Settings first; if they can't load, the built-in defaults stay.
+      .then(() => getSettingsDefaults().then((res) => applyMaintenanceIntervals(res.data)).catch(() => {}))
       .then(() => getMaintenancePortal())
       .then((res) => {
         if (requestId !== loadRequestRef.current) return res.data;

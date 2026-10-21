@@ -1,4 +1,5 @@
 const db = require("../db/connection");
+const { releaseTrailer, releaseVehicle, setTrailerStatus, setVehicleStatus } = require("../utils/assetStatus");
 const { validateSchedule, normalisePlan, mergeJobUpdate } = require('../utils/jobPlanning');
 const { emitDriverChatMessage, emitDriverJobAssigned, emitJobUpdate } = require("../realtime");
 const { getActor, logActivity, requireDeleteReason } = require("../utils/auditLogger");
@@ -981,11 +982,11 @@ exports.updateJobAssignment = async (req, res) => {
       [...values, id]
     );
     if (Object.hasOwn(req.body, 'vehicle_id') || Object.hasOwn(req.body, 'vehicleId')) {
-      if (job.vehicle_id && String(job.vehicle_id) !== String(vehicleId || '')) await db.query("UPDATE vehicles SET status='available' WHERE id=?", [job.vehicle_id]);
+      if (job.vehicle_id && String(job.vehicle_id) !== String(vehicleId || '')) await releaseVehicle(db, job.vehicle_id, id);
       if (vehicleId) await db.query('UPDATE vehicles SET status=? WHERE id=?', [job.dispatch_status === 'active' ? 'in_transit' : ['planned','loading'].includes(job.dispatch_status) ? 'planned' : 'available', vehicleId]);
     }
     if (Object.hasOwn(req.body, 'trailer_id') || Object.hasOwn(req.body, 'trailerId')) {
-      if (job.trailer_id && String(job.trailer_id) !== String(trailerId || '')) await db.query("UPDATE trailers SET status='available' WHERE id=?", [job.trailer_id]);
+      if (job.trailer_id && String(job.trailer_id) !== String(trailerId || '')) await releaseTrailer(db, job.trailer_id, id);
       if (trailerId) await db.query('UPDATE trailers SET status=? WHERE id=?', [trailerStatusForJob(job.dispatch_status), trailerId]);
     }
 
@@ -1637,10 +1638,10 @@ exports.updateJob = async (req, res) => {
 
     // Reset old vehicle if changed
     if (existing.vehicle_id && String(existing.vehicle_id) !== String(vehicle_id || "")) {
-      await conn.query(`UPDATE vehicles SET status='available' WHERE id=?`, [existing.vehicle_id]);
+      await releaseVehicle(conn, existing.vehicle_id, id);
     }
     if (existing.trailer_id && String(existing.trailer_id) !== String(trailer_id || "")) {
-      await conn.query(`UPDATE trailers SET status='available' WHERE id=?`, [existing.trailer_id]);
+      await releaseTrailer(conn, existing.trailer_id, id);
     }
     if (vehicle_id) {
       const vehicleChanged = String(existing.vehicle_id || "") !== String(vehicle_id || "") ? 1 : 0;
@@ -1844,10 +1845,10 @@ exports.updateJobStatus = async (req, res) => {
     const terminalStatuses = ["completed", "blocked", "failed", "cancelled"];
     if (job.vehicle_id) {
       const vStatus = status === "active" ? "in_transit" : terminalStatuses.includes(status) ? "available" : "planned";
-      await db.query(`UPDATE vehicles SET status=? WHERE id=?`, [vStatus, job.vehicle_id]);
+      await setVehicleStatus(db, job.vehicle_id, vStatus, id);
     }
     if (job.trailer_id) {
-      await db.query(`UPDATE trailers SET status=? WHERE id=?`, [trailerStatusForJob(status), job.trailer_id]);
+      await setTrailerStatus(db, job.trailer_id, trailerStatusForJob(status), id);
     }
 
     await logActivity(req, {
@@ -1885,10 +1886,10 @@ exports.cancelJob = async (req, res) => {
       [reasonCheck.reason, id]
     );
     if (job.vehicle_id) {
-      await db.query(`UPDATE vehicles SET status='available' WHERE id=?`, [job.vehicle_id]);
+      await releaseVehicle(db, job.vehicle_id, id);
     }
     if (job.trailer_id) {
-      await db.query(`UPDATE trailers SET status='available' WHERE id=?`, [job.trailer_id]);
+      await releaseTrailer(db, job.trailer_id, id);
     }
 
     await logActivity(req, {
@@ -2049,8 +2050,8 @@ exports.deleteJob = async (req, res) => {
     // Only a still-planned job is holding its truck and trailer; finished or blocked jobs already released them,
     // and those assets may now be on another job.
     if (job.dispatch_status === "planned") {
-      if (job.vehicle_id) await conn.query("UPDATE vehicles SET status='available' WHERE id=?", [job.vehicle_id]);
-      if (job.trailer_id) await conn.query("UPDATE trailers SET status='available' WHERE id=?", [job.trailer_id]);
+      if (job.vehicle_id) await releaseVehicle(conn, job.vehicle_id, id);
+      if (job.trailer_id) await releaseTrailer(conn, job.trailer_id, id);
     }
     await conn.commit();
 

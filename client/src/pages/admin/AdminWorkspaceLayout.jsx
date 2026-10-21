@@ -19,7 +19,8 @@ export const adminMenu = [
   { to: "/admin/alerts",    label: "Alerts",         icon: "alerts",        group: "Team & system" },
   { to: "/admin/notifications", label: "Notifications", icon: "notifications", group: "Team & system" },
   { to: "/admin/employees", label: "Employees",      icon: "employees",     group: "Team & system" },
-  { to: "/admin/activity",  label: "Activity report", icon: "activity",     group: "Team & system" }
+  { to: "/admin/activity",  label: "Activity report", icon: "activity",     group: "Team & system" },
+  { to: "/admin/settings",  label: "Settings",       icon: "settings",      group: "Team & system" }
 ];
 
 const menuAccessKey = {
@@ -39,15 +40,32 @@ export function AdminWorkspaceLayout({ badge, title, description, highlights, hi
   const navigate = useNavigate();
   const location = useLocation();
   const [session, setSession] = useState(() => getAuthSession());
+
+  // Pick up name changes saved elsewhere (e.g. account settings) without a reload.
+  useEffect(() => {
+    const sync = () => setSession(getAuthSession());
+    window.addEventListener("astrafleet:session", sync);
+    return () => window.removeEventListener("astrafleet:session", sync);
+  }, []);
   const isEmployee = session?.role === "employee";
 
-  // Employee pages are assigned by admin at any time; refresh them instead of trusting the login-time copy.
+  // Refresh the signed-in user's name (and, for employees, their assigned pages)
+  // instead of trusting the copy saved at login.
   useEffect(() => {
-    if (!isEmployee) return undefined;
+    if (!session?.role) return undefined;
     let cancelled = false;
     getMySession()
       .then(({ data }) => {
         if (cancelled) return;
+        if (!isEmployee) {
+          const current = getAuthSession() || {};
+          if (data.name && data.name !== current.name) {
+            const next = { ...current, name: data.name };
+            saveAuthSession(next);
+            setSession(next);
+          }
+          return;
+        }
         if (data.role !== "employee" || data.approvalStatus !== "active") {
           clearAuthSession();
           navigate("/", { replace: true });
@@ -66,7 +84,7 @@ export function AdminWorkspaceLayout({ badge, title, description, highlights, hi
         // Expired sessions are handled by the axios interceptor; keep the cached menu otherwise.
       });
     return () => { cancelled = true; };
-  }, [isEmployee, location.pathname, navigate]);
+  }, [isEmployee, location.pathname, navigate, session?.role]);
   const visibleMenu = session?.role === "employee"
     ? adminMenu.filter((item) => session.accessModules?.includes(menuAccessKey[item.to]))
     : adminMenu;

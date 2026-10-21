@@ -7,11 +7,9 @@ import { AdminWorkspaceLayout } from "../AdminWorkspaceLayout";
 
 function DetailField({ label, value }) {
   return (
-    <div style={{ padding: "12px 14px", background: "#FAFAFA", border: "1px solid #E9EBED", borderRadius: 8 }}>
-      <span style={{ display: "block", fontSize: "0.72rem", fontWeight: 700, color: "#5F6B7A", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 5 }}>
-        {label}
-      </span>
-      <strong style={{ fontSize: "0.9rem", fontWeight: 600, color: "#0F141A" }}>{value || "—"}</strong>
+    <div className="fl-field">
+      <span className="fl-field-label">{label}</span>
+      <strong className="fl-field-value">{value || "—"}</strong>
     </div>
   );
 }
@@ -40,7 +38,7 @@ export function CustomerDetailPage() {
       <div className="af-page" style={{ maxWidth: 1000 }}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 20 }}>
           <button className="af-back-btn" type="button" onClick={() => navigate("/admin/customers")}>
-            ← Back To Customers
+            ← Back to customers
           </button>
           {data && (
             <button
@@ -48,7 +46,7 @@ export function CustomerDetailPage() {
               type="button"
               onClick={() => navigate(`/admin/customers/${id}/edit`)}
             >
-              Edit Customer
+              Edit customer
             </button>
           )}
         </div>
@@ -61,35 +59,35 @@ export function CustomerDetailPage() {
             <div className="af-section" style={{ marginBottom: 16 }}>
               <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 16, marginBottom: 16 }}>
                 <div>
-                  <p className="af-section-title" style={{ margin: 0 }}>Company Profile</p>
+                  <p className="af-section-title" style={{ margin: 0 }}>Company profile</p>
                   <h2 style={{ margin: "6px 0 4px", fontSize: "1.3rem" }}>{data.companyName}</h2>
                   <span style={{ fontSize: "0.8rem", color: "#5F6B7A" }}>Customer since {data.since}</span>
                 </div>
                 <StatusPill tone={data.tone}>{data.status}</StatusPill>
               </div>
               <div className="detail-grid">
-                <DetailField label="Contact Name"    value={data.contactName} />
+                <DetailField label="Contact name"    value={data.contactName} />
                 <DetailField label="Email"           value={data.email} />
                 <DetailField label="Phone"           value={data.phone} />
                 <DetailField label="Postcode"        value={data.postcode} />
                 <DetailField label="VAT Number"      value={data.vatNumber} />
-                <DetailField label="Tax Details"     value={data.taxDetails} />
-                <DetailField label="Payment Terms"   value={`Net ${data.paymentTermsDays} days`} />
-                <DetailField label="Credit Limit"    value={data.creditLimitGbp ? `£${Number(data.creditLimitGbp).toLocaleString("en-GB", { minimumFractionDigits: 2 })}` : "—"} />
+                <DetailField label="Tax details"     value={data.taxDetails} />
+                <DetailField label="Payment terms"   value={`Net ${data.paymentTermsDays} days`} />
+                <DetailField label="Credit limit"    value={data.creditLimitGbp ? `£${Number(data.creditLimitGbp).toLocaleString("en-GB", { minimumFractionDigits: 2 })}` : "—"} />
                 <div className="detail-wide">
                   <DetailField label="Address" value={data.address} />
                 </div>
                 <div className="detail-wide">
-                  <DetailField label="Billing Address" value={data.billingAddress} />
+                  <DetailField label="Billing address" value={data.billingAddress} />
                 </div>
                 <div className="detail-wide">
-                  <DetailField label="Saved Pickup Addresses" value={data.savedPickupAddresses || "—"} />
+                  <DetailField label="Saved pickup addresses" value={data.savedPickupAddresses || "—"} />
                 </div>
                 <div className="detail-wide">
-                  <DetailField label="Saved Drop Addresses" value={data.savedDropAddresses || "—"} />
+                  <DetailField label="Saved drop addresses" value={data.savedDropAddresses || "—"} />
                 </div>
                 <div className="detail-wide">
-                  <DetailField label="Rate Contract" value={data.rateContract || "—"} />
+                  <DetailField label="Rate contract" value={data.rateContract || "—"} />
                 </div>
               </div>
             </div>
@@ -98,8 +96,8 @@ export function CustomerDetailPage() {
             <div className="content-card" style={{ marginBottom: 16 }}>
               <div className="section-head">
                 <div>
-                  <span className="card-label">Trip History</span>
-                  <h2>Jobs Linked To This Customer</h2>
+                  <span className="card-label">Trip history</span>
+                  <h2>Jobs linked to this customer</h2>
                 </div>
                 <StatusPill tone="neutral">{data.trips.length} trips</StatusPill>
               </div>
@@ -137,8 +135,8 @@ export function CustomerDetailPage() {
             <div className="content-card">
               <div className="section-head">
                 <div>
-                  <span className="card-label">Invoice History</span>
-                  <h2>Invoices Raised For This Customer</h2>
+                  <span className="card-label">Invoice history</span>
+                  <h2>Invoices raised for this customer</h2>
                 </div>
                 <StatusPill tone="neutral">{data.invoices.length} invoices</StatusPill>
               </div>

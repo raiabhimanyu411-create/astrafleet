@@ -184,8 +184,8 @@ export function AdminActivityPage() {
 
   return (
     <AdminWorkspaceLayout
-      badge="Activity Report"
-      title="Employee Portal Audit Trail"
+      badge="Activity report"
+      title="Employee portal audit trail"
       description="Track logins, created records, updates, deletes, and deletion reasons across assigned panels."
       highlights={[
         "Every employee login is timestamped",
@@ -246,14 +246,14 @@ export function AdminActivityPage() {
         <button className="header-action-button" type="button" onClick={() => {
           if (focusEventId) setSearchParams({});
           setFilters(current => ({ ...current, eventId: "", from: daysAgoIso(6), to: todayIso() }));
-        }}>7 Days</button>
+        }}>7 days</button>
         <button className="header-action-button" type="button" onClick={exportActivity}>Export CSV</button>
         <button className="header-action-button" disabled={!hasFilters} type="button" onClick={clearFilters}>Clear</button>
       </section>
 
       <section className="activity-tabs" aria-label="Activity report views">
         <button className={view === "audit" ? "active" : ""} type="button" onClick={() => setView("audit")}>
-          Audit Feed
+          Audit feed
         </button>
         <button className={view === "sessions" ? "active" : ""} type="button" onClick={() => setView("sessions")}>
           Sessions
@@ -264,8 +264,8 @@ export function AdminActivityPage() {
       <section className="content-card activity-table-card">
         <div className="section-head">
           <div>
-            <span className="card-label">Audit Feed</span>
-            <h2>Employee Actions</h2>
+            <span className="card-label">Audit feed</span>
+            <h2>Employee actions</h2>
           </div>
           <div className="activity-head-actions">
             <StatusPill tone="neutral">{visibleLogs.length} events</StatusPill>
@@ -281,7 +281,7 @@ export function AdminActivityPage() {
                 <th>Panel</th>
                 <th>Action</th>
                 <th>Record</th>
-                <th>Changes / Reason</th>
+                <th>Changes / reason</th>
                 <th>Hash</th>
                 <th>Control</th>
               </tr>
@@ -330,7 +330,7 @@ export function AdminActivityPage() {
         <div className="section-head">
           <div>
             <span className="card-label">Sessions</span>
-            <h2>Login Duration Report</h2>
+            <h2>Login duration report</h2>
           </div>
           <StatusPill tone="neutral">{data?.sessions?.length || 0} sessions</StatusPill>
         </div>
@@ -341,7 +341,7 @@ export function AdminActivityPage() {
                 <th>Employee</th>
                 <th>Role</th>
                 <th>Login</th>
-                <th>Last Activity</th>
+                <th>Last activity</th>
                 <th>Logout</th>
                 <th>Duration</th>
                 <th>Status</th>

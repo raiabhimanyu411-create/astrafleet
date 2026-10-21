@@ -1,4 +1,6 @@
 const db = require("../db/connection");
+const { settingNumber } = require("./settingsController");
+const { releaseTrailer, releaseVehicle, setTrailerStatus, setVehicleStatus } = require("../utils/assetStatus");
 const { ukNowDateTimeKey } = require("../utils/jobDateTimes");
 const { ensureEmployeeAuthSchema, employeeModules, parseAccessModules } = require("./authController");
 const { emitDriverChatMessage, emitDriverLocationUpdate, emitJobUpdate } = require("../realtime");
@@ -1003,7 +1005,7 @@ exports.createInvoice = async (req, res) => {
     const validStatuses = ["draft", "sent", "pending", "overdue", "paid", "hold"];
     const status = payment_status || "draft";
     const netAmount = Number(net_amount_gbp ?? amount_gbp);
-    const vatRate = Number(vat_rate ?? 20);
+    const vatRate = Number(vat_rate ?? settingNumber("invoice_vat_rate"));
     const vatAmount = Number((netAmount * vatRate / 100).toFixed(2));
     const grossAmount = Number((netAmount + vatAmount).toFixed(2));
     if (!invoice_no?.trim() || !client_name?.trim() || !issued_at || !due_date || !Number.isFinite(netAmount) || netAmount <= 0) {
@@ -2308,10 +2310,10 @@ exports.updateTrip = async (req, res) => {
     await conn.beginTransaction();
 
     if (existing.vehicle_id && String(existing.vehicle_id) !== String(vehicle_id)) {
-      await conn.query("UPDATE vehicles SET status='available' WHERE id=?", [existing.vehicle_id]);
+      await releaseVehicle(conn, existing.vehicle_id, id);
     }
     if (existing.trailer_id && String(existing.trailer_id) !== String(trailer_id)) {
-      await conn.query("UPDATE trailers SET status='available' WHERE id=?", [existing.trailer_id]);
+      await releaseTrailer(conn, existing.trailer_id, id);
     }
 
     await conn.query(
@@ -2415,10 +2417,10 @@ exports.updateTripStatus = async (req, res) => {
 
     await db.query("UPDATE trips SET dispatch_status=? WHERE id=? AND deleted_at IS NULL", [status, id]);
     if (trip.vehicle_id) {
-      await db.query("UPDATE vehicles SET status=? WHERE id=?", [vehicleStatusForTrip(status), trip.vehicle_id]);
+      await setVehicleStatus(db, trip.vehicle_id, vehicleStatusForTrip(status), trip.id);
     }
     if (trip.trailer_id) {
-      await db.query("UPDATE trailers SET status=? WHERE id=?", [trailerStatusForTrip(status), trip.trailer_id]);
+      await setTrailerStatus(db, trip.trailer_id, trailerStatusForTrip(status), trip.id);
     }
 
     await logActivity(req, {
@@ -2457,10 +2459,10 @@ exports.deleteTrip = async (req, res) => {
       [actor.id, reasonCheck.reason, id]
     );
     if (trip.vehicle_id) {
-      await conn.query("UPDATE vehicles SET status='available' WHERE id = ?", [trip.vehicle_id]);
+      await releaseVehicle(conn, trip.vehicle_id, trip.id);
     }
     if (trip.trailer_id) {
-      await conn.query("UPDATE trailers SET status='available' WHERE id = ?", [trip.trailer_id]);
+      await releaseTrailer(conn, trip.trailer_id, trip.id);
     }
     await conn.commit();
 

@@ -1,0 +1,569 @@
+/* ═══════════════════════════════════════════════════════════════════════════
+   Fluent layer for every admin / driver page that has no page-specific redesign.
+   Same tokens as Overview, Employees, Maintenance and Settings.
+
+   Loaded last. Every selector starts with :where(.panel-shell), which adds no
+   specificity: these rules replace the old base styles in App.css (same
+   specificity, later wins) but lose to any page-scoped redesign such as
+   `.employees-page-shell .content-card`, so redesigned pages are untouched.
+═══════════════════════════════════════════════════════════════════════════ */
+
+:where(.panel-shell) {
+  --fl-border: #E6E8EC;
+  --fl-border-strong: #D4D8DE;
+  --fl-surface: #FFFFFF;
+  --fl-surface-2: #F8F9FB;
+  --fl-surface-3: #F1F3F6;
+  --fl-text: #1F2328;
+  --fl-text-2: #3D444D;
+  --fl-text-3: #656D76;
+  --fl-brand: #0F6CBD;
+  --fl-brand-hover: #115EA3;
+  --fl-brand-tint: #EBF3FC;
+  --fl-success: #107C10;
+  --fl-success-tint: #F1FAF1;
+  --fl-warning: #BC4B09;
+  --fl-warning-tint: #FFF7F0;
+  --fl-danger: #B10E1C;
+  --fl-danger-tint: #FDF3F4;
+  --fl-shadow: 0 1px 2px rgba(16, 24, 40, 0.05);
+  --fl-ring: 0 0 0 3px rgba(15, 108, 189, 0.15);
+}
+
+/* ── Page header ──────────────────────────────────────────────────────────── */
+:where(.panel-shell) .panel-header h1 {
+  margin: 6px 0 4px;
+  font-size: 1.5rem;
+  font-weight: 700;
+  letter-spacing: -0.015em;
+  color: var(--fl-text);
+}
+
+:where(.panel-shell) .panel-header p { color: var(--fl-text-3); font-size: 0.9rem; }
+
+:where(.panel-shell) .section-chip {
+  padding: 0;
+  border: 0;
+  background: none;
+  box-shadow: none;
+  color: var(--fl-text-3);
+  font-size: 0.8rem;
+  font-weight: 600;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+/* ── Small labels: sentence case everywhere ───────────────────────────────── */
+:where(.panel-shell) .card-label,
+:where(.panel-shell) .af-section-title,
+:where(.panel-shell) .detail-grid span,
+:where(.panel-shell) .panel-main th {
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+:where(.panel-shell) .card-label {
+  color: var(--fl-text-3);
+  font-size: 0.78rem;
+  font-weight: 600;
+}
+
+/* ── Cards & sections ─────────────────────────────────────────────────────── */
+:where(.panel-shell) .content-card,
+:where(.panel-shell) .af-section {
+  padding: 20px;
+  border: 1px solid var(--fl-border);
+  border-radius: 10px;
+  background: var(--fl-surface);
+  box-shadow: var(--fl-shadow);
+}
+
+:where(.panel-shell) .content-card-link { border-top: 1px solid var(--fl-border); }
+:where(.panel-shell) .content-card-link:hover { border-color: var(--fl-border-strong); box-shadow: 0 4px 12px rgba(16, 24, 40, 0.06); transform: none; }
+
+:where(.panel-shell) .section-head {
+  margin-bottom: 14px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--fl-border);
+}
+
+:where(.panel-shell) .section-head h2 {
+  margin: 2px 0 0;
+  color: var(--fl-text);
+  font-size: 1rem;
+  font-weight: 650;
+  letter-spacing: 0;
+}
+
+:where(.panel-shell) .af-section-title {
+  margin: 0 0 14px;
+  color: var(--fl-text);
+  font-size: 1rem;
+  font-weight: 650;
+}
+
+/* ── Forms ────────────────────────────────────────────────────────────────── */
+:where(.panel-shell) .af-form { gap: 16px; }
+:where(.panel-shell) .af-field { gap: 5px; }
+
+:where(.panel-shell) .af-label {
+  color: var(--fl-text-2);
+  font-size: 0.84rem;
+  font-weight: 600;
+}
+
+:where(.panel-shell) .af-hint { color: var(--fl-text-3); font-size: 0.76rem; }
+
+:where(.panel-shell) .af-input,
+:where(.panel-shell) .af-select {
+  min-height: 36px;
+  padding: 7px 10px;
+  border: 1px solid var(--fl-border-strong);
+  border-radius: 6px;
+  background: var(--fl-surface);
+  color: var(--fl-text);
+  font-size: 0.9rem;
+  box-shadow: none;
+}
+
+:where(.panel-shell) textarea.af-input { min-height: 84px; line-height: 1.45; }
+
+:where(.panel-shell) .af-input:hover,
+:where(.panel-shell) .af-select:hover { border-color: #BCC2CB; }
+
+:where(.panel-shell) .af-input:focus,
+:where(.panel-shell) .af-select:focus {
+  border-color: var(--fl-brand);
+  box-shadow: var(--fl-ring);
+  outline: none;
+}
+
+:where(.panel-shell) .af-input:disabled,
+:where(.panel-shell) .af-select:disabled { background: var(--fl-surface-3); color: var(--fl-text-3); }
+
+:where(.panel-shell) .af-input::placeholder { color: #9AA1AA; }
+
+:where(.panel-shell) .af-input[aria-invalid="true"],
+:where(.panel-shell) .af-select[aria-invalid="true"] { border-color: var(--fl-danger); box-shadow: none; }
+
+:where(.panel-shell) .af-field-error { color: var(--fl-danger); font-weight: 600; }
+
+:where(.panel-shell) .af-actions { gap: 8px; padding-top: 2px; }
+:where(.panel-shell) .af-back-row { margin-bottom: 14px; }
+:where(.panel-shell) .af-back-btn { color: var(--fl-brand); font-size: 0.86rem; }
+
+/* ── Buttons ──────────────────────────────────────────────────────────────── */
+:where(.panel-shell) .af-submit-btn {
+  height: 36px;
+  padding: 0 16px;
+  border: 1px solid var(--fl-brand);
+  border-radius: 6px;
+  background: var(--fl-brand);
+  box-shadow: none;
+  color: #fff;
+  font-size: 0.88rem;
+  font-weight: 600;
+  letter-spacing: 0;
+  transform: none;
+}
+
+:where(.panel-shell) .af-submit-btn:hover:not(:disabled) {
+  border-color: var(--fl-brand-hover);
+  background: var(--fl-brand-hover);
+  box-shadow: none;
+  transform: none;
+}
+
+:where(.panel-shell) .af-submit-btn:disabled { opacity: 0.5; }
+
+:where(.panel-shell) .header-action-button {
+  height: 34px;
+  padding: 0 14px;
+  border: 1px solid var(--fl-border-strong);
+  border-radius: 6px;
+  background: var(--fl-surface);
+  box-shadow: none;
+  color: var(--fl-text);
+  font-size: 0.86rem;
+  font-weight: 600;
+}
+
+:where(.panel-shell) .header-action-button:hover:not(:disabled) {
+  border-color: #BCC2CB;
+  background: var(--fl-surface-2);
+  box-shadow: none;
+  transform: none;
+}
+
+:where(.panel-shell) .header-action-button.primary {
+  border-color: var(--fl-brand);
+  background: var(--fl-brand);
+  color: #fff;
+}
+
+:where(.panel-shell) .header-action-button.primary:hover:not(:disabled) { border-color: var(--fl-brand-hover); background: var(--fl-brand-hover); }
+
+:where(.panel-shell) .header-action-button.danger {
+  border-color: #F0C2C6;
+  background: var(--fl-surface);
+  color: var(--fl-danger);
+}
+
+:where(.panel-shell) .header-action-button.danger:hover:not(:disabled) { background: var(--fl-danger-tint); }
+
+:where(.panel-shell) .af-submit-btn:focus-visible,
+:where(.panel-shell) .header-action-button:focus-visible,
+:where(.panel-shell) .af-back-btn:focus-visible {
+  outline: 2px solid var(--fl-brand);
+  outline-offset: 2px;
+}
+
+/* ── Status pill: same look as the Overview badge ─────────────────────────── */
+:where(.panel-shell) .status-pill {
+  gap: 6px;
+  padding: 2px 9px;
+  border: 0;
+  background: var(--fl-surface-3);
+  color: var(--fl-text-2);
+  font-size: 0.75rem;
+}
+
+:where(.panel-shell) .status-pill::before {
+  content: "";
+  flex: none;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+:where(.panel-shell) .status-pill.success { background: var(--fl-success-tint); color: var(--fl-success); }
+:where(.panel-shell) .status-pill.warning { background: var(--fl-warning-tint); color: var(--fl-warning); }
+:where(.panel-shell) .status-pill.danger { background: var(--fl-danger-tint); color: var(--fl-danger); }
+:where(.panel-shell) .status-pill.neutral { background: var(--fl-surface-3); color: var(--fl-text-2); }
+
+/* ── Notices ──────────────────────────────────────────────────────────────── */
+:where(.panel-shell) .state-card {
+  border: 1px solid var(--fl-border);
+  border-radius: 8px;
+  background: var(--fl-surface);
+  box-shadow: none;
+}
+
+:where(.panel-shell) .state-card.error { border-color: #F3C9CC; background: var(--fl-danger-tint); }
+:where(.panel-shell) .state-card.error strong { color: var(--fl-danger); }
+
+/* ── Stat cards: flat, the number carries the weight ──────────────────────── */
+:where(.panel-shell) .stat-card {
+  padding: 16px 18px;
+  border: 1px solid var(--fl-border);
+  border-radius: 10px;
+  box-shadow: var(--fl-shadow);
+}
+
+:where(.panel-shell) .stat-card.tone-success,
+:where(.panel-shell) .stat-card.tone-warning,
+:where(.panel-shell) .stat-card.tone-neutral { border-top-color: var(--fl-border); }
+
+:where(.panel-shell) .stat-card.tone-danger { border-color: #F3C9CC; }
+:where(.panel-shell) .stat-card.tone-danger strong { color: var(--fl-danger); }
+
+:where(.panel-shell) .stat-card:hover { transform: none; }
+:where(.panel-shell) .stat-card.active { border-color: var(--fl-brand); background: var(--fl-brand-tint); }
+
+:where(.panel-shell) .stat-card strong {
+  margin: 6px 0 2px;
+  font-size: 1.7rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+
+:where(.panel-shell) .stat-card p { color: var(--fl-text-3); font-size: 0.78rem; }
+
+/* ── Detail grids: label / value pairs instead of grey tiles ──────────────── */
+:where(.panel-shell) .detail-grid { gap: 0 24px; }
+
+:where(.panel-shell) .detail-grid > div {
+  padding: 10px 0;
+  border: 0;
+  border-bottom: 1px solid var(--fl-border);
+  border-radius: 0;
+  background: none;
+}
+
+:where(.panel-shell) .detail-grid span {
+  margin-bottom: 2px;
+  color: var(--fl-text-3);
+  font-size: 0.78rem;
+  font-weight: 600;
+}
+
+:where(.panel-shell) .detail-grid strong { color: var(--fl-text); font-size: 0.9rem; font-weight: 600; }
+
+/* ── List rows ────────────────────────────────────────────────────────────── */
+:where(.panel-shell) .data-rows { gap: 0; }
+
+:where(.panel-shell) .data-row {
+  padding: 11px 4px;
+  border: 0;
+  border-bottom: 1px solid var(--fl-border);
+  border-radius: 0;
+  background: none;
+}
+
+:where(.panel-shell) .data-row:last-child { border-bottom: 0; }
+:where(.panel-shell) .data-row:hover { background: var(--fl-surface-2); }
+
+/* ── Tables ───────────────────────────────────────────────────────────────── */
+:where(.panel-shell .panel-main) table th {
+  background: var(--fl-surface-2);
+  color: var(--fl-text-3);
+  font-size: 0.77rem;
+  font-weight: 600;
+}
+
+:where(.panel-shell .panel-main) table td { color: var(--fl-text); }
+
+/* Marketing-style highlight bullets add noise; redesigned pages already pass none. */
+:where(.panel-shell) .highlight-row { display: none; }
+
+/* Sentence case everywhere: the old styles uppercase or capitalise many labels through
+   dozens of page-specific rules. Data that is uppercase (registrations, job codes) is
+   stored that way, so it still shows correctly. Form fields keep their own behaviour. */
+:where(.panel-shell) .panel-main :not(input, textarea, select, option) {
+  text-transform: none !important;
+}
+
+:where(.panel-shell) .status-pill::first-letter { text-transform: uppercase; }
+
+/* ═══ Workbench pages (Billing, Alerts, Dispatch, Activity, Finance) ═══════════
+   These classes exist only on pages without their own redesign, so `.panel-shell`
+   (real specificity) is used here to win over the old page rules. */
+
+/* Metric strips: one calm row, number first, colour only for problems */
+.panel-shell .billing-command-strip,
+.panel-shell .alerts-command-strip {
+  grid-template-columns: repeat(auto-fit, minmax(118px, 1fr));
+  margin-bottom: 16px;
+  border: 1px solid var(--fl-border);
+  border-radius: 10px;
+  box-shadow: var(--fl-shadow);
+}
+
+.panel-shell .billing-command-item,
+.panel-shell .alerts-command-item {
+  min-height: 0;
+  padding: 12px 14px;
+  border-bottom: 0;
+  border-right: 1px solid var(--fl-border);
+}
+
+.panel-shell .billing-command-item span,
+.panel-shell .alerts-command-item span,
+.panel-shell .dispatch-quick-card span,
+.panel-shell .activity-quick-card span {
+  color: var(--fl-text-3);
+  font-size: 0.8rem;
+  font-weight: 600;
+  letter-spacing: 0;
+}
+
+.panel-shell .billing-command-item strong,
+.panel-shell .alerts-command-item strong,
+.panel-shell .dispatch-quick-card strong,
+.panel-shell .activity-quick-card strong {
+  margin: 4px 0 2px;
+  color: var(--fl-text);
+  font-size: 1.4rem;
+  font-weight: 700;
+  line-height: 1.15;
+  letter-spacing: -0.01em;
+}
+
+.panel-shell .billing-command-item small,
+.panel-shell .alerts-command-item small,
+.panel-shell .activity-quick-card p {
+  overflow: hidden;
+  color: var(--fl-text-3);
+  font-size: 0.74rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.panel-shell .billing-command-item.danger strong,
+.panel-shell .alerts-command-item.danger strong,
+.panel-shell .dispatch-quick-card.danger strong,
+.panel-shell .activity-quick-card.danger strong { color: var(--fl-danger); }
+
+.panel-shell .billing-command-item.warning strong,
+.panel-shell .alerts-command-item.warning strong,
+.panel-shell .dispatch-quick-card.warning strong,
+.panel-shell .activity-quick-card.warning strong { color: var(--fl-warning); }
+
+.panel-shell .billing-command-item.success strong,
+.panel-shell .alerts-command-item.success strong,
+.panel-shell .dispatch-quick-card.success strong,
+.panel-shell .activity-quick-card.success strong { color: var(--fl-text); }
+
+.panel-shell .dispatch-quick-grid,
+.panel-shell .activity-quick-grid { gap: 12px; margin-bottom: 16px; }
+
+.panel-shell .dispatch-quick-card,
+.panel-shell .activity-quick-card {
+  padding: 14px 16px;
+  border: 1px solid var(--fl-border);
+  border-radius: 10px;
+  background: var(--fl-surface);
+  box-shadow: var(--fl-shadow);
+}
+
+.panel-shell .dispatch-quick-card:hover { border-color: var(--fl-border-strong); transform: none; }
+.panel-shell .dispatch-quick-card.active { border-color: var(--fl-brand); background: var(--fl-brand-tint); box-shadow: none; }
+
+/* Tabs: Fluent pivot — text with an underline, no boxed buttons */
+.panel-shell .activity-tabs,
+.panel-shell .dispatch-tabs {
+  display: flex;
+  gap: 4px;
+  width: auto;
+  margin-bottom: 12px;
+  padding: 0;
+  border: 0;
+  border-bottom: 1px solid var(--fl-border);
+  border-radius: 0;
+  background: none;
+  box-shadow: none;
+}
+
+.panel-shell .activity-tabs button,
+.panel-shell .dispatch-tabs button {
+  height: 38px;
+  margin-bottom: -1px;
+  padding: 0 12px;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  border-radius: 0;
+  background: none;
+  box-shadow: none;
+  color: var(--fl-text-3);
+  font-size: 0.9rem;
+  font-weight: 600;
+}
+
+.panel-shell .activity-tabs button:hover,
+.panel-shell .dispatch-tabs button:hover { color: var(--fl-text); background: none; }
+
+.panel-shell .activity-tabs button.active,
+.panel-shell .dispatch-tabs button.active {
+  border-bottom-color: var(--fl-brand);
+  background: none;
+  color: var(--fl-text);
+}
+
+/* Filter bars wrap instead of running off the page */
+.panel-shell .finance-filter-card,
+.panel-shell .billing-filter-card,
+.panel-shell .activity-filter-card,
+.panel-shell .dispatch-filter-card,
+.panel-shell .alert-filter-card {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 16px;
+  padding: 12px;
+}
+
+.panel-shell :is(.finance-filter-card, .billing-filter-card, .activity-filter-card, .dispatch-filter-card, .alert-filter-card) > :is(.af-input, .af-select) {
+  flex: 1 1 150px;
+  width: auto;
+  min-width: 0;
+}
+
+.panel-shell :is(.finance-filter-card, .billing-filter-card, .activity-filter-card, .dispatch-filter-card, .alert-filter-card) > .af-input:first-child { flex: 2 1 240px; }
+.panel-shell :is(.finance-filter-card, .billing-filter-card, .activity-filter-card, .dispatch-filter-card, .alert-filter-card) > .header-action-button { flex: none; }
+
+.panel-shell .finance-command-bar { gap: 8px; margin-bottom: 14px; }
+
+/* List rows: white rows with dividers; a thin colour mark only where it means something */
+.panel-shell .alerts-register-item,
+.panel-shell .billing-register-item {
+  border: 1px solid var(--fl-border);
+  border-radius: 8px;
+  background: var(--fl-surface);
+  box-shadow: none;
+}
+
+.panel-shell .alerts-register-item:hover,
+.panel-shell .billing-register-item:hover { border-color: var(--fl-border-strong); background: var(--fl-surface-2); }
+
+.panel-shell .alerts-register-item.active,
+.panel-shell .billing-register-item.active {
+  border-color: var(--fl-brand);
+  background: var(--fl-brand-tint);
+  box-shadow: none;
+}
+
+.panel-shell .alerts-severity-marker { width: 3px; min-height: 0; border-radius: 3px; }
+
+.panel-shell .alert-meta-strip span {
+  border: 0;
+  background: var(--fl-surface-3);
+  color: var(--fl-text-2);
+  font-weight: 600;
+}
+
+.panel-shell .billing-register-head {
+  color: var(--fl-text-3);
+  font-size: 0.77rem;
+  font-weight: 600;
+  letter-spacing: 0;
+}
+
+/* Notifications: row actions appear on hover or keyboard focus, like Outlook */
+@media (hover: hover) {
+  .panel-shell .notification-center-item .notification-center-item-actions { opacity: 0; transition: opacity 0.12s; }
+  .panel-shell .notification-center-item:hover .notification-center-item-actions,
+  .panel-shell .notification-center-item:focus-within .notification-center-item-actions { opacity: 1; }
+}
+
+.panel-shell .notification-center-item:hover { background: var(--fl-surface-2); }
+.panel-shell .notification-center-item.unread .notification-center-copy strong { font-weight: 700; }
+
+/* Finance: metric strip is read-only; receivables and payouts tables use the full width */
+.panel-shell .finance-metrics .billing-command-item { cursor: default; }
+.panel-shell .finance-metrics .billing-command-item:hover { background: transparent; }
+.panel-shell .finance-stack { grid-template-columns: minmax(0, 1fr); }
+
+/* Inputs with a £ prefix keep room for the symbol */
+:where(.panel-shell) .af-input.af-input-prefixed { padding-left: 28px; }
+:where(.panel-shell) .af-prefix { left: 11px; }
+
+/* Detail fields (Job, Vehicle, Customer detail pages): label over value, thin divider */
+.fl-field {
+  min-width: 0;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--fl-border, #E6E8EC);
+}
+
+.fl-field-label {
+  display: block;
+  margin-bottom: 2px;
+  color: var(--fl-text-3, #656D76);
+  font-size: 0.78rem;
+  font-weight: 600;
+}
+
+.fl-field-value {
+  color: var(--fl-text, #1F2328);
+  font-size: 0.9rem;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 560px) {
+  .panel-shell .billing-command-strip,
+  .panel-shell .alerts-command-strip { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .panel-shell .billing-command-item strong,
+  .panel-shell .alerts-command-item strong { font-size: 1.2rem; }
+}

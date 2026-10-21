@@ -1,5 +1,6 @@
 const crypto = require("crypto");
 const db = require("../db/connection");
+const { settingNumber } = require("./settingsController");
 const { logActivity } = require("../utils/auditLogger");
 const {
   checklistFor,
@@ -350,7 +351,7 @@ async function portalData() {
     fleetCode: asset.fleet_code || "-",
     makeModel: asset.make_model || "-",
     operatorName: asset.company_name || "",
-    inspectionFrequencyWeeks: Number(asset.inspection_frequency_weeks || (assetType === "trailer" ? 10 : 6)),
+    inspectionFrequencyWeeks: Number(asset.inspection_frequency_weeks || (assetType === "trailer" ? settingNumber("trailer_inspection_weeks") : 6)),
     frequencySource: asset.inspection_frequency_source || "",
     frequencyReference: asset.inspection_frequency_reference || "",
     status: asset.status,

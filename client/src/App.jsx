@@ -7,6 +7,7 @@ import { AdminBillingPage } from "./pages/admin/AdminBillingPage";
 import { AdminDriversPage } from "./pages/admin/AdminDriversPage";
 import { AdminFinancePage } from "./pages/admin/AdminFinancePage";
 import { AdminEmployeesPage } from "./pages/admin/AdminEmployeesPage";
+import { AdminSettingsPage } from "./pages/admin/AdminSettingsPage";
 import { AdminMaintenancePage } from "./pages/admin/AdminMaintenancePage";
 import { AdminNotificationsPage } from "./pages/admin/AdminNotificationsPage";
 import { AdminPanel } from "./pages/admin/AdminPanel";
@@ -105,6 +106,14 @@ function App() {
         element={(
           <ProtectedRoute role="admin">
             <AdminActivityPage />
+          </ProtectedRoute>
+        )}
+      />
+      <Route
+        path="/admin/settings"
+        element={(
+          <ProtectedRoute role="admin">
+            <AdminSettingsPage />
           </ProtectedRoute>
         )}
       />

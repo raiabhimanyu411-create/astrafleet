@@ -11,9 +11,9 @@ import { DelayTag, PointWarnings, PunctualityPill } from "./punctuality";
 
 function DetailField({ label, value }) {
   return (
-    <div style={{ padding: "11px 14px", background: "#FAFAFA", border: "1px solid #E9EBED", borderRadius: 8 }}>
-      <span style={{ display: "block", fontSize: "0.7rem", fontWeight: 700, color: "#5F6B7A", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 4 }}>{label}</span>
-      <strong style={{ fontSize: "0.88rem", fontWeight: 600, color: "#0F141A" }}>{value || "—"}</strong>
+    <div className="fl-field">
+      <span className="fl-field-label">{label}</span>
+      <strong className="fl-field-value">{value || "—"}</strong>
     </div>
   );
 }
@@ -70,8 +70,8 @@ function RouteProgressCard({ points, events }) {
     <div className="content-card" style={{ marginTop: 14 }}>
       <div className="section-head">
         <div>
-          <span className="card-label">Driver App · Live</span>
-          <h2 style={{ margin: "4px 0 0", fontSize: "1rem" }}>Route Progress — Arrival &amp; Departure</h2>
+          <span className="card-label">Driver app · live</span>
+          <h2 style={{ margin: "4px 0 0", fontSize: "1rem" }}>Route progress — arrival &amp; departure</h2>
         </div>
         <StatusPill tone={done === points.length ? "success" : "neutral"}>{done}/{points.length} completed</StatusPill>
       </div>
@@ -82,10 +82,10 @@ function RouteProgressCard({ points, events }) {
               <th style={progressHead}>#</th>
               <th style={progressHead}>Point</th>
               <th style={progressHead}>Status</th>
-              <th style={progressHead}>Planned Arrival</th>
-              <th style={progressHead}>Actual Arrival</th>
-              <th style={progressHead}>Planned Departure</th>
-              <th style={progressHead}>Actual Departure</th>
+              <th style={progressHead}>Planned arrival</th>
+              <th style={progressHead}>Actual arrival</th>
+              <th style={progressHead}>Planned departure</th>
+              <th style={progressHead}>Actual departure</th>
             </tr>
           </thead>
           <tbody>
@@ -271,8 +271,8 @@ export function JobDetailPage() {
 
   return (
     <AdminWorkspaceLayout
-      badge="Job Management"
-      title={data ? `Job ${data.code}` : "Job Details"}
+      badge="Job management"
+      title={data ? `Job ${data.code}` : "Job details"}
       description="Full job profile with route, load, driver, vehicle, and stop information."
       highlights={[]}
     >
@@ -280,26 +280,26 @@ export function JobDetailPage() {
         {/* Back + actions */}
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 20, gap: 12, flexWrap: "wrap" }}>
           <button className="af-back-btn" type="button" onClick={() => navigate("/admin/jobs")}>
-            ← Back To Jobs
+            ← Back to jobs
           </button>
           {data && (
             <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
               <button className="header-action-button" type="button" onClick={() => navigate(`/admin/jobs/${id}/edit`)}>
-                Edit Job
+                Edit job
               </button>
               {canBlock && !showBlockInput && (
                 <button className="header-action-button danger" type="button" onClick={() => setShowBlockInput(true)}>
-                  Block Job
+                  Block job
                 </button>
               )}
               {data.status === "planned" && (
                 <button className="header-action-button danger" type="button" onClick={() => setShowCancelModal(true)}>
-                  Cancel Job
+                  Cancel job
                 </button>
               )}
               {!["loading", "active"].includes(data.status) && (
                 <button className="header-action-button danger" type="button" onClick={() => setShowDeleteModal(true)}>
-                  Delete Job
+                  Delete job
                 </button>
               )}
             </div>
@@ -314,7 +314,7 @@ export function JobDetailPage() {
             <div style={{ background: "#fff", border: "1px solid #E9EBED", borderRadius: 14, padding: "18px 22px", marginBottom: 14, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 16, flexWrap: "wrap", boxShadow: "0 1px 3px rgba(15,23,42,0.05)" }}>
               <div style={{ display: "flex", alignItems: "center", gap: 16, flexWrap: "wrap" }}>
                 <div>
-                  <span style={{ fontSize: "0.72rem", fontWeight: 700, color: "#5F6B7A", textTransform: "uppercase", letterSpacing: "0.06em", display: "block", marginBottom: 4 }}>Job Status</span>
+                  <span style={{ fontSize: "0.72rem", fontWeight: 700, color: "#5F6B7A", textTransform: "uppercase", letterSpacing: "0.06em", display: "block", marginBottom: 4 }}>Job status</span>
                   <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
                     <StatusPill tone={data.statusTone}>{data.status}</StatusPill>
                     <StatusPill tone={data.priorityTone}>{data.priority} priority</StatusPill>
@@ -372,7 +372,7 @@ export function JobDetailPage() {
                 )}
                 {data.status === "blocked" && (
                   <button className="header-action-button" type="button" onClick={() => handleStatusChange("planned")}>
-                    Reset To Planned
+                    Reset to planned
                   </button>
                 )}
               </div>
@@ -381,7 +381,7 @@ export function JobDetailPage() {
             {/* Block reason input */}
             {showBlockInput && (
               <div style={{ background: "#fff8f8", border: "1px solid rgba(217, 21, 21,0.2)", borderRadius: 12, padding: "16px 20px", marginBottom: 14 }}>
-                <p style={{ margin: "0 0 10px", fontSize: "0.86rem", fontWeight: 600, color: "#AD0A0A" }}>Block Reason</p>
+                <p style={{ margin: "0 0 10px", fontSize: "0.86rem", fontWeight: 600, color: "#AD0A0A" }}>Block reason</p>
                 <div style={{ display: "flex", gap: 8 }}>
                   <input
                     className="af-input"
@@ -405,7 +405,7 @@ export function JobDetailPage() {
             {(data.cancellationReason || data.delayReason || data.failedDeliveryReason) && (
               <div style={{ background: "#fff8f8", border: "1px solid rgba(217, 21, 21,0.2)", borderRadius: 12, padding: "14px 18px", marginBottom: 14 }}>
                 <strong style={{ fontSize: "0.84rem", color: "#AD0A0A" }}>
-                  {data.failedDeliveryReason ? "Failed Delivery Reason" : data.cancellationReason ? "Cancellation Reason" : "Delay Reason"}:
+                  {data.failedDeliveryReason ? "Failed delivery reason" : data.cancellationReason ? "Cancellation reason" : "Delay reason"}:
                 </strong>
                 <span style={{ fontSize: "0.84rem", color: "#414D5C", marginLeft: 8 }}>
                   {data.failedDeliveryReason || data.cancellationReason || data.delayReason}
@@ -424,37 +424,37 @@ export function JobDetailPage() {
               </SectionCard>
 
               {/* Load */}
-              <SectionCard label="Load Details" title={`${LOAD_ICONS[data.load.type] || "📦"} ${data.load.type} load`}>
+              <SectionCard label="Load details" title={`${LOAD_ICONS[data.load.type] || "📦"} ${data.load.type} load`}>
                 <div className="detail-grid">
                   <DetailField label="Reference" value={data.load.reference} />
                   <DetailField label="Load ID" value={data.load.loadId} />
                   <DetailField label="Weight"      value={data.load.weightKg} />
                   <DetailField label="Volume"      value={data.load.volumeCbm} />
-                  <DetailField label="Vehicle Requirement" value={data.load.vehicleRequirement} />
+                  <DetailField label="Vehicle requirement" value={data.load.vehicleRequirement} />
                   <DetailField label="Freight"     value={data.load.freight} />
                   <div className="detail-wide"><DetailField label="Description" value={data.load.description} /></div>
                   {data.specialInstructions && (
-                    <div className="detail-wide"><DetailField label="Special Instructions" value={data.specialInstructions} /></div>
+                    <div className="detail-wide"><DetailField label="Special instructions" value={data.specialInstructions} /></div>
                   )}
                 </div>
               </SectionCard>
 
               {/* Route & Schedule */}
-              <SectionCard label="Route & Schedule" title={data.route.from && data.route.to ? `${data.route.from} → ${data.route.to}` : "Custom Route"}>
+              <SectionCard label="Route & schedule" title={data.route.from && data.route.to ? `${data.route.from} → ${data.route.to}` : "Custom route"}>
                 <div className="detail-grid">
-                  <DetailField label="Pickup Address"  value={data.route.pickupAddress || data.route.from} />
-                  <DetailField label="Drop Address"    value={data.route.dropAddress || data.route.to} />
-                  <DetailField label="Collection Arrival (UK)" value={data.schedule.collectionArrival} />
-                  <DetailField label="Actual Collection Arrival (UK)" value={data.schedule.actualCollectionArrival} />
-                  <DetailField label="Collection Departure (UK)" value={data.schedule.collectionDeparture} />
-                  <DetailField label="Planned Delivery Arrival (UK)" value={data.schedule.plannedDeliveryArrival} />
-                  <DetailField label="Planned Delivery Departure (UK)" value={data.schedule.plannedDeliveryDeparture} />
-                  <DetailField label="Delivery Deadline" value={data.schedule.deliveryDeadline} />
+                  <DetailField label="Pickup address"  value={data.route.pickupAddress || data.route.from} />
+                  <DetailField label="Drop address"    value={data.route.dropAddress || data.route.to} />
+                  <DetailField label="Collection arrival (UK)" value={data.schedule.collectionArrival} />
+                  <DetailField label="Actual collection arrival (UK)" value={data.schedule.actualCollectionArrival} />
+                  <DetailField label="Collection departure (UK)" value={data.schedule.collectionDeparture} />
+                  <DetailField label="Planned delivery arrival (UK)" value={data.schedule.plannedDeliveryArrival} />
+                  <DetailField label="Planned delivery departure (UK)" value={data.schedule.plannedDeliveryDeparture} />
+                  <DetailField label="Delivery deadline" value={data.schedule.deliveryDeadline} />
                   <DetailField label="Current ETA (UK)" value={data.schedule.eta} />
-                  <DetailField label="Actual Collection Departure (UK)" value={data.schedule.actualDeparture} />
-                  <DetailField label="Actual Delivery Arrival (UK)" value={data.schedule.actualArrival} />
+                  <DetailField label="Actual collection departure (UK)" value={data.schedule.actualDeparture} />
+                  <DetailField label="Actual delivery arrival (UK)" value={data.schedule.actualArrival} />
                   {data.schedule.dockWindow !== "—" && (
-                    <DetailField label="Dock Window" value={data.schedule.dockWindow} />
+                    <DetailField label="Dock window" value={data.schedule.dockWindow} />
                   )}
                   {data.route.distanceKm && (
                     <DetailField label="Distance" value={`${Math.round(data.route.distanceKm * 0.621371)} mi`} />
@@ -463,11 +463,11 @@ export function JobDetailPage() {
               </SectionCard>
 
               {/* Driver & Vehicle */}
-              <SectionCard label="Dispatch" title="Driver, Truck & Trailer">
+              <SectionCard label="Dispatch" title="Driver, truck & trailer">
                 {data.driver ? (
                   <div className="detail-grid" style={{ marginBottom: data.vehicle ? 12 : 0 }}>
-                    <DetailField label="Driver Name"   value={data.driver.name} />
-                    <DetailField label="Employee Code" value={data.driver.employeeCode} />
+                    <DetailField label="Driver name"   value={data.driver.name} />
+                    <DetailField label="Employee code" value={data.driver.employeeCode} />
                     <DetailField label="Phone"         value={data.driver.phone} />
                     <DetailField label="Licence"       value={data.driver.license} />
                     <DetailField label="Compliance"    value={data.driver.compliance} />
@@ -482,7 +482,7 @@ export function JobDetailPage() {
                       <DetailField label="Registration" value={data.vehicle.registration} />
                       <DetailField label="Model"        value={data.vehicle.model} />
                       <DetailField label="Type"         value={data.vehicle.type} />
-                      <DetailField label="Fleet Code"   value={data.vehicle.fleetCode} />
+                      <DetailField label="Fleet code"   value={data.vehicle.fleetCode} />
                       <DetailField label="Capacity"     value={data.vehicle.capacity} />
                     </div>
                   </>
@@ -491,49 +491,49 @@ export function JobDetailPage() {
                   <>
                     <div style={{ height: 1, background: "#E9EBED", margin: "12px 0" }} />
                     <div className="detail-grid">
-                      <DetailField label="Trailer Registration" value={data.trailer.registration} />
-                      <DetailField label="Trailer Code" value={data.trailer.code} />
-                      <DetailField label="Trailer Type" value={data.trailer.type} />
-                      <DetailField label="Trailer Capacity" value={data.trailer.capacity} />
+                      <DetailField label="Trailer registration" value={data.trailer.registration} />
+                      <DetailField label="Trailer code" value={data.trailer.code} />
+                      <DetailField label="Trailer type" value={data.trailer.type} />
+                      <DetailField label="Trailer capacity" value={data.trailer.capacity} />
                     </div>
                   </>
                 )}
                 {!data.driver && !data.vehicle && !data.trailer && (
                   <div style={{ display: "flex", justifyContent: "center" }}>
                     <button className="header-action-button" type="button" onClick={() => navigate(`/admin/jobs/${id}/edit`)}>
-                      Assign Driver, Truck & Trailer →
+                      Assign driver, truck & trailer →
                     </button>
                   </div>
                 )}
               </SectionCard>
 
-              <SectionCard label="Dispatcher Notes" title="Internal Execution Notes">
+              <SectionCard label="Dispatcher notes" title="Internal execution notes">
                 <DetailField label="Notes" value={data.dispatcherNotes} />
               </SectionCard>
             </div>
 
             <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0,1fr))", gap: 14 }}>
               <SectionCard
-                label="Driver Execution"
-                title="Browser Updates From Driver"
+                label="Driver execution"
+                title="Browser updates from driver"
                 badge={data.driverExecution?.statusLabel}
                 badgeTone={data.driverExecution?.statusTone}
               >
                 <div className="detail-grid">
-                  <DetailField label="Driver Status" value={data.driverExecution?.statusLabel} />
+                  <DetailField label="Driver status" value={data.driverExecution?.statusLabel} />
                   <DetailField label="POD Status" value={data.proofOfDelivery?.status} />
                   <div className="detail-wide">
-                    <DetailField label="Delivery Notes" value={data.driverExecution?.deliveryNotes} />
+                    <DetailField label="Delivery notes" value={data.driverExecution?.deliveryNotes} />
                   </div>
                   {data.driverExecution?.failedDeliveryReason !== "—" && (
                     <div className="detail-wide">
-                      <DetailField label="Failed Delivery Reason" value={data.driverExecution.failedDeliveryReason} />
+                      <DetailField label="Failed delivery reason" value={data.driverExecution.failedDeliveryReason} />
                     </div>
                   )}
                 </div>
               </SectionCard>
 
-              <SectionCard label="Proof Of Delivery" title="Driver Submitted POD" badge={`POD: ${data.proofOfDelivery?.status || "pending"}`} badgeTone={data.proofOfDelivery?.status === "verified" ? "success" : data.proofOfDelivery?.status === "uploaded" ? "warning" : "neutral"}>
+              <SectionCard label="Proof of delivery" title="Driver submitted POD" badge={`POD: ${data.proofOfDelivery?.status || "pending"}`} badgeTone={data.proofOfDelivery?.status === "verified" ? "success" : data.proofOfDelivery?.status === "uploaded" ? "warning" : "neutral"}>
                 <div className="pod-preview-grid">
                   <div>
                     <span className="card-label">Signature</span>
@@ -541,7 +541,7 @@ export function JobDetailPage() {
                       <button
                         className="pod-proof-thumb"
                         type="button"
-                        onClick={() => setProofPreview({ title: "Driver Signature", src: data.proofOfDelivery.signatureData })}
+                        onClick={() => setProofPreview({ title: "Driver signature", src: data.proofOfDelivery.signatureData })}
                       >
                         <img alt="Driver signature proof" src={data.proofOfDelivery.signatureData} />
                       </button>
@@ -550,12 +550,12 @@ export function JobDetailPage() {
                     )}
                   </div>
                   <div>
-                    <span className="card-label">Delivery Photo</span>
+                    <span className="card-label">Delivery photo</span>
                     {data.proofOfDelivery?.photoData ? (
                       <button
                         className="pod-proof-thumb"
                         type="button"
-                        onClick={() => setProofPreview({ title: "Delivery Photo", src: data.proofOfDelivery.photoData })}
+                        onClick={() => setProofPreview({ title: "Delivery photo", src: data.proofOfDelivery.photoData })}
                       >
                         <img alt="Delivery proof" src={data.proofOfDelivery.photoData} />
                       </button>
@@ -583,7 +583,7 @@ export function JobDetailPage() {
             )}
 
             <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0,1fr))", gap: 14 }}>
-              <SectionCard label="Driver Expenses" title="Fuel And Trip Costs" badge={`${data.driverExpenses?.length || 0} entries`} badgeTone="neutral">
+              <SectionCard label="Driver expenses" title="Fuel and trip costs" badge={`${data.driverExpenses?.length || 0} entries`} badgeTone="neutral">
                 <div className="data-rows">
                   {(data.driverExpenses || []).map(expense => (
                     <div className="data-row" key={expense.id}>
@@ -604,7 +604,7 @@ export function JobDetailPage() {
                 </div>
               </SectionCard>
 
-              <SectionCard label="Vehicle Defects" title="Driver Defect Reports" badge={`${data.vehicleDefects?.length || 0} reports`} badgeTone={(data.vehicleDefects || []).some(d => d.tone === "danger") ? "danger" : "neutral"}>
+              <SectionCard label="Vehicle defects" title="Driver defect reports" badge={`${data.vehicleDefects?.length || 0} reports`} badgeTone={(data.vehicleDefects || []).some(d => d.tone === "danger") ? "danger" : "neutral"}>
                 <div className="alert-stack">
                   {(data.vehicleDefects || []).map(defect => (
                     <div className="alert-card" key={defect.id}>
@@ -628,9 +628,9 @@ export function JobDetailPage() {
             <div className="content-card" style={{ marginTop: 14 }}>
               <div className="section-head">
                 <div>
-                  <span className="card-label">Multi-Stop Route</span>
+                  <span className="card-label">Multi-stop route</span>
                   <h2 style={{ margin: "4px 0 0", fontSize: "1rem" }}>
-                    Stop Timeline
+                    Stop timeline
                     {data.stops.length > 0 && ` (${data.stops.length} stops)`}
                   </h2>
                 </div>
@@ -638,7 +638,7 @@ export function JobDetailPage() {
                   {data.stops.length > 0 && <StatusPill tone="neutral">{data.stops.length} stops</StatusPill>}
                   {!["completed", "blocked", "cancelled"].includes(data.status) && (
                     <button className="header-action-button" type="button" onClick={() => setShowAddStop(v => !v)}>
-                      {showAddStop ? "Cancel" : "+ Add Stop"}
+                      {showAddStop ? "Cancel" : "+ Add stop"}
                     </button>
                   )}
                 </div>
@@ -647,10 +647,10 @@ export function JobDetailPage() {
               {/* Inline add-stop form */}
               {showAddStop && (
                 <form onSubmit={handleAddStop} style={{ background: "#f0f9ff", border: "1px solid #bae6fd", borderRadius: 10, padding: "14px 16px", marginBottom: 14 }}>
-                  <p style={{ margin: "0 0 10px", fontSize: "0.84rem", fontWeight: 700, color: "#0369a1" }}>New Stop Details</p>
+                  <p style={{ margin: "0 0 10px", fontSize: "0.84rem", fontWeight: 700, color: "#0369a1" }}>New stop details</p>
                   <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0,1fr))", gap: 10 }}>
                     <div>
-                      <label style={{ fontSize: "0.72rem", fontWeight: 700, color: "#5F6B7A", textTransform: "uppercase", display: "block", marginBottom: 4 }}>Stop Type</label>
+                      <label style={{ fontSize: "0.72rem", fontWeight: 700, color: "#5F6B7A", textTransform: "uppercase", display: "block", marginBottom: 4 }}>Stop type</label>
                       <select className="af-select" value={newStop.stop_type} onChange={e => setNewStop(p => ({ ...p, stop_type: e.target.value }))}>
                         <option value="delivery">Delivery</option>
                         <option value="pickup">Pickup</option>
@@ -658,7 +658,7 @@ export function JobDetailPage() {
                       </select>
                     </div>
                     <div>
-                      <label style={{ fontSize: "0.72rem", fontWeight: 700, color: "#5F6B7A", textTransform: "uppercase", display: "block", marginBottom: 4 }}>Planned Arrival</label>
+                      <label style={{ fontSize: "0.72rem", fontWeight: 700, color: "#5F6B7A", textTransform: "uppercase", display: "block", marginBottom: 4 }}>Planned arrival</label>
                       <input className="af-input" style={{ margin: 0 }} type="datetime-local" value={newStop.planned_arrival} onChange={e => setNewStop(p => ({ ...p, planned_arrival: e.target.value }))} />
                     </div>
                     <div style={{ gridColumn: "1 / -1" }}>
@@ -666,11 +666,11 @@ export function JobDetailPage() {
                       <textarea className="af-input" style={{ margin: 0, minHeight: 60, resize: "vertical" }} placeholder="Full address for this stop" required value={newStop.address} onChange={e => setNewStop(p => ({ ...p, address: e.target.value }))} />
                     </div>
                     <div>
-                      <label style={{ fontSize: "0.72rem", fontWeight: 700, color: "#5F6B7A", textTransform: "uppercase", display: "block", marginBottom: 4 }}>Contact Name</label>
+                      <label style={{ fontSize: "0.72rem", fontWeight: 700, color: "#5F6B7A", textTransform: "uppercase", display: "block", marginBottom: 4 }}>Contact name</label>
                       <input className="af-input" style={{ margin: 0 }} type="text" placeholder="e.g. John Smith" value={newStop.contact_name} onChange={e => setNewStop(p => ({ ...p, contact_name: e.target.value }))} />
                     </div>
                     <div>
-                      <label style={{ fontSize: "0.72rem", fontWeight: 700, color: "#5F6B7A", textTransform: "uppercase", display: "block", marginBottom: 4 }}>Contact Phone</label>
+                      <label style={{ fontSize: "0.72rem", fontWeight: 700, color: "#5F6B7A", textTransform: "uppercase", display: "block", marginBottom: 4 }}>Contact phone</label>
                       <input className="af-input" style={{ margin: 0 }} type="tel" placeholder="e.g. 07700 900123" value={newStop.contact_phone} onChange={e => setNewStop(p => ({ ...p, contact_phone: e.target.value }))} />
                     </div>
                     <div style={{ gridColumn: "1 / -1" }}>
@@ -681,7 +681,7 @@ export function JobDetailPage() {
                   <div style={{ display: "flex", gap: 8, justifyContent: "flex-end", marginTop: 12 }}>
                     <button type="button" className="header-action-button" onClick={() => setShowAddStop(false)}>Cancel</button>
                     <button type="submit" className="af-submit-btn" disabled={stopSaving} style={{ background: "#0972D3" }}>
-                      {stopSaving ? "Saving..." : "Add Stop →"}
+                      {stopSaving ? "Saving..." : "Add stop →"}
                     </button>
                   </div>
                   {data.driver && (
@@ -731,19 +731,19 @@ export function JobDetailPage() {
                             <p style={{ margin: "2px 0 0", fontSize: "0.84rem", color: "#414D5C" }}>{stop.contactName} {stop.contactPhone !== "—" ? `· ${stop.contactPhone}` : ""}</p>
                           </div>
                           <div>
-                            <span style={{ fontSize: "0.72rem", color: "#5F6B7A", fontWeight: 700, textTransform: "uppercase" }}>Planned Arrival</span>
+                            <span style={{ fontSize: "0.72rem", color: "#5F6B7A", fontWeight: 700, textTransform: "uppercase" }}>Planned arrival</span>
                             <p style={{ margin: "2px 0 0", fontSize: "0.84rem", color: "#414D5C" }}>{stop.plannedArrival}</p>
                           </div>
                           <div>
-                            <span style={{ fontSize: "0.72rem", color: "#5F6B7A", fontWeight: 700, textTransform: "uppercase" }}>Planned Departure</span>
+                            <span style={{ fontSize: "0.72rem", color: "#5F6B7A", fontWeight: 700, textTransform: "uppercase" }}>Planned departure</span>
                             <p style={{ margin: "2px 0 0", fontSize: "0.84rem", color: "#414D5C" }}>{stop.plannedDeparture}</p>
                           </div>
                           <div>
-                            <span style={{ fontSize: "0.72rem", color: "#5F6B7A", fontWeight: 700, textTransform: "uppercase" }}>Actual Arrival</span>
+                            <span style={{ fontSize: "0.72rem", color: "#5F6B7A", fontWeight: 700, textTransform: "uppercase" }}>Actual arrival</span>
                             <p style={{ margin: "2px 0 0", fontSize: "0.84rem", color: "#414D5C" }}>{stop.actualArrival}</p>
                           </div>
                           <div>
-                            <span style={{ fontSize: "0.72rem", color: "#5F6B7A", fontWeight: 700, textTransform: "uppercase" }}>Actual Departure</span>
+                            <span style={{ fontSize: "0.72rem", color: "#5F6B7A", fontWeight: 700, textTransform: "uppercase" }}>Actual departure</span>
                             <p style={{ margin: "2px 0 0", fontSize: "0.84rem", color: "#414D5C" }}>{stop.actualDeparture}</p>
                           </div>
                           {stop.notes !== "—" && (
@@ -764,7 +764,7 @@ export function JobDetailPage() {
       </div>
       <DeleteReasonModal
         open={showCancelModal}
-        title="Cancel Job"
+        title="Cancel job"
         recordLabel={data ? data.code : ""}
         body="The job will be blocked, its vehicle and trailer will be released, and this reason will be visible to admin."
         confirmLabel="Cancel Job"

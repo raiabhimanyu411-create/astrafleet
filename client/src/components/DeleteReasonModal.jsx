@@ -2,11 +2,11 @@ import { useEffect, useState } from "react";
 
 const reasonCategories = [
   { value: "duplicate", label: "Duplicate" },
-  { value: "client_request", label: "Client Request" },
-  { value: "incorrect_amount", label: "Incorrect Amount" },
-  { value: "wrong_assignment", label: "Wrong Assignment" },
-  { value: "compliance_issue", label: "Compliance Issue" },
-  { value: "data_correction", label: "Data Correction" },
+  { value: "client_request", label: "Client request" },
+  { value: "incorrect_amount", label: "Incorrect amount" },
+  { value: "wrong_assignment", label: "Wrong assignment" },
+  { value: "compliance_issue", label: "Compliance issue" },
+  { value: "data_correction", label: "Data correction" },
   { value: "other", label: "Other" }
 ];
 
@@ -42,7 +42,7 @@ export function DeleteReasonModal({
       <div className="reason-modal" role="dialog" aria-modal="true" aria-labelledby="delete-reason-title">
         <div className="section-head">
           <div>
-            <span className="card-label">Reason Required</span>
+            <span className="card-label">Reason required</span>
             <h2 id="delete-reason-title">{title}</h2>
           </div>
         </div>
@@ -52,16 +52,16 @@ export function DeleteReasonModal({
         </p>
         {details}
         <label className="af-field">
-          <span className="af-label">Reason Category</span>
+          <span className="af-label">Reason category</span>
           <select className="af-select" value={reasonCategory} onChange={e => setReasonCategory(e.target.value)}>
-            <option value="">Select A Category</option>
+            <option value="">Select a category</option>
             {reasonCategories.map(category => (
               <option key={category.value} value={category.value}>{category.label}</option>
             ))}
           </select>
         </label>
         <label className="af-field">
-          <span className="af-label">Deletion Reason</span>
+          <span className="af-label">Deletion reason</span>
           <textarea
             autoFocus
             className="af-input reason-modal-input"

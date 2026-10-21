@@ -187,55 +187,26 @@ export function AdminFinancePage() {
         </div>
       )}
 
-      <section className="content-card">
-        <div className="section-head">
-          <div>
-            <span className="card-label">Finance Overview</span>
-            <h2>Key Metrics</h2>
+      {/* Key numbers as one calm strip; colour only where something needs attention. */}
+      <section className="billing-command-strip finance-metrics" aria-label="Finance overview">
+        {[...(data?.stats || []), ...(data?.cashPosition || [])].map((item) => (
+          <div className={`billing-command-item ${item.tone || "neutral"}`} key={item.label}>
+            <span>{item.label}</span>
+            <strong>{item.value}</strong>
+            <small>{item.description}</small>
           </div>
-        </div>
-
-        <div className="finance-table-shell">
-          <table className="finance-table finance-summary-table">
-            <thead>
-              <tr>
-                <th>Metric</th>
-                <th>Value</th>
-                <th>Detail</th>
-                <th>Source</th>
-              </tr>
-            </thead>
-            <tbody>
-              {(data?.stats || []).map((item) => (
-                <tr key={item.label}>
-                  <td>{item.label}</td>
-                  <td><strong>{item.value}</strong></td>
-                  <td>{item.description}</td>
-                  <td><StatusPill tone={item.tone}>{item.change}</StatusPill></td>
-                </tr>
-              ))}
-              {(data?.cashPosition || []).map((item) => (
-                <tr key={item.label}>
-                  <td>{item.label}</td>
-                  <td><strong>{item.value}</strong></td>
-                  <td>{item.description}</td>
-                  <td><StatusPill tone={item.tone}>Calculated live</StatusPill></td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+        ))}
       </section>
 
       <section className="content-card finance-filter-card">
         <input
           className="af-input"
-          placeholder="Search Invoice, Customer, Payout, Vendor, Or Lane..."
+          placeholder="Search invoice, customer, payout, vendor, or lane..."
           value={search}
           onChange={e => setSearch(e.target.value)}
         />
         <select className="af-select" value={invoiceStatus} onChange={e => setInvoiceStatus(e.target.value)}>
-          <option value="">All Invoice Statuses</option>
+          <option value="">All invoice statuses</option>
           <option value="draft">Draft</option>
           <option value="sent">Sent</option>
           <option value="pending">Pending</option>
@@ -244,7 +215,7 @@ export function AdminFinancePage() {
           <option value="hold">Hold</option>
         </select>
         <select className="af-select" value={payoutStatus} onChange={e => setPayoutStatus(e.target.value)}>
-          <option value="">All Payout Statuses</option>
+          <option value="">All payout statuses</option>
           <option value="scheduled">Scheduled</option>
           <option value="processing">Processing</option>
           <option value="paid">Paid</option>
@@ -254,12 +225,12 @@ export function AdminFinancePage() {
         <input className="af-input" type="date" value={dateTo} onChange={e => setDateTo(e.target.value)} />
       </section>
 
-      <section className="content-grid">
+      <section className="content-grid finance-stack">
         <article className="content-card">
           <div className="section-head">
             <div>
-              <span className="card-label">Collection Follow-Up</span>
-              <h2>Customer Receivables</h2>
+              <span className="card-label">Collection follow-up</span>
+              <h2>Customer receivables</h2>
             </div>
             <StatusPill tone="warning">Pound collections</StatusPill>
           </div>
@@ -291,7 +262,7 @@ export function AdminFinancePage() {
                     <td>
                       <div className="finance-table-actions">
                         {item.status !== "paid" && (
-                          <button className="header-action-button" type="button" onClick={() => navigate(`/admin/billing/${item.id}`)}>Record Payment</button>
+                          <button className="header-action-button" type="button" onClick={() => navigate(`/admin/billing/${item.id}`)}>Record payment</button>
                         )}
                         {item.status !== "hold" && (
                           <button className="header-action-button" type="button" onClick={() => handleInvoiceStatus(item.id, "hold")}>Hold</button>
@@ -313,8 +284,8 @@ export function AdminFinancePage() {
         <article className="content-card">
           <div className="section-head">
             <div>
-              <span className="card-label">Vendor Payouts</span>
-              <h2>Outgoing Settlement Queue</h2>
+              <span className="card-label">Vendor payouts</span>
+              <h2>Outgoing settlement queue</h2>
             </div>
             <StatusPill tone="neutral">Treasury desk</StatusPill>
           </div>
@@ -324,7 +295,7 @@ export function AdminFinancePage() {
               <thead>
                 <tr>
                   <th>Payout</th>
-                  <th>Vendor / Lane</th>
+                  <th>Vendor / lane</th>
                   <th>Amount</th>
                   <th>Due</th>
                   <th>Status</th>
@@ -349,7 +320,7 @@ export function AdminFinancePage() {
                           <button className="header-action-button" type="button" onClick={() => handlePayoutStatus(item.id, "processing")}>Process</button>
                         )}
                         {item.status !== "paid" && (
-                          <button className="header-action-button" type="button" onClick={() => handlePayoutStatus(item.id, "paid")}>Mark Paid</button>
+                          <button className="header-action-button" type="button" onClick={() => handlePayoutStatus(item.id, "paid")}>Mark paid</button>
                         )}
                       </div>
                     </td>
@@ -370,10 +341,10 @@ export function AdminFinancePage() {
         <article className="content-card">
           <div className="section-head">
             <div>
-              <span className="card-label">Payout Control</span>
-              <h2>{editingId ? "Edit Vendor Payout" : "Add Vendor Payout"}</h2>
+              <span className="card-label">Payout control</span>
+              <h2>{editingId ? "Edit vendor payout" : "Add vendor payout"}</h2>
             </div>
-            {editingId && <button className="header-action-button" type="button" onClick={resetForm}>New Payout</button>}
+            {editingId && <button className="header-action-button" type="button" onClick={resetForm}>New payout</button>}
           </div>
 
           <form className="af-form" onSubmit={handleSubmit}>
@@ -387,7 +358,7 @@ export function AdminFinancePage() {
                 <input className="af-input" value={form.vendor_name} onChange={e => setForm(prev => ({ ...prev, vendor_name: e.target.value }))} placeholder="Vendor or supplier name" required />
               </label>
               <label className="af-field">
-                <span className="af-label">Lane Code</span>
+                <span className="af-label">Lane code</span>
                 <input className="af-input" value={form.lane_code} onChange={e => setForm(prev => ({ ...prev, lane_code: e.target.value.toUpperCase() }))} placeholder="e.g. LON-MAN" />
               </label>
               <label className="af-field">
@@ -395,7 +366,7 @@ export function AdminFinancePage() {
                 <input className="af-input" type="number" min="0" step="0.01" value={form.amount_gbp} onChange={e => setForm(prev => ({ ...prev, amount_gbp: e.target.value }))} required />
               </label>
               <label className="af-field">
-                <span className="af-label">Due Date</span>
+                <span className="af-label">Due date</span>
                 <input className="af-input" type="date" value={form.due_date} onChange={e => setForm(prev => ({ ...prev, due_date: e.target.value }))} required />
               </label>
               <label className="af-field">
@@ -419,7 +390,7 @@ export function AdminFinancePage() {
                 </button>
               )}
               <button className="af-submit-btn" type="submit" disabled={saving}>
-                {saving ? "Saving..." : editingId ? "Update Payout" : "Create Payout"}
+                {saving ? "Saving..." : editingId ? "Update payout" : "Create payout"}
               </button>
             </div>
           </form>
@@ -428,8 +399,8 @@ export function AdminFinancePage() {
         <article className="content-card">
           <div className="section-head">
             <div>
-              <span className="card-label">Cash Flow View</span>
-              <h2>Finance Notes And Actions</h2>
+              <span className="card-label">Cash flow view</span>
+              <h2>Finance notes and actions</h2>
             </div>
             <StatusPill tone="success">Updated today</StatusPill>
           </div>
