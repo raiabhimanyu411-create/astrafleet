@@ -1,6 +1,8 @@
 const crypto = require("crypto");
+const { ukDisplayDate } = require("../utils/maintenanceDates");
 const db = require("../db/connection");
 const { settingNumber } = require("./settingsController");
+const { overdueInspections } = require("../utils/dispatchCompliance");
 const { logActivity } = require("../utils/auditLogger");
 const {
   checklistFor,
@@ -85,7 +87,7 @@ async function readAsset(connection, assetType, assetId) {
   const meta = assetMeta(assetType);
   const [[asset]] = await connection.query(
     `SELECT id, registration_number, ${assetType === "trailer" ? "trailer_code AS fleet_code" : "fleet_code"},
-            ${assetType === "trailer" ? "trailer_type AS make_model" : "CONCAT_WS(' ', make, model_name) AS make_model"},
+            ${assetType === "trailer" ? "trailer_type AS make_model" : `IF(COALESCE(make,'')='' OR COALESCE(model_name,'') LIKE CONCAT(make,'%'), COALESCE(model_name, make), CONCAT_WS(' ',make,model_name)) AS make_model`},
             company_name, inspection_frequency_weeks, status, vor_marked_at, vor_reason
      FROM ${meta.table} WHERE id=?`,
     [assetId]
@@ -202,6 +204,12 @@ async function ensureComplianceSchema() {
       INDEX idx_mot_asset (asset_type, asset_id, test_date)
     ) ENGINE=InnoDB
   `);
+  // PRS = pass after rectification (defects fixed at the test). Widening the list keeps every saved result.
+  const [[motResultColumn]] = await db.query(`SHOW COLUMNS FROM compliance_mot_tests LIKE 'result'`);
+  if (motResultColumn && !String(motResultColumn.Type).includes("'prs'")) {
+    await db.query(`ALTER TABLE compliance_mot_tests MODIFY result ENUM('pass','prs','fail') NOT NULL`);
+  }
+  await addColumnIfMissing("compliance_mot_tests", "advisories", "TEXT DEFAULT NULL");
 
   await db.query(`
     CREATE TABLE IF NOT EXISTS compliance_frequency_history (
@@ -303,7 +311,7 @@ exports.ensureComplianceSchema = async (_req, res, next) => {
 
 async function portalData() {
   const [vehicles, trailers, inspections, items, motTests, providers, recalls, dailyChecks, missed] = await Promise.all([
-    db.query(`SELECT id, registration_number, fleet_code, CONCAT_WS(' ',make,model_name) AS make_model,
+    db.query(`SELECT id, registration_number, fleet_code, IF(COALESCE(make,'')='' OR COALESCE(model_name,'') LIKE CONCAT(make,'%'), COALESCE(model_name, make), CONCAT_WS(' ',make,model_name)) AS make_model,
                      company_name, inspection_frequency_weeks, inspection_frequency_source,
                      inspection_frequency_reference, status, vor_marked_at, vor_reason
               FROM vehicles ORDER BY registration_number`),
@@ -440,6 +448,9 @@ async function portalData() {
       result: check.result,
       defectDetails: check.defect_details || ""
     })),
+    // Overdue inspections that have no Late / Missed entry yet: the reason still has to be recorded.
+    missedInspectionsPending: (await overdueInspections(db)).filter((item) => !missed[0].some((entry) =>
+      entry.asset_type === item.assetType && Number(entry.asset_id) === item.assetId && rawDate(entry.due_date) === item.dueDate)),
     missedInspections: missed[0].map((entry) => ({
       id: entry.id,
       assetType: entry.asset_type,
@@ -564,7 +575,7 @@ exports.createInspection = async (req, res) => {
     await connection.commit();
     await logActivity(req, {
       module: "maintenance", action: "compliance_inspection_submit", entityType: "compliance_inspection",
-      entityId: inspectionId, entityLabel: `${asset.registration_number} · ${value.inspectionDate}`,
+      entityId: inspectionId, entityLabel: `${asset.registration_number} · ${ukDisplayDate(value.inspectionDate)}`,
       details: { result: value.overallResult, brakeResult: value.brakeResult, itemCount: value.items.length }
     });
     res.status(201).json({ message: "Inspection submitted for compliance review.", id: inspectionId, nextDue });
@@ -780,11 +791,11 @@ exports.createMotTest = async (req, res) => {
     const [inserted] = await connection.query(
       `INSERT INTO compliance_mot_tests
         (asset_type,asset_id,registration_snapshot,test_date,result,certificate_number,expiry_date,
-         failure_reason,tester_name,provider_name,odometer_km,retest_of,created_by)
-       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+         failure_reason,tester_name,provider_name,odometer_km,retest_of,created_by,advisories)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
       [value.assetType, value.assetId, asset.registration_number, value.testDate, value.result,
         value.certificateNumber, value.expiryDate, value.failureReason, value.testerName, value.providerName,
-        value.odometerKm, value.retestOf, req.sessionUser?.name || "System"]
+        value.odometerKm, value.retestOf, req.sessionUser?.name || "System", value.advisories]
     );
     await connection.query(
       `INSERT INTO compliance_documents
@@ -793,7 +804,7 @@ exports.createMotTest = async (req, res) => {
       [inserted.insertId, value.document, documentHash(value.document), req.sessionUser?.name || "System"]
     );
     const meta = assetMeta(value.assetType);
-    if (value.result === "pass") {
+    if (["pass", "prs"].includes(value.result)) {
       await connection.query(`UPDATE ${meta.table} SET mot_expiry=? WHERE id=?`, [value.expiryDate, value.assetId]);
     } else {
       await connection.query(`UPDATE ${meta.table} SET status='maintenance' WHERE id=?`, [value.assetId]);
@@ -999,7 +1010,7 @@ exports.createDailyCheck = async (req, res) => {
     await connection.commit();
     await logActivity(req, {
       module: "maintenance", action: "daily_walkaround_recorded", entityType: "compliance_daily_check",
-      entityId: inserted.insertId, entityLabel: `${asset.registration_number} · ${checkDate}`, details: { result, defectId }
+      entityId: inserted.insertId, entityLabel: `${asset.registration_number} · ${ukDisplayDate(checkDate)}`, details: { result, defectId }
     });
     res.status(201).json({ message: result === "defect" ? "Daily defect recorded and asset placed in maintenance." : "Nil-defect daily check recorded.", id: inserted.insertId });
   } catch (error) {
@@ -1029,7 +1040,7 @@ exports.recordMissedInspection = async (req, res) => {
     await db.query(`UPDATE ${assetMeta(assetType).table} SET status='maintenance' WHERE id=?`, [assetId]);
     await logActivity(req, {
       module: "maintenance", action: "missed_inspection_recorded", entityType: "compliance_missed_inspection",
-      entityId: result.insertId, entityLabel: `${asset.registration_number} · ${dueDate}`,
+      entityId: result.insertId, entityLabel: `${asset.registration_number} · ${ukDisplayDate(dueDate)}`,
       reason, reasonCategory: "compliance_issue", details: { correctiveAction }
     });
     res.status(201).json({ message: "Missed inspection recorded and asset placed off road until inspection." });
@@ -1085,7 +1096,7 @@ exports.getAuditPack = async (req, res) => {
   try {
     const asset = await readAsset(db, assetType, assetId);
     if (!asset) return res.status(404).json({ message: "Vehicle or trailer was not found." });
-    const [inspections, items, docs, mot, defects, vor, recalls, daily, frequency] = await Promise.all([
+    const [inspections, items, docs, mot, defects, vor, recalls, daily, frequency, workshop] = await Promise.all([
       db.query(`SELECT * FROM compliance_inspections WHERE asset_type=? AND asset_id=? AND inspection_date>=DATE_SUB(CURDATE(),INTERVAL 15 MONTH) ORDER BY inspection_date DESC`, [assetType, assetId]),
       db.query(`SELECT item.* FROM compliance_inspection_items item JOIN compliance_inspections inspection ON inspection.id=item.inspection_id WHERE inspection.asset_type=? AND inspection.asset_id=? AND inspection.inspection_date>=DATE_SUB(CURDATE(),INTERVAL 15 MONTH) ORDER BY inspection.inspection_date DESC,item.id`, [assetType, assetId]),
       db.query(`SELECT document_type,file_data,file_sha256,uploaded_by,uploaded_at,inspection_id,mot_test_id FROM compliance_documents WHERE inspection_id IN (SELECT id FROM compliance_inspections WHERE asset_type=? AND asset_id=?) OR mot_test_id IN (SELECT id FROM compliance_mot_tests WHERE asset_type=? AND asset_id=?)`, [assetType, assetId, assetType, assetId]),
@@ -1094,7 +1105,14 @@ exports.getAuditPack = async (req, res) => {
       db.query(`SELECT * FROM vor_history WHERE asset_type=? AND asset_id=? AND since_date>=DATE_SUB(CURDATE(),INTERVAL 15 MONTH) ORDER BY since_date DESC`, [assetType, assetId]),
       db.query(`SELECT * FROM compliance_recalls WHERE asset_type=? AND asset_id=? ORDER BY issued_date DESC`, [assetType, assetId]),
       db.query(`SELECT * FROM compliance_daily_checks WHERE asset_type=? AND asset_id=? AND check_date>=DATE_SUB(CURDATE(),INTERVAL 15 MONTH) ORDER BY check_date DESC`, [assetType, assetId]),
-      db.query(`SELECT * FROM compliance_frequency_history WHERE asset_type=? AND asset_id=? ORDER BY effective_from DESC`, [assetType, assetId])
+      db.query(`SELECT * FROM compliance_frequency_history WHERE asset_type=? AND asset_id=? ORDER BY effective_from DESC`, [assetType, assetId]),
+      // Completed workshop jobs (Maintenance tab). Shown as they were recorded; never turned into DVSA inspection sheets.
+      db.query(`SELECT job_number, service_date, service_type, garage_name, assigned_mechanic, completion_notes, notes
+                FROM maintenance_jobs
+                WHERE ${assetType === "trailer" ? "trailer_id" : "vehicle_id"}=? AND status='completed'
+                  AND service_date>=DATE_SUB(CURDATE(),INTERVAL 15 MONTH)
+                  AND service_type IN ('Safety inspection','6-week safety inspection','10-week safety inspection','Brake test','MOT','Full Service','Tacho Calibration')
+                ORDER BY service_date DESC, id DESC`, [assetId])
     ]);
     const itemRows = items[0].map((item) => `<tr><td>#${item.inspection_id}</td><td>${escapeHtml(item.item_label)}</td><td>${escapeHtml(item.item_status)}</td><td>${escapeHtml(item.notes || "-")}</td><td>${escapeHtml(item.repair_description || "-")}</td><td>${escapeHtml(item.verifier_name || "-")}</td><td>${escapeHtml(item.repair_document_sha256 || "-")}</td></tr>`).join("");
     const inspectionRows = inspections[0].map((inspection) => `<tr><td>#${inspection.id}</td><td>${fmtDate(inspection.inspection_date)}</td><td>${escapeHtml(inspection.inspection_kind)}</td><td>${escapeHtml(inspection.overall_result)}</td><td>${escapeHtml(inspection.brake_method)} / ${escapeHtml(inspection.brake_result)}</td><td>${escapeHtml(inspection.inspector_name)}<br><small>Signature: ${escapeHtml(inspection.inspector_signature)}</small></td><td>${escapeHtml(inspection.qa_status)} ${inspection.qa_by ? `by ${escapeHtml(inspection.qa_by)}<br><small>Signature: ${escapeHtml(inspection.qa_signature || "-")}</small>` : ""}</td></tr>`).join("");
@@ -1103,9 +1121,10 @@ exports.getAuditPack = async (req, res) => {
     const html = `<!doctype html><html lang="en-GB"><head><meta charset="utf-8"><title>DVSA maintenance audit pack - ${escapeHtml(asset.registration_number)}</title><style>body{font:14px Arial;color:#111;margin:28px}h1,h2{margin:0 0 10px}h2{margin-top:28px}table{width:100%;border-collapse:collapse;margin:10px 0}th,td{border:1px solid #bbb;padding:7px;text-align:left;vertical-align:top}.meta{display:grid;grid-template-columns:repeat(2,1fr);gap:6px}.muted{color:#555}@media print{body{margin:10mm}h2{break-after:avoid}table{break-inside:auto}tr{break-inside:avoid}}</style></head><body>
       <h1>DVSA Maintenance Audit Pack</h1><p class="muted">Generated ${escapeHtml(new Date().toLocaleString("en-GB", { timeZone: "Europe/London" }))} · records cover at least the previous 15 months where available.</p>
       <div class="meta"><b>Registration: ${escapeHtml(asset.registration_number)}</b><span>Fleet code: ${escapeHtml(asset.fleet_code || "-")}</span><span>Make/model: ${escapeHtml(asset.make_model || "-")}</span><span>Operator: ${escapeHtml(asset.company_name || "-")}</span><span>Inspection frequency: ${escapeHtml(asset.inspection_frequency_weeks)} weeks</span><span>Status: ${escapeHtml(asset.status)}</span></div>
-      <h2>Safety inspections</h2><table><thead><tr><th>ID</th><th>Date</th><th>Type</th><th>Result</th><th>Brake assessment</th><th>Inspector</th><th>QA</th></tr></thead><tbody>${inspectionRows || '<tr><td colspan="7">No records</td></tr>'}</tbody></table>
+      <h2>Workshop maintenance records</h2><p class="muted">Completed inspection, MOT, brake test and service jobs from the Maintenance tab, as recorded. Full DVSA inspection sheets are listed in the next section.</p><table><thead><tr><th>Date</th><th>Job</th><th>Type</th><th>Garage / inspector</th><th>Notes</th></tr></thead><tbody>${simpleRows(workshop[0], [(r)=>fmtDate(r.service_date),"job_number","service_type",(r)=>[r.garage_name, r.assigned_mechanic].filter(Boolean).join(" · ") || "-",(r)=>r.completion_notes || r.notes || "-"]) || '<tr><td colspan="5">No records</td></tr>'}</tbody></table>
+      <h2>Safety inspections (DVSA inspection sheets)</h2><table><thead><tr><th>ID</th><th>Date</th><th>Type</th><th>Result</th><th>Brake assessment</th><th>Inspector</th><th>QA</th></tr></thead><tbody>${inspectionRows || '<tr><td colspan="7">No records</td></tr>'}</tbody></table>
       <h2>Inspection items, defects and repairs</h2><table><thead><tr><th>Inspection</th><th>Item</th><th>Result</th><th>Finding</th><th>Repair</th><th>Verified by</th><th>Repair evidence SHA-256</th></tr></thead><tbody>${itemRows || '<tr><td colspan="7">No records</td></tr>'}</tbody></table>
-      <h2>MOT history</h2><table><thead><tr><th>Date</th><th>Result</th><th>Certificate</th><th>Expiry</th><th>Failure reason</th><th>Provider</th></tr></thead><tbody>${simpleRows(mot[0], [(r)=>fmtDate(r.test_date),"result","certificate_number",(r)=>fmtDate(r.expiry_date),"failure_reason","provider_name"]) || '<tr><td colspan="6">No records</td></tr>'}</tbody></table>
+      <h2>MOT history</h2><table><thead><tr><th>Date</th><th>Result</th><th>Certificate</th><th>Expiry</th><th>Defects (failed / fixed at test)</th><th>Advisories</th><th>Provider</th></tr></thead><tbody>${simpleRows(mot[0], [(r)=>fmtDate(r.test_date),(r)=>r.result === "prs" ? "PRS (pass after rectification)" : r.result,"certificate_number",(r)=>fmtDate(r.expiry_date),"failure_reason","advisories","provider_name"]) || '<tr><td colspan="7">No records</td></tr>'}</tbody></table>
       <h2>Defect and rectification register</h2><table><thead><tr><th>Reported</th><th>Defect</th><th>Severity</th><th>Status</th><th>Reported by</th><th>Resolved</th></tr></thead><tbody>${simpleRows(defects[0], [(r)=>String(r.reported_at||""),"defect_type","severity","workflow_status","reported_by",(r)=>String(r.resolved_at||"-")]) || '<tr><td colspan="6">No records</td></tr>'}</tbody></table>
       <h2>VOR history</h2><table><thead><tr><th>Since</th><th>Expected return</th><th>Actual return</th><th>Reason</th></tr></thead><tbody>${simpleRows(vor[0], [(r)=>fmtDate(r.since_date),(r)=>fmtDate(r.expected_till_date),(r)=>fmtDate(r.actual_return_date),"reason"]) || '<tr><td colspan="4">No records</td></tr>'}</tbody></table>
       <h2>Safety recalls</h2><table><thead><tr><th>Reference</th><th>Issued</th><th>Due</th><th>Status</th><th>Action</th><th>Verified by</th></tr></thead><tbody>${simpleRows(recalls[0], ["recall_reference",(r)=>fmtDate(r.issued_date),(r)=>fmtDate(r.due_date),"status","action_details","verified_by"]) || '<tr><td colspan="6">No records</td></tr>'}</tbody></table>

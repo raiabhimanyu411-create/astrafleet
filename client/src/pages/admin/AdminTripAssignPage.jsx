@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { createAdminTrip, getAdminTripById, getTripFormData, updateAdminTrip } from "../../api/adminApi";
 import { AdminWorkspaceLayout } from "./AdminWorkspaceLayout";
+import { dispatchBlockLabel, withComplianceOverride } from "../../utils/complianceOverride";
 
 const PRIORITY_OPTIONS = [
   { value: "standard", label: "Standard" },
@@ -73,7 +74,7 @@ export function AdminTripAssignPage() {
 
   const selectedRoute = formData.routes.find(r => String(r.id) === fields.route_id);
   const suggestedDriver = formData.drivers.find(d => d.shift_status === "ready" && d.compliance_status !== "blocked") || formData.drivers[0];
-  const suggestedVehicle = formData.vehicles.find(v => v.status === "available") || formData.vehicles[0];
+  const suggestedVehicle = formData.vehicles.find(v => v.status === "available" && !(v.dispatch_blockers || []).length);
 
   function set(key, val) {
     setFields(prev => ({ ...prev, [key]: val }));
@@ -104,10 +105,10 @@ export function AdminTripAssignPage() {
       };
 
       if (isEdit) {
-        await updateAdminTrip(id, payload);
+        await withComplianceOverride(extra => updateAdminTrip(id, { ...payload, ...extra }));
         navigate(`/admin/trips/${id}`);
       } else {
-        const res = await createAdminTrip(payload);
+        const res = await withComplianceOverride(extra => createAdminTrip({ ...payload, ...extra }));
         navigate(`/admin/trips/${res.data.trip.id}`);
       }
     } catch (err) {
@@ -224,7 +225,7 @@ export function AdminTripAssignPage() {
                     <option value="">— Select vehicle —</option>
                     {formData.vehicles.map(v => (
                       <option key={v.id} value={v.id}>
-                        {v.registration_number} · {v.model_name} ({v.truck_type}) · {v.status}
+                        {v.registration_number} · {v.model_name} ({v.truck_type}) · {v.status}{dispatchBlockLabel(v)}
                       </option>
                     ))}
                   </select>
@@ -240,7 +241,7 @@ export function AdminTripAssignPage() {
                     <option value="">— Select trailer —</option>
                     {formData.trailers.map(t => (
                       <option key={t.id} value={t.id}>
-                        {t.registration_number} · {t.trailer_type} ({t.trailer_code}) · {t.status}
+                        {t.registration_number} · {t.trailer_type} ({t.trailer_code}) · {t.status}{dispatchBlockLabel(t)}
                       </option>
                     ))}
                   </select>

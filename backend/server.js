@@ -57,6 +57,11 @@ app.use("/api/vehicles",  vehicleRoutes);
 app.use("/api/maintenance", maintenanceRoutes);
 app.use("/api/settings",   settingsRoutes);
 
+// Unknown API paths get a JSON 404, not the web app's HTML page.
+app.use("/api", (_req, res) => {
+  res.status(404).json({ message: "API route not found." });
+});
+
 app.use((err, _req, res, next) => {
   if (err?.type === "entity.too.large") {
     return res.status(413).json({ message: "Upload is too large. Please use a smaller POD photo." });

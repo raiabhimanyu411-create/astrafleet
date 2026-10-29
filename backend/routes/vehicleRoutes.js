@@ -1,5 +1,7 @@
 const express = require("express");
 const router  = express.Router();
+const { numericParams } = require("../middleware/numericParams");
+numericParams(router, ["id", "docId", "recId", "defId"]);
 const v       = require("../controllers/vehicleController");
 const { requireModuleAccess } = require("../middleware/accessControl");
 

@@ -342,9 +342,11 @@ async function ensureDriverOpsSchema() {
   driverOpsSchemaReady = true;
 }
 
-async function createControlRoomAlert({ title, description, severity = "medium", driverId = null, tripId = null, vehicleId = null }) {
+// `conn` must be the open transaction when called from a job action that has locked the trip row: an
+// insert from another connection would wait on that lock (the alert links to the trip) and time out.
+async function createControlRoomAlert({ title, description, severity = "medium", driverId = null, tripId = null, vehicleId = null }, conn = db) {
   const code = `DRV-${Date.now().toString().slice(-8)}-${Math.floor(Math.random() * 90 + 10)}`;
-  await db.query(
+  await conn.query(
     `INSERT INTO control_room_alerts
        (alert_code, module_name, severity, title, description, trip_id, driver_id, vehicle_id, alert_status, owner_name)
      VALUES (?, 'alerts', ?, ?, ?, ?, ?, ?, 'open', 'Control room')`,
@@ -841,7 +843,7 @@ exports.updateMyJobStatus = async (req, res) => {
         driverId: driver.id,
         tripId: jobId,
         vehicleId: job.vehicle_id || null
-      });
+      }, db);
     }
 
     emitJobUpdate({ jobId: Number(jobId), source: "driver-status", status, dispatchStatus });
@@ -1103,10 +1105,47 @@ exports.submitWalkaround = async (req, res) => {
     const { tripId, checks, allClear, issues } = req.body;
     if (!checks) return res.status(400).json({ message: "Checklist data required." });
 
+    // Only trust the job id when the job belongs to this driver.
+    let ownTrip = null;
+    if (tripId) {
+      [[ownTrip]] = await db.query(
+        `SELECT id, vehicle_id FROM trips WHERE id=? AND driver_id=? AND deleted_at IS NULL`,
+        [tripId, driver.id]
+      );
+    }
+    const safeTripId = ownTrip?.id || null;
+    const vehicleId = ownTrip?.vehicle_id || driver.assigned_vehicle_id || null;
+
     const [result] = await db.query(
       `INSERT INTO driver_walkarounds (driver_id, trip_id, checks, all_clear, issues) VALUES (?, ?, ?, ?, ?)`,
-      [driver.id, tripId || null, JSON.stringify(checks), allClear ? 1 : 0, issues || null]
+      [driver.id, safeTripId, JSON.stringify(checks), allClear ? 1 : 0, issues || null]
     );
+
+    // A failed walkaround is a vehicle defect: it goes to the Maintenance defect list (which also stops
+    // the truck being dispatched until it is fixed or overridden).
+    let defectId = null;
+    if (!allClear && vehicleId) {
+      const [defect] = await db.query(
+        `INSERT INTO defect_reports (vehicle_id, driver_id, trip_id, defect_type, description, severity, reported_by, status)
+         VALUES (?, ?, ?, 'Daily walkaround defect', ?, 'high', ?, 'open')`,
+        [vehicleId, driver.id, safeTripId, issues || "Check failed on walkaround checklist.", driver.full_name]
+      );
+      defectId = defect.insertId;
+    }
+    // Also kept in the DVSA daily-check register, so audit packs show the driver's checks.
+    if (vehicleId) {
+      try {
+        await db.query(
+          `INSERT INTO compliance_daily_checks (asset_type, asset_id, check_date, driver_name, result, defect_details, declaration, signature, defect_id)
+           VALUES ('vehicle', ?, ?, ?, ?, ?, 1, ?, ?)`,
+          [vehicleId, ukNowDateTimeKey().slice(0, 10), driver.full_name, allClear ? "nil_defect" : "defect",
+            allClear ? null : (issues || "Check failed on walkaround checklist."), `Driver app · ${driver.full_name}`, defectId]
+        );
+      } catch (error) {
+        // The register is created by the compliance module; the walkaround itself is already saved.
+        if (error.code !== "ER_NO_SUCH_TABLE") throw error;
+      }
+    }
 
     if (!allClear) {
       await createControlRoomAlert({
@@ -1114,7 +1153,8 @@ exports.submitWalkaround = async (req, res) => {
         description: `${driver.full_name}: ${issues || "Check failed on walkaround checklist."}`,
         severity: "high",
         driverId: driver.id,
-        tripId: tripId || null
+        tripId: safeTripId,
+        vehicleId
       });
     }
 
@@ -1187,7 +1227,7 @@ exports.updateJobEta = async (req, res) => {
       driverId: driver.id,
       tripId: jobId,
       vehicleId: job.vehicle_id || null
-    });
+    }, db);
     emitJobUpdate({ jobId: Number(jobId), source: "driver-eta", eta: etaDate, etaTime });
 
     res.json({ message: `ETA updated successfully for ${etaTime}.`, eta: etaDate, etaTime });
@@ -1472,7 +1512,7 @@ exports.rescheduleJob = async (req, res) => {
       driverId: driver.id,
       tripId: jobId,
       vehicleId: job.vehicle_id || null
-    });
+    }, db);
 
     emitJobUpdate({ jobId: Number(jobId), source: 'driver-reschedule' });
     res.json({ message: "Delivery rescheduled successfully." });

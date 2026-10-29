@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import api from "../api/axios";
+import { forgetSharedGet, sharedGet } from "../utils/sharedGet";
 import {
   PREFS_EVENT,
   desktopAlertsSupported,
@@ -32,7 +33,7 @@ export function NotificationBell({ fetchUrl, paramKey, paramValue, viewAllTo }) 
 
   const load = useCallback(() => {
     const params = paramKey && paramValue ? { [paramKey]: paramValue } : {};
-    api.get(fetchUrl, { params })
+    sharedGet(fetchUrl, params)
       .then(res => {
         setNotifications(res.data.notifications || []);
         setCount(res.data.count || 0);
@@ -43,10 +44,12 @@ export function NotificationBell({ fetchUrl, paramKey, paramValue, viewAllTo }) 
   useEffect(() => {
     load();
     const timer = setInterval(load, 30000);
-    window.addEventListener("admin-notification:refresh", load);
+    // Something changed: skip the shared copy and read again.
+    const refresh = () => { forgetSharedGet(fetchUrl); load(); };
+    window.addEventListener("admin-notification:refresh", refresh);
     return () => {
       clearInterval(timer);
-      window.removeEventListener("admin-notification:refresh", load);
+      window.removeEventListener("admin-notification:refresh", refresh);
     };
   }, [load]);
 
@@ -74,7 +77,7 @@ export function NotificationBell({ fetchUrl, paramKey, paramValue, viewAllTo }) 
   }
 
   function handleNotifClick(notif) {
-    api.post(`${fetchUrl}/${encodeURIComponent(notif.id)}/ack`).then(load).catch(() => {});
+    api.post(`${fetchUrl}/${encodeURIComponent(notif.id)}/ack`).then(() => { forgetSharedGet(fetchUrl); load(); }).catch(() => {});
     setOpen(false);
     if (notif.link) navigate(notif.link);
   }

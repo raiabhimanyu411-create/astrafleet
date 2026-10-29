@@ -1,5 +1,7 @@
 const express = require("express");
 const router  = express.Router();
+const { numericParams } = require("../middleware/numericParams");
+numericParams(router, ["id", "jobId", "stopId", "docId"]);
 const d       = require("../controllers/driverController");
 const push    = require("../controllers/driverPushController");
 const geofence = require("../controllers/driverGeofenceController");

@@ -19,6 +19,7 @@ const empty = {
   purchase_order_ref: "",
   net_amount_gbp: "",
   vat_rate: "20",
+  vat_treatment: "standard",
   vat_amount_gbp: "0.00",
   amount_gbp: "",
   issued_at: ukNow().slice(0, 10),
@@ -29,6 +30,17 @@ const empty = {
   payment_terms: "Payment due by the stated due date",
   bank_details: ""
 };
+
+// UK VAT treatments. Zero-rated, exempt and outside the scope all charge 0% but print differently.
+const VAT_OPTIONS = [
+  { value: "standard", rate: 20, label: "20% Standard rate" },
+  { value: "reduced", rate: 5, label: "5% Reduced rate" },
+  { value: "zero", rate: 0, label: "0% Zero-rated" },
+  { value: "exempt", rate: 0, label: "Exempt from VAT" },
+  { value: "outside_scope", rate: 0, label: "Outside the scope of VAT" }
+];
+const treatmentForRate = rate => ({ 20: "standard", 5: "reduced", 0: "zero" })[Number(rate)] || "standard";
+const roundMoney = value => Math.round(Number(value) * 100) / 100;
 
 function Field({ label, children, hint }) {
   return (
@@ -65,10 +77,25 @@ export function InvoiceFormPage() {
         const defaults = defaultsRes?.data;
         if (defaults?.invoicePaymentTermsDays) setDefaultTermsDays(defaults.invoicePaymentTermsDays);
         if (invoiceRes) {
-          setFields(invoiceRes.data.form);
-        } else if (defaults && Number.isFinite(defaults.invoiceVatRate)) {
-          // New invoice only: start from the admin's default VAT rate.
-          setFields(prev => ({ ...prev, vat_rate: String(defaults.invoiceVatRate) }));
+          const form = invoiceRes.data.form;
+          setFields({ ...form, vat_treatment: form.vat_treatment || treatmentForRate(form.vat_rate) });
+        } else {
+          // New invoice: next number in the series, the supplier details used last time, and the
+          // admin's default VAT rate.
+          const supplier = fdRes.data.supplierDefaults;
+          setFields(prev => ({
+            ...prev,
+            invoice_no: fdRes.data.nextInvoiceNo || prev.invoice_no,
+            ...(supplier ? {
+              supplier_name: supplier.supplierName || prev.supplier_name,
+              supplier_address: supplier.supplierAddress || prev.supplier_address,
+              supplier_vat_number: supplier.supplierVatNumber || prev.supplier_vat_number,
+              bank_details: supplier.bankDetails || prev.bank_details
+            } : {}),
+            ...(defaults && Number.isFinite(defaults.invoiceVatRate)
+              ? { vat_rate: String(defaults.invoiceVatRate), vat_treatment: treatmentForRate(defaults.invoiceVatRate) }
+              : {})
+          }));
         }
       })
       .catch(() => setLoadError("Billing form data could not be loaded."))
@@ -102,10 +129,16 @@ export function InvoiceFormPage() {
     }));
   }
 
-  const netAmount = Number(fields.net_amount_gbp || 0);
-  const vatRate = Number(fields.vat_rate || 0);
-  const vatAmount = Number.isFinite(netAmount * vatRate) ? Number((netAmount * vatRate / 100).toFixed(2)) : 0;
-  const grossAmount = Number((netAmount + vatAmount).toFixed(2));
+  // Money is rounded to pence, exactly as the server stores it.
+  const netAmount = roundMoney(fields.net_amount_gbp || 0);
+  const vatOption = VAT_OPTIONS.find(option => option.value === fields.vat_treatment);
+  const vatRate = vatOption ? vatOption.rate : Number(fields.vat_rate || 0);
+  const vatAmount = Number.isFinite(netAmount * vatRate) ? roundMoney(netAmount * vatRate / 100) : 0;
+  const grossAmount = roundMoney(netAmount + vatAmount);
+  // Only completed jobs are offered; one that already has an invoice is marked. The job already on
+  // this invoice stays selectable when editing.
+  const tripOptions = formData.trips.filter(trip => !trip.invoiced || String(trip.id) === String(fields.trip_id));
+  const currentTripMissing = fields.trip_id && !formData.trips.some(trip => String(trip.id) === String(fields.trip_id));
 
   async function handleSubmit(e) {
     e.preventDefault();
@@ -117,6 +150,7 @@ export function InvoiceFormPage() {
         trip_id: fields.trip_id || null,
         net_amount_gbp: netAmount,
         vat_rate: vatRate,
+        vat_treatment: fields.vat_treatment || null,
         vat_amount_gbp: vatAmount,
         amount_gbp: grossAmount,
         pod_verified: Boolean(fields.pod_verified)
@@ -169,10 +203,11 @@ export function InvoiceFormPage() {
                 <Field label="Invoice number">
                   <input className="af-input" value={fields.invoice_no} onChange={e => set("invoice_no", e.target.value.toUpperCase())} placeholder="e.g. INV-5001" required />
                 </Field>
-                <Field label="Linked trip" hint={selectedTrip ? `${selectedTrip.lane} · POD ${selectedTrip.podStatus}` : "Optional, but useful for POD tracking"}>
+                <Field label="Linked job" hint={selectedTrip ? `${selectedTrip.lane} · POD ${selectedTrip.podStatus}` : "Completed jobs that are not invoiced yet"}>
                   <select className="af-select" value={fields.trip_id || ""} onChange={e => handleTripChange(e.target.value)}>
-                    <option value="">No linked trip</option>
-                    {formData.trips.map(trip => (
+                    <option value="">No linked job</option>
+                    {currentTripMissing && <option value={fields.trip_id}>{fields.trip_code || `Job #${fields.trip_id}`} (current)</option>}
+                    {tripOptions.map(trip => (
                       <option key={trip.id} value={trip.id}>
                         {trip.tripCode} · {trip.clientName || "Internal dispatch"}
                       </option>
@@ -206,14 +241,12 @@ export function InvoiceFormPage() {
                 <Field label="Customer PO reference">
                   <input className="af-input" value={fields.purchase_order_ref || ""} onChange={e => set("purchase_order_ref", e.target.value)} placeholder="Optional PO / booking reference" />
                 </Field>
-                <Field label="Net amount (£)">
+                <Field label="Net amount (£, excluding VAT)">
                   <input className="af-input" type="number" min="0.01" step="0.01" value={fields.net_amount_gbp} onChange={e => set("net_amount_gbp", e.target.value)} required />
                 </Field>
-                <Field label="VAT Rate">
-                  <select className="af-select" value={fields.vat_rate} onChange={e => set("vat_rate", e.target.value)}>
-                    <option value="20">20% Standard</option>
-                    <option value="5">5% Reduced</option>
-                    <option value="0">0% Zero rated / exempt</option>
+                <Field label="VAT">
+                  <select className="af-select" value={fields.vat_treatment || ""} onChange={e => set("vat_treatment", e.target.value)}>
+                    {VAT_OPTIONS.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}
                   </select>
                 </Field>
                 <Field label="VAT Amount">

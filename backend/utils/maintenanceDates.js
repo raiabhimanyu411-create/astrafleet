@@ -50,4 +50,10 @@ function optionalMoney(value) {
   return Number.isFinite(amount) && amount >= 0 ? amount : null;
 }
 
-module.exports = { ukDateKey, ukDaysUntil, isDateKey, dateFieldError, optionalMoney };
+// "2026-10-29" -> "29/10/2026" for labels people read.
+function ukDisplayDate(value) {
+  const match = String(value || "").match(/^(\d{4})-(\d{2})-(\d{2})/);
+  return match ? `${match[3]}/${match[2]}/${match[1]}` : String(value || "");
+}
+
+module.exports = { ukDateKey, ukDaysUntil, isDateKey, dateFieldError, optionalMoney, ukDisplayDate };

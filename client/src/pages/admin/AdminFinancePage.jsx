@@ -313,10 +313,10 @@ export function AdminFinancePage() {
                     <td>{item.counterparty}</td>
                     <td><strong>{item.amount}</strong></td>
                     <td>{item.due}</td>
-                    <td><StatusPill tone={item.tone}>{item.status}</StatusPill></td>
+                    <td><StatusPill tone={item.tone}>{item.overdue ? `${item.status} · overdue` : item.status}</StatusPill></td>
                     <td>
                       <div className="finance-table-actions">
-                        {item.status !== "processing" && (
+                        {!["processing", "paid"].includes(item.status) && (
                           <button className="header-action-button" type="button" onClick={() => handlePayoutStatus(item.id, "processing")}>Process</button>
                         )}
                         {item.status !== "paid" && (

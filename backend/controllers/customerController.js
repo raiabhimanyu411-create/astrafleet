@@ -13,6 +13,21 @@ function fmtAmount(n) {
 
 let customerSchemaReady = false;
 
+
+// UK postcode, e.g. "DE74 2TZ". Stored upper case with one space before the last three characters.
+const UK_POSTCODE = /^(GIR ?0AA|[A-Z]{1,2}\d[A-Z\d]? ?\d[A-Z]{2})$/;
+function normalisePostcode(value) {
+  const clean = String(value || "").toUpperCase().replace(/\s+/g, "");
+  return clean ? `${clean.slice(0, -3)} ${clean.slice(-3)}` : "";
+}
+// GB VAT number: GB + 9 or 12 digits, or GBGD / GBHA + 3 digits. Spaces are ignored.
+const UK_VAT = /^(GB)?(\d{9}|\d{12}|GD\d{3}|HA\d{3})$/;
+function customerFieldError({ postcode, vat_number }) {
+  if (postcode && !UK_POSTCODE.test(normalisePostcode(postcode))) return "Enter a valid UK postcode, e.g. DE74 2TZ.";
+  if (vat_number && !UK_VAT.test(String(vat_number).toUpperCase().replace(/\s+/g, ""))) return "Enter a valid UK VAT number, e.g. GB123456789.";
+  return "";
+}
+
 async function addColumnIfMissing(table, column, definition) {
   const [rows] = await db.query(`SHOW COLUMNS FROM ${table} LIKE ?`, [column]);
   if (rows.length === 0) {
@@ -195,6 +210,9 @@ exports.updateCustomerInline = async (req, res) => {
     const validStatus = ["active", "suspended", "closed"];
     const updates = [];
     const values = [];
+    const fieldError = customerFieldError({ postcode: req.body?.postcode, vat_number: req.body?.vatNumber });
+    if (fieldError) return res.status(400).json({ message: fieldError });
+    if (req.body?.postcode) req.body.postcode = normalisePostcode(req.body.postcode);
 
     Object.entries(req.body || {}).forEach(([field, value]) => {
       const column = fieldMap[field];
@@ -317,6 +335,8 @@ exports.createCustomer = async (req, res) => {
     if (!company_name) {
       return res.status(400).json({ message: "Company name is required." });
     }
+    const fieldError = customerFieldError({ postcode, vat_number });
+    if (fieldError) return res.status(400).json({ message: fieldError });
 
     const [result] = await db.query(
       `INSERT INTO customers
@@ -329,7 +349,7 @@ exports.createCustomer = async (req, res) => {
         email || null,
         phone || null,
         address || null,
-        postcode || null,
+        postcode ? normalisePostcode(postcode) : null,
         vat_number || null,
         payment_terms_days || 30,
         billing_address || null,
@@ -372,6 +392,8 @@ exports.updateCustomer = async (req, res) => {
     if (!company_name) {
       return res.status(400).json({ message: "Company name is required." });
     }
+    const fieldError = customerFieldError({ postcode, vat_number });
+    if (fieldError) return res.status(400).json({ message: fieldError });
 
     const [[existing]] = await db.query(`SELECT * FROM customers WHERE id = ?`, [id]);
     if (!existing) return res.status(404).json({ message: "Customer not found." });
@@ -391,7 +413,7 @@ exports.updateCustomer = async (req, res) => {
         billing_address || null,
         saved_pickup_addresses || null,
         saved_drop_addresses || null,
-        postcode || null,
+        postcode ? normalisePostcode(postcode) : null,
         vat_number || null,
         tax_details || null,
         credit_limit_gbp || null,

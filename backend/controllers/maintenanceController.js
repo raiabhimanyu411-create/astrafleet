@@ -1,7 +1,7 @@
 const { cleanMaintenanceHistory, maintenanceCostRows } = require("../utils/maintenanceHistory");
 const db = require("../db/connection");
 const { logActivity } = require("../utils/auditLogger");
-const { dateFieldError, optionalMoney, ukDaysUntil } = require("../utils/maintenanceDates");
+const { dateFieldError, optionalMoney, ukDaysUntil, ukDisplayDate } = require("../utils/maintenanceDates");
 const { extractDocumentFields } = require("../utils/documentExtraction");
 const { settingNumber } = require("./settingsController");
 
@@ -628,23 +628,8 @@ async function syncMaintenanceSchema() {
     ) ENGINE=InnoDB
   `);
 
-  await db.query(`
-    INSERT INTO vehicle_tyres (vehicle_id, position_label, tyre_brand, tread_depth_mm, pressure_psi, status)
-    SELECT v.id, positions.position_label, 'Fleet standard', 8.0, 110.0, 'ok'
-    FROM vehicles v
-    JOIN (
-      SELECT 'Front left' AS position_label
-      UNION ALL SELECT 'Front right'
-      UNION ALL SELECT 'Axle 2 left'
-      UNION ALL SELECT 'Axle 2 right'
-      UNION ALL SELECT 'Rear left'
-      UNION ALL SELECT 'Rear right'
-    ) positions
-    WHERE NOT EXISTS (
-      SELECT 1 FROM vehicle_tyres existing
-      WHERE existing.vehicle_id = v.id AND existing.position_label = positions.position_label
-    )
-  `);
+  // Tyre rows are only created from real readings. (Placeholder "Fleet standard" 8.0 mm / 110 psi tyres used
+  // to be added to every truck here; they are no longer created.)
 
   await addColumnIfMissing("defect_reports", "workflow_status", "ENUM('reported','reviewed','booked','fixed','verified') NOT NULL DEFAULT 'reported'");
 
@@ -1801,7 +1786,7 @@ async function applyCompletedMaintenance(job, completion = {}) {
   if (existingHistory) {
     await db.query(
       `UPDATE ${historyTable}
-       SET description=COALESCE(?,description), cost_gbp=?, next_due_date=?, garage_name=COALESCE(?,garage_name)
+       SET description=COALESCE(?,description), cost_gbp=COALESCE(?,0), next_due_date=?, garage_name=COALESCE(?,garage_name)
            ${isTrailer ? "" : ", mileage=COALESCE(?,mileage)"}
        WHERE id=?`,
       isTrailer
@@ -1812,13 +1797,13 @@ async function applyCompletedMaintenance(job, completion = {}) {
     await db.query(
       `INSERT INTO trailer_maintenance_records (trailer_id, service_date, service_type, description, cost_gbp, next_due_date, garage_name)
        VALUES (?, ?, ?, ?, ?, ?, ?)`,
-      [job.trailer_id, serviceDate, job.service_type, completionNotes || job.notes, finalCost, nextDueDate, job.garage_name]
+      [job.trailer_id, serviceDate, job.service_type, completionNotes || job.notes, finalCost ?? 0, nextDueDate, job.garage_name]
     );
   } else {
     await db.query(
       `INSERT INTO maintenance_records (vehicle_id, service_date, service_type, description, cost_gbp, mileage, next_due_date, garage_name)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-      [job.vehicle_id, serviceDate, job.service_type, completionNotes || job.notes, finalCost, completedMileageKm, nextDueDate, job.garage_name]
+      [job.vehicle_id, serviceDate, job.service_type, completionNotes || job.notes, finalCost ?? 0, completedMileageKm, nextDueDate, job.garage_name]
     );
   }
   await decrementInventoryFromText(job.parts_required);
@@ -1842,7 +1827,8 @@ async function applyCompletedMaintenance(job, completion = {}) {
       await db.query(`UPDATE trailers SET insurance_expiry=? WHERE id=?`, [nextDueDate, job.trailer_id]);
     } else if (job.service_type === "Full Service") {
       await db.query(`UPDATE trailers SET next_service_due=? WHERE id=?`, [nextDueDate || null, job.trailer_id]);
-    } else if (nextDueDate && ["Safety inspection", "Brake test"].includes(job.service_type)) {
+    } else if (nextDueDate && job.service_type === "Safety inspection") {
+      // Only a full safety inspection (PMI) moves the inspection clock; a brake test on its own does not.
       await db.query(`UPDATE trailers SET next_inspection_due=? WHERE id=?`, [nextDueDate, job.trailer_id]);
     }
     if (nextDueDate && isTrailerMaintenanceTypeAllowed(job.service_type)) {
@@ -1937,11 +1923,14 @@ exports.getMaintenancePortal = async (_req, res) => {
         last_m.completed_mileage_km AS last_mileage,
         last_i.service_date AS last_inspection_date,
         last_i.service_type AS last_inspection_type,
-        CASE WHEN last_i.id IS NULL THEN NULL ELSE 'pass' END AS last_inspection_result,
+        (SELECT vi_r.result FROM vehicle_inspections vi_r
+          WHERE vi_r.vehicle_id=v.id AND vi_r.inspection_date=last_i.service_date
+            AND vi_r.inspection_type=last_i.service_type
+          ORDER BY vi_r.id DESC LIMIT 1) AS last_inspection_result,
         (SELECT MIN(next_i.due_date)
          FROM maintenance_jobs next_i
          WHERE next_i.vehicle_id=v.id
-           AND next_i.service_type IN ('Safety inspection','Brake test')
+           AND next_i.service_type IN ('Safety inspection','6-week safety inspection','10-week safety inspection')
            AND next_i.status IN ('planned','booked','in_progress')) AS next_inspection_due,
         COALESCE(def.open_defects, 0) AS open_defects,
         COALESCE(def.critical_defects, 0) AS critical_defects
@@ -1950,6 +1939,7 @@ exports.getMaintenancePortal = async (_req, res) => {
         ON last_m.id = (
           SELECT mr.id FROM maintenance_jobs mr
           WHERE mr.vehicle_id=v.id AND mr.status='completed' AND mr.service_date IS NOT NULL
+            AND mr.service_type='Full Service'
           ORDER BY mr.service_date DESC, mr.id DESC
           LIMIT 1
         )
@@ -1957,7 +1947,7 @@ exports.getMaintenancePortal = async (_req, res) => {
         ON last_i.id = (
           SELECT vi.id FROM maintenance_jobs vi
           WHERE vi.vehicle_id=v.id AND vi.status='completed' AND vi.service_date IS NOT NULL
-            AND vi.service_type IN ('Safety inspection','Brake test')
+            AND vi.service_type IN ('Safety inspection','6-week safety inspection','10-week safety inspection')
           ORDER BY vi.service_date DESC, vi.id DESC
           LIMIT 1
         )
@@ -1993,14 +1983,14 @@ exports.getMaintenancePortal = async (_req, res) => {
         COALESCE(
           (SELECT MIN(next_i.due_date) FROM maintenance_jobs next_i
            WHERE next_i.trailer_id=t.id
-             AND next_i.service_type IN ('Safety inspection','Brake test')
+             AND next_i.service_type IN ('Safety inspection','6-week safety inspection','10-week safety inspection')
              AND next_i.status IN ('planned','booked','in_progress')),
           t.next_inspection_due
         ) AS next_inspection_due,
         COALESCE(t.inspection_frequency_weeks, 10) AS inspection_frequency_weeks,
         (SELECT completed_i.service_date FROM maintenance_jobs completed_i
          WHERE completed_i.trailer_id=t.id
-           AND completed_i.service_type IN ('Safety inspection','Brake test')
+           AND completed_i.service_type IN ('Safety inspection','6-week safety inspection','10-week safety inspection')
            AND completed_i.status='completed' AND completed_i.service_date IS NOT NULL
          ORDER BY completed_i.service_date DESC, completed_i.id DESC LIMIT 1) AS last_inspection_date,
         COALESCE(def.open_defects, 0) AS open_defects,
@@ -2583,8 +2573,9 @@ exports.getMaintenancePortal = async (_req, res) => {
             dueLabel: dueLabel(daysLeft),
             daysLeft,
             tone,
-            kind: forecastIndex === 0 ? "upcoming" : "forecast",
-            forecastOnly: forecastIndex > 0,
+            // A planned date that has passed without being done is missed, not a neutral forecast.
+            kind: forecastIndex === 0 ? "upcoming" : daysLeft < 0 ? "missed" : "forecast",
+            forecastOnly: forecastIndex > 0 && daysLeft >= 0,
             weekKey: week.key,
             weekLabel: week.label
           });
@@ -2746,8 +2737,9 @@ exports.getMaintenancePortal = async (_req, res) => {
             dueLabel: dueLabel(daysLeft),
             daysLeft,
             tone,
-            kind: forecastIndex === 0 ? "upcoming" : "forecast",
-            forecastOnly: forecastIndex > 0,
+            // A planned date that has passed without being done is missed, not a neutral forecast.
+            kind: forecastIndex === 0 ? "upcoming" : daysLeft < 0 ? "missed" : "forecast",
+            forecastOnly: forecastIndex > 0 && daysLeft >= 0,
             weekKey: week.key,
             weekLabel: week.label
           });
@@ -3924,7 +3916,7 @@ exports.updateJob = async (req, res) => {
              ON DUPLICATE KEY UPDATE description=VALUES(description), cost_gbp=VALUES(cost_gbp),
                next_due_date=VALUES(next_due_date), garage_name=VALUES(garage_name)`,
             [existingAssetId, job.service_date, job.service_type, job.completion_notes || job.notes,
-              optionalMoney(job.final_cost_gbp), nextDueDate, job.garage_name]
+              optionalMoney(job.final_cost_gbp) ?? 0, nextDueDate, job.garage_name]
           );
         } else {
           await connection.query(
@@ -3934,7 +3926,7 @@ exports.updateJob = async (req, res) => {
              ON DUPLICATE KEY UPDATE description=VALUES(description), cost_gbp=VALUES(cost_gbp),
                mileage=VALUES(mileage), next_due_date=VALUES(next_due_date), garage_name=VALUES(garage_name)`,
             [existingAssetId, job.service_date, job.service_type, job.completion_notes || job.notes,
-              optionalMoney(job.final_cost_gbp), job.completed_mileage_km, nextDueDate, job.garage_name]
+              optionalMoney(job.final_cost_gbp) ?? 0, job.completed_mileage_km, nextDueDate, job.garage_name]
           );
         }
         if (previousServiceDate && previousServiceDate !== job.service_date) {
@@ -4260,6 +4252,19 @@ exports.reportBreakdown = async (req, res) => {
     const billNumber = String(req.body.bill_number || req.body.billNumber || "").trim() || null;
     const billAmountGbp = req.body.bill_amount_gbp || req.body.billAmountGbp || null;
     const reportedBy = String(req.body.reported_by || req.body.reportedBy || req.sessionUser?.name || "Admin").trim();
+    const location = String(req.body.location || "").trim();
+    const odometerMiles = req.body.odometer_miles === "" || req.body.odometer_miles == null ? null : Number(req.body.odometer_miles);
+    if (odometerMiles != null && (!Number.isFinite(odometerMiles) || odometerMiles < 0)) {
+      return res.status(400).json({ message: "Odometer must be a number of miles." });
+    }
+    // Off road unless whoever reported it confirms the vehicle is safe to drive.
+    const safeToDrive = req.body.safe_to_drive === true || req.body.safe_to_drive === "true";
+    const details = [
+      description,
+      location ? `Location: ${location}` : "",
+      odometerMiles != null ? `Odometer: ${odometerMiles.toLocaleString("en-GB")} miles` : "",
+      safeToDrive ? "Reported safe to drive." : "Vehicle off road (VOR) from report."
+    ].filter(Boolean).join(" · ");
 
     // Create defect report
     const [defectResult] = await db.query(
@@ -4270,7 +4275,7 @@ exports.reportBreakdown = async (req, res) => {
         assetType === "vehicle" ? assetNumericId : null,
         assetType === "trailer" ? assetNumericId : null,
         assetType,
-        defectType, description, severity, reportedBy
+        defectType, details, severity, reportedBy
       ]
     );
     const defectId = defectResult.insertId;
@@ -4292,18 +4297,27 @@ exports.reportBreakdown = async (req, res) => {
         garageName, estimatedCostGbp, billAttachmentData, billNotes, billNumber, billAmountGbp,
         severity === "critical" ? "critical" : severity === "high" ? "high" : "normal",
         "booked",
-        description
+        details
       ]
     );
 
     await db.query(`UPDATE defect_reports SET status='in_progress', workflow_status='booked' WHERE id=?`, [defectId]);
-    if (assetType === "trailer") {
-      await db.query(`UPDATE trailers SET status='maintenance' WHERE id=?`, [assetNumericId]);
-    } else {
-      await db.query(`UPDATE vehicles SET status='maintenance' WHERE id=?`, [assetNumericId]);
+    if (!safeToDrive) {
+      // Same as marking VOR by hand: status, reason and a VOR history entry.
+      const table = assetType === "trailer" ? "trailers" : "vehicles";
+      const reason = `Breakdown: ${defectType}${location ? ` at ${location}` : ""}`.slice(0, 250);
+      const today = ukDateKey();
+      await db.query(`UPDATE ${table} SET status='maintenance', vor_reason=?, vor_marked_at=? WHERE id=?`, [reason, today, assetNumericId]);
+      await db.query(
+        `INSERT INTO vor_history (asset_type, asset_id, reason, since_date, expected_till_date) VALUES (?, ?, ?, ?, NULL)`,
+        [assetType, assetNumericId, reason, today]
+      );
     }
 
-    res.status(201).json({ message: "Breakdown reported and repair job created.", defectId, jobId: jobResult.insertId, jobNumber });
+    res.status(201).json({
+      message: safeToDrive ? "Breakdown reported and repair job created. Vehicle left on the road." : "Breakdown reported, repair job created and vehicle marked off road (VOR).",
+      defectId, jobId: jobResult.insertId, jobNumber
+    });
   } catch (err) {
     res.status(500).json({ message: "Breakdown report error", error: err.message });
   }
@@ -4610,7 +4624,7 @@ exports.undoCompletedEvent = async (req, res) => {
       action: "undo_completion",
       entityType: "maintenance_job",
       entityId: jobId,
-      entityLabel: `${job.service_type} · ${serviceDate}`,
+      entityLabel: `${job.service_type} · ${ukDisplayDate(serviceDate)}`,
       reason: undoReason,
       reasonCategory: "data_correction",
       details: {
@@ -4748,7 +4762,7 @@ exports.completeEventFromSchedule = async (req, res) => {
              ON DUPLICATE KEY UPDATE description=COALESCE(VALUES(description),description),
                cost_gbp=VALUES(cost_gbp), next_due_date=VALUES(next_due_date),
                garage_name=COALESCE(VALUES(garage_name),garage_name)`,
-            [assetNumericId, serviceDate, serviceType, completionNotes, correctionCost, nextDueDate || null, garageName]
+            [assetNumericId, serviceDate, serviceType, completionNotes, correctionCost ?? 0, nextDueDate || null, garageName]
           );
         } else {
           await connection.query(
@@ -4758,7 +4772,7 @@ exports.completeEventFromSchedule = async (req, res) => {
              ON DUPLICATE KEY UPDATE description=COALESCE(VALUES(description),description),
                cost_gbp=VALUES(cost_gbp), mileage=COALESCE(VALUES(mileage),mileage),
                next_due_date=VALUES(next_due_date), garage_name=COALESCE(VALUES(garage_name),garage_name)`,
-            [assetNumericId, serviceDate, serviceType, completionNotes, correctionCost,
+            [assetNumericId, serviceDate, serviceType, completionNotes, correctionCost ?? 0,
               completedMileageKm, nextDueDate || null, garageName]
           );
         }
