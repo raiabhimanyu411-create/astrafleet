@@ -223,8 +223,13 @@ function vehicleModel(row) {
   return row.model || splitVehicleModelName(row.model_name).model || row.model_name || "—";
 }
 
+// "MERCEDES" + "MERCEDES ACTROS" stays "MERCEDES ACTROS": the make is not repeated when the model already starts with it.
 function combinedModelName(make, model, modelName) {
-  return String(modelName || [make, model].filter(Boolean).join(" ")).trim();
+  if (modelName) return String(modelName).trim();
+  const makeText = String(make || "").trim();
+  const modelText = String(model || "").trim();
+  if (makeText && modelText.toUpperCase().startsWith(makeText.toUpperCase())) return modelText;
+  return [makeText, modelText].filter(Boolean).join(" ");
 }
 
 // UK plates are stored without spaces in upper case, so "mx22 kht" and "MX22KHT" are the same vehicle.
@@ -232,12 +237,14 @@ function normalizeRegistration(value) {
   return String(value || "").toUpperCase().replace(/\s+/g, "").trim();
 }
 
-// Rows that cascade-delete with the asset. Inspection and maintenance records must be kept (DVSA: at least 15 months).
+// Records that would be lost or left without a registration if the asset were deleted. Inspection and
+// maintenance records must be kept (DVSA: at least 15 months), so any of these blocks the delete.
+// Each check is [table, column, optional extra condition].
 async function assetHistoryCounts(checks, id) {
   const counts = {};
-  for (const [table, column] of checks) {
+  for (const [table, column, extra] of checks) {
     try {
-      const [[row]] = await db.query(`SELECT COUNT(*) AS n FROM ${table} WHERE ${column} = ?`, [id]);
+      const [[row]] = await db.query(`SELECT COUNT(*) AS n FROM ${table} WHERE ${column} = ?${extra ? ` AND ${extra}` : ""}`, [id]);
       if (Number(row.n) > 0) counts[table] = Number(row.n);
     } catch (error) {
       if (!["ER_NO_SUCH_TABLE", "ER_BAD_FIELD_ERROR"].includes(error.code)) throw error;
@@ -246,11 +253,23 @@ async function assetHistoryCounts(checks, id) {
   return counts;
 }
 
+const COMPLIANCE_HISTORY = (assetType) => [
+  ["compliance_inspections", "asset_id", `asset_type='${assetType}'`],
+  ["compliance_mot_tests", "asset_id", `asset_type='${assetType}'`],
+  ["compliance_daily_checks", "asset_id", `asset_type='${assetType}'`]
+];
 const VEHICLE_HISTORY = [
   ["maintenance_records", "vehicle_id"], ["maintenance_jobs", "vehicle_id"], ["vehicle_inspections", "vehicle_id"],
-  ["defect_reports", "vehicle_id"], ["vehicle_documents", "vehicle_id"], ["vehicle_tyres", "vehicle_id"]
+  ["defect_reports", "vehicle_id"], ["vehicle_documents", "vehicle_id"],
+  // The system used to add six placeholder tyres ("Fleet standard") to every truck; only real tyre records count.
+  ["vehicle_tyres", "vehicle_id", "COALESCE(tyre_brand,'') <> 'Fleet standard'"],
+  ...COMPLIANCE_HISTORY("vehicle")
 ];
-const TRAILER_HISTORY = [["trailer_inspections", "trailer_id"], ["trailer_maintenance_records", "trailer_id"]];
+const TRAILER_HISTORY = [
+  ["trailer_inspections", "trailer_id"], ["trailer_maintenance_records", "trailer_id"],
+  ["maintenance_jobs", "trailer_id"], ["defect_reports", "trailer_id"],
+  ...COMPLIANCE_HISTORY("trailer")
+];
 const TRAILER_STATUSES = ["available", "planned", "in_use", "maintenance"];
 
 function nextFleetCode(registrationNumber) {

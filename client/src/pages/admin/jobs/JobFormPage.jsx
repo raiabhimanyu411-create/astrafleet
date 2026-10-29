@@ -4,6 +4,7 @@ import { createJob, estimateJobRoute, getJobById, getJobFormData, updateJob } fr
 import { getSettings } from "../../../api/settingsApi";
 import { AdminWorkspaceLayout } from "../AdminWorkspaceLayout";
 import { ukAddMinutes, ukInstant, ukMinutes, ukNow, formatUkWall } from '../../../utils/ukJobTime';
+import { estimateJobCost } from "../../../utils/jobCost";
 
 function Field({ label, hint, required, error, children }) {
   return (
@@ -48,17 +49,6 @@ function calcTiming(loadingDoneTime, travelMins, loadingMins, unloadingMins) {
   return { travelMins, arrival, unloadEnd, totalMins };
 }
 
-function calcCost(distanceMiles, totalMins, settings, tollCost = 0) {
-  if (distanceMiles == null || totalMins == null || !settings || Number(settings.mpg) <= 0 || ![settings.mpg, settings.fuel_price_per_litre, settings.driver_rate_per_hour, settings.fleet_cost_per_hour, settings.margin_pct].every(value => Number.isFinite(Number(value)) && Number(value) >= 0)) return null;
-  const fuelCostPerMile = (4.546 / settings.mpg) * settings.fuel_price_per_litre;
-  const fuelCost = distanceMiles * fuelCostPerMile;
-  const totalHours = (totalMins || 0) / 60;
-  const driverCost = totalHours * settings.driver_rate_per_hour;
-  const fleetCost = totalHours * settings.fleet_cost_per_hour;
-  const totalCost = fuelCost + driverCost + fleetCost + Number(tollCost || 0);
-  const suggestedPrice = totalCost * (1 + settings.margin_pct / 100);
-  return { fuelCost, driverCost, fleetCost, tollCost: Number(tollCost || 0), fleetCostPerHour: settings.fleet_cost_per_hour, totalCost, suggestedPrice, fuelCostPerMile };
-}
 
 function fmtGBP(n) {
   return `£${Number(n).toFixed(2)}`;
@@ -94,6 +84,13 @@ function getApiErrorMessage(err) {
   return data?.error || data?.message || err?.message || "Could not save job. Please try again.";
 }
 
+// Longest loading or unloading time accepted without a second look (a typo in a date can otherwise add days).
+const MAX_DWELL_MINS = 12 * 60;
+
+function nonNegative(value) {
+  return value != null && Number.isFinite(value) && value >= 0 ? value : null;
+}
+
 function validateJobForm(fields, stops = []) {
   const errors = {};
   if (!fields.client_name.trim()) errors.client_name = "Enter the client name.";
@@ -110,6 +107,17 @@ function validateJobForm(fields, stops = []) {
   }
   if (fields.delivery_arrival_time && fields.delivery_departure_time && fields.delivery_departure_time < fields.delivery_arrival_time) {
     errors.delivery_departure_time = "Delivery departure cannot be before delivery arrival.";
+  }
+  const loadingWindow = ukMinutes(fields.planned_departure, fields.loading_done_time);
+  if (!errors.loading_done_time && loadingWindow != null && loadingWindow > MAX_DWELL_MINS) {
+    errors.loading_done_time = "Loading would take more than 12 hours. Check the collection dates and times.";
+  }
+  const unloadingWindow = ukMinutes(fields.delivery_arrival_time, fields.delivery_departure_time);
+  if (!errors.delivery_departure_time && unloadingWindow != null && unloadingWindow > MAX_DWELL_MINS) {
+    errors.delivery_departure_time = "Unloading would take more than 12 hours. Check the delivery dates and times.";
+  }
+  for (const key of ["loading_duration_mins", "unloading_duration_mins"]) {
+    if (Number(fields[key]) > MAX_DWELL_MINS) errors.durations = "Loading and unloading durations must be 12 hours (720 minutes) or less.";
   }
   const invalidStop = stops.find(stop => stop.planned_arrival && stop.planned_departure && stop.planned_departure < stop.planned_arrival);
   if (invalidStop) errors.stops = "A stop departure cannot be before its arrival.";
@@ -272,14 +280,15 @@ export function JobFormPage() {
   }, [selectedCustomer]);
 
   const validStops = stops.filter(s => s.address.trim());
-  const routeStartTime = fields.loading_done_time || fields.planned_departure;
+  const loadingMins = nonNegative(ukMinutes(fields.planned_departure, fields.loading_done_time)) ?? Number(fields.loading_duration_mins || 90);
+  const unloadingMins = nonNegative(ukMinutes(fields.delivery_arrival_time, fields.delivery_departure_time)) ?? Number(fields.unloading_duration_mins || 90);
+  // Without a collection departure time the truck leaves once loading is done, so loading time is added.
+  const routeStartTime = fields.loading_done_time || (fields.planned_departure ? ukAddMinutes(fields.planned_departure, loadingMins) : "");
   const firstLegMins = routeEstimate?.firstLegMins ?? (!validStops.length ? (routeEstimate?.durationMins ?? (selectedRoute ? Number(selectedRoute.standard_eta_hours) * 60 : null)) : null);
   const etaPreview = firstLegMins == null ? '' : ukAddMinutes(routeStartTime, firstLegMins);
 
+  const distanceKm = routeEstimate?.distanceKm ?? (selectedRoute ? Number(selectedRoute.distance_km) : null);
   const distanceMiles = routeEstimate?.distanceMiles || (selectedRoute ? selectedRoute.distance_km * 0.621371 : null);
-  const avgSpeedMph = sysSettings?.avg_speed_mph || 40;
-  const loadingMins = ukMinutes(fields.planned_departure, fields.loading_done_time) ?? Number(fields.loading_duration_mins || 90);
-  const unloadingMins = ukMinutes(fields.delivery_arrival_time, fields.delivery_departure_time) ?? Number(fields.unloading_duration_mins || 90);
 
   const timingCalc = useMemo(
     () => calcTiming(fields.loading_done_time, firstLegMins, loadingMins, unloadingMins),
@@ -295,9 +304,11 @@ export function JobFormPage() {
   const lastDeparture = validStops.length ? validStops.at(-1).planned_departure : fields.delivery_departure_time || (timingCalc?.unloadEnd ? ukNow(timingCalc.unloadEnd) : '');
   const estimatedTotalMins = ukMinutes(fields.planned_departure, lastDeparture);
 
+  // Same fallback as the saved job: travel + loading + unloading when the schedule is not complete yet.
+  const fallbackTotalMins = estimatedTravelMins != null ? loadingMins + estimatedTravelMins + unloadingMins : null;
   const costCalc = useMemo(
-    () => calcCost(distanceMiles, estimatedTotalMins, sysSettings, selectedRoute?.toll_estimate_gbp),
-    [distanceMiles, estimatedTotalMins, selectedRoute?.toll_estimate_gbp, sysSettings]
+    () => estimateJobCost({ distanceKm, plannedMins: nonNegative(estimatedTotalMins), fallbackMins: fallbackTotalMins, settings: sysSettings }),
+    [distanceKm, estimatedTotalMins, fallbackTotalMins, sysSettings]
   );
 
   const freightValue = parseFloat(fields.freight_amount) || 0;
@@ -479,7 +490,7 @@ export function JobFormPage() {
                 <Field label="Load ID">
                   <input className="af-input" type="text" placeholder="e.g. 656-953" value={fields.load_id} onChange={e => set("load_id", e.target.value)} />
                 </Field>
-                <Field label="Freight amount (£)">
+                <Field label="Freight amount (£, excluding VAT)">
                   <div className="af-input-prefix-wrap">
                     <span className="af-prefix">£</span>
                     <input className="af-input af-input-prefixed" type="number" min="0" step="0.01" placeholder="e.g. 1800.00" value={fields.freight_amount} onChange={e => set("freight_amount", e.target.value)} />
@@ -589,7 +600,7 @@ export function JobFormPage() {
                     <span className="card-label">ETA</span>
                     <strong style={{ display: "block", color: "#1e3a8a" }}>
                       {routeEstimate?.durationMins
-                        ? `${fmtMins(routeEstimate.durationMins)} travel`
+                        ? `${fmtMins(routeEstimate.durationMins)} travel${routeEstimate.breakMins ? ` (incl. ${routeEstimate.breakMins} min driver break)` : ""}`
                         : selectedRoute?.standard_eta_hours
                           ? `${selectedRoute.standard_eta_hours}h travel${validStops.length ? " + stop buffer until calculated" : ""}`
                           : "Calculate from postcode"}
@@ -611,6 +622,11 @@ export function JobFormPage() {
                       </span>
                     )}
                     {estimateErr && <span style={{ color: "#AD0A0A", fontSize: "0.84rem", fontWeight: 700 }}>{estimateErr}</span>}
+                    {routeEstimate?.overDailyDrivingLimit && (
+                      <span style={{ color: "#AD0A0A", fontSize: "0.84rem", fontWeight: 700 }}>
+                        More than 9 hours of driving: plan a second driver or an overnight rest.
+                      </span>
+                    )}
                   </div>
                 )}
               </div>
@@ -621,11 +637,12 @@ export function JobFormPage() {
             <div className="af-section">
               <p className="af-section-title">Time & cost calculation</p>
               <div className="af-grid-2">
-                <Field label="Loading duration (minutes)" hint="Default: 90 min. Included in driver cost.">
+                <Field label="Loading duration (minutes)" hint="Default: 90 min. Included in driver cost." error={fieldErrors.durations}>
                   <input
                     className="af-input"
                     type="number"
                     min="15"
+                    max="720"
                     step="15"
                     placeholder="90"
                     value={fields.loading_duration_mins}
@@ -637,6 +654,7 @@ export function JobFormPage() {
                     className="af-input"
                     type="number"
                     min="15"
+                    max="720"
                     step="15"
                     placeholder="90"
                     value={fields.unloading_duration_mins}
@@ -656,8 +674,16 @@ export function JobFormPage() {
                     <div className="job-timing-sep">→</div>
                     <div className="job-timing-item">
                       <span className="job-timing-label">Travel time</span>
-                      <strong>{fmtMins(timingCalc?.travelMins)}</strong>
-                      <small>{routeEstimate ? "Road-route estimate" : "Saved route duration"}</small>
+                      {/* When a delivery arrival is typed (or saved), travel time is worked out from it so it always
+                          matches the arrival shown next to it; the route estimate is shown when they differ. */}
+                      <strong>{fmtMins(fields.delivery_arrival_time && manualTravelMins != null ? manualTravelMins : timingCalc?.travelMins)}</strong>
+                      <small>
+                        {fields.delivery_arrival_time && manualTravelMins != null
+                          ? (timingCalc?.travelMins != null && Math.abs(manualTravelMins - timingCalc.travelMins) > 15
+                              ? `From the times entered · route estimate ${fmtMins(timingCalc.travelMins)} (${formatUkWall(ukNow(timingCalc.arrival))})`
+                              : "From the times entered")
+                          : routeEstimate ? "Road-route estimate" : "Saved route duration"}
+                      </small>
                     </div>
                     <div className="job-timing-sep">→</div>
                     <div className="job-timing-item">
@@ -688,29 +714,23 @@ export function JobFormPage() {
                   <div className="job-economics-title">Job cost estimate</div>
                   <div className="job-economics-grid">
                     <div className="job-economics-row">
-                      <span>Fuel ({distanceMiles?.toFixed(1)} mi × {fmtGBP(costCalc.fuelCostPerMile)}/mi)</span>
+                      <span>Fuel ({costCalc.distanceMiles} mi × {fmtGBP(costCalc.fuelCostPerMile)}/mi)</span>
                       <strong>{fmtGBP(costCalc.fuelCost)}</strong>
                     </div>
                     <div className="job-economics-row">
-                      <span>Driver ({fmtMins(estimatedTotalMins)} @ £{sysSettings?.driver_rate_per_hour}/hr)</span>
+                      <span>Driver ({fmtMins(costCalc.totalMins)} @ £{sysSettings?.driver_rate_per_hour}/hr)</span>
                       <strong>{fmtGBP(costCalc.driverCost)}</strong>
                     </div>
                     <div className="job-economics-row">
-                      <span>Fleet ({fmtMins(estimatedTotalMins)} @ {fmtGBP(costCalc.fleetCostPerHour)}/hr)</span>
+                      <span>Truck ({fmtMins(costCalc.totalMins)} @ {fmtGBP(costCalc.fleetCostPerHour)}/hr)</span>
                       <strong>{fmtGBP(costCalc.fleetCost)}</strong>
                     </div>
-                    {costCalc.tollCost > 0 && (
-                      <div className="job-economics-row">
-                        <span>Route toll estimate</span>
-                        <strong>{fmtGBP(costCalc.tollCost)}</strong>
-                      </div>
-                    )}
                     <div className="job-economics-row total">
                       <span>Total cost</span>
                       <strong>{fmtGBP(costCalc.totalCost)}</strong>
                     </div>
                     <div className="job-economics-row suggested">
-                      <span>Suggested price (+{sysSettings?.margin_pct}% margin)</span>
+                      <span>Suggested price (cost + {sysSettings?.margin_pct}% markup)</span>
                       <strong>{fmtGBP(costCalc.suggestedPrice)}</strong>
                     </div>
                     {fields.freight_amount !== "" && (
@@ -721,7 +741,7 @@ export function JobFormPage() {
                     )}
                   </div>
                   <p className="job-economics-hint">
-                    Estimate uses settings: fuel £{sysSettings?.fuel_price_per_litre}/L · {sysSettings?.mpg} MPG · driver £{sysSettings?.driver_rate_per_hour}/hr · fleet {fmtGBP(sysSettings?.fleet_cost_per_hour)}/hr. Confirm tolls and other expenses separately.
+                    Estimate uses settings: fuel £{sysSettings?.fuel_price_per_litre}/L · {sysSettings?.mpg} MPG · driver £{sysSettings?.driver_rate_per_hour}/hr · fleet {fmtGBP(sysSettings?.fleet_cost_per_hour)}/hr. Tolls and other expenses are not included{selectedRoute?.toll_estimate_gbp > 0 ? ` (route toll estimate ${fmtGBP(selectedRoute.toll_estimate_gbp)})` : ""}. Same rules as the saved job.
                   </p>
                 </div>
               )}

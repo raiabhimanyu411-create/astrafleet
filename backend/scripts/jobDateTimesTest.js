@@ -65,11 +65,17 @@ test("profit: fuel receipts replace the mileage estimate and tolls are never cou
   assert.equal(withReceipt.totalCost, 215.25);
 });
 
-test("profit: completed jobs use actual time, no truck means no fleet cost, missing plan falls back", () => {
-  const actual = __test.calcJobEconomics({ distanceKm: 100, plannedMins: 300, actualMins: 420, settings: COST_SETTINGS, hasVehicle: false });
+test("profit: completed jobs use actual time, fleet cost is always charged, missing plan falls back", () => {
+  const actual = __test.calcJobEconomics({ distanceKm: 100, plannedMins: 300, actualMins: 420, settings: COST_SETTINGS });
   assert.equal(actual.basis, "actual");
   assert.equal(actual.driverCost, 105);
-  assert.equal(actual.fleetCost, 0);
+  assert.equal(actual.fleetCost, 84.35);
+
+  // 280 miles in 18 minutes is a recording mistake: the plan is used and the job is flagged.
+  const impossible = __test.calcJobEconomics({ distanceKm: 450.6, plannedMins: 420, actualMins: 18, settings: COST_SETTINGS });
+  assert.equal(impossible.durationSource, "planned");
+  assert.equal(impossible.actualTimeRejected, true);
+  assert.equal(impossible.totalMins, 420);
 
   const fallback = __test.calcJobEconomics({ distanceKm: 100, plannedMins: null, fallbackMins: 360, settings: COST_SETTINGS });
   assert.equal(fallback.durationSource, "fallback");

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import api from "../api/axios";
+import { sharedGet } from "../utils/sharedGet";
 import { getRealtimeSocket, joinAdminChatRoom, leaveAdminChatRoom } from "../api/realtime";
 import { getAuthSession } from "../utils/authSession";
 import { isSoundEnabled, showDesktopAlert } from "../utils/notificationPrefs";
@@ -209,7 +210,7 @@ export function GlobalAdminNotifier() {
 
     async function pollNotifications() {
       try {
-        const response = await api.get(NOTIFICATIONS_URL);
+        const response = await sharedGet(NOTIFICATIONS_URL);
         if (!alive) return;
         const notifications = response.data.notifications || [];
         if (!initialised.current) {

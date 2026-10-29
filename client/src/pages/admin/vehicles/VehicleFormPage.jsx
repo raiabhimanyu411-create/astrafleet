@@ -103,7 +103,10 @@ export function VehicleFormPage() {
     setSubmitting(true);
     const payload = {
       ...fields,
-      model_name: [fields.make, fields.model].filter(Boolean).join(" ").trim()
+      // Don't repeat the make when the model already starts with it ("MERCEDES" + "MERCEDES ACTROS").
+      model_name: String(fields.model || "").trim().toUpperCase().startsWith(String(fields.make || "").trim().toUpperCase()) && fields.make
+        ? String(fields.model).trim()
+        : [fields.make, fields.model].filter(Boolean).join(" ").trim()
     };
     try {
       if (isEdit) {

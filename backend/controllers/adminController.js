@@ -1,9 +1,10 @@
 const db = require("../db/connection");
 const { settingNumber } = require("./settingsController");
-const { releaseTrailer, releaseVehicle, setTrailerStatus, setVehicleStatus } = require("../utils/assetStatus");
+const { releaseTrailer, releaseVehicle } = require("../utils/assetStatus");
 const { ukNowDateTimeKey } = require("../utils/jobDateTimes");
+const { annotateDispatchBlockers, assetBlockers, checkAssetsDispatchable } = require("../utils/dispatchCompliance");
 const { ensureEmployeeAuthSchema, employeeModules, parseAccessModules } = require("./authController");
-const { emitDriverChatMessage, emitDriverLocationUpdate, emitJobUpdate } = require("../realtime");
+const { emitDriverChatMessage, emitDriverLocationUpdate } = require("../realtime");
 const { buildChangeSet, ensureActivitySchema, ensureSessionSchema, getActor, logActivity, requireDeleteReason, revokeUserSessions } = require("../utils/auditLogger");
 
 function severityTone(s) {
@@ -44,9 +45,74 @@ function fmtTime(d) {
 }
 
 function fmtAmount(n) {
-  return n != null
-    ? `£${Number(n).toLocaleString("en-GB", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
-    : "—";
+  if (n == null) return "—";
+  const value = Number(n);
+  // UK style puts the minus before the pound sign: -£16,470.00
+  return `${value < 0 ? "-" : ""}£${Math.abs(value).toLocaleString("en-GB", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+}
+
+// An open job with no driver or no truck (a trailer is not needed on every job). Same rule as the Jobs page.
+function isAssignmentGap(row) {
+  return ["planned", "loading", "active"].includes(row.dispatch_status) && (!row.driver_name || !row.registration_number);
+}
+
+// Jobs created with their own addresses have no saved route, so fall back to the pickup / delivery postcodes.
+function shortPlace(address) {
+  const text = String(address || "").trim();
+  if (!text) return "";
+  const postcode = text.toUpperCase().match(/\b([A-Z]{1,2}\d[A-Z\d]?\s*\d[A-Z]{2})\b/);
+  return postcode ? postcode[1] : text.split(",")[0].trim();
+}
+function laneLabel(row) {
+  const from = row.origin_hub || shortPlace(row.pickup_address);
+  const to = row.destination_hub || shortPlace(row.drop_address);
+  return from && to ? `${from} → ${to}` : "Route TBD";
+}
+
+function roundMoney(value) {
+  return Math.round(Number(value) * 100) / 100;
+}
+
+// UK VAT treatments. Zero-rated, exempt and outside the scope all charge 0% but are different on an invoice.
+const VAT_TREATMENTS = {
+  standard: { rate: 20, label: "Standard rate 20%" },
+  reduced: { rate: 5, label: "Reduced rate 5%" },
+  zero: { rate: 0, label: "Zero-rated 0%" },
+  exempt: { rate: 0, label: "Exempt from VAT" },
+  outside_scope: { rate: 0, label: "Outside the scope of VAT" }
+};
+function resolveVat(treatment, rate) {
+  if (treatment) return VAT_TREATMENTS[treatment] ? { treatment, rate: VAT_TREATMENTS[treatment].rate } : null;
+  const value = Number(rate ?? settingNumber("invoice_vat_rate"));
+  if (value === 20) return { treatment: "standard", rate: 20 };
+  if (value === 5) return { treatment: "reduced", rate: 5 };
+  if (value === 0) return { treatment: "zero", rate: 0 };
+  return Number.isFinite(value) && value > 0 && value <= 100 ? { treatment: null, rate: value } : null;
+}
+
+// Next number in the latest invoice's series, e.g. INV-5007 -> INV-5008. Deleted invoices count too, so a
+// number is never reused.
+async function nextInvoiceNumber() {
+  const [rows] = await db.query("SELECT invoice_no FROM invoices ORDER BY id DESC LIMIT 200");
+  const latest = rows.map(row => String(row.invoice_no || "").match(/^(.*?)(\d+)$/)).find(Boolean);
+  if (!latest) return "INV-0001";
+  const prefix = latest[1];
+  const width = latest[2].length;
+  const highest = rows.reduce((max, row) => {
+    const match = String(row.invoice_no || "").match(/^(.*?)(\d+)$/);
+    return match && match[1] === prefix ? Math.max(max, Number(match[2])) : max;
+  }, 0);
+  return `${prefix}${String(highest + 1).padStart(width, "0")}`;
+}
+
+// Sent / pending invoices past their due date (UK date) become overdue. Run before any page counts them.
+async function markOverdueInvoices() {
+  await db.query(
+    `UPDATE invoices
+     SET payment_status='overdue'
+     WHERE deleted_at IS NULL AND due_date < CURDATE()
+       AND payment_status IN ('sent','pending')`
+  );
 }
 
 function parseJsonValue(value) {
@@ -235,6 +301,9 @@ async function ensureInvoiceComplianceSchema() {
   await addColumnIfMissing("invoices", "bank_details", "TEXT DEFAULT NULL");
   await addColumnIfMissing("invoices", "sent_at", "DATETIME DEFAULT NULL");
   await addColumnIfMissing("invoices", "paid_at", "DATETIME DEFAULT NULL");
+  // standard / reduced / zero (zero-rated) / exempt / outside_scope. Zero-rated, exempt and outside the
+  // scope of VAT all charge 0% but must be shown differently on a UK VAT invoice.
+  await addColumnIfMissing("invoices", "vat_treatment", "VARCHAR(20) DEFAULT NULL");
   await db.query(
     `CREATE TABLE IF NOT EXISTS invoice_payments (
       id INT AUTO_INCREMENT PRIMARY KEY,
@@ -498,6 +567,7 @@ exports.sendDriverChatMessage = async (req, res) => {
 exports.getFinance = async (req, res) => {
   try {
     await ensureSoftDeleteSchema();
+    await markOverdueInvoices();
     const [[counts]] = await db.query(
       `SELECT COUNT(*) as total,
         COALESCE(SUM(payment_status='overdue'), 0) as overdue,
@@ -520,8 +590,10 @@ exports.getFinance = async (req, res) => {
        FROM invoices WHERE payment_status != 'paid' AND deleted_at IS NULL ORDER BY due_date ASC LIMIT 8`
     );
     const [payoutRows] = await db.query(
-      `SELECT id, payout_reference, vendor_name, lane_code, amount_gbp, due_date, payout_status, notes
-       FROM vendor_payouts WHERE deleted_at IS NULL ORDER BY due_date ASC LIMIT 8`
+      `SELECT id, payout_reference, vendor_name, lane_code, amount_gbp, due_date, payout_status, notes,
+              (payout_status <> 'paid' AND due_date IS NOT NULL AND due_date < CURDATE()) AS is_overdue
+       FROM vendor_payouts WHERE deleted_at IS NULL
+       ORDER BY payout_status='paid', due_date ASC LIMIT 8`
     );
     const [noteRows] = await db.query(
       `SELECT title, description, severity FROM control_room_alerts
@@ -576,8 +648,9 @@ exports.getFinance = async (req, res) => {
         dueDate: rawDate(r.due_date),
         due: `Due ${fmtDate(r.due_date)}`,
         status: r.payout_status,
+        overdue: Boolean(Number(r.is_overdue)),
         notes: r.notes || "",
-        tone: outTone[r.payout_status] || "neutral"
+        tone: Number(r.is_overdue) ? "danger" : outTone[r.payout_status] || "neutral"
       })),
       cashNotes: noteRows.map(r => ({
         title: r.title,
@@ -737,12 +810,7 @@ exports.deletePayout = async (req, res) => {
 exports.getBilling = async (req, res) => {
   try {
     await ensureInvoiceComplianceSchema();
-    await db.query(
-      `UPDATE invoices
-       SET payment_status='overdue'
-       WHERE deleted_at IS NULL AND due_date < CURDATE()
-         AND payment_status IN ('sent','pending')`
-    );
+    await markOverdueInvoices();
     const [[counts]] = await db.query(
       `SELECT COUNT(*) as total,
         COALESCE(SUM(pod_verified=1), 0) as pod_ok,
@@ -786,6 +854,21 @@ exports.getBilling = async (req, res) => {
       `SELECT title, description, severity FROM control_room_alerts
        WHERE module_name='billing' AND alert_status='open' LIMIT 6`
     );
+    // Delivered work with no invoice yet.
+    const [uninvoiced] = await db.query(
+      `SELECT t.trip_code FROM trips t
+       WHERE t.deleted_at IS NULL AND t.dispatch_status='completed'
+         AND NOT EXISTS (SELECT 1 FROM invoices i WHERE i.trip_id=t.id AND i.deleted_at IS NULL)
+       ORDER BY t.id DESC`
+    );
+    if (uninvoiced.length) {
+      const codes = uninvoiced.slice(0, 5).map(row => row.trip_code).join(", ");
+      blockerRows.unshift({
+        title: `${uninvoiced.length} completed job${uninvoiced.length === 1 ? "" : "s"} not invoiced: ${codes}${uninvoiced.length > 5 ? "…" : ""}`,
+        description: "Delivered work that has not been billed yet.",
+        severity: "high"
+      });
+    }
 
     const payTone = { overdue: "danger", pending: "warning", sent: "warning", hold: "neutral", draft: "neutral", paid: "success" };
 
@@ -862,12 +945,29 @@ exports.getBillingFormData = async (_req, res) => {
        FROM trips t
        LEFT JOIN routes r ON r.id = t.route_id
        LEFT JOIN customers c ON c.id = t.customer_id
-       WHERE t.deleted_at IS NULL
+       WHERE t.deleted_at IS NULL AND t.dispatch_status = 'completed'
        ORDER BY t.created_at DESC`
+    );
+    const [invoicedRows] = await db.query(
+      `SELECT DISTINCT trip_id FROM invoices WHERE deleted_at IS NULL AND trip_id IS NOT NULL`
+    );
+    const invoicedTrips = new Set(invoicedRows.map(row => Number(row.trip_id)));
+    const [[lastSupplier]] = await db.query(
+      `SELECT supplier_name, supplier_address, supplier_vat_number, bank_details FROM invoices
+       WHERE supplier_vat_number IS NOT NULL AND supplier_vat_number <> '' ORDER BY id DESC LIMIT 1`
     );
 
     res.json({
+      nextInvoiceNo: await nextInvoiceNumber(),
+      supplierDefaults: lastSupplier ? {
+        supplierName: lastSupplier.supplier_name || "",
+        supplierAddress: lastSupplier.supplier_address || "",
+        supplierVatNumber: lastSupplier.supplier_vat_number || "",
+        bankDetails: lastSupplier.bank_details || ""
+      } : null,
+      // Only completed jobs can be billed; jobs that already have an invoice are marked.
       trips: trips.map(t => ({
+        invoiced: invoicedTrips.has(Number(t.id)),
         id: t.id,
         tripCode: t.trip_code,
         clientName: t.client_name,
@@ -921,6 +1021,7 @@ exports.getInvoiceById = async (req, res) => {
       netAmountFormatted: fmtAmount(invoice.net_amount_gbp == null ? invoice.amount_gbp : invoice.net_amount_gbp),
       vatAmountFormatted: fmtAmount(invoice.vat_amount_gbp || 0),
       vatRate: Number(invoice.vat_rate || 0),
+      vatLabel: VAT_TREATMENTS[invoice.vat_treatment]?.label || `VAT ${Number(invoice.vat_rate || 0)}%`,
       paidAmountFormatted: fmtAmount(paidAmount),
       balanceFormatted: fmtAmount(Math.max(Number(invoice.amount_gbp || 0) - paidAmount, 0)),
       issuedAt: fmtDate(invoice.issued_at),
@@ -962,6 +1063,8 @@ exports.getInvoiceById = async (req, res) => {
         amount_gbp: invoice.amount_gbp || "",
         net_amount_gbp: invoice.net_amount_gbp == null ? invoice.amount_gbp : invoice.net_amount_gbp,
         vat_rate: invoice.vat_rate == null ? 20 : invoice.vat_rate,
+        vat_treatment: invoice.vat_treatment || resolveVat(null, invoice.vat_rate == null ? 20 : invoice.vat_rate)?.treatment || "",
+        trip_code: invoice.trip_code || "",
         vat_amount_gbp: invoice.vat_amount_gbp || 0,
         customer_address: invoice.customer_address || "",
         customer_vat_number: invoice.customer_vat_number || "",
@@ -1004,11 +1107,21 @@ exports.createInvoice = async (req, res) => {
 
     const validStatuses = ["draft", "sent", "pending", "overdue", "paid", "hold"];
     const status = payment_status || "draft";
-    const netAmount = Number(net_amount_gbp ?? amount_gbp);
-    const vatRate = Number(vat_rate ?? settingNumber("invoice_vat_rate"));
-    const vatAmount = Number((netAmount * vatRate / 100).toFixed(2));
-    const grossAmount = Number((netAmount + vatAmount).toFixed(2));
-    if (!invoice_no?.trim() || !client_name?.trim() || !issued_at || !due_date || !Number.isFinite(netAmount) || netAmount <= 0) {
+    const netAmount = roundMoney(Number(net_amount_gbp ?? amount_gbp));
+    const vat = resolveVat(req.body.vat_treatment, vat_rate);
+    if (!vat) return res.status(400).json({ message: "VAT treatment is invalid." });
+    const vatRate = vat.rate;
+    const vatAmount = roundMoney(netAmount * vatRate / 100);
+    const grossAmount = roundMoney(netAmount + vatAmount);
+    const invoiceNo = String(invoice_no || "").trim() || await nextInvoiceNumber();
+    if (trip_id) {
+      const [[trip]] = await db.query("SELECT dispatch_status FROM trips WHERE id=? AND deleted_at IS NULL", [trip_id]);
+      if (!trip) return res.status(404).json({ message: "Linked job not found." });
+      if (trip.dispatch_status !== "completed") {
+        return res.status(409).json({ message: `Only completed jobs can be invoiced. This job is ${trip.dispatch_status}.` });
+      }
+    }
+    if (!invoiceNo || !client_name?.trim() || !issued_at || !due_date || !Number.isFinite(netAmount) || netAmount <= 0) {
       return res.status(400).json({ message: "Invoice number, customer, positive net amount, issue date, and due date are required." });
     }
     if (!validStatuses.includes(status) || !Number.isFinite(vatRate) || vatRate < 0 || vatRate > 100) {
@@ -1032,10 +1145,10 @@ exports.createInvoice = async (req, res) => {
          (invoice_no, trip_id, client_name, amount_gbp, issued_at, due_date, payment_status, pod_verified, notes, currency,
           customer_address, customer_vat_number, supplier_name, supplier_address, supplier_vat_number,
           service_description, supply_date, net_amount_gbp, vat_rate, vat_amount_gbp,
-          purchase_order_ref, payment_terms, bank_details, sent_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'GBP', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          purchase_order_ref, payment_terms, bank_details, sent_at, vat_treatment)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'GBP', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
-        invoice_no.trim().toUpperCase(),
+        invoiceNo.toUpperCase(),
         trip_id || null,
         client_name.trim(),
         grossAmount,
@@ -1047,7 +1160,7 @@ exports.createInvoice = async (req, res) => {
         customer_address || null, customer_vat_number || null, supplier_name || "AstraFleet",
         supplier_address || null, supplier_vat_number || null, service_description || null,
         supply_date || issued_at, netAmount, vatRate, vatAmount, purchase_order_ref || null,
-        payment_terms || null, bank_details || null, status === "sent" ? new Date() : null
+        payment_terms || null, bank_details || null, status === "sent" ? new Date() : null, vat.treatment
       ]
     );
 
@@ -1060,8 +1173,8 @@ exports.createInvoice = async (req, res) => {
       action: "create",
       entityType: "invoice",
       entityId: result.insertId,
-      entityLabel: invoice_no,
-      details: { client_name, net_amount_gbp: netAmount, vat_amount_gbp: vatAmount, amount_gbp: grossAmount, due_date, payment_status: status }
+      entityLabel: invoiceNo,
+      details: { client_name, net_amount_gbp: netAmount, vat_amount_gbp: vatAmount, vat_treatment: vat.treatment, amount_gbp: grossAmount, due_date, payment_status: status }
     });
 
     res.status(201).json({ message: "Invoice created.", id: result.insertId });
@@ -1096,10 +1209,20 @@ exports.updateInvoice = async (req, res) => {
 
     const validStatuses = ["draft", "sent", "pending", "overdue", "paid", "hold"];
     const status = payment_status || "draft";
-    const netAmount = Number(net_amount_gbp ?? amount_gbp);
-    const vatRate = Number(vat_rate ?? 20);
-    const vatAmount = Number((netAmount * vatRate / 100).toFixed(2));
-    const grossAmount = Number((netAmount + vatAmount).toFixed(2));
+    const netAmount = roundMoney(Number(net_amount_gbp ?? amount_gbp));
+    const vat = resolveVat(req.body.vat_treatment, vat_rate ?? existing.vat_rate ?? 20);
+    if (!vat) return res.status(400).json({ message: "VAT treatment is invalid." });
+    const vatRate = vat.rate;
+    const vatAmount = roundMoney(netAmount * vatRate / 100);
+    const grossAmount = roundMoney(netAmount + vatAmount);
+    // A newly linked job must be completed (the job already on this invoice is kept as it is).
+    if (trip_id && String(trip_id) !== String(existing.trip_id || "")) {
+      const [[trip]] = await db.query("SELECT dispatch_status FROM trips WHERE id=? AND deleted_at IS NULL", [trip_id]);
+      if (!trip) return res.status(404).json({ message: "Linked job not found." });
+      if (trip.dispatch_status !== "completed") {
+        return res.status(409).json({ message: `Only completed jobs can be invoiced. This job is ${trip.dispatch_status}.` });
+      }
+    }
     if (!invoice_no?.trim() || !client_name?.trim() || !issued_at || !due_date || !Number.isFinite(netAmount) || netAmount <= 0) {
       return res.status(400).json({ message: "Invoice number, customer, positive net amount, issue date, and due date are required." });
     }
@@ -1128,6 +1251,7 @@ exports.updateInvoice = async (req, res) => {
          payment_status=?, pod_verified=?, notes=?, customer_address=?, customer_vat_number=?,
          supplier_name=?, supplier_address=?, supplier_vat_number=?, service_description=?, supply_date=?,
          net_amount_gbp=?, vat_rate=?, vat_amount_gbp=?, purchase_order_ref=?, payment_terms=?, bank_details=?,
+         vat_treatment=?,
          sent_at=CASE WHEN ?='sent' AND sent_at IS NULL THEN NOW() ELSE sent_at END
        WHERE id=? AND deleted_at IS NULL`,
       [
@@ -1143,7 +1267,7 @@ exports.updateInvoice = async (req, res) => {
         customer_address || null, customer_vat_number || null, supplier_name || "AstraFleet",
         supplier_address || null, supplier_vat_number || null, service_description || null,
         supply_date || issued_at, netAmount, vatRate, vatAmount, purchase_order_ref || null,
-        payment_terms || null, bank_details || null, status,
+        payment_terms || null, bank_details || null, vat.treatment, status,
         id
       ]
     );
@@ -1909,15 +2033,18 @@ exports.getTrips = async (req, res) => {
         COALESCE(SUM(dispatch_status IN ('loading','active')), 0) as active,
         COALESCE(SUM(dispatch_status='planned'), 0) as planned,
         COALESCE(SUM(dispatch_status='blocked'), 0) as blocked,
-        COALESCE(SUM(driver_id IS NULL OR vehicle_id IS NULL OR trailer_id IS NULL), 0) as assignment_gaps,
-        COALESCE(SUM(eta IS NOT NULL AND eta < NOW() AND dispatch_status IN ('planned','loading','active')), 0) as eta_risk,
+        COALESCE(SUM((driver_id IS NULL OR vehicle_id IS NULL) AND dispatch_status IN ('planned','loading','active')), 0) as assignment_gaps,
         COALESCE(SUM(freight_amount_gbp), 0) as freight_value
        FROM trips
        WHERE deleted_at IS NULL`
     );
+    // Same definitions as the Jobs page: a gap is an open job with no driver or no truck; "late" is the
+    // Jobs page "Running late" rule.
+    counts.eta_risk = await require("./jobController").countOpenJobsRunningLate(db);
     const [tripRows] = await db.query(
       `SELECT t.id, t.trip_code, t.client_name, t.dispatch_status, t.dock_window, t.eta, t.planned_departure,
-              t.freight_amount_gbp, t.priority_level, t.driver_job_status,
+              t.freight_amount_gbp, t.priority_level, t.driver_job_status, t.pickup_address, t.drop_address,
+              t.estimated_distance_km,
               r.origin_hub, r.destination_hub, r.distance_km, r.standard_eta_hours,
               v.registration_number,
               tr.trailer_code, tr.registration_number AS trailer_registration,
@@ -1937,7 +2064,7 @@ exports.getTrips = async (req, res) => {
       id: r.id,
       trip: r.trip_code,
       clientName: r.client_name || "Internal dispatch",
-      lane: r.origin_hub && r.destination_hub ? `${r.origin_hub} → ${r.destination_hub}` : "Route TBD",
+      lane: laneLabel(r),
       schedule: r.planned_departure ? `Departure ${fmtDate(r.planned_departure)}` : "Schedule pending",
       departureRaw: rawDateTime(r.planned_departure),
       eta: r.eta ? fmtTime(r.eta) : "—",
@@ -1946,7 +2073,7 @@ exports.getTrips = async (req, res) => {
       vehicle: r.registration_number || "Unassigned",
       trailer: r.trailer_registration || r.trailer_code || "No trailer assigned",
       driver: r.driver_name || "Unassigned",
-      assignmentGap: !r.driver_name || !r.registration_number || !(r.trailer_registration || r.trailer_code),
+      assignmentGap: isAssignmentGap(r),
       freight: fmtAmount(r.freight_amount_gbp),
       freightValue: Number(r.freight_amount_gbp || 0),
       priority: r.priority_level || "standard",
@@ -1973,7 +2100,7 @@ exports.getTrips = async (req, res) => {
       trip: r.trip_code,
       driver: r.driver_name || "Unassigned",
       note: r.standard_eta_hours ? `${r.trailer_registration || r.trailer_code || "No trailer"} · Est. ${r.standard_eta_hours}h · ${r.distance_km || "—"} km` : r.trailer_registration || r.trailer_code || "Details TBD",
-      assignmentGap: !r.driver_name || !r.registration_number || !(r.trailer_registration || r.trailer_code),
+      assignmentGap: isAssignmentGap(r),
       etaRisk: r.eta && new Date(r.eta).getTime() < Date.now() && ["planned", "loading", "active"].includes(r.dispatch_status),
       status: r.dispatch_status,
       tone: dispatchTone[r.dispatch_status] || "neutral"
@@ -2039,7 +2166,12 @@ exports.getTripFormData = async (req, res) => {
        ORDER BY status='available' DESC, trailer_code ASC`
     );
 
-    res.json({ drivers, vehicles, routes, trailers });
+    res.json({
+      drivers,
+      vehicles: await annotateDispatchBlockers(db, "vehicle", vehicles),
+      routes,
+      trailers: await annotateDispatchBlockers(db, "trailer", trailers)
+    });
   } catch (error) {
     res.status(500).json({ message: "Form data error", error: error.message });
   }
@@ -2214,6 +2346,8 @@ exports.createTrip = async (req, res) => {
     if (!route) return res.status(404).json({ message: "Route not found." });
     const [[trailer]] = await db.query("SELECT id FROM trailers WHERE id = ?", [trailer_id]);
     if (!trailer) return res.status(404).json({ message: "Trailer not found." });
+    const complianceBlock = await checkAssetsDispatchable(db, req, { vehicleId: vehicle_id, trailerId: trailer_id });
+    if (complianceBlock) return res.status(complianceBlock.status).json(complianceBlock.body);
 
     const etaMs = new Date(planned_departure).getTime() + route.standard_eta_hours * 3600 * 1000;
     const eta = new Date(etaMs);
@@ -2303,6 +2437,13 @@ exports.updateTrip = async (req, res) => {
     if (!route) return res.status(404).json({ message: "Route not found." });
     const [[trailer]] = await conn.query("SELECT id FROM trailers WHERE id = ?", [trailer_id]);
     if (!trailer) return res.status(404).json({ message: "Trailer not found." });
+    // Only a newly chosen truck / trailer is checked, so other edits to an existing trip still save.
+    const complianceBlock = await checkAssetsDispatchable(conn, req, {
+      vehicleId: String(vehicle_id) !== String(existing.vehicle_id || "") ? vehicle_id : null,
+      trailerId: String(trailer_id) !== String(existing.trailer_id || "") ? trailer_id : null,
+      jobId: existing.id
+    });
+    if (complianceBlock) return res.status(complianceBlock.status).json(complianceBlock.body);
 
     const etaMs = new Date(planned_departure).getTime() + route.standard_eta_hours * 3600 * 1000;
     const eta = new Date(etaMs);
@@ -2400,91 +2541,20 @@ exports.updateTrip = async (req, res) => {
   }
 };
 
+// Dispatch uses the same checked status change as the Jobs pages (POD, driver, truck, actual times,
+// no reopening completed jobs), so neither page can skip the rules.
 exports.updateTripStatus = async (req, res) => {
-  try {
-    await ensureTrailerSchema();
-    await ensureSoftDeleteSchema();
-
-    const { id } = req.params;
-    const { status } = req.body;
-    const valid = ["planned", "loading", "active", "blocked", "completed"];
-    if (!valid.includes(status)) {
-      return res.status(400).json({ message: "Invalid trip status." });
-    }
-
-    const [[trip]] = await db.query("SELECT id, vehicle_id, trailer_id, dispatch_status FROM trips WHERE id = ? AND deleted_at IS NULL", [id]);
-    if (!trip) return res.status(404).json({ message: "Trip not found." });
-
-    await db.query("UPDATE trips SET dispatch_status=? WHERE id=? AND deleted_at IS NULL", [status, id]);
-    if (trip.vehicle_id) {
-      await setVehicleStatus(db, trip.vehicle_id, vehicleStatusForTrip(status), trip.id);
-    }
-    if (trip.trailer_id) {
-      await setTrailerStatus(db, trip.trailer_id, trailerStatusForTrip(status), trip.id);
-    }
-
-    await logActivity(req, {
-      module: "trips",
-      action: "status_update",
-      entityType: "trip",
-      entityId: id,
-      details: { status, changes: buildChangeSet(trip, { ...trip, dispatch_status: status }, ["dispatch_status"]) }
-    });
-
-    emitJobUpdate({ jobId: Number(id), source: "dispatch-status", status });
-
-    res.json({ message: "Trip status updated." });
-  } catch (error) {
-    res.status(500).json({ message: "Trip status update error", error: error.message });
+  const valid = ["planned", "loading", "active", "blocked", "completed"];
+  if (!valid.includes(req.body?.status)) {
+    return res.status(400).json({ message: "Invalid trip status." });
   }
+  req.statusSource = "dispatch";
+  return require("./jobController").updateJobStatus(req, res);
 };
 
-exports.deleteTrip = async (req, res) => {
-  const conn = await db.getConnection();
-  try {
-    await ensureTrailerSchema();
-    await ensureSoftDeleteSchema();
-
-    const { id } = req.params;
-    const reasonCheck = requireDeleteReason(req);
-    if (!reasonCheck.ok) return res.status(400).json({ message: reasonCheck.message });
-
-    const [[trip]] = await conn.query("SELECT id, trip_code, vehicle_id, trailer_id, client_name FROM trips WHERE id = ? AND deleted_at IS NULL", [id]);
-    if (!trip) return res.status(404).json({ message: "Trip not found." });
-
-    await conn.beginTransaction();
-    const actor = await getActor(req);
-    await conn.query(
-      "UPDATE trips SET deleted_at=NOW(), deleted_by=?, delete_reason=? WHERE id = ? AND deleted_at IS NULL",
-      [actor.id, reasonCheck.reason, id]
-    );
-    if (trip.vehicle_id) {
-      await releaseVehicle(conn, trip.vehicle_id, trip.id);
-    }
-    if (trip.trailer_id) {
-      await releaseTrailer(conn, trip.trailer_id, trip.id);
-    }
-    await conn.commit();
-
-    await logActivity(req, {
-      module: "trips",
-      action: "delete",
-      entityType: "trip",
-      entityId: id,
-      entityLabel: trip.trip_code,
-      reason: reasonCheck.reason,
-      reasonCategory: reasonCheck.reasonCategory,
-      details: { client_name: trip.client_name, vehicle_id: trip.vehicle_id, trailer_id: trip.trailer_id }
-    });
-
-    res.json({ message: "Trip deleted." });
-  } catch (error) {
-    await conn.rollback();
-    res.status(500).json({ message: "Trip delete error", error: error.message });
-  } finally {
-    conn.release();
-  }
-};
+// Dispatch delete uses the Jobs delete rules: no deleting jobs on the road or completed jobs,
+// and invoices are never removed without the admin confirming them.
+exports.deleteTrip = (req, res) => require("./jobController").deleteJob(req, res);
 
 exports.getTripById = async (req, res) => {
   try {
@@ -2534,10 +2604,11 @@ exports.getTripById = async (req, res) => {
       dispatcherNotes: trip.dispatcher_notes || "—",
       route: {
         code: trip.route_code,
-        from: trip.origin_hub,
-        to: trip.destination_hub,
-        distanceKm: trip.distance_km,
-        etaHours: trip.standard_eta_hours,
+        // Jobs with their own addresses have no saved route: use the job's addresses and road estimate.
+        from: trip.origin_hub || trip.pickup_address || null,
+        to: trip.destination_hub || trip.drop_address || null,
+        distanceKm: trip.distance_km ?? trip.estimated_distance_km ?? null,
+        etaHours: trip.standard_eta_hours ?? (trip.estimated_eta_mins ? Math.round(Number(trip.estimated_eta_mins) / 6) / 10 : null),
         tollEstimate: fmtAmount(trip.toll_estimate_gbp)
       },
       vehicle: {
@@ -3029,17 +3100,29 @@ exports.getOverview = async (req, res) => {
     await ensureEmployeeAuthSchema();
     await ensureSoftDeleteSchema();
 
-    const [[drivers]] = await db.query("SELECT COUNT(*) AS total, COALESCE(SUM(shift_status='ready' AND compliance_status='clear'),0) AS available FROM drivers");
-    const [[vehicles]] = await db.query("SELECT COUNT(*) AS total, COALESCE(SUM(status='available'),0) AS available FROM vehicles");
+    // "Available" means it can be put on a job right now: same rules as the job assignment lists.
+    const [[drivers]] = await db.query(
+      `SELECT COUNT(*) AS total,
+              COALESCE(SUM(shift_status='ready' AND compliance_status='clear' AND NOT EXISTS (
+                SELECT 1 FROM trips t WHERE t.driver_id=drivers.id AND t.deleted_at IS NULL
+                  AND t.dispatch_status IN ('planned','loading','active'))),0) AS available
+       FROM drivers WHERE archived_at IS NULL`
+    );
+    const [vehicleRows] = await db.query("SELECT id, status FROM vehicles");
+    const vehicleBlockers = await assetBlockers(db, "vehicle", vehicleRows.map(row => row.id));
+    const vehicles = {
+      total: vehicleRows.length,
+      available: vehicleRows.filter(row => row.status === "available" && !vehicleBlockers.has(Number(row.id))).length
+    };
     const [[trips]] = await db.query(
       `SELECT COUNT(*) AS total,
               COALESCE(SUM(dispatch_status IN ('loading','active')),0) AS active,
               COALESCE(SUM(dispatch_status='planned'),0) AS pending,
               COALESCE(SUM(dispatch_status='completed'),0) AS completed,
-              COALESCE(SUM(dispatch_status='blocked'),0) AS cancelled,
-              COALESCE(SUM(eta IS NOT NULL AND eta < NOW() AND dispatch_status IN ('planned','loading','active')),0) AS delayed_count
+              COALESCE(SUM(dispatch_status IN ('blocked','cancelled','failed')),0) AS cancelled
        FROM trips WHERE deleted_at IS NULL`
     );
+    trips.delayed_count = await require("./jobController").countOpenJobsRunningLate(db);
     const [[invoices]] = await db.query(
       `SELECT COUNT(*) AS total,
               COALESCE(SUM(payment_status!='paid'),0) AS pending,
@@ -3126,7 +3209,7 @@ exports.getOverview = async (req, res) => {
     );
     const [revenueTrendRows] = await db.query(
       `SELECT DATE_FORMAT(COALESCE(issued_at, created_at), '%Y-%m') AS month,
-              COALESCE(SUM(COALESCE(total_gbp, amount_gbp)), 0) AS invoiced
+              COALESCE(SUM(amount_gbp), 0) AS invoiced
        FROM invoices
        WHERE deleted_at IS NULL AND COALESCE(issued_at, created_at) >= ?
        GROUP BY month`,
@@ -3164,10 +3247,10 @@ exports.getOverview = async (req, res) => {
         { label: "Active trips", value: trips.active, description: "Loading or on road.", change: "Execution", tone: "success" },
         { label: "Pending trips", value: trips.pending, description: "Planned dispatch queue.", change: "Dispatch", tone: "warning" },
         { label: "Completed trips", value: trips.completed, description: "Delivered and closed.", change: "Closed loop", tone: "neutral" },
-        { label: "Cancelled trips", value: trips.cancelled, description: "Blocked/cancelled trips.", change: "Needs review", tone: trips.cancelled ? "danger" : "success" },
+        { label: "Blocked / cancelled / failed", value: trips.cancelled, description: "Trips that did not go ahead or need review.", change: "Needs review", tone: trips.cancelled ? "danger" : "success" },
         { label: "Available drivers", value: drivers.available, description: "Ready and compliant.", change: "Assignable", tone: "success" },
-        { label: "Available vehicles", value: vehicles.available, description: "Fleet assets ready.", change: "Assignable", tone: "success" },
-        { label: "Delayed deliveries", value: trips.delayed_count, description: "ETA passed on open trips.", change: "Timing watch", tone: trips.delayed_count ? "danger" : "success" },
+        { label: "Available vehicles", value: vehicles.available, description: "Free and road-legal (MOT, tax, insurance, inspection).", change: "Assignable", tone: "success" },
+        { label: "Delayed deliveries", value: trips.delayed_count, description: "Open jobs behind plan (same as Jobs page).", change: "Timing watch", tone: trips.delayed_count ? "danger" : "success" },
         { label: "Today's revenue", value: fmtAmount(invoices.today_revenue), description: "Invoices raised today.", change: "Today", tone: "success" },
         { label: "Pending invoices", value: invoices.pending, description: "Invoices not marked paid.", change: "Collections", tone: invoices.pending ? "warning" : "success" },
         { label: "Fuel expense", value: fmtAmount(expenses.fuel_expense), description: "Driver fuel expense logs.", change: "Cost control", tone: "warning" },

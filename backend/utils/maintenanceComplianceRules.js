@@ -32,7 +32,8 @@ const ITEM_STATUSES = new Set(["pass", "advisory", "fail", "not_applicable"]);
 const INSPECTION_KINDS = new Set(["safety", "first_use", "return_to_service"]);
 const BRAKE_METHODS = new Set(["laden_roller", "decelerometer_temperature", "ebpms"]);
 const BRAKE_RESULTS = new Set(["pass", "fail"]);
-const MOT_RESULTS = new Set(["pass", "fail"]);
+// PRS = pass after rectification: defects were found and fixed at the test, so a certificate is issued.
+const MOT_RESULTS = new Set(["pass", "prs", "fail"]);
 const { ukDateKey } = require("./maintenanceDates");
 
 function checklistFor(assetType) {
@@ -186,19 +187,22 @@ function validateMot(body = {}) {
   const certificateNumber = cleanText(body.certificate_number || body.certificateNumber);
   const expiryDate = cleanText(body.expiry_date || body.expiryDate);
   const failureReason = cleanText(body.failure_reason || body.failureReason);
+  const advisories = cleanText(body.advisories);
+  const passed = result === "pass" || result === "prs";
   const testerName = cleanText(body.tester_name || body.testerName);
   const providerName = cleanText(body.provider_name || body.providerName);
   const document = body.document;
   if (!assetId) errors.push("A valid vehicle or trailer is required.");
   if (!validDate(testDate)) errors.push("MOT test date is required.");
   if (validDate(testDate) && testDate > ukDateKey()) errors.push("MOT test date cannot be after today in the UK.");
-  if (!MOT_RESULTS.has(result)) errors.push("MOT result must be pass or fail.");
+  if (!MOT_RESULTS.has(result)) errors.push("MOT result must be pass, PRS or fail.");
   if (!testerName) errors.push("Tester name is required.");
   if (!providerName) errors.push("Test centre or provider is required.");
-  if (result === "pass" && !certificateNumber) errors.push("MOT certificate number is required for a pass.");
-  if (result === "pass" && !validDate(expiryDate)) errors.push("MOT expiry date is required for a pass.");
-  if (result === "pass" && validDate(testDate) && validDate(expiryDate) && expiryDate <= testDate) errors.push("MOT expiry date must be after the test date.");
+  if (passed && !certificateNumber) errors.push("MOT certificate number is required for a pass.");
+  if (passed && !validDate(expiryDate)) errors.push("MOT expiry date is required for a pass.");
+  if (passed && validDate(testDate) && validDate(expiryDate) && expiryDate <= testDate) errors.push("MOT expiry date must be after the test date.");
   if (result === "fail" && failureReason.length < 3) errors.push("MOT failure reasons are required.");
+  if (result === "prs" && failureReason.length < 3) errors.push("List the defects that were fixed at the test (PRS).");
   if (!isDataUrl(document)) errors.push("MOT certificate or failure notice must be attached.");
   return {
     ok: errors.length === 0,
@@ -211,6 +215,7 @@ function validateMot(body = {}) {
       certificateNumber: certificateNumber || null,
       expiryDate: expiryDate || null,
       failureReason: failureReason || null,
+      advisories: advisories || null,
       testerName,
       providerName,
       odometerKm: body.odometer_km === "" ? null : Number(body.odometer_km ?? body.odometerKm ?? 0) || null,

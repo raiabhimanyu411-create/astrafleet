@@ -170,7 +170,7 @@ export function InvoiceDetailPage() {
                   <div className="detail-wide"><DetailBlock label="Client" value={invoice.clientName} /></div>
                   <DetailBlock label="Amount" value={invoice.amountFormatted} />
                   <DetailBlock label="Net" value={invoice.netAmountFormatted} />
-                  <DetailBlock label={`VAT (${invoice.vatRate}%)`} value={invoice.vatAmountFormatted} />
+                  <DetailBlock label={invoice.vatLabel || `VAT (${invoice.vatRate}%)`} value={invoice.vatAmountFormatted} />
                   <DetailBlock label="Paid" value={invoice.paidAmountFormatted} />
                   <DetailBlock label="Balance" value={invoice.balanceFormatted} />
                   <DetailBlock label="Currency" value={invoice.currency} />

@@ -8,6 +8,7 @@ const { actualDurationMins, assessPunctuality, buildJobPoints } = require("../ut
 const { currentCostSettings, resolveCostSettings, snapshotCostSettings } = require("../utils/jobCostSettings");
 const { getSettingsMap } = require("./settingsController");
 const maintenanceController = require("./maintenanceController");
+const { annotateDispatchBlockers, checkAssetsDispatchable } = require("../utils/dispatchCompliance");
 const {
   addWallMinutes,
   dateTimeKey,
@@ -89,6 +90,8 @@ function optionalNonNegativeNumber(value) {
   return Number.isFinite(number) && number >= 0 ? number : null;
 }
 
+const MAX_DWELL_MINS = 12 * 60;
+
 function validateJobTiming(body) {
   const fields = [
     ["Collection arrival", body.planned_departure],
@@ -115,10 +118,22 @@ function validateJobTiming(body) {
       return `Stop ${index + 2} departure cannot be before its arrival.`;
     }
   }
+  if (body.delivery_deadline && body.planned_departure && wallMinutesBetween(body.planned_departure, body.delivery_deadline) < 0) {
+    return "Delivery deadline cannot be before collection arrival.";
+  }
+  // A date typo in a collection or delivery time can otherwise turn into days of loading (and a huge cost).
+  const dwellWindows = [
+    ["Loading", body.planned_departure, body.loading_done_time],
+    ["Unloading", body.calculated_arrival, body.calculated_unload_end]
+  ];
+  for (const [label, start, end] of dwellWindows) {
+    if (start && end && wallMinutesBetween(start, end) > MAX_DWELL_MINS) return `${label} would take more than 12 hours. Check the dates and times.`;
+  }
   const loading = optionalNonNegativeNumber(body.loading_duration_mins);
   const unloading = optionalNonNegativeNumber(body.unloading_duration_mins);
   if (body.loading_duration_mins != null && (loading == null || !Number.isInteger(loading))) return "Loading duration must be a whole number of zero or more minutes.";
   if (body.unloading_duration_mins != null && (unloading == null || !Number.isInteger(unloading))) return "Unloading duration must be a whole number of zero or more minutes.";
+  if (loading > MAX_DWELL_MINS || unloading > MAX_DWELL_MINS) return "Loading and unloading durations must be 12 hours (720 minutes) or less.";
   if (body.freight_amount != null && optionalNonNegativeNumber(body.freight_amount) == null) return "Freight amount must be zero or more.";
   return validateSchedule(body);
 }
@@ -305,6 +320,70 @@ async function generateJobCode(conn) {
   return `${day}-${require('node:crypto').randomUUID().replaceAll('-', '').slice(0, 12).toUpperCase()}`;
 }
 
+async function matchCustomerByName(conn, name) {
+  const clean = String(name || "").trim();
+  if (!clean) return null;
+  const [rows] = await conn.query(
+    `SELECT id FROM customers WHERE account_status='active' AND LOWER(TRIM(company_name)) = LOWER(?) LIMIT 2`,
+    [clean]
+  );
+  return rows.length === 1 ? rows[0].id : null;
+}
+
+// Re-estimates distance and drive time from the job's postcodes (pickup -> Drop 1 -> extra stops) and the
+// total job time (collection arrival to the last planned departure). Used after stops or addresses change.
+async function refreshJobRouteEstimate(conn, tripId) {
+  const [[trip]] = await conn.query(
+    `SELECT pickup_address, drop_address, planned_departure, loading_done_time, calculated_arrival, calculated_unload_end,
+            loading_duration_mins, unloading_duration_mins
+     FROM trips WHERE id=?`,
+    [tripId]
+  );
+  const [stops] = await conn.query(
+    `SELECT address, planned_departure FROM job_stops WHERE trip_id=? ORDER BY stop_order ASC, id ASC`,
+    [tripId]
+  );
+  let distanceKm = null;
+  let etaMins = null;
+  let firstLegMins = null;
+  try {
+    const postcodes = [trip?.pickup_address, trip?.drop_address, ...stops.map(stop => stop.address)].map(extractUkPostcode);
+    if (postcodes.every(Boolean)) {
+      const points = await Promise.all(postcodes.map(lookupPostcode));
+      if (points.every(Boolean)) {
+        const estimate = await estimateDrivingPath(points);
+        distanceKm = estimate.distanceKm;
+        etaMins = estimate.durationMins;
+        firstLegMins = estimate.firstLegMins;
+      }
+    }
+  } catch (error) {
+    console.error("[Jobs] Route re-estimate failed:", error.message);
+  }
+  // Jobs saved without delivery times (e.g. CSV import) get them from the route: leave collection, drive, unload.
+  if (trip && !trip.calculated_arrival && firstLegMins != null) {
+    const start = trip.loading_done_time
+      ? dateTimeKey(trip.loading_done_time)
+      : trip.planned_departure ? addWallMinutes(dateTimeKey(trip.planned_departure), effectiveLoadingMins(trip)) : null;
+    if (start) {
+      trip.calculated_arrival = addWallMinutes(start, firstLegMins);
+      trip.calculated_unload_end = trip.calculated_unload_end || addWallMinutes(trip.calculated_arrival, effectiveUnloadingMins(trip));
+      await conn.query(
+        `UPDATE trips SET calculated_arrival=?, calculated_unload_end=COALESCE(calculated_unload_end, ?), eta=COALESCE(eta, ?) WHERE id=?`,
+        [trip.calculated_arrival, trip.calculated_unload_end, trip.calculated_arrival, tripId]
+      );
+    }
+  }
+  const lastDeparture = stops.length ? stops[stops.length - 1].planned_departure : trip?.calculated_unload_end;
+  const totalMins = trip?.planned_departure && lastDeparture
+    ? wallMinutesBetween(dateTimeKey(trip.planned_departure), dateTimeKey(lastDeparture))
+    : null;
+  await conn.query(
+    `UPDATE trips SET route_id=NULL, estimated_distance_km=?, estimated_eta_mins=?, total_job_duration_mins=? WHERE id=?`,
+    [distanceKm, etaMins, totalMins != null && totalMins >= 0 ? totalMins : null, tripId]
+  );
+}
+
 function extractUkPostcode(value) {
   const text = String(value || "").toUpperCase().replace(/\s+/g, " ");
   const match = text.match(/\b([A-Z]{1,2}\d[A-Z\d]?\s*\d[A-Z]{2})\b/);
@@ -331,7 +410,14 @@ async function fetchJson(url, timeoutMs = 8000) {
 async function lookupPostcode(postcode) {
   const clean = String(postcode || "").replace(/\s+/g, "");
   if (!clean) return null;
-  const data = await fetchJson(`https://api.postcodes.io/postcodes/${encodeURIComponent(clean)}`);
+  let data;
+  try {
+    data = await fetchJson(`https://api.postcodes.io/postcodes/${encodeURIComponent(clean)}`);
+  } catch (error) {
+    // 404 = unknown or terminated postcode: report it as "not found" instead of a server error.
+    if (String(error.message).includes("HTTP 404")) return null;
+    throw error;
+  }
   if (data?.status !== 200 || !data?.result) return null;
   return {
     postcode: data.result.postcode,
@@ -351,16 +437,31 @@ function haversineKm(a, b) {
   return 2 * radiusKm * Math.asin(Math.sqrt(h));
 }
 
+// GB/EU drivers' hours: a 45-minute break after every 4.5 hours of driving, at most 9 hours driving a day.
+const MAX_DRIVING_BEFORE_BREAK_MINS = 270;
+const DRIVING_BREAK_MINS = 45;
+const MAX_DAILY_DRIVING_MINS = 9 * 60;
+
+function breakMinsFor(drivingMins) {
+  return drivingMins > 0 ? Math.floor((drivingMins - 1) / MAX_DRIVING_BEFORE_BREAK_MINS) * DRIVING_BREAK_MINS : 0;
+}
+
 async function estimateDrivingPath(points) {
   if (!points || points.length < 2) throw new Error("At least two route points are required.");
   const coords = points.map(point => `${point.longitude},${point.latitude}`).join(";");
   const data = await fetchJson(`https://router.project-osrm.org/route/v1/driving/${coords}?overview=false&alternatives=false&steps=false`, 10000);
   const route = data?.routes?.[0];
   if (!route || !Number.isFinite(route.distance) || !Number.isFinite(route.duration)) throw new Error("Road estimate unavailable. Please retry; no distance has been assumed.");
+  const drivingMins = Math.round(route.duration / 60);
+  const firstLegDrivingMins = Math.round((route.legs?.[0]?.duration ?? route.duration) / 60);
+  // Travel time includes the legal driving breaks, so arrival times and driver cost allow for them.
   return {
     distanceKm: Math.round(route.distance / 1000 * 10) / 10,
-    durationMins: Math.round(route.duration / 60),
-    firstLegMins: Math.round((route.legs?.[0]?.duration ?? route.duration) / 60),
+    drivingMins,
+    breakMins: breakMinsFor(drivingMins),
+    durationMins: drivingMins + breakMinsFor(drivingMins),
+    firstLegMins: firstLegDrivingMins + breakMinsFor(firstLegDrivingMins),
+    overDailyDrivingLimit: drivingMins > MAX_DAILY_DRIVING_MINS,
     source: points.length > 2 ? "postcode-driving-multistop" : "postcode-driving"
   };
 }
@@ -368,10 +469,15 @@ async function estimateDrivingPath(points) {
 // Contribution profit inputs. Tolls are deliberately excluded (route estimates and driver toll receipts).
 //   Fuel: the driver's fuel receipts when there are any, otherwise the mileage estimate — never both.
 //   Time: actual minutes once the job is completed, else the planned schedule, else travel + loading + unloading.
-//   Fleet cost only applies when a truck is assigned.
+//         Actual minutes that would mean averaging over 56 mph (the HGV speed limiter) are a recording
+//         mistake, so the plan is used instead and the job is flagged.
+//   Fleet cost is always charged: every job needs a truck, even before one is assigned.
+// The job form preview (client/src/utils/jobCost.js) follows exactly the same rules — change both together.
+const HGV_MAX_AVG_MPH = 56;
+
 function calcJobEconomics({
   distanceKm, plannedMins, actualMins = null, fallbackMins = null, settings,
-  fuelExpenses = 0, otherExpenses = 0, hasVehicle = true
+  fuelExpenses = 0, otherExpenses = 0
 }) {
   if (!settings) return null;
   if (![settings.mpg, settings.fuel_price_per_litre, settings.driver_rate_per_hour, settings.fleet_cost_per_hour, settings.margin_pct].every(value => Number.isFinite(Number(value)) && Number(value) >= 0) || Number(settings.mpg) <= 0) return null;
@@ -389,13 +495,15 @@ function calcJobEconomics({
 
   const plannedSource = validMins(plannedMins) ? "planned" : validMins(fallbackMins) ? "fallback" : null;
   const estimateMins = plannedSource === "planned" ? Number(plannedMins) : plannedSource === "fallback" ? Number(fallbackMins) : null;
-  const durationSource = validMins(actualMins) && Number(actualMins) > 0 ? "actual" : plannedSource;
+  const actualPositive = validMins(actualMins) && Number(actualMins) > 0;
+  const actualImplausible = actualPositive && distanceMiles != null && distanceMiles / (Number(actualMins) / 60) > HGV_MAX_AVG_MPH;
+  const durationSource = actualPositive && !actualImplausible ? "actual" : plannedSource;
   if (!durationSource) return null;
   const totalMinutes = durationSource === "actual" ? Number(actualMins) : estimateMins;
   const totalHours = totalMinutes / 60;
 
   const driverCost = totalHours * settings.driver_rate_per_hour;
-  const fleetCost = hasVehicle ? totalHours * Number(settings.fleet_cost_per_hour) : 0;
+  const fleetCost = totalHours * Number(settings.fleet_cost_per_hour);
   const safeOther = Number(otherExpenses || 0);
   const totalCost = fuelCost + driverCost + fleetCost + safeOther;
 
@@ -414,7 +522,8 @@ function calcJobEconomics({
     fuelCost: round2(fuelCost),
     driverCost: round2(driverCost),
     fleetCost: round2(fleetCost),
-    fleetCharged: Boolean(hasVehicle),
+    fleetCharged: true,
+    actualTimeRejected: Boolean(actualImplausible),
     recordedExpenses: round2(safeOther),
     fleetCostPerHour: Number(settings.fleet_cost_per_hour),
     totalCost: round2(totalCost),
@@ -424,6 +533,31 @@ function calcJobEconomics({
     plannedMins: estimateMins
   };
 }
+
+// Open jobs behind their plan: the same "Running late" rule the Jobs page uses, so Overview and Dispatch
+// show the same number.
+async function countOpenJobsRunningLate(conn = db) {
+  const [rows] = await conn.query(
+    `SELECT t.*, r.origin_hub FROM trips t LEFT JOIN routes r ON r.id = t.route_id
+     WHERE t.deleted_at IS NULL AND t.dispatch_status IN ('planned','loading','active')`
+  );
+  if (!rows.length) return 0;
+  const ids = rows.map(row => row.id);
+  const [stopRows] = await conn.query(`SELECT * FROM job_stops WHERE trip_id IN (?) ORDER BY trip_id, stop_order`, [ids]);
+  const [eventRows] = await conn.query(
+    `SELECT trip_id, status, created_at FROM driver_job_status_events WHERE trip_id IN (?) ORDER BY trip_id, created_at, id`,
+    [ids]
+  );
+  const group = (list) => list.reduce((map, row) => map.set(row.trip_id, [...(map.get(row.trip_id) || []), row]), new Map());
+  const stopsByTrip = group(stopRows);
+  const eventsByTrip = group(eventRows);
+  return rows.filter(row => {
+    const stops = stopsByTrip.get(row.id) || [];
+    const plan = { ...row, ...normalisePlan({ ...row, stops }) };
+    return assessPunctuality(buildJobPoints(plan, stops, eventsByTrip.get(row.id) || []), { dispatchStatus: row.dispatch_status }).summary.state === "overdue";
+  }).length;
+}
+exports.countOpenJobsRunningLate = countOpenJobsRunningLate;
 
 // Shared by the job list and job detail so both pages always show the same numbers.
 function jobEconomics(job, points, currentSettings, { fuelExpenses, otherExpenses }) {
@@ -437,8 +571,7 @@ function jobEconomics(job, points, currentSettings, { fuelExpenses, otherExpense
     fallbackMins,
     settings,
     fuelExpenses,
-    otherExpenses,
-    hasVehicle: Boolean(job.vehicle_id)
+    otherExpenses
   });
   if (!econ) return { econ: null, settings };
   const freightValue = job.freight_amount_gbp == null ? null : Number(job.freight_amount_gbp);
@@ -507,7 +640,13 @@ exports.getFormData = async (req, res) => {
        ORDER BY status='available' DESC, trailer_code ASC`
     );
 
-    res.json({ customers, drivers, vehicles, trailers, routes });
+    res.json({
+      customers,
+      drivers,
+      vehicles: await annotateDispatchBlockers(db, "vehicle", vehicles),
+      trailers: await annotateDispatchBlockers(db, "trailer", trailers),
+      routes
+    });
   } catch (err) {
     res.status(500).json({ message: "Form data error", error: err.message });
   }
@@ -533,8 +672,9 @@ exports.estimateRouteFromAddresses = async (req, res) => {
     const postcodes = [pickupPostcode, dropPostcode, ...stopPostcodes];
     const points = await Promise.all(postcodes.map(postcode => lookupPostcode(postcode)));
 
-    if (points.some(point => !point)) {
-      return res.status(404).json({ message: "Could not find one of the route postcodes." });
+    const missing = postcodes.filter((_, index) => !points[index]);
+    if (missing.length) {
+      return res.status(404).json({ message: `Postcode not found (it may be mistyped or no longer in use): ${missing.join(", ")}.` });
     }
 
     const estimate = await estimateDrivingPath(points, settings);
@@ -548,6 +688,9 @@ exports.estimateRouteFromAddresses = async (req, res) => {
       distanceKm: estimate.distanceKm,
       distanceMiles,
       durationMins: estimate.durationMins,
+      drivingMins: estimate.drivingMins,
+      breakMins: estimate.breakMins,
+      overDailyDrivingLimit: estimate.overDailyDrivingLimit,
       firstLegMins: estimate.firstLegMins,
       standardEtaHours: Math.round((estimate.durationMins / 60) * 10) / 10,
       source: estimate.source
@@ -572,6 +715,7 @@ exports.listJobs = async (req, res) => {
         COALESCE(SUM(dispatch_status='planned'), 0)   as planned,
         COALESCE(SUM(dispatch_status='completed'), 0) as completed,
         COALESCE(SUM(dispatch_status='blocked'), 0)   as blocked,
+        COALESCE(SUM(dispatch_status IN ('blocked','cancelled','failed')), 0) as not_delivered,
         COALESCE(SUM(dispatch_status='loading'), 0)   as loading,
         COALESCE(SUM(priority_level='critical'), 0)   as critical,
         COALESCE(SUM((driver_id IS NULL OR vehicle_id IS NULL) AND dispatch_status IN ('planned','loading','active')), 0) as assignment_gaps,
@@ -785,6 +929,9 @@ exports.listJobs = async (req, res) => {
       hasDriverEtaUpdate: Boolean(r.eta_updated_at),
       deadline: fmtDateTime(r.delivery_deadline),
       deadlineRaw: rawDateTime(r.delivery_deadline),
+      // The plan itself already misses the deadline (planned delivery arrival is after it).
+      planAfterDeadline: Boolean(r.delivery_deadline && r.calculated_arrival
+        && wallMinutesBetween(rawDateTime(r.delivery_deadline), rawDateTime(r.calculated_arrival)) > 0),
       actualDeparture: fmtDateTime(r.actual_departure),
       actualDepartureRaw: rawDateTime(r.actual_departure),
       actualArrival: fmtDateTime(r.actual_arrival),
@@ -861,9 +1008,10 @@ exports.listJobs = async (req, res) => {
     res.json({
       stats: [
         { label: "Total jobs",  value: counts.total,     description: "All freight bookings.", change: "Live from database", tone: "neutral" },
-        { label: "Active",      value: counts.active,    description: "Currently moving.", change: "On road", tone: "success" },
+        { label: "Active",      value: Number(counts.active) + Number(counts.loading), description: "Loading or on the road.", change: "On road", tone: "success" },
         { label: "Planned",     value: counts.planned,   description: "Scheduled but not dispatched.", change: "Ready queue", tone: "warning" },
-        { label: "Completed",   value: counts.completed, description: "Delivered jobs.", change: "Closed loop", tone: "neutral" }
+        { label: "Completed",   value: counts.completed, description: "Delivered jobs.", change: "Closed loop", tone: "neutral" },
+        { label: "Blocked / cancelled / failed", value: counts.not_delivered, description: "Jobs that did not go ahead or need review.", change: "Review", tone: Number(counts.not_delivered) ? "danger" : "neutral" }
       ],
       opsHealth: [
         { label: "Booked value", value: fmtAmount(counts.booked_value), description: "Total freight value.", change: "GBP", tone: "neutral" },
@@ -872,8 +1020,8 @@ exports.listJobs = async (req, res) => {
         { label: "Critical jobs", value: counts.critical, description: "Critical priority bookings.", change: "Priority desk", tone: counts.critical ? "danger" : "neutral" }
       ],
       drivers,
-      vehicles,
-      trailers,
+      vehicles: await annotateDispatchBlockers(db, "vehicle", vehicles),
+      trailers: await annotateDispatchBlockers(db, "trailer", trailers),
       jobs
     });
 
@@ -941,6 +1089,12 @@ exports.updateJobAssignment = async (req, res) => {
       );
       if (busyTrailer) return res.status(400).json({ message: `Trailer is already assigned to job ${busyTrailer.trip_code} and won't be free until that job is finished.` });
     }
+    const complianceBlock = await checkAssetsDispatchable(db, req, {
+      vehicleId: vehicleId && String(vehicleId) !== String(job.vehicle_id || "") ? vehicleId : null,
+      trailerId: trailerId && String(trailerId) !== String(job.trailer_id || "") ? trailerId : null,
+      jobId: job.id
+    });
+    if (complianceBlock) return res.status(complianceBlock.status).json(complianceBlock.body);
 
     const driverChanged = Object.prototype.hasOwnProperty.call(req.body, "driver_id") || Object.prototype.hasOwnProperty.call(req.body, "driverId")
       ? String(job.driver_id || "") !== String(driverId || "")
@@ -1234,6 +1388,8 @@ exports.getJobById = async (req, res) => {
         actualDeparture: fmtDateTime(j.actual_departure),
         actualArrival: fmtDateTime(j.actual_arrival),
         deliveryDeadline: fmtDateTime(j.delivery_deadline),
+        planAfterDeadline: Boolean(j.delivery_deadline && j.calculated_arrival
+          && wallMinutesBetween(rawDateTime(j.delivery_deadline), rawDateTime(j.calculated_arrival)) > 0),
         dockWindow: j.dock_window || "—"
       },
 
@@ -1382,6 +1538,9 @@ exports.createJob = async (req, res) => {
     }
 
     let resolvedClientName = client_name || null;
+    // A typed client name that exactly matches a customer account is linked to it, so invoices can use the
+    // customer's billing address and VAT number.
+    const linkedCustomerId = customer_id || await matchCustomerByName(conn, client_name);
     if (customer_id && !resolvedClientName) {
       const [[customer]] = await conn.query(`SELECT company_name FROM customers WHERE id = ?`, [customer_id]);
       resolvedClientName = customer?.company_name || null;
@@ -1422,8 +1581,15 @@ exports.createJob = async (req, res) => {
         return res.status(400).json({ message: `Trailer is already assigned to job ${busyTrailer.trip_code} and won't be free until that job is finished.` });
       }
     }
+    const complianceBlock = await checkAssetsDispatchable(conn, req, { vehicleId: vehicle_id, trailerId: trailer_id });
+    if (complianceBlock) {
+      await conn.rollback();
+      return res.status(complianceBlock.status).json(complianceBlock.body);
+    }
 
-    const routeStartTime = loading_done_time || planned_departure;
+    // With no collection departure time the truck leaves once loading is done.
+    const routeStartTime = loading_done_time
+      || (planned_departure ? addWallMinutes(planned_departure, Number(loading_duration_mins ?? DEFAULT_LOADING_MINS)) : null);
     let eta = null;
     if (estimated_eta_mins && routeStartTime) {
       eta = addWallMinutes(routeStartTime, Number(estimated_eta_mins));
@@ -1450,7 +1616,7 @@ exports.createJob = async (req, res) => {
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'planned', ?, ?, ?, ?, 'pending', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         jobCode,
-        customer_id || null,
+        linkedCustomerId || null,
         resolvedClientName,
         client_phone || null,
         route_id || null,
@@ -1513,6 +1679,9 @@ exports.createJob = async (req, res) => {
     }
 
     await conn.commit();
+
+    // Saved without a road estimate or saved route (CSV import, API): work it out from the postcodes.
+    if (!estimated_distance_km && !route_id) await refreshJobRouteEstimate(db, jobId);
 
     const [[newJob]] = await db.query(`SELECT id, trip_code FROM trips WHERE id = ?`, [jobId]);
     await logActivity(req, {
@@ -1586,6 +1755,9 @@ exports.updateJob = async (req, res) => {
     }
 
     let resolvedClientName = client_name || null;
+    // A typed client name that exactly matches a customer account is linked to it, so invoices can use the
+    // customer's billing address and VAT number.
+    const linkedCustomerId = customer_id || await matchCustomerByName(conn, client_name);
     if (customer_id && !resolvedClientName) {
       const [[customer]] = await conn.query(`SELECT company_name FROM customers WHERE id = ?`, [customer_id]);
       resolvedClientName = customer?.company_name || null;
@@ -1626,8 +1798,20 @@ exports.updateJob = async (req, res) => {
         return res.status(400).json({ message: `Trailer is already assigned to job ${busyTrailer.trip_code} and won't be free until that job is finished.` });
       }
     }
+    // Only a newly chosen truck / trailer is checked, so other edits to an existing job still save.
+    const complianceBlock = await checkAssetsDispatchable(conn, req, {
+      vehicleId: vehicle_id && String(vehicle_id) !== String(existing.vehicle_id || "") ? vehicle_id : null,
+      trailerId: trailer_id && String(trailer_id) !== String(existing.trailer_id || "") ? trailer_id : null,
+      jobId: existing.id
+    });
+    if (complianceBlock) {
+      await conn.rollback();
+      return res.status(complianceBlock.status).json(complianceBlock.body);
+    }
 
-    const routeStartTime = loading_done_time || planned_departure;
+    // With no collection departure time the truck leaves once loading is done.
+    const routeStartTime = loading_done_time
+      || (planned_departure ? addWallMinutes(planned_departure, Number(loading_duration_mins ?? DEFAULT_LOADING_MINS)) : null);
     let eta = null;
     if (estimated_eta_mins && routeStartTime) {
       eta = addWallMinutes(routeStartTime, Number(estimated_eta_mins));
@@ -1678,7 +1862,7 @@ exports.updateJob = async (req, res) => {
          reference=?, load_id=?
        WHERE id=? AND deleted_at IS NULL`,
       [
-        customer_id || null, resolvedClientName, client_phone || null, route_id || null,
+        linkedCustomerId || null, resolvedClientName, client_phone || null, route_id || null,
         vehicle_id || null, trailer_id || null, driver_id || null,
         pickup_address || null, drop_address || null,
         priority_level || "standard",
@@ -1765,6 +1949,8 @@ exports.updateJob = async (req, res) => {
     }
 
     await conn.commit();
+    // Addresses or stops changed without a fresh estimate from the form: work it out from the postcodes.
+    if (pathChanged && !Object.hasOwn(patch, 'estimated_distance_km')) await refreshJobRouteEstimate(db, id);
     await logActivity(req, {
       module: "jobs",
       action: "update",
@@ -1796,11 +1982,16 @@ exports.updateJobStatus = async (req, res) => {
       return res.status(400).json({ message: "Invalid status value." });
     }
 
-    const [[job]] = await db.query(`SELECT id, dispatch_status, driver_job_status, vehicle_id, trailer_id, actual_departure, actual_arrival, pod_status FROM trips WHERE id = ? AND deleted_at IS NULL`, [id]);
+    const [[job]] = await db.query(`SELECT id, dispatch_status, driver_job_status, driver_id, vehicle_id, trailer_id, actual_departure, actual_arrival, pod_status FROM trips WHERE id = ? AND deleted_at IS NULL`, [id]);
     if (!job) return res.status(404).json({ message: "Job not found." });
     if (job.dispatch_status === 'completed' && status !== 'completed') return res.status(409).json({ message: 'Completed jobs cannot be reopened because delivery history is final.' });
     if (['blocked','failed','cancelled'].includes(job.dispatch_status) && status === 'planned' && (job.actual_departure || job.actual_arrival)) {
       return res.status(409).json({ message: 'This attempt has actual progress. Create a follow-up job instead of reopening it.' });
+    }
+
+    const cleanReason = String(reason || "").trim();
+    if (['failed', 'cancelled'].includes(status) && status !== job.dispatch_status && !cleanReason) {
+      return res.status(400).json({ message: `Enter a reason before marking the job ${status}.` });
     }
 
     const updates = { dispatch_status: status };
@@ -1822,6 +2013,7 @@ exports.updateJobStatus = async (req, res) => {
     const effectiveArrival = updates.actual_arrival || job.actual_arrival;
     if (['loading','active'].includes(status) && !job.vehicle_id) return res.status(409).json({ message: 'Assign a truck before the job starts loading or moving.' });
     if (status === 'active' && !effectiveDeparture) return res.status(409).json({ message: 'Actual collection departure is required before marking a job in transit.' });
+    if (status === 'completed' && (!job.driver_id || !job.vehicle_id)) return res.status(409).json({ message: 'Assign a driver and a truck before completing the job.' });
     if (status === 'completed' && (!effectiveDeparture || !effectiveArrival)) return res.status(409).json({ message: 'Actual departure and delivery arrival are required before completion.' });
     if (status === 'completed' && !['uploaded','verified'].includes(job.pod_status)) return res.status(409).json({ message: 'POD must be uploaded before completing the job.' });
     if (status === 'planned' && ['blocked','failed','cancelled'].includes(job.dispatch_status)) {
@@ -1829,9 +2021,7 @@ exports.updateJobStatus = async (req, res) => {
       updates.delay_reason = null;
       updates.driver_job_status = job.driver_job_status === 'offered' ? 'offered' : 'accepted';
     }
-    if (status === "blocked")   updates.cancellation_reason = reason || null;
-    if (status === "failed")    updates.cancellation_reason = reason || null;
-    if (status === "cancelled") updates.cancellation_reason = reason || null;
+    if (["blocked", "failed", "cancelled"].includes(status) && cleanReason) updates.cancellation_reason = cleanReason;
     if (req.body.delay_reason)  updates.delay_reason = req.body.delay_reason;
 
     const fields = Object.keys(updates).map(k => `${k}=?`).join(", ");
@@ -1856,11 +2046,11 @@ exports.updateJobStatus = async (req, res) => {
       action: "status_update",
       entityType: "job",
       entityId: id,
-      reason: status === "blocked" ? reason : undefined,
-      details: { status }
+      reason: cleanReason || undefined,
+      details: { status, from: job.dispatch_status, via: req.statusSource || "jobs" }
     });
 
-    emitJobUpdate({ jobId: Number(id), source: "admin-status", status });
+    emitJobUpdate({ jobId: Number(id), source: req.statusSource === "dispatch" ? "dispatch-status" : "admin-status", status });
 
     res.json({ message: "Job status updated.", status });
   } catch (err) {
@@ -1969,7 +2159,9 @@ async function collectJobDeleteImpact(conn, id) {
     job,
     blocker: ["loading", "active"].includes(job.dispatch_status)
       ? "This job is loading or on the road. Block or finish it before deleting."
-      : null,
+      : job.dispatch_status === "completed"
+        ? "Completed jobs are kept as delivery and tax records and cannot be deleted."
+        : null,
     invoices: invoices.map(inv => ({
       id: inv.id,
       invoiceNo: inv.invoice_no,
@@ -2143,8 +2335,9 @@ exports.addJobStop = async (req, res) => {
       [id, maxOrder + 1, stop_type || "delivery", address.trim(), contact_name || null, contact_phone || null, planned_arrival || null, planned_departure || null, notes || null]
     );
 
-    // Route changed: invalidate stale costing inputs; preserve the driver's ETA.
-    await db.query('UPDATE trips SET route_id=NULL, estimated_distance_km=NULL, estimated_eta_mins=NULL, total_job_duration_mins=NULL WHERE id=?', [id]);
+    // Route changed: work the road distance, drive time and total job time out again from the postcodes,
+    // so the job keeps a cost estimate. (Cleared only if the new route cannot be estimated.)
+    await refreshJobRouteEstimate(db, id);
 
     // Notify driver via chat + socket
     if (job.driver_id) {
@@ -2208,8 +2401,9 @@ exports.deleteJobStop = async (req, res) => {
       await db.query(`UPDATE job_stops SET stop_order = ? WHERE id = ?`, [i + 1, remaining[i].id]);
     }
 
-    // Route changed: invalidate stale costing inputs; preserve the driver's ETA.
-    await db.query('UPDATE trips SET route_id=NULL, estimated_distance_km=NULL, estimated_eta_mins=NULL, total_job_duration_mins=NULL WHERE id=?', [id]);
+    // Route changed: work the road distance, drive time and total job time out again from the postcodes,
+    // so the job keeps a cost estimate. (Cleared only if the new route cannot be estimated.)
+    await refreshJobRouteEstimate(db, id);
 
     // Notify driver
     if (job.driver_id) {
@@ -2325,6 +2519,11 @@ exports.replaceJobVehicle = async (req, res) => {
       await conn.rollback();
       return res.status(400).json({ message: "Enter a reason for replacing the vehicle." });
     }
+    const complianceBlock = await checkAssetsDispatchable(conn, req, { vehicleId: newVehicleId, jobId: job.id });
+    if (complianceBlock) {
+      await conn.rollback();
+      return res.status(complianceBlock.status).json(complianceBlock.body);
+    }
 
     const [[newVehicle]] = await conn.query(
       `SELECT id, registration_number FROM vehicles WHERE id = ? AND status = 'available'`,
@@ -2391,4 +2590,4 @@ exports.replaceJobVehicle = async (req, res) => {
 };
 
 // Pure rules exposed for regression tests; no route uses this property.
-exports.__test = { calcJobEconomics, validateJobTiming };
+exports.__test = { calcJobEconomics, validateJobTiming, breakMinsFor };

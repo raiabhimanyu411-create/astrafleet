@@ -61,7 +61,9 @@ function assetLabel(asset) {
   return `${asset.registrationNumber} · ${asset.fleetCode} · ${asset.assetType}`;
 }
 
-function initialInspection(userName = "") {
+// Inspector and brake result start empty: they must be entered by whoever did the inspection,
+// never pre-filled with the logged-in admin or a "pass".
+function initialInspection() {
   return {
     asset_id: "",
     inspection_kind: "safety",
@@ -69,11 +71,11 @@ function initialInspection(userName = "") {
     scheduled_date: "",
     operator_name: "",
     provider_name: "",
-    inspector_name: userName,
+    inspector_name: "",
     inspector_signature: "",
     odometer_km: "",
     brake_method: "laden_roller",
-    brake_result: "pass",
+    brake_result: "",
     brake_reference: "",
     notes: "",
     roadworthy_declared: false,
@@ -85,8 +87,7 @@ function initialInspection(userName = "") {
 }
 
 function InspectionForm({ data, onSaved }) {
-  const userName = getAuthSession()?.name || "";
-  const [form, setForm] = useState(() => initialInspection(userName));
+  const [form, setForm] = useState(() => initialInspection());
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const assets = data?.assets || [];
@@ -130,7 +131,7 @@ function InspectionForm({ data, onSaved }) {
     setError("");
     try {
       await createComplianceInspection(form);
-      setForm(initialInspection(userName));
+      setForm(initialInspection());
       await onSaved("Inspection submitted for QA review.");
     } catch (requestError) {
       setError(errorMessage(requestError, "Could not save inspection."));
@@ -203,7 +204,7 @@ function InspectionForm({ data, onSaved }) {
             <option value="ebpms">EBPMS assessment</option>
           </select>
         </Field>
-        <Field label="Brake result"><select value={form.brake_result} onChange={(event) => set("brake_result", event.target.value)}><option value="pass">Pass</option><option value="fail">Fail</option></select></Field>
+        <Field label="Brake result"><select value={form.brake_result} onChange={(event) => set("brake_result", event.target.value)} required><option value="">Select result</option><option value="pass">Pass</option><option value="fail">Fail</option></select></Field>
         <Field label="Brake report reference"><input value={form.brake_reference} onChange={(event) => set("brake_reference", event.target.value)} required /></Field>
         <Field label="Brake report"><input type="file" accept="image/*,.pdf" onChange={(event) => chooseFile(event, "brake_document")} required={!form.brake_document} /></Field>
         <Field label="Completed inspection sheet"><input type="file" accept="image/*,.pdf,.doc,.docx" onChange={(event) => chooseFile(event, "inspection_document")} required={!form.inspection_document} /></Field>
@@ -315,12 +316,14 @@ function InspectionRecords({ records, onSaved }) {
 }
 
 function MotForm({ data, onSaved }) {
-  const [form, setForm] = useState({ asset_id: "", test_date: todayUk(), result: "pass", certificate_number: "", expiry_date: "", failure_reason: "", tester_name: "", provider_name: "", odometer_km: "", retest_of: "", document: "" });
+  const [form, setForm] = useState({ asset_id: "", test_date: todayUk(), result: "", certificate_number: "", expiry_date: "", failure_reason: "", advisories: "", tester_name: "", provider_name: "", odometer_km: "", retest_of: "", document: "" });
+  const passed = ["pass", "prs"].includes(form.result);
+  const isTrailer = form.asset_id.startsWith("trailer:");
   const [error, setError] = useState(""); const [saving, setSaving] = useState(false);
   const failedTests = (data?.motTests || []).filter((test) => test.result === "fail" && (!form.asset_id || `${test.assetType}:${test.assetId}` === form.asset_id));
   async function submit(event) {
     event.preventDefault(); setSaving(true); setError("");
-    try { await createComplianceMotTest(form); setForm({ ...form, certificate_number: "", expiry_date: "", failure_reason: "", retest_of: "", document: "" }); await onSaved("MOT result and evidence saved."); }
+    try { await createComplianceMotTest({ ...form, odometer_km: isTrailer ? "" : form.odometer_km }); setForm({ ...form, certificate_number: "", expiry_date: "", failure_reason: "", advisories: "", retest_of: "", document: "" }); await onSaved("MOT result and evidence saved."); }
     catch (requestError) { setError(errorMessage(requestError, "Could not save MOT result.")); }
     finally { setSaving(false); }
   }
@@ -331,11 +334,13 @@ function MotForm({ data, onSaved }) {
         <div className="compliance-form-grid">
           <Field label="Vehicle / Trailer"><select value={form.asset_id} onChange={(event) => setForm({ ...form, asset_id: event.target.value })} required><option value="">Select asset</option>{data.assets.map((asset) => <option key={asset.assetId} value={asset.assetId}>{assetLabel(asset)}</option>)}</select></Field>
           <Field label="Test date"><input type="date" max={todayUk()} value={form.test_date} onChange={(event) => setForm({ ...form, test_date: event.target.value })} required /></Field>
-          <Field label="Result"><select value={form.result} onChange={(event) => setForm({ ...form, result: event.target.value })}><option value="pass">Pass</option><option value="fail">Fail</option></select></Field>
+          <Field label="Result"><select value={form.result} onChange={(event) => setForm({ ...form, result: event.target.value })} required><option value="">Select result</option><option value="pass">Pass</option><option value="prs">PRS (pass after rectification)</option><option value="fail">Fail</option></select></Field>
           <Field label="Tester"><input value={form.tester_name} onChange={(event) => setForm({ ...form, tester_name: event.target.value })} required /></Field>
           <Field label="Test centre / Provider"><input value={form.provider_name} onChange={(event) => setForm({ ...form, provider_name: event.target.value })} required /></Field>
-          <Field label="Odometer (km)"><input type="number" min="0" value={form.odometer_km} onChange={(event) => setForm({ ...form, odometer_km: event.target.value })} /></Field>
-          {form.result === "pass" ? <><Field label="Certificate number"><input value={form.certificate_number} onChange={(event) => setForm({ ...form, certificate_number: event.target.value })} required /></Field><Field label="Expiry date"><input type="date" value={form.expiry_date} onChange={(event) => setForm({ ...form, expiry_date: event.target.value })} required /></Field></> : <Field label="Failure reasons" wide><textarea value={form.failure_reason} onChange={(event) => setForm({ ...form, failure_reason: event.target.value })} required /></Field>}
+          {!isTrailer && <Field label="Odometer"><input type="number" min="0" value={form.odometer_km} onChange={(event) => setForm({ ...form, odometer_km: event.target.value })} /></Field>}
+          {passed && <><Field label="Certificate number"><input value={form.certificate_number} onChange={(event) => setForm({ ...form, certificate_number: event.target.value })} required /></Field><Field label="Expiry date"><input type="date" value={form.expiry_date} onChange={(event) => setForm({ ...form, expiry_date: event.target.value })} required /></Field></>}
+          {(form.result === "fail" || form.result === "prs") && <Field label={form.result === "prs" ? "Defects fixed at the test" : "Failure reasons"} wide><textarea value={form.failure_reason} onChange={(event) => setForm({ ...form, failure_reason: event.target.value })} required /></Field>}
+          {form.result && <Field label="Advisories (optional)" wide><textarea value={form.advisories} onChange={(event) => setForm({ ...form, advisories: event.target.value })} placeholder="Advisory items noted by the tester" /></Field>}
           <Field label="Retest of failed MOT"><select value={form.retest_of} onChange={(event) => setForm({ ...form, retest_of: event.target.value })}><option value="">Not a retest</option>{failedTests.map((test) => <option key={test.id} value={test.id}>#{test.id} · {test.testDate} · {test.registrationNumber}</option>)}</select></Field>
           <Field label="Certificate / failure notice"><input type="file" accept="image/*,.pdf" onChange={async (event) => setForm({ ...form, document: await readFile(event.target.files?.[0]) })} required={!form.document} /></Field>
         </div>
@@ -352,7 +357,7 @@ function Controls({ data, onSaved }) {
   const [provider, setProvider] = useState({ provider_name: "", contract_reference: "", contract_start: todayUk(), contract_end: "", vol_declared: false, last_quality_audit: todayUk(), next_quality_audit: "", contact_details: "" });
   const [frequency, setFrequency] = useState({ asset_id: "", weeks: "6", source_name: "VOL", licence_reference: "", change_reason: "", effective_from: todayUk() });
   const [recall, setRecall] = useState({ asset_id: "", recall_reference: "", description: "", issued_date: todayUk(), due_date: "" });
-  const [daily, setDaily] = useState({ asset_id: "", check_date: todayUk(), driver_name: userName, result: "nil_defect", defect_details: "", declaration: false, signature: "" });
+  const [daily, setDaily] = useState({ asset_id: "", check_date: todayUk(), driver_name: "", result: "nil_defect", defect_details: "", declaration: false, signature: "" });
   const [missed, setMissed] = useState({ asset_id: "", due_date: todayUk(), reason: "", corrective_action: "" });
   const [recallAction, setRecallAction] = useState({ id: "", action_details: "", actioned_at: todayUk(), verified_by: userName, verifier_signature: "", evidence: "" });
   async function act(request, message, reset) {
@@ -374,7 +379,16 @@ function Controls({ data, onSaved }) {
 
       <details className="compliance-card"><summary>Daily Walkaround / Nil-Defect Check</summary><form className="compliance-form-grid" onSubmit={(event) => { event.preventDefault(); act(() => createComplianceDailyCheck(daily), "Daily check recorded.", () => setDaily({ ...daily, defect_details: "", signature: "", declaration: false })); }}><Field label="Asset"><select value={daily.asset_id} onChange={(event) => setDaily({ ...daily, asset_id: event.target.value })} required><option value="">Select asset</option>{assetOptions}</select></Field><Field label="Check date"><input type="date" value={daily.check_date} onChange={(event) => setDaily({ ...daily, check_date: event.target.value })} required /></Field><Field label="Driver"><input value={daily.driver_name} onChange={(event) => setDaily({ ...daily, driver_name: event.target.value })} required /></Field><Field label="Result"><select value={daily.result} onChange={(event) => setDaily({ ...daily, result: event.target.value })}><option value="nil_defect">Nil defect</option><option value="defect">Defect found</option></select></Field>{daily.result === "defect" && <Field label="Defect details" wide><textarea value={daily.defect_details} onChange={(event) => setDaily({ ...daily, defect_details: event.target.value })} required /></Field>}<Field label="Driver signature"><input value={daily.signature} onChange={(event) => setDaily({ ...daily, signature: event.target.value })} required /></Field><label className="compliance-declaration"><input type="checkbox" checked={daily.declaration} onChange={(event) => setDaily({ ...daily, declaration: event.target.checked })} /><span>I completed the walkaround check and this record is accurate.</span></label><div className="compliance-actions wide"><button className="af-submit-btn">Save daily check</button></div></form></details>
 
-      <details className="compliance-card"><summary>Late / Missed Inspection</summary><form className="compliance-form-grid" onSubmit={(event) => { event.preventDefault(); act(() => recordMissedComplianceInspection(missed), "Missed inspection recorded.", () => setMissed({ ...missed, reason: "", corrective_action: "" })); }}><Field label="Asset"><select value={missed.asset_id} onChange={(event) => setMissed({ ...missed, asset_id: event.target.value })} required><option value="">Select asset</option>{assetOptions}</select></Field><Field label="Missed due date"><input type="date" value={missed.due_date} onChange={(event) => setMissed({ ...missed, due_date: event.target.value })} required /></Field><Field label="Reason" wide><textarea value={missed.reason} onChange={(event) => setMissed({ ...missed, reason: event.target.value })} required /></Field><Field label="Corrective action" wide><textarea value={missed.corrective_action} onChange={(event) => setMissed({ ...missed, corrective_action: event.target.value })} required /></Field><div className="compliance-actions wide"><button className="af-submit-btn">Record and place off road</button></div></form></details>
+      <details className="compliance-card" open={(data.missedInspectionsPending || []).length > 0}><summary>Late / Missed Inspection{(data.missedInspectionsPending || []).length ? ` · ${data.missedInspectionsPending.length} need a reason` : ""}</summary>{(data.missedInspectionsPending || []).length > 0 && (
+        <div className="compliance-form-grid">
+          <p className="wide" style={{ margin: 0 }}>These safety inspections are overdue and have no reason recorded yet. Choose one to fill in the form below.</p>
+          {data.missedInspectionsPending.map((item) => (
+            <button key={`${item.assetType}:${item.assetId}:${item.dueDate}`} type="button" className="header-action-button" onClick={() => setMissed({ ...missed, asset_id: `${item.assetType}:${item.assetId}`, due_date: item.dueDate })}>
+              {item.registration} · due {item.dueDate.split("-").reverse().join("/")}
+            </button>
+          ))}
+        </div>
+      )}<form className="compliance-form-grid" onSubmit={(event) => { event.preventDefault(); act(() => recordMissedComplianceInspection(missed), "Missed inspection recorded.", () => setMissed({ ...missed, reason: "", corrective_action: "" })); }}><Field label="Asset"><select value={missed.asset_id} onChange={(event) => setMissed({ ...missed, asset_id: event.target.value })} required><option value="">Select asset</option>{assetOptions}</select></Field><Field label="Missed due date"><input type="date" value={missed.due_date} onChange={(event) => setMissed({ ...missed, due_date: event.target.value })} required /></Field><Field label="Reason" wide><textarea value={missed.reason} onChange={(event) => setMissed({ ...missed, reason: event.target.value })} required /></Field><Field label="Corrective action" wide><textarea value={missed.corrective_action} onChange={(event) => setMissed({ ...missed, corrective_action: event.target.value })} required /></Field><div className="compliance-actions wide"><button className="af-submit-btn">Record and place off road</button></div></form></details>
     </div>
   );
 }

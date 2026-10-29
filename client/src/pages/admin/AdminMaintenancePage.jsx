@@ -132,6 +132,12 @@ function ukDateKey(value = new Date()) {
   return `${parts.year}-${parts.month}-${parts.day}`;
 }
 
+// "2026-11-02" -> "02/11/2026" (UK order).
+function formatDateKeyUk(value) {
+  const match = String(value || "").match(/^(\d{4})-(\d{2})-(\d{2})/);
+  return match ? `${match[3]}/${match[2]}/${match[1]}` : value || "";
+}
+
 function formatDateKeyLong(value) {
   if (!value) return "-";
   return new Date(`${value}T00:00:00`).toLocaleDateString("en-GB", {
@@ -232,7 +238,7 @@ function DigitalTyreMonitor({ tyres = [] }) {
     <div className="digital-tyre-monitor">
       <div className="digital-tyre-toolbar">
         <div>
-          <span className="digital-live"><i /> Live tyre telemetry</span>
+          <span className="digital-live">Recorded tyre readings</span>
           <strong>{selectedVehicle || "No vehicle selected"}</strong>
           <small>{healthyCount}/{vehicleTyres.length || 6} tyres within fleet target</small>
         </div>
@@ -725,7 +731,8 @@ function JobModal({ vehicles, defects, editingJob, initialForm, onClose, onSaved
   const [form, setForm] = useState(initialForm || emptyJob);
   const selectedAssetType = form.vehicle_id?.startsWith("trailer:") ? "trailer" : "vehicle";
   const availableItems = getMaintenanceItems(selectedAssetType);
-  const [selectedServices, setSelectedServices] = useState(availableItems.map((item) => item.value));
+  // Nothing is ticked by default: one save must never reset MOT, tax and insurance by accident.
+  const [selectedServices, setSelectedServices] = useState(initialForm?.service_type ? [initialForm.service_type] : []);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
 
@@ -733,7 +740,7 @@ function JobModal({ vehicles, defects, editingJob, initialForm, onClose, onSaved
     setForm(initialForm || emptyJob);
     const assetType = (initialForm?.vehicle_id || "").startsWith("trailer:") ? "trailer" : "vehicle";
     const items = getMaintenanceItems(assetType);
-    setSelectedServices(editingJob ? [initialForm?.service_type].filter(Boolean) : items.map((i) => i.value));
+    setSelectedServices([initialForm?.service_type].filter((value) => value && items.some((item) => item.value === value)));
   }, [initialForm]);
 
   const { autofill, run: readDocument, isAutoFilled } = useDocumentAutofill(form, setForm);
@@ -943,7 +950,7 @@ function JobModal({ vehicles, defects, editingJob, initialForm, onClose, onSaved
                   </div>
                   <div>
                     <span>{item.value === "Full Service" ? "Mileage target" : "Next due"}</span>
-                    <strong>{item.value === "Full Service" ? (item.nextMileage ? `${Number(item.nextMileage).toLocaleString("en-GB")} km` : "Add mileage") : (item.nextDue || "Select date")}</strong>
+                    <strong>{item.value === "Full Service" ? (item.nextMileage ? `${Number(item.nextMileage).toLocaleString("en-GB")} km` : "Add mileage") : (item.nextDue ? formatDateKeyUk(item.nextDue) : "Select date")}</strong>
                   </div>
                 </label>
               ))}
@@ -1462,10 +1469,14 @@ function BreakdownModal({ vehicles, onClose, onSaved }) {
     bill_amount_gbp: "",
     bill_notes: "",
     bill_attachment_data: "",
-    reported_by: ""
+    reported_by: "",
+    location: "",
+    odometer_miles: "",
+    safe_to_drive: ""
   });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+  const isTrailer = form.asset_id.startsWith("trailer:");
 
   function set(name, value) {
     setForm((c) => ({ ...c, [name]: value }));
@@ -1477,10 +1488,14 @@ function BreakdownModal({ vehicles, onClose, onSaved }) {
       setError("Select an asset and enter the problem type.");
       return;
     }
+    if (!form.safe_to_drive) {
+      setError("Choose whether the vehicle is safe to drive or must come off the road.");
+      return;
+    }
     setSaving(true);
     setError("");
     try {
-      await reportBreakdown(form);
+      await reportBreakdown({ ...form, safe_to_drive: form.safe_to_drive === "yes", odometer_miles: isTrailer ? "" : form.odometer_miles });
       await onSaved();
       onClose();
     } catch (err) {
@@ -1521,6 +1536,21 @@ function BreakdownModal({ vehicles, onClose, onSaved }) {
           </Field>
           <Field label="Reported By">
             <input className="af-input" value={form.reported_by} onChange={(e) => set("reported_by", e.target.value)} placeholder="Driver or staff name" />
+          </Field>
+          <Field label="Location">
+            <input className="af-input" value={form.location} onChange={(e) => set("location", e.target.value)} placeholder="e.g. M6 J16 northbound, or postcode" />
+          </Field>
+          {!isTrailer && (
+            <Field label="Odometer (miles)">
+              <input className="af-input" type="number" min="0" step="1" value={form.odometer_miles} onChange={(e) => set("odometer_miles", e.target.value)} />
+            </Field>
+          )}
+          <Field label="Safe to drive?">
+            <select className="af-select" value={form.safe_to_drive} onChange={(e) => set("safe_to_drive", e.target.value)} required>
+              <option value="">Choose</option>
+              <option value="no">No: take it off the road now (VOR)</option>
+              <option value="yes">Yes: safe to drive to the garage</option>
+            </select>
           </Field>
           <Field label="Description / Details">
             <textarea className="af-textarea" value={form.description} onChange={(e) => set("description", e.target.value)} rows={3} placeholder="Describe the breakdown or fault..." />
@@ -2192,6 +2222,7 @@ function ExcelScheduleView({ data, onOpenVehicle }) {
     <span key="upcoming" className="excel-legend-status"><i className="excel-legend-sample" />Planned</span>,
     <span key="completed" className="excel-legend-status"><i className="excel-legend-sample completed" />Done</span>,
     <span key="forecast" className="excel-legend-status"><i className="excel-legend-sample forecast" />Forecast</span>,
+    <span key="missed" className="excel-legend-status" style={{ color: "#AD0A0A", fontWeight: 700 }}>! Missed</span>,
     <span key="divider" className="excel-legend-divider" aria-hidden="true" />,
     ...Object.entries(EVENT_COLORS).map(([code, { bg, label }]) => (
       <span key={code} className="excel-legend-chip" style={{ "--chip-accent": bg }} title={label}><i />{code}</span>
@@ -2400,6 +2431,7 @@ function ExcelScheduleView({ data, onOpenVehicle }) {
                           }
                           const isCompleted = ev.kind === "completed";
                           const isForecast = ev.kind === "forecast";
+                          const isMissed = ev.kind === "missed";
                           const accent = (EVENT_COLORS[ev.code] || EVENT_COLORS.SRV).bg;
                           const urgency = isCompleted || isForecast ? "" : chipUrgency(daysFromToday(ev.dueDateRaw));
                           const chipDateRaw = isCompleted ? (ev.completedDateRaw || ev.dueDateRaw) : ev.dueDateRaw;
@@ -2409,12 +2441,15 @@ function ExcelScheduleView({ data, onOpenVehicle }) {
                             <button
                               key={ev.id}
                               className={`excel-event-chip${isCompleted ? " completed" : ""}${isForecast ? " forecast" : ""}${urgency}`}
+                              data-missed={isMissed || undefined}
                               style={{ "--chip-accent": accent }}
                               title={isCompleted
                                 ? undefined
                                 : isForecast
                                   ? `${ev.type} · ${ev.dueDate} · 12-month planning forecast — Click to open vehicle details`
-                                  : `${ev.type} · ${ev.dueDate} · ${ev.dueLabel} — Click to mark done or attach document`}
+                                  : isMissed
+                                    ? `${ev.type} · ${ev.dueDate} · MISSED (not done) — Click to record it`
+                                    : `${ev.type} · ${ev.dueDate} · ${ev.dueLabel} — Click to mark done or attach document`}
                               onMouseEnter={isCompleted ? (e) => {
                                 clearTimeout(popoverTimer.current);
                                 const rect = e.currentTarget.getBoundingClientRect();
@@ -2434,7 +2469,7 @@ function ExcelScheduleView({ data, onOpenVehicle }) {
                                   assetType,
                                   ev.type,
                                   ev.scheduledDateRaw || ev.dueDateRaw,
-                                  ev.kind || "upcoming",
+                                  isMissed ? "upcoming" : ev.kind || "upcoming",
                                   ev.jobId
                                 );
                               }}

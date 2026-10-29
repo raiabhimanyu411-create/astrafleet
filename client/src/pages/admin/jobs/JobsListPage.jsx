@@ -11,6 +11,7 @@ import { StatusPill } from "../../../components/StatusPill";
 import { DriverChatWidget } from "../DriverChatWidget";
 import { AdminWorkspaceLayout } from "../AdminWorkspaceLayout";
 import { getAuthSession } from "../../../utils/authSession";
+import { dispatchBlockLabel, withComplianceOverride } from "../../../utils/complianceOverride";
 import { formatUkWall, ukMinutes, ukNow } from "../../../utils/ukJobTime";
 import JobRouteMapModal from "./JobRouteMapModal";
 import "./JobsListPage.css";
@@ -66,6 +67,7 @@ const STOP_STATUS_TONE = {
 
 const JOB_TABS = [
   { key: "upcoming", label: "Upcoming" },
+  { key: "overdue", label: "Overdue / missed" },
   { key: "intransit", label: "In transit" },
   { key: "completed", label: "Completed" },
   { key: "history", label: "All jobs" }
@@ -73,6 +75,8 @@ const JOB_TABS = [
 
 const TAB_STATUSES = {
   upcoming: ["planned", "loading"],
+  // Not started, and the collection date is already behind us. These never appear under Upcoming.
+  overdue: ["planned", "loading"],
   intransit: ["active"],
   completed: ["completed"],
   history: ["planned", "loading", "active", "completed", "blocked", "failed", "cancelled"]
@@ -151,6 +155,20 @@ function trolleyTone(trolley, assigned) {
   if (trolley.status === "maintenance") return "danger";
   if (trolley.status === "available") return "success";
   return "warning";
+}
+
+// Open job with no driver or no truck. Same rule as "Assignment gaps" on the server.
+function isAssignmentGap(job) {
+  return ["planned", "loading", "active"].includes(job.status) && (!job.driverAssigned || !job.vehicleAssigned);
+}
+
+function jobDateKey(job) {
+  return toDateInputValue(job.departureRaw || job.loadingDoneTime || job.etaRaw);
+}
+
+function isOverdueToStart(job) {
+  const jobDate = jobDateKey(job);
+  return ["planned", "loading"].includes(job.status) && Boolean(jobDate) && jobDate < ukNow().slice(0, 10);
 }
 
 function isPodPending(job) {
@@ -544,8 +562,11 @@ export function JobsListPage() {
 
   const hasActiveFilters = Boolean(search || statusFilter || priorityFilter || attentionFilter || showUnassignedOnly || selectedDate);
 
+  // The week selector applies to Upcoming and In transit only; it is hidden on the other tabs.
   function jobMatchesDateRange(job, tabId) {
-    const jobDate = toDateInputValue(job.departureRaw || job.loadingDoneTime || job.etaRaw);
+    const jobDate = jobDateKey(job);
+    if (tabId === "overdue") return isOverdueToStart(job) && (!selectedDate || jobDate === selectedDate);
+    if (tabId === "upcoming" && isOverdueToStart(job)) return false;
     if (selectedDate) return jobDate === selectedDate;
     if (jobDate && tabId !== "completed" && tabId !== "history") {
       return jobDate >= weekRange.start && jobDate <= weekRange.end;
@@ -560,7 +581,7 @@ export function JobsListPage() {
       if (!statusSet.has(job.status)) return false;
       if (statusFilter && job.status !== statusFilter) return false;
       if (priorityFilter && job.priority !== priorityFilter) return false;
-      if (showUnassignedOnly && job.driverAssigned && job.vehicleAssigned) return false;
+      if (showUnassignedOnly && !isAssignmentGap(job)) return false;
 
       if (!jobMatchesDateRange(job, tab)) return false;
 
@@ -575,7 +596,7 @@ export function JobsListPage() {
   const filteredJobs = useMemo(() => {
     return baseFilteredJobs.filter(job => {
       if (attentionFilter === "eta_risk" && !job.etaRisk) return false;
-      if (attentionFilter === "unassigned" && (job.driverAssigned && job.vehicleAssigned)) return false;
+      if (attentionFilter === "unassigned" && !isAssignmentGap(job)) return false;
       if (attentionFilter === "pod_pending" && !isPodPending(job)) return false;
       if (attentionFilter === "blocked" && job.status !== "blocked") return false;
       if (attentionFilter === "critical" && job.priority !== "critical") return false;
@@ -589,6 +610,7 @@ export function JobsListPage() {
     const all = data?.jobs || [];
     return {
       upcoming: all.filter(j => TAB_STATUSES.upcoming.includes(j.status) && jobMatchesDateRange(j, "upcoming")).length,
+      overdue: all.filter(j => TAB_STATUSES.overdue.includes(j.status) && jobMatchesDateRange(j, "overdue")).length,
       intransit: all.filter(j => TAB_STATUSES.intransit.includes(j.status) && jobMatchesDateRange(j, "intransit")).length,
       completed: all.filter(j => TAB_STATUSES.completed.includes(j.status) && jobMatchesDateRange(j, "completed")).length,
       history: all.filter(j => TAB_STATUSES.history.includes(j.status) && jobMatchesDateRange(j, "history")).length
@@ -597,7 +619,7 @@ export function JobsListPage() {
 
   const attentionCounts = useMemo(() => ({
     eta_risk:    baseFilteredJobs.filter(j => j.etaRisk).length,
-    unassigned:  baseFilteredJobs.filter(j => !j.driverAssigned || !j.vehicleAssigned).length,
+    unassigned:  baseFilteredJobs.filter(isAssignmentGap).length,
     pod_pending: baseFilteredJobs.filter(isPodPending).length,
     blocked:     baseFilteredJobs.filter(j => j.status === "blocked").length,
     critical:    baseFilteredJobs.filter(j => j.priority === "critical").length
@@ -610,7 +632,7 @@ export function JobsListPage() {
     setError("");
     setBusyId(`${busyKey}-${job.id}`);
     try {
-      await updateJobAssignment(job.id, payload);
+      await withComplianceOverride(extra => updateJobAssignment(job.id, { ...payload, ...extra }));
       await load();
     } catch (err) {
       setError(err?.response?.data?.message || fallbackMessage);
@@ -621,9 +643,14 @@ export function JobsListPage() {
 
   async function setStatus(job, status) {
     setError("");
+    let reason = status === "blocked" ? "Blocked from dispatch board" : undefined;
+    if (["failed", "cancelled"].includes(status)) {
+      reason = (window.prompt(`Why is job ${job.code || ""} ${status}?`) || "").trim();
+      if (!reason) return;
+    }
     setBusyId(job.id);
     try {
-      await updateJobStatus(job.id, { status, reason: status === "blocked" ? "Blocked from dispatch board" : undefined });
+      await updateJobStatus(job.id, { status, reason });
       await load();
     } catch (err) {
       setError(err?.response?.data?.message || "Job status could not be updated.");
@@ -684,7 +711,7 @@ export function JobsListPage() {
     setReplaceErr("");
     setBusyId(replaceTarget.id);
     try {
-      await replaceJobVehicle(replaceTarget.id, { vehicle_id: Number(replaceVehicleId), reason: replaceReason.trim() });
+      await withComplianceOverride(extra => replaceJobVehicle(replaceTarget.id, { vehicle_id: Number(replaceVehicleId), reason: replaceReason.trim(), ...extra }));
       setReplaceTarget(null);
       setReplaceVehicleId("");
       setReplaceReason("");
@@ -776,11 +803,13 @@ export function JobsListPage() {
             />
           </label>
 
-          <div className="jb-week" aria-label="Week">
-            <button type="button" aria-label="Previous week" onClick={() => { setSelectedDate(""); setWeekOffset(o => o - 1); }}>‹</button>
-            <span>{selectedDate ? fmtDateInputLabel(selectedDate) : weekLabel}</span>
-            <button type="button" aria-label="Next week" onClick={() => { setSelectedDate(""); setWeekOffset(o => o + 1); }}>›</button>
-          </div>
+          {["upcoming", "intransit"].includes(tab) && (
+            <div className="jb-week" aria-label="Week">
+              <button type="button" aria-label="Previous week" onClick={() => { setSelectedDate(""); setWeekOffset(o => o - 1); }}>‹</button>
+              <span>{selectedDate ? fmtDateInputLabel(selectedDate) : weekLabel}</span>
+              <button type="button" aria-label="Next week" onClick={() => { setSelectedDate(""); setWeekOffset(o => o + 1); }}>›</button>
+            </div>
+          )}
 
           <input
             className="jb-input"
@@ -855,7 +884,8 @@ export function JobsListPage() {
               <p>
                 {hasActiveFilters
                   ? "No jobs match your current filters."
-                  : tab === "upcoming" ? "No upcoming jobs."
+                  : tab === "upcoming" ? "No upcoming jobs this week."
+                  : tab === "overdue" ? "No overdue jobs. Every planned job is still ahead of its collection date."
                   : tab === "intransit" ? "No jobs currently in transit."
                   : tab === "completed" ? "No completed jobs."
                   : "No jobs found."}
@@ -863,7 +893,7 @@ export function JobsListPage() {
               {hasActiveFilters && (
                 <button className="header-action-button" type="button" onClick={clearAllFilters}>Clear Filters</button>
               )}
-              {tab === "upcoming" && !hasActiveFilters && (
+              {tab === "upcoming" && !hasActiveFilters && !(data?.jobs || []).length && (
                 <button className="af-submit-btn" type="button" onClick={() => navigate("/admin/jobs/new")}>
                   Create First Job
                 </button>
@@ -1246,6 +1276,7 @@ export function JobsListPage() {
                               <strong>{abbrevAddr(job.dropAddress)}</strong>
                               <small>{job.dropAddress !== "—" ? job.dropAddress : "Address not set"}</small>
                               {job.deadline !== "—" && <small className="relay-dock-label">Deadline: {job.deadline}</small>}
+                              {job.planAfterDeadline && <small className="relay-dock-label" style={{ color: "#AD0A0A", fontWeight: 700 }}>Plan arrives after the deadline</small>}
                             </div>
                           </div>
                           <div className="relay-stop-equipment">
@@ -1445,12 +1476,12 @@ export function JobsListPage() {
                         <div className="relay-economics-col">
                           <span className="relay-economics-label">Driver Cost</span>
                           <strong>{fmtGBP(job.economics.driverCost)}</strong>
-                          <small>{fmtMins(job.economics.totalMins)} {job.economics.durationSource === "actual" ? "actual" : "planned"} time</small>
+                          <small>{fmtMins(job.economics.totalMins)} {job.economics.durationSource === "actual" ? "actual" : "planned"} time{job.economics.actualTimeRejected ? " (recorded times impossible)" : ""}</small>
                         </div>
                         <div className="relay-economics-col">
                           <span className="relay-economics-label">Fleet Cost</span>
                           <strong>{fmtGBP(job.economics.fleetCost)}</strong>
-                          <small>{job.economics.fleetCharged ? `${fmtGBP(job.economics.fleetCostPerHour)}/hr` : "No truck assigned"}</small>
+                          <small>{`${fmtGBP(job.economics.fleetCostPerHour)}/hr`}</small>
                         </div>
                         {Number(job.economics.recordedExpenses || 0) > 0 && (
                           <div className="relay-economics-col">
@@ -1521,7 +1552,7 @@ export function JobsListPage() {
                               const busyElsewhere = vehicle.busy_trip_id && Number(vehicle.busy_trip_id) !== Number(job.id);
                               return (
                                 <option key={vehicle.id} value={vehicle.id} disabled={busyElsewhere}>
-                                  {vehicle.registration_number} · {vehicle.truck_type || vehicle.model_name || "Truck"} · {busyElsewhere ? `busy on ${vehicle.busy_trip_code}` : vehicle.status}
+                                  {vehicle.registration_number} · {vehicle.truck_type || vehicle.model_name || "Truck"} · {busyElsewhere ? `busy on ${vehicle.busy_trip_code}` : vehicle.status}{dispatchBlockLabel(vehicle)}
                                 </option>
                               );
                             })}
@@ -1540,7 +1571,7 @@ export function JobsListPage() {
                               const busyElsewhere = trailer.busy_trip_id && Number(trailer.busy_trip_id) !== Number(job.id);
                               return (
                                 <option key={trailer.id} value={trailer.id} disabled={busyElsewhere}>
-                                  {trailer.trailer_code || trailer.registration_number} · {trailer.trailer_type || "Trailer"} · {busyElsewhere ? `busy on ${trailer.busy_trip_code}` : trailer.status}
+                                  {trailer.trailer_code || trailer.registration_number} · {trailer.trailer_type || "Trailer"} · {busyElsewhere ? `busy on ${trailer.busy_trip_code}` : trailer.status}{dispatchBlockLabel(trailer)}
                                 </option>
                               );
                             })}
@@ -1743,7 +1774,7 @@ export function JobsListPage() {
                   .filter(v => v.status === "available" && !v.busy_trip_id && Number(v.id) !== Number(replaceTarget.vehicleId))
                   .map(v => (
                     <option key={v.id} value={v.id}>
-                      {v.registration_number} · {v.truck_type || v.model_name || "Truck"}
+                      {v.registration_number} · {v.truck_type || v.model_name || "Truck"}{dispatchBlockLabel(v)}
                     </option>
                   ))}
               </select>

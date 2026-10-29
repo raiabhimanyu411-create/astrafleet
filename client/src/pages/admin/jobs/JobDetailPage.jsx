@@ -449,7 +449,7 @@ export function JobDetailPage() {
                   <DetailField label="Collection departure (UK)" value={data.schedule.collectionDeparture} />
                   <DetailField label="Planned delivery arrival (UK)" value={data.schedule.plannedDeliveryArrival} />
                   <DetailField label="Planned delivery departure (UK)" value={data.schedule.plannedDeliveryDeparture} />
-                  <DetailField label="Delivery deadline" value={data.schedule.deliveryDeadline} />
+                  <DetailField label="Delivery deadline" value={data.schedule.planAfterDeadline ? `${data.schedule.deliveryDeadline} · plan arrives after this` : data.schedule.deliveryDeadline} />
                   <DetailField label="Current ETA (UK)" value={data.schedule.eta} />
                   <DetailField label="Actual collection departure (UK)" value={data.schedule.actualDeparture} />
                   <DetailField label="Actual delivery arrival (UK)" value={data.schedule.actualArrival} />
