@@ -15,13 +15,13 @@
   --mx-text-3: #616161;
   --mx-brand: #0F6CBD;
   --mx-brand-hover: #115EA3;
-  --mx-brand-tint: #EBF3FC;
-  --mx-success: #107C10;
-  --mx-success-tint: #F1FAF1;
-  --mx-warning: #BC4B09;
+  --mx-brand-tint: #EAF3FC;
+  --mx-success: #1A7F37;
+  --mx-success-tint: #E9F7EC;
+  --mx-warning: #B45309;
   --mx-warning-tint: #FFF9F5;
-  --mx-danger: #B10E1C;
-  --mx-danger-tint: #FDF3F4;
+  --mx-danger: #C62828;
+  --mx-danger-tint: #FDECEC;
   --mx-shadow-2: 0 1px 2px rgba(0, 0, 0, 0.12), 0 0 2px rgba(0, 0, 0, 0.1);
   --mx-shadow-28: 0 14px 28px rgba(0, 0, 0, 0.18), 0 0 8px rgba(0, 0, 0, 0.12);
 }
@@ -39,7 +39,7 @@
   background: var(--mx-surface);
   color: var(--mx-text);
   font: inherit;
-  font-size: 0.86rem;
+  font-size: 12px;
   font-weight: 600;
   white-space: nowrap;
   cursor: pointer;
@@ -82,7 +82,7 @@
   background: var(--mx-surface);
   color: var(--mx-text);
   font: inherit;
-  font-size: 0.86rem;
+  font-size: 12px;
 }
 
 textarea.cu-input {
@@ -135,13 +135,13 @@ textarea.cu-input {
 .cu-summary-card span {
   overflow: hidden;
   color: var(--mx-text-3);
-  font-size: 0.8rem;
+  font-size: 12px;
   font-weight: 600;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.cu-summary-card strong { font-size: 1.2rem; font-weight: 700; }
+.cu-summary-card strong { font-size: 16px; font-weight: 700; }
 .cu-summary-card:hover { background: var(--mx-surface-3); }
 .cu-summary-card.success { border-left-color: var(--mx-success); }
 .cu-summary-card.warning { border-left-color: var(--mx-warning); }
@@ -191,17 +191,17 @@ textarea.cu-input {
   background: transparent;
   color: var(--mx-text);
   font: inherit;
-  font-size: 0.86rem;
+  font-size: 12px;
 }
 
-.cu-count { color: var(--mx-text-3); font-size: 0.8rem; white-space: nowrap; }
+.cu-count { color: var(--mx-text-3); font-size: 12px; white-space: nowrap; }
 
 .cu-table-shell { overflow-x: auto; }
 
 .cu-table {
   width: 100%;
   border-collapse: collapse;
-  font-size: 0.86rem;
+  font-size: 12px;
 }
 
 .cu-table th {
@@ -209,7 +209,7 @@ textarea.cu-input {
   border-bottom: 1px solid var(--mx-border);
   background: var(--mx-surface-2);
   color: var(--mx-text-3);
-  font-size: 0.78rem;
+  font-size: 12px;
   font-weight: 600;
   letter-spacing: 0;
   text-align: left;
@@ -228,12 +228,12 @@ textarea.cu-input {
 .cu-table tbody tr { cursor: pointer; }
 .cu-table tbody tr:hover { background: var(--mx-surface-2); }
 .cu-table tbody tr:last-child td { border-bottom: 0; }
-.cu-table td small { display: block; color: var(--mx-text-3); font-size: 0.78rem; }
+.cu-table td small { display: block; color: var(--mx-text-3); font-size: 12px; }
 .cu-table td .warning { color: var(--mx-warning); font-weight: 600; }
 .cu-table td .danger { color: var(--mx-danger); font-weight: 600; }
 
 .cu-open-cell { width: 1%; color: var(--mx-text-3); }
-.cu-chevron { font-size: 1.2rem; }
+.cu-chevron { font-size: 16px; }
 
 .cu-empty-row td {
   padding: 32px 12px;
@@ -273,11 +273,11 @@ textarea.cu-input {
   border-radius: 4px;
   background: var(--mx-brand-tint);
   color: var(--mx-brand);
-  font-size: 0.78rem;
+  font-size: 12px;
   font-weight: 700;
 }
 
-.cu-avatar.large { width: 44px; height: 44px; font-size: 0.95rem; }
+.cu-avatar.large { width: 44px; height: 44px; font-size: 13px; }
 
 .cu-badge {
   display: inline-flex;
@@ -287,7 +287,7 @@ textarea.cu-input {
   border-radius: 999px;
   background: var(--mx-surface-3);
   color: var(--mx-text-2);
-  font-size: 0.78rem;
+  font-size: 12px;
   font-weight: 600;
   white-space: nowrap;
 }
@@ -344,8 +344,8 @@ textarea.cu-input {
   border-bottom: 1px solid var(--mx-border);
 }
 
-.cu-panel-head h2 { margin: 0; font-size: 1.15rem; font-weight: 600; }
-.cu-panel-head p { display: flex; align-items: center; gap: 6px; margin: 4px 0 0; color: var(--mx-text-3); font-size: 0.84rem; }
+.cu-panel-head h2 { margin: 0; font-size: 16px; font-weight: 600; }
+.cu-panel-head p { display: flex; align-items: center; gap: 6px; margin: 4px 0 0; color: var(--mx-text-3); font-size: 12px; }
 
 .cu-icon-btn {
   width: 32px;
@@ -354,7 +354,7 @@ textarea.cu-input {
   border-radius: 4px;
   background: transparent;
   color: var(--mx-text-2);
-  font-size: 1.4rem;
+  font-size: 20px;
   line-height: 1;
   cursor: pointer;
 }
@@ -382,8 +382,8 @@ textarea.cu-input {
 
 .cu-figures div:not(:nth-child(3n)) { border-right: 1px solid var(--mx-border); }
 .cu-figures div:nth-last-child(-n + 3) { border-bottom: 0; }
-.cu-figures dt { color: var(--mx-text-3); font-size: 0.76rem; font-weight: 600; }
-.cu-figures dd { margin: 2px 0 0; font-size: 1rem; font-weight: 600; font-variant-numeric: tabular-nums; }
+.cu-figures dt { color: var(--mx-text-3); font-size: 12px; font-weight: 600; }
+.cu-figures dd { margin: 2px 0 0; font-size: 14px; font-weight: 600; font-variant-numeric: tabular-nums; }
 .cu-figures dd.warning { color: var(--mx-warning); }
 .cu-figures dd.danger { color: var(--mx-danger); }
 
@@ -393,7 +393,7 @@ textarea.cu-input {
   border-top: 1px solid var(--mx-border);
 }
 
-.cu-section h3 { margin: 0 0 12px; font-size: 0.92rem; font-weight: 600; }
+.cu-section h3 { margin: 0 0 12px; font-size: 13px; font-weight: 600; }
 
 .cu-section-head {
   display: flex;
@@ -402,7 +402,7 @@ textarea.cu-input {
   gap: 8px;
 }
 
-.cu-save-state { color: var(--mx-text-3); font-size: 0.78rem; }
+.cu-save-state { color: var(--mx-text-3); font-size: 12px; }
 
 .cu-fields {
   display: grid;
@@ -412,7 +412,7 @@ textarea.cu-input {
 
 .cu-field { display: grid; gap: 4px; min-width: 0; }
 .cu-field.wide { grid-column: 1 / -1; }
-.cu-field > span { color: var(--mx-text-2); font-size: 0.8rem; font-weight: 600; }
+.cu-field > span { color: var(--mx-text-2); font-size: 12px; font-weight: 600; }
 
 .cu-panel-foot {
   display: flex;

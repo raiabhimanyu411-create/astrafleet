@@ -5,24 +5,27 @@
 ═══════════════════════════════════════════════════════════════════════════ */
 
 .overview-page-shell {
-  --mx-border: #E6E8EC;
-  --mx-border-strong: #D4D8DE;
-  --mx-surface: #FFFFFF;
-  --mx-surface-2: #F8F9FB;
-  --mx-surface-3: #F1F3F6;
-  --mx-text: #1F2328;
-  --mx-text-2: #3D444D;
-  --mx-text-3: #656D76;
-  --mx-brand: #0F6CBD;
-  --mx-brand-hover: #115EA3;
-  --mx-brand-tint: #EBF3FC;
-  --mx-success: #107C10;
-  --mx-success-tint: #F1FAF1;
-  --mx-warning: #BC4B09;
-  --mx-warning-tint: #FFF7F0;
-  --mx-danger: #B10E1C;
-  --mx-danger-tint: #FDF3F4;
-  --mx-shadow: 0 1px 2px rgba(16, 24, 40, 0.05);
+  /* Aliases of the global tokens in index.css */
+  --mx-border: var(--border);
+  --mx-border-strong: var(--border-strong);
+  --mx-surface: var(--surface);
+  --mx-surface-2: var(--surface-2);
+  --mx-surface-3: var(--surface-3);
+  --mx-text: var(--text);
+  --mx-text-2: var(--text-soft);
+  --mx-text-3: var(--muted);
+  --mx-brand: var(--primary);
+  --mx-brand-hover: var(--primary-hover);
+  --mx-brand-tint: var(--primary-soft);
+  --mx-success: var(--success);
+  --mx-success-tint: var(--success-soft);
+  --mx-warning: var(--warning);
+  --mx-warning-tint: var(--warning-soft);
+  --mx-danger: var(--danger);
+  --mx-danger-tint: var(--danger-soft);
+  --mx-info: var(--info);
+  --mx-info-tint: var(--info-soft);
+  --mx-shadow: none;
   --ov-grid: #EEF0F3;
   --ov-axis: #C9CED6;
 }
@@ -54,13 +57,13 @@
 .ov-head-date {
   margin: 0;
   color: var(--mx-text-3);
-  font-size: 0.8rem;
+  font-size: 12px;
   font-weight: 600;
 }
 
 .ov-head h1 {
   margin: 4px 0 0;
-  font-size: 1.6rem;
+  font-size: 28px;
   font-weight: 700;
   letter-spacing: -0.015em;
   color: var(--mx-text);
@@ -69,7 +72,7 @@
 .ov-head-summary {
   margin: 4px 0 0;
   color: var(--mx-text-3);
-  font-size: 0.9rem;
+  font-size: 13px;
 }
 
 .ov-head-actions {
@@ -89,7 +92,7 @@
   background: none;
   color: var(--mx-text-3);
   font: inherit;
-  font-size: 0.82rem;
+  font-size: 12px;
   cursor: pointer;
 }
 
@@ -99,22 +102,22 @@
   width: 8px;
   height: 8px;
   border-radius: 50%;
-  background: #22A447;
-  box-shadow: 0 0 0 3px rgba(34, 164, 71, 0.15);
+  background: var(--success);
+  box-shadow: 0 0 0 3px rgba(26, 127, 55, 0.15);
 }
 
 .ov-btn {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  height: 34px;
+  height: 36px;
   padding: 0 14px;
   border: 1px solid var(--mx-border-strong);
-  border-radius: 6px;
+  border-radius: 8px;
   background: var(--mx-surface);
   color: var(--mx-text);
   font: inherit;
-  font-size: 0.86rem;
+  font-size: 12px;
   font-weight: 600;
   text-decoration: none;
   cursor: pointer;
@@ -130,8 +133,7 @@
 .ov-sync:focus-visible,
 .ov-link:focus-visible,
 .ov-kpi:focus-visible,
-.ov-segment button:focus-visible,
-.ov-tools summary:focus-visible {
+.ov-segment button:focus-visible {
   outline: 2px solid var(--mx-brand);
   outline-offset: 2px;
 }
@@ -149,7 +151,7 @@
   min-width: 0;
   padding: 16px 18px;
   border: 1px solid var(--mx-border);
-  border-radius: 10px;
+  border-radius: 12px;
   background: var(--mx-surface);
   box-shadow: var(--mx-shadow);
   color: var(--mx-text);
@@ -157,7 +159,7 @@
   transition: border-color 0.15s, box-shadow 0.15s;
 }
 
-.ov-kpi:hover { border-color: var(--mx-border-strong); box-shadow: 0 4px 12px rgba(16, 24, 40, 0.06); }
+.ov-kpi:hover { border-color: var(--mx-border-strong); }
 
 .ov-kpi-top {
   display: flex;
@@ -168,7 +170,7 @@
 
 .ov-kpi-label {
   color: var(--mx-text-3);
-  font-size: 0.84rem;
+  font-size: 12px;
   font-weight: 600;
 }
 
@@ -185,7 +187,7 @@
 .ov-kpi-icon svg { width: 17px; height: 17px; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
 
 .ov-kpi-value {
-  font-size: 1.85rem;
+  font-size: 28px;
   font-weight: 700;
   line-height: 1.1;
   letter-spacing: -0.02em;
@@ -196,12 +198,12 @@
 .ov-kpi-hint {
   overflow: hidden;
   color: var(--mx-text-3);
-  font-size: 0.78rem;
+  font-size: 12px;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.ov-kpi.flagged { border-color: #F3C9CC; background: linear-gradient(180deg, #FFFBFB, #fff); }
+.ov-kpi.flagged { border-color: var(--danger-ring); background: var(--mx-surface); }
 .ov-kpi.flagged .ov-kpi-value { color: var(--mx-danger); }
 .ov-kpi.flagged .ov-kpi-icon { background: var(--mx-danger-tint); color: var(--mx-danger); }
 
@@ -224,7 +226,7 @@
   min-width: 0;
   overflow: hidden;
   border: 1px solid var(--mx-border);
-  border-radius: 10px;
+  border-radius: 12px;
   background: var(--mx-surface);
   box-shadow: var(--mx-shadow);
 }
@@ -242,14 +244,14 @@
   align-items: center;
   gap: 8px;
   margin: 0;
-  font-size: 0.98rem;
+  font-size: 14px;
   font-weight: 650;
 }
 
 .ov-card-sub {
   margin: 2px 0 0;
   color: var(--mx-text-3);
-  font-size: 0.82rem;
+  font-size: 12px;
 }
 
 .ov-count {
@@ -258,7 +260,7 @@
   border-radius: 999px;
   background: var(--mx-surface-3);
   color: var(--mx-text-2);
-  font-size: 0.74rem;
+  font-size: 12px;
   font-weight: 600;
   line-height: 20px;
   text-align: center;
@@ -266,7 +268,7 @@
 
 .ov-link {
   color: var(--mx-brand);
-  font-size: 0.83rem;
+  font-size: 12px;
   font-weight: 600;
   text-decoration: none;
   white-space: nowrap;
@@ -278,7 +280,7 @@
   margin: 0;
   padding: 2px 18px 18px;
   color: var(--mx-text-3);
-  font-size: 0.86rem;
+  font-size: 12px;
 }
 
 /* Segmented toggle (chart) */
@@ -297,7 +299,7 @@
   background: none;
   color: var(--mx-text-3);
   font: inherit;
-  font-size: 0.82rem;
+  font-size: 12px;
   font-weight: 600;
   cursor: pointer;
 }
@@ -352,13 +354,13 @@
 .ov-attention-item.success .ov-attention-icon { background: var(--mx-success-tint); color: var(--mx-success); }
 
 .ov-attention-item > div { min-width: 0; }
-.ov-attention-item strong { display: block; font-size: 0.88rem; font-weight: 600; }
+.ov-attention-item strong { display: block; font-size: 12px; font-weight: 600; }
 
 .ov-attention-item p {
   margin: 2px 0 0;
   overflow: hidden;
   color: var(--mx-text-3);
-  font-size: 0.82rem;
+  font-size: 12px;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -369,7 +371,7 @@
 .ov-table {
   width: 100%;
   border-collapse: collapse;
-  font-size: 0.86rem;
+  font-size: 12px;
 }
 
 .ov-table th {
@@ -378,7 +380,7 @@
   border-bottom: 1px solid var(--mx-border);
   background: var(--mx-surface-2);
   color: var(--mx-text-3);
-  font-size: 0.77rem;
+  font-size: 12px;
   font-weight: 600;
   text-align: left;
   white-space: nowrap;
@@ -415,13 +417,13 @@
 
 .ov-list li:first-child { border-top: 0; }
 .ov-list li > div { min-width: 0; }
-.ov-list strong { display: block; font-size: 0.87rem; font-weight: 600; }
+.ov-list strong { display: block; font-size: 12px; font-weight: 600; }
 
 .ov-list small {
   display: block;
   overflow: hidden;
   color: var(--mx-text-3);
-  font-size: 0.78rem;
+  font-size: 12px;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -443,7 +445,7 @@
   border-radius: 999px;
   background: var(--mx-surface-3);
   color: var(--mx-text-2);
-  font-size: 0.75rem;
+  font-size: 12px;
   font-weight: 600;
   white-space: nowrap;
 }
@@ -461,9 +463,11 @@
 .ov-badge.success { background: var(--mx-success-tint); color: var(--mx-success); }
 .ov-badge.warning { background: var(--mx-warning-tint); color: var(--mx-warning); }
 .ov-badge.danger { background: var(--mx-danger-tint); color: var(--mx-danger); }
+.ov-badge.info { background: var(--mx-info-tint); color: var(--mx-info); }
+.ov-badge.neutral { background: var(--neutral-soft); color: var(--neutral-text); }
 
 /* ── Charts ───────────────────────────────────────────────────────────────── */
-.ov-legend { display: flex; gap: 16px; margin: 0 18px 6px; color: var(--mx-text-2); font-size: 0.8rem; font-weight: 600; }
+.ov-legend { display: flex; gap: 16px; margin: 0 18px 6px; color: var(--mx-text-2); font-size: 12px; font-weight: 600; }
 .ov-legend span { display: inline-flex; align-items: center; gap: 6px; }
 .ov-legend i { width: 10px; height: 10px; border-radius: 3px; }
 
@@ -471,7 +475,7 @@
 .ovc-chart svg { display: block; overflow: visible; }
 .ovc-grid { stroke: var(--ov-grid); stroke-width: 1; }
 .ovc-baseline { stroke: var(--ov-axis); stroke-width: 1; }
-.ovc-tick { fill: var(--mx-text-3); font-size: 11px; font-weight: 600; }
+.ovc-tick { fill: var(--mx-text-3); font-size: 12px; font-weight: 600; }
 .ovc-hit { fill: transparent; cursor: default; }
 .ovc-hit.active { fill: rgba(15, 108, 189, 0.06); }
 
@@ -485,7 +489,7 @@
   inset: 40% 0 auto;
   margin: 0;
   color: var(--mx-text-3);
-  font-size: 0.86rem;
+  font-size: 12px;
   text-align: center;
   pointer-events: none;
 }
@@ -502,11 +506,11 @@
   background: #fff;
   box-shadow: 0 8px 20px rgba(0, 0, 0, 0.12);
   color: var(--mx-text);
-  font-size: 0.78rem;
+  font-size: 12px;
   pointer-events: none;
 }
 
-.ovc-tooltip strong { font-size: 0.8rem; }
+.ovc-tooltip strong { font-size: 12px; }
 .ovc-tooltip span { display: flex; align-items: center; gap: 6px; color: var(--mx-text-2); }
 .ovc-tooltip i { width: 8px; height: 8px; border-radius: 2px; }
 .ovc-tooltip b { margin-left: auto; color: var(--mx-text); }
@@ -534,13 +538,13 @@
   padding: 0;
   list-style: none;
   color: var(--mx-text-3);
-  font-size: 0.8rem;
+  font-size: 12px;
   font-weight: 600;
 }
 
 .ovc-meter-legend li { display: inline-flex; align-items: center; gap: 6px; }
 .ovc-meter-legend i { width: 8px; height: 8px; border-radius: 50%; }
-.ovc-meter-legend b { color: var(--mx-text); font-size: 0.9rem; }
+.ovc-meter-legend b { color: var(--mx-text); font-size: 13px; }
 
 .ovc-map-wrap { position: relative; }
 .ovc-map { height: 220px; border-top: 1px solid var(--mx-border); border-bottom: 1px solid var(--mx-border); }
@@ -552,7 +556,7 @@
   z-index: 500;
   margin: 0;
   color: var(--mx-text-2);
-  font-size: 0.86rem;
+  font-size: 12px;
   font-weight: 600;
   text-align: center;
 }
@@ -567,7 +571,7 @@
 }
 
 .ov-truck-list li + li { border-top: 1px solid var(--mx-border); }
-.ov-truck-driver { flex: 1; min-width: 0; overflow: hidden; color: var(--mx-text-2); font-size: 0.84rem; text-overflow: ellipsis; white-space: nowrap; }
+.ov-truck-driver { flex: 1; min-width: 0; overflow: hidden; color: var(--mx-text-2); font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
 
 .ov-plate {
   flex: none;
@@ -577,43 +581,8 @@
   background: #FFD200;
   color: #111;
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: 0.75rem;
+  font-size: 12px;
   font-weight: 700;
-}
-
-/* ── Driver chat & account (collapsed) ────────────────────────────────────── */
-.ov-tools summary {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  padding: 14px 18px;
-  list-style: none;
-  cursor: pointer;
-}
-
-.ov-tools summary::-webkit-details-marker { display: none; }
-.ov-tools summary:hover { background: var(--mx-surface-2); }
-.ov-tools summary strong { display: block; font-size: 0.93rem; font-weight: 600; }
-.ov-tools summary small { display: block; color: var(--mx-text-3); font-size: 0.8rem; }
-
-.ov-chevron {
-  flex: none;
-  width: 8px;
-  height: 8px;
-  border-right: 2px solid var(--mx-text-3);
-  border-bottom: 2px solid var(--mx-text-3);
-  transform: rotate(45deg);
-  transition: transform 0.15s;
-}
-
-.ov-tools[open] .ov-chevron { transform: rotate(-135deg); }
-
-.ov-tools-body {
-  display: grid;
-  gap: 16px;
-  padding: 16px 18px 18px;
-  border-top: 1px solid var(--mx-border);
 }
 
 /* ── Responsive ───────────────────────────────────────────────────────────── */
@@ -624,12 +593,12 @@
 
 @media (max-width: 560px) {
   .ov-page { gap: 16px; }
-  .ov-head h1 { font-size: 1.3rem; }
+  .ov-head h1 { font-size: 20px; }
   .ov-head-actions { width: 100%; }
   .ov-sync { width: 100%; height: auto; padding: 0; }
   .ov-kpis { gap: 10px; }
   .ov-kpi { padding: 14px; }
-  .ov-kpi-value { font-size: 1.5rem; }
+  .ov-kpi-value { font-size: 20px; }
   .ov-kpi-hint { display: none; }
   .ov-grid,
   .ov-col { gap: 16px; }
@@ -639,4 +608,126 @@
   .ov-dispatch-table td:nth-child(2) { display: none; }
   .ov-table th,
   .ov-table td { padding-inline: 12px; }
+}
+
+
+/* ═══ UI/UX audit pass (Nov 2026) ═════════════════════════════════════════ */
+
+/* Tabular figures only where numbers line up (KPI values, amounts, dates, counts) */
+.ov-kpi-value,
+.ov-count,
+.ov-list-end strong,
+.ov-nowrap,
+.ovc-meter-legend b,
+.ovc-tick { font-variant-numeric: tabular-nums; }
+.ov-kpi-value { font-size: var(--fs-28); }
+.ov-kpi-hint.clear { color: var(--success); font-weight: 500; }
+.ov-card-head h2 { font-size: var(--fs-16); font-weight: 600; }
+
+/* Needs attention: text, then a quiet inline action */
+.ov-attention-text { flex: 1; min-width: 0; }
+
+.ov-row-action {
+  flex: none;
+  align-self: center;
+  height: 28px;
+  padding: 0 10px;
+  border: 1px solid var(--mx-border);
+  border-radius: 6px;
+  background: var(--mx-surface);
+  color: var(--mx-text-2);
+  font-size: var(--fs-12);
+  font-weight: 600;
+  line-height: 26px;
+  text-decoration: none;
+  opacity: 0.85;
+}
+
+.ov-row-action:hover { border-color: var(--mx-brand); color: var(--mx-brand); opacity: 1; }
+.ov-row-action:focus-visible { outline: 2px solid var(--mx-brand); outline-offset: 2px; }
+
+.ov-more {
+  display: block;
+  padding: 10px 18px 12px;
+  border-top: 1px solid var(--mx-border);
+  color: var(--mx-brand);
+  font-size: var(--fs-13);
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.ov-more:hover { background: var(--mx-surface-2); text-decoration: underline; }
+
+/* Dispatch: missing truck / trailer / driver is actionable, so it gets the warning token */
+.ov-assets { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 4px 6px; }
+.ov-assets > span:not(.ov-missing):not(:last-child)::after { content: "·"; margin-left: 6px; color: var(--subtle); }
+
+.ov-missing {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 8px;
+  border-radius: 999px;
+  background: var(--warning-soft);
+  color: var(--warning);
+  font-size: var(--fs-12);
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+/* Fleet rows: driver plus last known location */
+.ov-truck-driver { display: grid; line-height: 1.3; }
+.ov-truck-driver small { overflow: hidden; color: var(--mx-text-3); font-size: var(--fs-12); text-overflow: ellipsis; white-space: nowrap; }
+.ov-faint { color: var(--mx-text-3); }
+
+.ov-overdue { color: var(--danger); font-weight: 600; }
+
+/* Leaflet zoom control in the app's style */
+.ovc-map .leaflet-bar {
+  overflow: hidden;
+  border: 1px solid var(--mx-border);
+  border-radius: 8px;
+  box-shadow: none;
+}
+
+.ovc-map .leaflet-bar a {
+  width: 30px;
+  height: 30px;
+  border-bottom: 1px solid var(--mx-border);
+  background: var(--mx-surface);
+  color: var(--mx-text-2);
+  font: 600 16px/30px "Inter", sans-serif;
+}
+
+.ovc-map .leaflet-bar a:last-child { border-bottom: 0; }
+.ovc-map .leaflet-bar a:hover { background: var(--mx-surface-2); color: var(--mx-brand); }
+.ovc-map .leaflet-bar a.leaflet-disabled { color: #C2C8D0; }
+
+/* Skeleton loaders while the first data load is in flight */
+.ov-skeleton-card { gap: 10px; pointer-events: none; }
+.ov-skeleton-rows { display: grid; gap: 12px; padding: 6px 18px 18px; }
+
+.ov-skel {
+  display: block;
+  height: 12px;
+  border-radius: 6px;
+  background: linear-gradient(90deg, #EEF1F4 0%, #F6F8FA 50%, #EEF1F4 100%);
+  background-size: 200% 100%;
+  animation: ov-skel 1.2s ease-in-out infinite;
+}
+
+.ov-skel-lg { height: 26px; }
+
+@keyframes ov-skel {
+  from { background-position: 200% 0; }
+  to { background-position: -200% 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ov-skel { animation: none; }
+}
+
+@media (max-width: 560px) {
+  .ov-head h1 { font-size: var(--fs-20); }
+  .ov-kpi-value { font-size: var(--fs-20); }
+  .ov-row-action { display: none; }
 }

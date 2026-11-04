@@ -189,7 +189,6 @@ export function PanelLayout({
 
         <footer className="sidebar-footer">
           <p>© AstraFleet 2026 · All rights reserved</p>
-          <small>Designed &amp; developed by <strong>Devmora Technology</strong></small>
         </footer>
       </aside>
 

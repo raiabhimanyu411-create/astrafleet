@@ -1,58 +1,66 @@
 :root {
   color-scheme: light;
 
+  /* ── Design tokens (UI/UX audit, Nov 2026) ──────────────────────────────
+     One primary blue, one value per status. Chips, charts and map pins all
+     read from these, so the same status always has the same colour. */
+
   /* Brand */
-  --brand-navy:     #0F1B2A;
-  --primary:        #0972D3;
-  --primary-hover:  #065AA8;
-  --primary-soft:   #F0FBFF;
-  --primary-ring:   rgba(9, 114, 211, 0.22);
+  --brand-navy:     #0B1726;
+  --sidebar:        #0B1726;
+  --primary:        #0F6CBD;
+  --primary-hover:  #115EA3;
+  --primary-soft:   #EAF3FC;
+  --primary-ring:   rgba(15, 108, 189, 0.2);
 
   /* Surface */
-  --bg:             #F4F4F4;
-  --surface:        #ffffff;
-  --surface-2:      #FAFAFA;
-  --surface-3:      #F4F4F4;
+  --bg:             #F6F8FA;
+  --surface:        #FFFFFF;
+  --surface-2:      #F8F9FB;
+  --surface-3:      #F1F3F6;
 
   /* Text */
-  --text:           #0F141A;
-  --text-soft:      #414D5C;
-  --muted:          #5F6B7A;
-  --subtle:         #8C8C94;
+  --text:           #1F2328;
+  --text-soft:      #3D444D;
+  --muted:          #59636E;
+  --subtle:         #8C959F;
 
   /* Border */
-  --border:         #E9EBED;
-  --border-strong:  #C6C6CD;
+  --border:         #E6E9EE;
+  --border-strong:  #D0D5DC;
 
-  /* Semantic */
-  --success:        #037F0C;
-  --success-soft:   #F2FCF3;
-  --success-ring:   #A3DEA7;
-  --success-text:   #026A0A;
+  /* Status */
+  --success:        #1A7F37;
+  --success-soft:   #E9F7EC;
+  --success-ring:   #B7E1C1;
+  --success-text:   #1A7F37;
 
-  --warning:        #E8A300;
-  --warning-soft:   #FFFCE6;
-  --warning-ring:   #F5D77A;
-  --warning-text:   #8D6605;
+  --warning:        #B45309;
+  --warning-soft:   #FEF3E2;
+  --warning-ring:   #F6D3A1;
+  --warning-text:   #B45309;
 
-  --danger:         #D91515;
-  --danger-soft:    #FFF5F5;
-  --danger-ring:    #F5B5B5;
-  --danger-text:    #AD0A0A;
+  --danger:         #C62828;
+  --danger-soft:    #FDECEC;
+  --danger-ring:    #F4BDBD;
+  --danger-text:    #C62828;
 
-  --neutral-soft:   #F4F4F4;
-  --neutral-text:   #424650;
+  --info:           #0F6CBD;
+  --info-soft:      #EAF3FC;
+  --info-text:      #0F6CBD;
+
+  --neutral:        #59636E;
+  --neutral-soft:   #F1F3F6;
+  --neutral-text:   #59636E;
 
   /* Notifications (Fluent-style toasts) */
   --message:        #5B5FC7;
   --message-soft:   #F3F3FD;
-  --info:           var(--primary);
-  --info-soft:      var(--primary-soft);
   --toast-shadow:   0 8px 16px rgba(0, 7, 22, 0.14), 0 0 2px rgba(0, 7, 22, 0.12);
 
-  /* Shadows */
+  /* Shadows: cards use a border OR a shadow, never both */
   --shadow-xs: 0 1px 1px rgba(0, 7, 22, 0.06);
-  --shadow-sm: 0 1px 1px rgba(0, 7, 22, 0.08), 0 0 1px rgba(0, 7, 22, 0.12);
+  --shadow-sm: 0 1px 2px rgba(16, 24, 40, 0.06);
   --shadow:    0 1px 4px rgba(0, 7, 22, 0.1), 0 0 1px rgba(0, 7, 22, 0.14);
   --shadow-lg: 0 4px 20px rgba(0, 7, 22, 0.14), 0 0 1px rgba(0, 7, 22, 0.16);
   --shadow-xl: 0 12px 40px rgba(0, 7, 22, 0.18), 0 0 1px rgba(0, 7, 22, 0.16);
@@ -65,8 +73,16 @@
   --radius-xl:  16px;
   --radius-2xl: 20px;
 
+  /* Type scale: 12 / 13 / 14 / 16 / 20 / 28. Nothing smaller than 12px. */
+  --fs-12: 12px;   /* chips, labels, captions */
+  --fs-13: 13px;   /* secondary text */
+  --fs-14: 14px;   /* body, table cells, nav */
+  --fs-16: 16px;   /* card titles */
+  --fs-20: 20px;   /* section headings */
+  --fs-28: 28px;   /* page title, KPI numbers */
+
   /* Typography */
-  font-family: "Open Sans", "Inter", "Segoe UI", -apple-system, BlinkMacSystemFont, sans-serif;
+  font-family: "Inter", "Segoe UI", -apple-system, BlinkMacSystemFont, sans-serif;
   font-size: 14px;
   line-height: 1.5;
   font-weight: 400;

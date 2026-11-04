@@ -23,7 +23,7 @@
 .panel-sidebar .sidebar-brand { gap: 12px; }
 .panel-sidebar .astra-brand-mark { width: 40px; height: 40px; border-radius: 12px; }
 .panel-sidebar .sidebar-brand-text { display: grid; line-height: 1.2; }
-.panel-sidebar .sidebar-brand-text > span { font-size: 1.08rem; font-weight: 800; letter-spacing: -0.02em; }
+.panel-sidebar .sidebar-brand-text > span { font-size: 16px; font-weight: 800; letter-spacing: -0.02em; }
 
 .panel-sidebar .sidebar-brand-text small {
   justify-self: start;
@@ -33,7 +33,7 @@
   border-radius: 999px;
   background: rgba(83, 159, 229, 0.14);
   color: #A9D1F7;
-  font-size: 0.68rem;
+  font-size: 12px;
   font-weight: 700;
   letter-spacing: 0.02em;
 }
@@ -45,7 +45,7 @@
   display: block;
   margin: 14px 12px 6px;
   color: #6F87A3;
-  font-size: 0.68rem;
+  font-size: 12px;
   font-weight: 700;
   letter-spacing: 0.08em;
   text-transform: uppercase;
@@ -58,7 +58,7 @@
   border: 0;
   border-radius: 8px;
   color: #C9D4E2;
-  font-size: 0.88rem;
+  font-size: 12px;
   font-weight: 500;
 }
 
@@ -119,7 +119,7 @@
   border-radius: 50%;
   background: linear-gradient(135deg, #3B8BEB, #7C5CFF);
   color: #fff;
-  font-size: 0.8rem;
+  font-size: 12px;
   font-weight: 800;
 }
 
@@ -128,13 +128,13 @@
 .panel-sidebar .sidebar-account-text strong {
   overflow: hidden;
   color: #fff;
-  font-size: 0.86rem;
+  font-size: 12px;
   font-weight: 700;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.panel-sidebar .sidebar-account-text small { color: #8AA2BF; font-size: 0.74rem; }
+.panel-sidebar .sidebar-account-text small { color: #8AA2BF; font-size: 12px; }
 
 .panel-sidebar .sidebar-logout {
   display: grid;
@@ -160,8 +160,8 @@
   border-top: 0;
 }
 
-.panel-sidebar .sidebar-footer p { color: #7F95AF; font-size: 0.66rem; font-weight: 600; }
-.panel-sidebar .sidebar-footer small { margin-top: 2px; color: #6F87A3; font-size: 0.64rem; }
+.panel-sidebar .sidebar-footer p { color: #7F95AF; font-size: 12px; font-weight: 600; }
+.panel-sidebar .sidebar-footer small { margin-top: 2px; color: #6F87A3; font-size: 12px; }
 .panel-sidebar .sidebar-footer strong { display: inline; color: #7DB9F2; font-size: inherit; }
 
 @media (prefers-reduced-motion: reduce) {
@@ -194,3 +194,45 @@
 
 .panel-sidebar .sidebar-avatar { background: #2D5E9C; }
 .panel-sidebar .sidebar-account { background: rgba(255, 255, 255, 0.04); }
+
+/* ── UI/UX audit pass (Nov 2026): token colours, readable labels ── */
+.panel-shell .panel-sidebar {
+  background: var(--sidebar);
+  border-right: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+/* Section labels: 11px, higher contrast on navy */
+.panel-sidebar .sidebar-group-label {
+  margin: 16px 12px 6px;
+  color: #8B9BB4;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+}
+
+.panel-sidebar .sidebar-nav a { font-size: var(--fs-14); }
+
+/* Active item: 3px primary bar on the left and a brighter background */
+.panel-sidebar .sidebar-nav a.active {
+  background: rgba(255, 255, 255, 0.1);
+  box-shadow: inset 3px 0 0 var(--primary);
+  color: #fff;
+  font-weight: 600;
+}
+
+.panel-sidebar .sidebar-nav a.active .nav-icon { stroke: #fff; }
+.panel-sidebar .sidebar-nav a:focus-visible { outline-color: var(--primary); }
+
+.panel-sidebar .sidebar-avatar { background: var(--primary); font-size: var(--fs-12); }
+.panel-sidebar .sidebar-account-text strong { font-size: var(--fs-13); }
+.panel-sidebar .sidebar-account-text small { font-size: var(--fs-12); color: #8B9BB4; }
+
+.panel-sidebar .sidebar-footer p { color: #6F7F96; font-size: var(--fs-12); font-weight: 500; }
+
+/* Logo artwork is violet; shift it to the brand blue to match the UI. */
+.astra-brand-mark img { filter: hue-rotate(-50deg) saturate(1.1); }
+
+/* On mobile the top bar already shows the header actions (bell); don't repeat them. */
+@media (max-width: 900px) {
+  .panel-header.panel-header-actions-only { display: none; }
+}

@@ -15,13 +15,13 @@
   --mx-text-3: #616161;
   --mx-brand: #0F6CBD;
   --mx-brand-hover: #115EA3;
-  --mx-brand-tint: #EBF3FC;
-  --mx-success: #107C10;
-  --mx-success-tint: #F1FAF1;
-  --mx-warning: #BC4B09;
+  --mx-brand-tint: #EAF3FC;
+  --mx-success: #1A7F37;
+  --mx-success-tint: #E9F7EC;
+  --mx-warning: #B45309;
   --mx-warning-tint: #FFF9F5;
-  --mx-danger: #B10E1C;
-  --mx-danger-tint: #FDF3F4;
+  --mx-danger: #C62828;
+  --mx-danger-tint: #FDECEC;
   --mx-shadow-2: 0 1px 2px rgba(0, 0, 0, 0.12), 0 0 2px rgba(0, 0, 0, 0.1);
   --mx-shadow-28: 0 14px 28px rgba(0, 0, 0, 0.18), 0 0 8px rgba(0, 0, 0, 0.12);
 }
@@ -39,7 +39,7 @@
   background: var(--mx-surface);
   color: var(--mx-text);
   font: inherit;
-  font-size: 0.86rem;
+  font-size: 12px;
   font-weight: 600;
   white-space: nowrap;
   cursor: pointer;
@@ -85,7 +85,7 @@
   background: var(--mx-surface);
   color: var(--mx-text);
   font: inherit;
-  font-size: 0.86rem;
+  font-size: 12px;
 }
 
 .dv-input:focus { outline: none; border-bottom: 2px solid var(--mx-brand); }
@@ -98,7 +98,7 @@
   background: none;
   color: var(--mx-brand);
   font: inherit;
-  font-size: 0.84rem;
+  font-size: 12px;
   font-weight: 600;
   cursor: pointer;
 }
@@ -111,7 +111,7 @@
   padding: 8px 12px;
   border-left: 3px solid currentColor;
   border-radius: 4px;
-  font-size: 0.84rem;
+  font-size: 12px;
   font-weight: 600;
 }
 
@@ -146,7 +146,7 @@
   background: transparent;
   color: var(--mx-text-3);
   font: inherit;
-  font-size: 0.9rem;
+  font-size: 13px;
   font-weight: 500;
   cursor: pointer;
 }
@@ -171,7 +171,7 @@
   border-radius: 999px;
   background: var(--mx-surface-3);
   color: var(--mx-text-2);
-  font-size: 0.74rem;
+  font-size: 12px;
   font-weight: 600;
   line-height: 18px;
   text-align: center;
@@ -210,13 +210,13 @@
 .dv-summary-card span {
   overflow: hidden;
   color: var(--mx-text-3);
-  font-size: 0.8rem;
+  font-size: 12px;
   font-weight: 600;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.dv-summary-card strong { font-size: 1.25rem; font-weight: 700; }
+.dv-summary-card strong { font-size: 16px; font-weight: 700; }
 .dv-summary-card:hover { background: var(--mx-surface-2); }
 .dv-summary-card.success { border-left-color: var(--mx-success); }
 .dv-summary-card.info { border-left-color: var(--mx-brand); }
@@ -267,7 +267,7 @@
   background: transparent;
   color: var(--mx-text);
   font: inherit;
-  font-size: 0.86rem;
+  font-size: 12px;
 }
 
 .dv-switch {
@@ -275,7 +275,7 @@
   align-items: center;
   gap: 8px;
   color: var(--mx-text-2);
-  font-size: 0.86rem;
+  font-size: 12px;
   white-space: nowrap;
   cursor: pointer;
 }
@@ -305,14 +305,14 @@
 .dv-switch input:checked + .dv-switch-track span { background: #fff; transform: translateX(20px); }
 .dv-switch input:focus-visible + .dv-switch-track { outline: 2px solid var(--mx-brand); outline-offset: 2px; }
 
-.dv-count { margin-left: auto; color: var(--mx-text-3); font-size: 0.8rem; white-space: nowrap; }
+.dv-count { margin-left: auto; color: var(--mx-text-3); font-size: 12px; white-space: nowrap; }
 
 .dv-table-shell { overflow-x: auto; }
 
 .dv-table {
   width: 100%;
   border-collapse: collapse;
-  font-size: 0.86rem;
+  font-size: 12px;
 }
 
 .dv-table th {
@@ -320,7 +320,7 @@
   border-bottom: 1px solid var(--mx-border);
   background: var(--mx-surface-2);
   color: var(--mx-text-3);
-  font-size: 0.78rem;
+  font-size: 12px;
   font-weight: 600;
   letter-spacing: 0;
   text-align: left;
@@ -339,11 +339,11 @@
 .dv-table tbody tr:hover { background: var(--mx-surface-2); }
 .dv-table tbody tr:last-child td { border-bottom: 0; }
 .dv-table tbody tr.archived td { color: var(--mx-text-3); }
-.dv-table td small { display: block; color: var(--mx-text-3); font-size: 0.78rem; }
+.dv-table td small { display: block; color: var(--mx-text-3); font-size: 12px; }
 .dv-cell-main { display: block; white-space: nowrap; }
 .dv-msg-cell,
 .dv-open-cell { width: 1%; }
-.dv-open-cell { color: var(--mx-text-3); font-size: 1.2rem; }
+.dv-open-cell { color: var(--mx-text-3); font-size: 16px; }
 
 .dv-tone.success { color: var(--mx-success) !important; }
 .dv-tone.warning { color: var(--mx-warning) !important; font-weight: 600; }
@@ -375,11 +375,11 @@
   border-radius: 50%;
   background: var(--mx-brand-tint);
   color: var(--mx-brand);
-  font-size: 0.78rem;
+  font-size: 12px;
   font-weight: 700;
 }
 
-.dv-avatar.large { width: 48px; height: 48px; font-size: 1rem; }
+.dv-avatar.large { width: 48px; height: 48px; font-size: 14px; }
 
 .dv-badge {
   display: inline-flex;
@@ -389,7 +389,7 @@
   border-radius: 999px;
   background: var(--mx-surface-3);
   color: var(--mx-text-2);
-  font-size: 0.78rem;
+  font-size: 12px;
   font-weight: 600;
   white-space: nowrap;
 }
@@ -417,7 +417,7 @@
   border-radius: 4px;
   background: transparent;
   color: var(--mx-text-2);
-  font-size: 1.4rem;
+  font-size: 20px;
   line-height: 1;
   cursor: pointer;
 }
@@ -434,7 +434,7 @@
   border-radius: 999px;
   background: var(--mx-danger);
   color: #fff;
-  font-size: 0.66rem;
+  font-size: 12px;
   font-weight: 700;
   line-height: 16px;
 }
@@ -484,8 +484,8 @@
 }
 
 .dv-panel-head .dv-person { align-items: flex-start; }
-.dv-panel-head h2 { margin: 0; font-size: 1.2rem; font-weight: 600; }
-.dv-panel-head p { margin: 2px 0 0; color: var(--mx-text-3); font-size: 0.84rem; }
+.dv-panel-head h2 { margin: 0; font-size: 16px; font-weight: 600; }
+.dv-panel-head p { margin: 2px 0 0; color: var(--mx-text-3); font-size: 12px; }
 .dv-head-badges { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
 
 .dv-panel-body {
@@ -504,8 +504,8 @@
 
 .dv-figures div { padding: 10px 12px; }
 .dv-figures div + div { border-left: 1px solid var(--mx-border); }
-.dv-figures dt { color: var(--mx-text-3); font-size: 0.76rem; font-weight: 600; }
-.dv-figures dd { margin: 2px 0 0; font-size: 1.1rem; font-weight: 600; }
+.dv-figures dt { color: var(--mx-text-3); font-size: 12px; font-weight: 600; }
+.dv-figures dd { margin: 2px 0 0; font-size: 16px; font-weight: 600; }
 .dv-figures dd.danger { color: var(--mx-danger); }
 
 .dv-section {
@@ -514,7 +514,7 @@
   border-top: 1px solid var(--mx-border);
 }
 
-.dv-section h3 { margin: 0 0 12px; font-size: 0.92rem; font-weight: 600; }
+.dv-section h3 { margin: 0 0 12px; font-size: 13px; font-weight: 600; }
 
 .dv-section-head {
   display: flex;
@@ -523,7 +523,7 @@
   gap: 8px;
 }
 
-.dv-save-state { color: var(--mx-text-3); font-size: 0.78rem; }
+.dv-save-state { color: var(--mx-text-3); font-size: 12px; }
 
 .dv-fields {
   display: grid;
@@ -533,7 +533,7 @@
 
 .dv-fields.three { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 .dv-field { display: grid; gap: 4px; min-width: 0; }
-.dv-field > span { color: var(--mx-text-2); font-size: 0.8rem; font-weight: 600; }
+.dv-field > span { color: var(--mx-text-2); font-size: 12px; font-weight: 600; }
 
 .dv-static {
   display: flex;
@@ -544,7 +544,7 @@
   margin: 0;
   padding-top: 6px;
   overflow-wrap: anywhere;
-  font-size: 0.86rem;
+  font-size: 12px;
 }
 
 .dv-docs {
@@ -564,8 +564,8 @@
 }
 
 .dv-docs li + li { border-top: 1px solid var(--mx-border); }
-.dv-docs strong { display: block; font-size: 0.88rem; font-weight: 600; }
-.dv-docs small { display: block; color: var(--mx-text-3); font-size: 0.78rem; }
+.dv-docs strong { display: block; font-size: 12px; font-weight: 600; }
+.dv-docs small { display: block; color: var(--mx-text-3); font-size: 12px; }
 .dv-date { width: 160px; flex: none; }
 
 .dv-panel-foot {
@@ -610,7 +610,7 @@
 
 .dv-messages .admin-chat-card > .section-head { padding-bottom: 12px; }
 .dv-messages .admin-chat-card > .section-head .card-label { display: none; }
-.dv-messages .admin-chat-card > .section-head h2 { font-size: 1rem; font-weight: 600; }
+.dv-messages .admin-chat-card > .section-head h2 { font-size: 14px; font-weight: 600; }
 
 .dv-messages .admin-chat-card,
 .dv-messages .admin-chat-card * {
@@ -635,7 +635,7 @@
   border-radius: 4px;
   background: var(--mx-brand);
   box-shadow: none;
-  font-size: 0.86rem;
+  font-size: 12px;
 }
 
 /* ── Responsive ───────────────────────────────────────────────────────────── */

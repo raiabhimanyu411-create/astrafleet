@@ -1,0 +1,296 @@
+/* ═══════════════════════════════════════════════════════════════════════════
+   Login (UI/UX audit, Nov 2026)
+   Split screen: navy brand panel 55% / flat white form 45%.
+   No gradients, no glass, no card shadow. Tokens come from index.css.
+═══════════════════════════════════════════════════════════════════════════ */
+
+.ln-page {
+  display: grid;
+  grid-template-columns: minmax(0, 55fr) minmax(0, 45fr);
+  min-height: 100vh;
+  background: var(--surface);
+  color: var(--text);
+  font-size: var(--fs-14);
+}
+
+/* ── Brand panel ──────────────────────────────────────────────────────────── */
+.ln-brand {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 40px;
+  padding: 40px 56px 48px;
+  overflow: hidden;
+  background-color: var(--sidebar);
+  /* Subtle dot grid */
+  background-image: radial-gradient(rgba(255, 255, 255, 0.07) 1px, transparent 1px);
+  background-size: 22px 22px;
+  color: #fff;
+}
+
+.ln-logo,
+.ln-mobile-logo {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: var(--fs-20);
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+
+.ln-logo-mark {
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 10px;
+  background: #fff;
+}
+
+.ln-logo-mark img {
+  width: 30px;
+  height: 30px;
+  /* The logo artwork is violet; shift it to the brand blue. */
+  filter: hue-rotate(-50deg) saturate(1.1);
+}
+
+.ln-brand-copy h1 {
+  max-width: 520px;
+  margin: 0;
+  color: #fff;
+  font-size: 40px;
+  font-weight: 700;
+  line-height: 1.15;
+  letter-spacing: -0.025em;
+}
+
+.ln-brand-copy p {
+  max-width: 440px;
+  margin: 16px 0 0;
+  color: #B4C0D3;
+  font-size: var(--fs-16);
+  line-height: 1.55;
+}
+
+.ln-trust {
+  display: grid;
+  gap: 12px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.ln-trust li {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: #DCE3EE;
+  font-size: var(--fs-14);
+  font-weight: 500;
+}
+
+.ln-trust svg { flex: none; color: #4ADE80; }
+
+/* ── Form panel ───────────────────────────────────────────────────────────── */
+.ln-main {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  min-width: 0;
+  padding: 40px 32px 24px;
+  background: var(--surface);
+}
+
+.ln-form-wrap {
+  width: 100%;
+  max-width: 380px;
+  margin: auto;
+}
+
+.ln-mobile-logo { display: none; margin-bottom: 32px; color: var(--text); }
+.ln-mobile-logo .ln-logo-mark { background: var(--surface-3); }
+
+.ln-head { margin-bottom: 24px; }
+
+.ln-head h2 {
+  margin: 0;
+  color: var(--text);
+  font-size: var(--fs-28);
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+
+.ln-head p {
+  margin: 6px 0 0;
+  color: var(--muted);
+  font-size: var(--fs-14);
+}
+
+.ln-form { display: grid; gap: 16px; }
+
+.ln-field { display: grid; gap: 6px; }
+
+.ln-field label {
+  color: var(--text);
+  font-size: var(--fs-14);
+  font-weight: 500;
+}
+
+.ln-optional { color: var(--muted); font-weight: 400; }
+
+.ln-label-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.ln-input {
+  width: 100%;
+  height: 44px;
+  padding: 0 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--text);
+  font-size: var(--fs-14);
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+.ln-input::placeholder { color: var(--subtle); }
+.ln-input:hover { border-color: var(--border-strong); }
+
+.ln-input:focus {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px var(--primary-ring);
+  outline: none;
+}
+
+select.ln-input { appearance: auto; padding-right: 8px; }
+
+.ln-password { position: relative; }
+.ln-password .ln-input { padding-right: 44px; }
+
+.ln-password .eye-btn {
+  position: absolute;
+  top: 50%;
+  right: 4px;
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  border: 0;
+  border-radius: 6px;
+  background: none;
+  color: var(--muted);
+  cursor: pointer;
+  transform: translateY(-50%);
+}
+
+.ln-password .eye-btn:hover { background: var(--surface-3); color: var(--text); }
+.ln-password .eye-btn:focus-visible { outline: 2px solid var(--primary); outline-offset: 0; }
+
+.ln-caps {
+  margin: 0;
+  color: var(--warning);
+  font-size: var(--fs-12);
+  font-weight: 500;
+}
+
+.ln-link {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--primary);
+  font: inherit;
+  font-size: var(--fs-13);
+  font-weight: 500;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.ln-link:hover { color: var(--primary-hover); text-decoration: underline; }
+.ln-link:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; border-radius: 2px; }
+
+/* Inline messages, not alerts or toasts */
+.ln-alert {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  font-size: var(--fs-13);
+  line-height: 1.45;
+}
+
+.ln-alert svg { flex: none; margin-top: 1px; }
+.ln-alert.error { background: var(--danger-soft); color: var(--danger); }
+.ln-alert.success { background: var(--success-soft); color: var(--success); }
+
+.ln-submit {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 100%;
+  height: 44px;
+  margin-top: 4px;
+  border: 0;
+  border-radius: 8px;
+  background: var(--primary);
+  color: #fff;
+  font-size: var(--fs-14);
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.ln-submit:hover:not(:disabled) { background: var(--primary-hover); }
+.ln-submit:focus-visible { outline: none; box-shadow: 0 0 0 3px var(--primary-ring); }
+.ln-submit:disabled { opacity: 0.7; cursor: not-allowed; }
+
+.ln-spinner {
+  width: 16px;
+  height: 16px;
+  border: 2px solid rgba(255, 255, 255, 0.4);
+  border-top-color: #fff;
+  border-radius: 50%;
+  animation: ln-spin 0.7s linear infinite;
+}
+
+@keyframes ln-spin { to { transform: rotate(360deg); } }
+
+.ln-access {
+  margin: 20px 0 0;
+  color: var(--muted);
+  font-size: var(--fs-13);
+  text-align: center;
+}
+
+.ln-footer {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 4px 16px;
+  margin-top: 32px;
+  color: var(--subtle);
+  font-size: var(--fs-12);
+}
+
+/* ── Responsive: mobile shows only logo and form ─────────────────────────── */
+@media (max-width: 1100px) {
+  .ln-brand { padding: 36px 40px 40px; }
+  .ln-brand-copy h1 { font-size: var(--fs-28); }
+}
+
+@media (max-width: 860px) {
+  .ln-page { grid-template-columns: minmax(0, 1fr); }
+  .ln-brand { display: none; }
+  .ln-mobile-logo { display: flex; }
+  .ln-main { padding: 32px 20px 20px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ln-spinner { animation-duration: 1.6s; }
+}

@@ -2,8 +2,17 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 
-// Validated categorical slots (dataviz palette, light surface #fff): slot 1 blue, slot 2 orange.
-export const SERIES = ["#2a78d6", "#eb6834"];
+// Status tokens (same values as index.css). Charts, chips and map pins all use these.
+export const STATUS_COLORS = {
+  primary: "#0F6CBD",
+  success: "#1A7F37",
+  warning: "#B45309",
+  danger: "#C62828",
+  info: "#0F6CBD",
+  neutral: "#8C959F"
+};
+
+export const SERIES = [STATUS_COLORS.primary, STATUS_COLORS.neutral];
 
 function niceMax(value) {
   if (value <= 0) return 4;
@@ -95,7 +104,7 @@ export function ColumnChart({ data, series, formatValue = v => String(v), format
           );
         })}
       </svg>
-      {empty && <p className="ovc-empty">No activity in the last 12 months yet.</p>}
+      {empty && <p className="ovc-empty">No activity in this period yet.</p>}
       {hover !== null && (
         <div
           className="ovc-tooltip"
@@ -133,11 +142,11 @@ export function StatusMeter({ parts, total }) {
 }
 
 const MAP_STATUS = {
-  in_transit: { color: "#2a78d6", label: "On the road" },
-  planned: { color: "#2a78d6", label: "Planned" },
-  available: { color: "#0ca30c", label: "Available" },
-  maintenance: { color: "#d03b3b", label: "Off road" },
-  stopped: { color: "#d03b3b", label: "Off road" }
+  in_transit: { color: STATUS_COLORS.info, label: "On the road" },
+  planned: { color: STATUS_COLORS.info, label: "Planned" },
+  available: { color: STATUS_COLORS.success, label: "Available" },
+  maintenance: { color: STATUS_COLORS.danger, label: "Off road" },
+  stopped: { color: STATUS_COLORS.danger, label: "Off road" }
 };
 
 export function FleetMap({ points }) {
@@ -164,7 +173,7 @@ export function FleetMap({ points }) {
     if (!map || !layer) return;
     layer.clearLayers();
     points.forEach(p => {
-      const meta = MAP_STATUS[p.status] || { color: "#616161", label: p.status };
+      const meta = MAP_STATUS[p.status] || { color: STATUS_COLORS.neutral, label: p.status };
       L.circleMarker([p.lat, p.lng], { radius: 8, color: "#ffffff", weight: 2, fillColor: meta.color, fillOpacity: 1 })
         .bindTooltip(`<strong>${p.truck}</strong><br/>${meta.label} · ${p.driver}${p.speed != null ? ` · ${p.speed} kph` : ""}${p.lastPing ? `<br/><small>Last ping ${p.lastPing}</small>` : ""}`, { direction: "top", offset: [0, -6] })
         .addTo(layer);

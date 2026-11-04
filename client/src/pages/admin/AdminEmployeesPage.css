@@ -15,13 +15,13 @@
   --mx-text-3: #616161;
   --mx-brand: #0F6CBD;
   --mx-brand-hover: #115EA3;
-  --mx-brand-tint: #EBF3FC;
-  --mx-success: #107C10;
-  --mx-success-tint: #F1FAF1;
-  --mx-warning: #BC4B09;
+  --mx-brand-tint: #EAF3FC;
+  --mx-success: #1A7F37;
+  --mx-success-tint: #E9F7EC;
+  --mx-warning: #B45309;
   --mx-warning-tint: #FFF9F5;
-  --mx-danger: #B10E1C;
-  --mx-danger-tint: #FDF3F4;
+  --mx-danger: #C62828;
+  --mx-danger-tint: #FDECEC;
   --mx-shadow-2: 0 1px 2px rgba(0, 0, 0, 0.12), 0 0 2px rgba(0, 0, 0, 0.1);
   --mx-shadow-28: 0 14px 28px rgba(0, 0, 0, 0.18), 0 0 8px rgba(0, 0, 0, 0.12);
 }
@@ -45,7 +45,7 @@
   background: var(--mx-surface);
   color: var(--mx-text);
   font: inherit;
-  font-size: 0.86rem;
+  font-size: 12px;
   font-weight: 600;
   white-space: nowrap;
   cursor: pointer;
@@ -85,7 +85,7 @@
   background: var(--mx-surface);
   color: var(--mx-text);
   font: inherit;
-  font-size: 0.86rem;
+  font-size: 12px;
 }
 
 .emp-input:focus {
@@ -93,7 +93,7 @@
   border-bottom: 2px solid var(--mx-brand);
 }
 
-.emp-muted { color: var(--mx-text-3); font-size: 0.8rem; }
+.emp-muted { color: var(--mx-text-3); font-size: 12px; }
 
 /* ── Command bar: status summary doubles as the status filter ─────────────── */
 .emp-command-bar {
@@ -136,13 +136,13 @@
 .emp-summary-card span {
   overflow: hidden;
   color: var(--mx-text-3);
-  font-size: 0.8rem;
+  font-size: 12px;
   font-weight: 600;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.emp-summary-card strong { font-size: 1.2rem; font-weight: 700; }
+.emp-summary-card strong { font-size: 16px; font-weight: 700; }
 .emp-summary-card:hover { background: var(--mx-surface-3); }
 .emp-summary-card.success { border-left-color: var(--mx-success); }
 .emp-summary-card.warning { border-left-color: var(--mx-warning); }
@@ -160,7 +160,7 @@
   padding: 8px 12px;
   border-left: 3px solid currentColor;
   border-radius: 4px;
-  font-size: 0.84rem;
+  font-size: 12px;
   font-weight: 600;
 }
 
@@ -189,7 +189,7 @@
   width: 100%;
   border-collapse: collapse;
   color: var(--mx-text);
-  font-size: 0.86rem;
+  font-size: 12px;
 }
 
 .emp-table th {
@@ -197,7 +197,7 @@
   border-bottom: 1px solid var(--mx-border);
   background: var(--mx-surface-2);
   color: var(--mx-text-3);
-  font-size: 0.8rem;
+  font-size: 12px;
   font-weight: 600;
   letter-spacing: 0;
   text-align: left;
@@ -218,12 +218,12 @@
 .emp-table td small {
   display: block;
   color: var(--mx-text-3);
-  font-size: 0.78rem;
+  font-size: 12px;
 }
 
 .emp-table td strong { display: block; font-weight: 600; }
 .emp-cell-main { display: block; }
-.emp-mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.8rem; white-space: nowrap; }
+.emp-mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; white-space: nowrap; }
 .emp-table td:nth-child(4) { white-space: nowrap; }
 .emp-actions-cell { width: 1%; text-align: right; }
 
@@ -252,11 +252,11 @@
   border-radius: 50%;
   background: var(--mx-brand-tint);
   color: var(--mx-brand);
-  font-size: 0.78rem;
+  font-size: 12px;
   font-weight: 700;
 }
 
-.emp-avatar.large { width: 44px; height: 44px; font-size: 0.95rem; }
+.emp-avatar.large { width: 44px; height: 44px; font-size: 13px; }
 
 .emp-badge {
   display: inline-flex;
@@ -264,7 +264,7 @@
   gap: 6px;
   padding: 2px 8px;
   border-radius: 999px;
-  font-size: 0.78rem;
+  font-size: 12px;
   font-weight: 600;
   white-space: nowrap;
 }
@@ -294,7 +294,7 @@
   border-radius: 4px;
   background: var(--mx-surface-2);
   color: var(--mx-text-2);
-  font-size: 0.76rem;
+  font-size: 12px;
   white-space: nowrap;
 }
 
@@ -340,8 +340,8 @@
   border-bottom: 1px solid var(--mx-border);
 }
 
-.emp-panel-head h2 { margin: 0; font-size: 1.15rem; font-weight: 600; }
-.emp-panel-head p { margin: 2px 0 0; color: var(--mx-text-3); font-size: 0.84rem; }
+.emp-panel-head h2 { margin: 0; font-size: 16px; font-weight: 600; }
+.emp-panel-head p { margin: 2px 0 0; color: var(--mx-text-3); font-size: 12px; }
 
 .emp-icon-btn {
   width: 32px;
@@ -350,7 +350,7 @@
   border-radius: 4px;
   background: transparent;
   color: var(--mx-text-2);
-  font-size: 1.4rem;
+  font-size: 20px;
   line-height: 1;
   cursor: pointer;
 }
@@ -370,8 +370,8 @@
   margin: 0 0 8px;
 }
 
-.emp-details dt { color: var(--mx-text-3); font-size: 0.76rem; font-weight: 600; }
-.emp-details dd { margin: 2px 0 0; overflow-wrap: anywhere; font-size: 0.86rem; }
+.emp-details dt { color: var(--mx-text-3); font-size: 12px; font-weight: 600; }
+.emp-details dd { margin: 2px 0 0; overflow-wrap: anywhere; font-size: 12px; }
 
 .emp-panel-section {
   padding: 16px 0 4px;
@@ -379,7 +379,7 @@
   margin-top: 12px;
 }
 
-.emp-panel-section h3 { margin: 0 0 10px; font-size: 0.92rem; font-weight: 600; }
+.emp-panel-section h3 { margin: 0 0 10px; font-size: 13px; font-weight: 600; }
 
 .emp-section-head {
   display: flex;
@@ -403,8 +403,8 @@
 .emp-status-option:hover { background: var(--mx-surface-2); }
 .emp-status-option.selected { border-color: var(--mx-brand); background: var(--mx-brand-tint); }
 .emp-status-option input { margin-top: 3px; accent-color: var(--mx-brand); }
-.emp-status-option strong { display: block; font-size: 0.86rem; font-weight: 600; }
-.emp-status-option small { display: block; color: var(--mx-text-3); font-size: 0.78rem; }
+.emp-status-option strong { display: block; font-size: 12px; font-weight: 600; }
+.emp-status-option small { display: block; color: var(--mx-text-3); font-size: 12px; }
 
 .emp-presets {
   display: flex;
@@ -421,7 +421,7 @@
   background: var(--mx-surface);
   color: var(--mx-text-2);
   font: inherit;
-  font-size: 0.8rem;
+  font-size: 12px;
   font-weight: 600;
   cursor: pointer;
 }
@@ -446,7 +446,7 @@
   padding: 0 10px;
   border: 1px solid var(--mx-border);
   border-radius: 4px;
-  font-size: 0.86rem;
+  font-size: 12px;
   cursor: pointer;
 }
 

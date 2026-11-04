@@ -1046,7 +1046,7 @@
   font-size: 0.68rem;
   font-weight: 800;
   font-family: inherit;
-  color: var(--primary, #0972D3);
+  color: var(--primary, #0F6CBD);
   text-decoration: underline;
   cursor: pointer;
 }
@@ -2847,7 +2847,7 @@
   --mx-text-3: #616161;
   --mx-brand: #0F6CBD;
   --mx-brand-hover: #115EA3;
-  --mx-brand-tint: #EBF3FC;
+  --mx-brand-tint: #EAF3FC;
   --mx-shadow-2: 0 1px 2px rgba(0, 0, 0, 0.12), 0 0 2px rgba(0, 0, 0, 0.1);
   --mx-shadow-28: 0 14px 28px rgba(0, 0, 0, 0.18), 0 0 8px rgba(0, 0, 0, 0.12);
 }
@@ -2920,10 +2920,10 @@
 
 .maintenance-page-shell .maintenance-command-actions .header-action-button.danger {
   border-color: var(--mx-border-strong);
-  color: #B10E1C;
+  color: #C62828;
 }
 
-.maintenance-page-shell .maintenance-command-actions .header-action-button.danger:hover { background: #FDF3F4; }
+.maintenance-page-shell .maintenance-command-actions .header-action-button.danger:hover { background: #FDECEC; }
 
 /* Tabs: Fluent tab list with an underline indicator */
 .maintenance-page-shell .maintenance-view-tabs {
@@ -2991,7 +2991,7 @@
   --mx-text-2: #424242;
   --mx-text-3: #616161;
   --mx-brand: #0F6CBD;
-  --mx-brand-tint: #EBF3FC;
+  --mx-brand-tint: #EAF3FC;
 }
 
 .excel-schedule-view .schedule-search-bar {
@@ -3067,7 +3067,7 @@
   background: #F5F5F5;
 }
 
-.excel-legend-sample.completed { border-color: #107C10; background: #F1FAF1; }
+.excel-legend-sample.completed { border-color: #1A7F37; background: #E9F7EC; }
 .excel-legend-sample.forecast { border-style: dashed; border-left-style: solid; background: transparent; }
 .excel-legend-divider { width: 1px; height: 16px; background: var(--mx-border); }
 
@@ -3255,8 +3255,8 @@
 .excel-schedule-view .excel-event-chip.overdue,
 .excel-schedule-view .excel-event-chip.overdue:hover {
   border-left-color: #C50F1F;
-  background: #FDF3F4;
-  color: #B10E1C;
+  background: #FDECEC;
+  color: #C62828;
   box-shadow: inset 0 0 0 1px #EEACB2;
 }
 
@@ -3270,10 +3270,10 @@
 }
 
 .excel-schedule-view .excel-event-chip.completed {
-  --chip-accent: #107C10;
+  --chip-accent: #1A7F37;
   border: 0;
-  border-left: 3px solid #107C10;
-  background: #F1FAF1 !important;
+  border-left: 3px solid #1A7F37;
+  background: #E9F7EC !important;
   color: #0E700E !important;
   box-shadow: none;
 }
@@ -3478,7 +3478,7 @@
 .excel-schedule-view .excel-event-chip.completed,
 .excel-schedule-view .excel-event-chip.completed:hover {
   border-left: 3px solid #0B5A0B;
-  background: #107C10 !important;
+  background: #1A7F37 !important;
   color: #fff !important;
 }
 
@@ -3493,7 +3493,7 @@
 }
 
 .excel-legend-sample { border-color: #424242; background: #616161; }
-.excel-legend-sample.completed { border-color: #0B5A0B; background: #107C10; }
+.excel-legend-sample.completed { border-color: #0B5A0B; background: #1A7F37; }
 .excel-legend-sample.forecast { border: 1px dashed #424242; border-left: 3px solid #424242; background: #EBEBEB; }
 .excel-schedule-view .excel-legend-chip i { width: 10px; height: 10px; border-radius: 2px; }
 .excel-legend-status,
@@ -3531,7 +3531,7 @@
 .vehicle-detail-items .maintenance-profile-item > p:last-of-type { margin-bottom: 8px; }
 
 .vehicle-detail-modal .status-pill { border: 0; font-weight: 600; }
-.vehicle-detail-modal .status-pill.success { background: #107C10; color: #fff; }
+.vehicle-detail-modal .status-pill.success { background: #1A7F37; color: #fff; }
 .vehicle-detail-modal .status-pill.danger { background: #C50F1F; color: #fff; }
 .vehicle-detail-modal .status-pill.warning { background: #FFB900; color: #242424; }
 .vehicle-detail-modal .status-pill.neutral { background: #E0E0E0; color: #242424; }
@@ -3542,7 +3542,7 @@
   padding: 10px 12px;
   border-left: 3px solid #0F6CBD;
   border-radius: 4px;
-  background: #EBF3FC;
+  background: #EAF3FC;
 }
 
 .vehicle-detail-done-form .event-done-next-due span { color: #424242; }
@@ -3623,11 +3623,11 @@
   box-shadow: none;
 }
 
-.vehicle-detail-done-form > .finance-command-bar .header-action-button.danger { color: #B10E1C; }
+.vehicle-detail-done-form > .finance-command-bar .header-action-button.danger { color: #C62828; }
 
 /* Fleet checks: same solid status colours as the dialog */
 .maintenance-page-shell .maintenance-profile-items .status-pill { border: 0; font-weight: 600; }
-.maintenance-page-shell .maintenance-profile-items .status-pill.success { background: #107C10; color: #fff; }
+.maintenance-page-shell .maintenance-profile-items .status-pill.success { background: #1A7F37; color: #fff; }
 .maintenance-page-shell .maintenance-profile-items .status-pill.danger { background: #C50F1F; color: #fff; }
 .maintenance-page-shell .maintenance-profile-items .status-pill.warning { background: #FFB900; color: #242424; }
 .maintenance-page-shell .maintenance-profile-items .status-pill.neutral { background: #E0E0E0; color: #242424; }
@@ -3749,7 +3749,7 @@
 
 .digital-tyre-monitor { border: 1px solid #E0E0E0; border-radius: 8px; background: #fff; box-shadow: none; }
 .digital-tyre-toolbar { border-bottom: 1px solid #E0E0E0; background: #FAFAFA; }
-.digital-live { color: #107C10; font-size: 0.8rem; font-weight: 600; letter-spacing: 0; text-transform: none; }
+.digital-live { color: #1A7F37; font-size: 0.8rem; font-weight: 600; letter-spacing: 0; text-transform: none; }
 .digital-tyre-toolbar > div > strong { color: #000; font-size: 1.15rem; font-weight: 700; }
 .digital-tyre-toolbar > div > small { color: #424242; font-size: 0.84rem; font-weight: 600; }
 .digital-tyre-toolbar label span { color: #424242; font-size: 0.8rem; font-weight: 600; letter-spacing: 0; text-transform: none; }
@@ -3770,7 +3770,7 @@
 .truck-rail { stroke: #C7C7C7; stroke-width: 2; }
 .truck-axle { stroke: #424242; stroke-width: 3; stroke-linecap: round; }
 .truck-tyre { stroke: rgba(0, 0, 0, 0.25); stroke-width: 1; }
-.truck-tyre.good { fill: #107C10; }
+.truck-tyre.good { fill: #1A7F37; }
 .truck-tyre.warning { fill: #FFB900; }
 .truck-tyre.danger { fill: #C50F1F; }
 .truck-tyre.unknown { fill: #BDBDBD; }
@@ -3794,9 +3794,9 @@
 .digital-axle-heading strong { color: #000; font-size: 0.92rem; font-weight: 700; }
 .digital-axle-heading small { color: #424242; font-size: 0.8rem; font-weight: 600; }
 .digital-tyre-card { border: 1px solid #E0E0E0; border-left: 3px solid #BDBDBD; border-radius: 6px; background: #fff; box-shadow: none; }
-.digital-tyre-card.good { border-left-color: #107C10; }
+.digital-tyre-card.good { border-left-color: #1A7F37; }
 .digital-tyre-card.warning { border-left-color: #FFB900; background: #FFFBF0; }
-.digital-tyre-card.danger { border-left-color: #C50F1F; background: #FDF3F4; }
+.digital-tyre-card.danger { border-left-color: #C50F1F; background: #FDECEC; }
 .digital-wheel { border-radius: 6px; background: #424242; box-shadow: none; }
 .digital-tyre-card small { color: #424242; font-size: 0.76rem; font-weight: 600; letter-spacing: 0; text-transform: none; }
 .digital-tyre-card strong { color: #000; font-size: 1.15rem; font-weight: 700; }
@@ -3862,7 +3862,7 @@
   margin-left: 6px;
   padding: 1px 6px;
   border-radius: 3px;
-  background: #EBF3FC;
+  background: #EAF3FC;
   color: #0F548C;
   font-size: 0.7rem;
   font-style: normal;
@@ -3881,9 +3881,9 @@
   font-weight: 600;
 }
 
-.af-autofill-status.reading { border-left-color: #0F6CBD; background: #EBF3FC; color: #0F548C; }
-.af-autofill-status.filled { border-left-color: #107C10; background: #F1FAF1; color: #0B5A0B; }
-.af-autofill-status.manual { border-left-color: #BC4B09; background: #FFF9F5; color: #8A3707; }
+.af-autofill-status.reading { border-left-color: #0F6CBD; background: #EAF3FC; color: #0F548C; }
+.af-autofill-status.filled { border-left-color: #1A7F37; background: #E9F7EC; color: #0B5A0B; }
+.af-autofill-status.manual { border-left-color: #B45309; background: #FFF9F5; color: #8A3707; }
 
 .maintenance-rule-note .vehicle-detail-item-doc-link + .vehicle-detail-item-doc-link { margin-left: 12px; }
 .maintenance-rule-note .vehicle-detail-item-doc-link:disabled { color: #616161; cursor: wait; }

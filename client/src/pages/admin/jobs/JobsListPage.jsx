@@ -1276,7 +1276,7 @@ export function JobsListPage() {
                               <strong>{abbrevAddr(job.dropAddress)}</strong>
                               <small>{job.dropAddress !== "—" ? job.dropAddress : "Address not set"}</small>
                               {job.deadline !== "—" && <small className="relay-dock-label">Deadline: {job.deadline}</small>}
-                              {job.planAfterDeadline && <small className="relay-dock-label" style={{ color: "#AD0A0A", fontWeight: 700 }}>Plan arrives after the deadline</small>}
+                              {job.planAfterDeadline && <small className="relay-dock-label" style={{ color: "#C62828", fontWeight: 700 }}>Plan arrives after the deadline</small>}
                             </div>
                           </div>
                           <div className="relay-stop-equipment">
