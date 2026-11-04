@@ -1,15 +1,13 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { getMyProfile, updateMyProfile } from "../../api/authApi";
 import { getRealtimeSocket } from "../../api/realtime";
 import { StateNotice } from "../../components/StateNotice";
-import { StatusPill } from "../../components/StatusPill";
+import { statusTone } from "../../components/StatusChip";
 import { usePanelData } from "../../hooks/usePanelData";
 import { AdminWorkspaceLayout } from "./AdminWorkspaceLayout";
-import { DriverChatWidget } from "./DriverChatWidget";
 import "./AdminOverview.css";
-import { ColumnChart, FleetMap, formatGbp, SERIES, StatusMeter } from "./OverviewCharts";
-import { firstNameOf, getAuthSession, saveAuthSession, useAuthSession } from "../../utils/authSession";
+import { ColumnChart, FleetMap, formatGbp, SERIES, STATUS_COLORS, StatusMeter } from "./OverviewCharts";
+import { firstNameOf, useAuthSession } from "../../utils/authSession";
 
 const overviewStatRoutes = {
   "total bookings / jobs": "/admin/jobs",
@@ -41,6 +39,21 @@ const metricDisplayLabels = {
   "Today's revenue": "Revenue today",
   "Pending invoices": "Unpaid invoices",
   "Fuel expense": "Fuel spend"
+};
+
+// Short card subtitles; the full backend description stays in the tooltip.
+const kpiHints = {
+  "Active trips": "Loading or on the road",
+  "Delayed deliveries": "Behind schedule",
+  "Available vehicles": "Free and road-legal",
+  "Profit / loss": "Paid revenue minus costs"
+};
+
+// Shown instead of the hint when an exception card is at zero.
+const kpiAllClear = {
+  "Delayed deliveries": "All clear, no delays today",
+  "Pending invoices": "All invoices paid",
+  "Cancelled trips": "Nothing cancelled"
 };
 
 // Exceptions only draw colour when there is something to act on.
@@ -84,24 +97,103 @@ function isZero(value) {
   return Number(String(value ?? "").replace(/[^0-9.-]/g, "")) === 0;
 }
 
+// Same status always gets the same colour (see StatusChip); backend tone is only a fallback.
 function OvBadge({ tone = "neutral", children }) {
-  return <span className={`ov-badge ${tone || "neutral"}`}>{children}</span>;
+  return <span className={`ov-badge ${statusTone(children, tone || "neutral")}`}>{children}</span>;
+}
+
+// "£7,650.00" → "£7,650"; pennies are kept when they are not zero.
+function displayValue(value) {
+  return typeof value === "string" ? value.replace(/\.00$/, "") : value;
+}
+
+function isNegative(value) {
+  return Number(String(value ?? "").replace(/[^0-9.-]/g, "")) < 0;
 }
 
 function KpiCard({ item, label }) {
   if (!item) return null;
   const route = overviewStatRoutes[label.toLowerCase()] || "/admin/activity";
-  const flagged = attentionLabels.has(label) && !isZero(item.value);
+  const flagged = (attentionLabels.has(label) && !isZero(item.value)) || (label === "Profit / loss" && isNegative(item.value));
+  const allClear = kpiAllClear[label] && isZero(item.value);
+  const hint = allClear ? kpiAllClear[label] : kpiHints[label] || item.description;
   return (
-    <Link className={`ov-kpi${flagged ? " flagged" : ""}`} to={route} aria-label={`${item.label}: ${item.value}. Open details`}>
+    <Link
+      className={`ov-kpi${flagged ? " flagged" : ""}`}
+      to={route}
+      title={item.description || undefined}
+      aria-label={`${item.label}: ${item.value}. Open details`}
+    >
       <span className="ov-kpi-top">
         <span className="ov-kpi-label">{metricDisplayLabels[label] || item.label}</span>
         <span className="ov-kpi-icon"><MetricIcon label={label} /></span>
       </span>
-      <strong className="ov-kpi-value">{item.value}</strong>
-      {item.description && <small className="ov-kpi-hint">{item.description}</small>}
+      <strong className="ov-kpi-value">{displayValue(item.value)}</strong>
+      {hint && (
+        <small className={`ov-kpi-hint${allClear ? " clear" : ""}`}>
+          {allClear && <span aria-hidden="true">✓ </span>}
+          {hint}
+        </small>
+      )}
     </Link>
   );
+}
+
+function KpiSkeleton() {
+  return (
+    <div className="ov-kpi ov-skeleton-card" aria-hidden="true">
+      <span className="ov-skel" style={{ width: "40%" }} />
+      <span className="ov-skel ov-skel-lg" style={{ width: "55%" }} />
+      <span className="ov-skel" style={{ width: "70%" }} />
+    </div>
+  );
+}
+
+function CardSkeleton({ rows = 4 }) {
+  return (
+    <div className="ov-skeleton-rows" aria-hidden="true">
+      {Array.from({ length: rows }, (_, i) => (
+        <span className="ov-skel" key={i} style={{ width: `${88 - i * 9}%` }} />
+      ))}
+    </div>
+  );
+}
+
+// "MX22KHT · No trailer · No driver" → the parts, with missing ones flagged.
+const MISSING_PARTS = new Set(["unassigned truck", "no trailer", "no driver"]);
+
+function DispatchAssets({ text }) {
+  const parts = String(text || "").split(" · ").filter(Boolean);
+  return (
+    <span className="ov-assets">
+      {parts.map((part, index) => (
+        MISSING_PARTS.has(part.toLowerCase())
+          ? <span className="ov-missing" key={`${part}-${index}`}>{part}</span>
+          : <span key={`${part}-${index}`}>{part}</span>
+      ))}
+    </span>
+  );
+}
+
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+// "25 Apr 2026" → "194 days overdue" / "Due today" / "Due in 3 days".
+function dueLabel(due, status) {
+  const date = new Date(due);
+  if (!due || Number.isNaN(date.getTime())) return due ? `Due ${due}` : "";
+  const today = new Date();
+  const days = Math.round((Date.UTC(date.getFullYear(), date.getMonth(), date.getDate())
+    - Date.UTC(today.getFullYear(), today.getMonth(), today.getDate())) / DAY_MS);
+  if (String(status).toLowerCase() === "paid") return `Due ${due}`;
+  if (days < 0) return `${-days} ${days === -1 ? "day" : "days"} overdue`;
+  if (days === 0) return "Due today";
+  return `Due in ${days} ${days === 1 ? "day" : "days"}`;
+}
+
+// A name like "Fleet Admin" is a role, not a person; greet without it.
+function personalFirstName(name) {
+  if (!name || /\badmin(istrator)?\b/i.test(name)) return "";
+  return firstNameOf(name);
 }
 
 function OvCard({ title, count, to, linkLabel = "View all", className = "", children }) {
@@ -140,104 +232,13 @@ function AttentionIcon({ tone }) {
   );
 }
 
-function AdminProfileSettings() {
-  const [profile, setProfile] = useState({ name: "", email: "" });
-  const [passwords, setPasswords] = useState({ currentPassword: "", newPassword: "", confirmPassword: "" });
-  const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState("");
-  const [success, setSuccess] = useState("");
-
-  useEffect(() => {
-    getMyProfile()
-      .then((res) => {
-        setProfile({ name: res.data.name || "", email: res.data.email || "" });
-        setError("");
-      })
-      .catch((err) => setError(err.response?.data?.message || "Profile could not be loaded."))
-      .finally(() => setLoading(false));
-  }, []);
-
-  async function handleSubmit(e) {
-    e.preventDefault();
-    setError("");
-    setSuccess("");
-
-    if (passwords.newPassword && passwords.newPassword !== passwords.confirmPassword) {
-      setError("New password and confirmation do not match.");
-      return;
-    }
-
-    setSaving(true);
-    try {
-      const payload = {
-        name: profile.name,
-        email: profile.email,
-        currentPassword: passwords.currentPassword,
-        newPassword: passwords.newPassword
-      };
-      const res = await updateMyProfile(payload);
-      const session = getAuthSession();
-      if (session) saveAuthSession({ ...session, name: res.data.profile?.name || profile.name });
-      setPasswords({ currentPassword: "", newPassword: "", confirmPassword: "" });
-      setSuccess("Profile settings updated.");
-    } catch (err) {
-      setError(err.response?.data?.message || "Profile could not be updated.");
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  return (
-    <article className="content-card admin-profile-card">
-      <div className="section-head">
-        <div>
-          <span className="card-label">Profile Settings</span>
-          <h2>Admin Account</h2>
-        </div>
-        <StatusPill tone="neutral">{loading ? "Loading" : "Secure"}</StatusPill>
-      </div>
-
-      <form className="admin-profile-form" onSubmit={handleSubmit}>
-        <div className="profile-settings-grid">
-          <label className="af-field">
-            <span className="af-label">Admin Name</span>
-            <input className="af-input" value={profile.name} onChange={e => setProfile(prev => ({ ...prev, name: e.target.value }))} required />
-          </label>
-          <label className="af-field">
-            <span className="af-label">Email / Username</span>
-            <input className="af-input" type="email" value={profile.email} onChange={e => setProfile(prev => ({ ...prev, email: e.target.value }))} required />
-          </label>
-          <label className="af-field">
-            <span className="af-label">Current Password</span>
-            <input className="af-input" type="password" value={passwords.currentPassword} onChange={e => setPasswords(prev => ({ ...prev, currentPassword: e.target.value }))} required />
-          </label>
-          <label className="af-field">
-            <span className="af-label">New Password</span>
-            <input className="af-input" type="password" value={passwords.newPassword} onChange={e => setPasswords(prev => ({ ...prev, newPassword: e.target.value }))} placeholder="Leave blank to keep current" />
-          </label>
-          <label className="af-field">
-            <span className="af-label">Confirm New Password</span>
-            <input className="af-input" type="password" value={passwords.confirmPassword} onChange={e => setPasswords(prev => ({ ...prev, confirmPassword: e.target.value }))} placeholder="Repeat new password" />
-          </label>
-        </div>
-        {error && <p className="lp-error">{error}</p>}
-        {success && <p className="lp-success">{success}</p>}
-        <button className="header-action-button" type="submit" disabled={loading || saving}>
-          {saving ? "Saving..." : "Save Profile"}
-        </button>
-      </form>
-    </article>
-  );
-}
-
 export function AdminPanel() {
   const { data, error, loading, refetch } = usePanelData("/api/admin/overview");
   const [lastSync, setLastSync] = useState(null);
   const [chartView, setChartView] = useState("jobs");
   const statsByLabel = new Map((data?.stats || []).map((item) => [item.label, item]));
   const session = useAuthSession();
-  const firstName = firstNameOf(session?.name);
+  const firstName = personalFirstName(session?.name);
   const now = lastSync || new Date();
 
   const alerts = data?.alerts || [];
@@ -250,9 +251,13 @@ export function AdminPanel() {
   const fleetMap = data?.fleetMap || [];
   const pendingEmployees = employeeRequests.filter((employee) => String(employee.status).toLowerCase() === "pending");
 
-  const trendJobs = trend.map((m) => ({ ...m, open: Math.max(0, m.jobs - m.completed) }));
-  const yearJobs = trend.reduce((sum, m) => sum + m.jobs, 0);
-  const yearInvoiced = trend.reduce((sum, m) => sum + m.invoiced, 0);
+  // With little history, 12 mostly empty months read as "no data"; show the last 6 instead.
+  const activeMonths = trend.filter((m) => m.jobs || m.invoiced).length;
+  const chartMonths = trend.length > 6 && activeMonths <= 3 ? trend.slice(-6) : trend;
+  const trendJobs = chartMonths.map((m) => ({ ...m, open: Math.max(0, m.jobs - m.completed) }));
+  const yearJobs = chartMonths.reduce((sum, m) => sum + m.jobs, 0);
+  const yearInvoiced = chartMonths.reduce((sum, m) => sum + m.invoiced, 0);
+  const firstLoad = loading && !data;
 
   const fleetCounts = trackingBoard.reduce((acc, truck) => {
     const status = String(truck.status || "").replace(" ", "_");
@@ -293,7 +298,6 @@ export function AdminPanel() {
 
   return (
     <AdminWorkspaceLayout
-      badge={data?.header?.badge || "Admin control tower"}
       title="Overview"
       description="Today across dispatch, fleet and finance."
       highlights={[]}
@@ -321,34 +325,42 @@ export function AdminPanel() {
           </div>
         </header>
 
-        <StateNotice loading={loading && !data} error={error} />
+        <StateNotice loading={false} error={error} />
 
-        <section className="ov-kpis" aria-label="Today at a glance">
-          {kpiLabels.map((label) => <KpiCard item={statsByLabel.get(label)} key={label} label={label} />)}
+        <section className="ov-kpis" aria-label="Today at a glance" aria-busy={firstLoad}>
+          {firstLoad
+            ? kpiLabels.map((label) => <KpiSkeleton key={label} />)
+            : kpiLabels.map((label) => <KpiCard item={statsByLabel.get(label)} key={label} label={label} />)}
         </section>
 
         <div className="ov-grid">
           <div className="ov-col">
             <OvCard title="Needs attention" count={alerts.length} to="/admin/alerts">
-              {alerts.length ? (
-                <ul className="ov-attention-list">
-                  {alerts.slice(0, 5).map((alert, index) => (
-                    <li className={`ov-attention-item ${alert.tone || "warning"}`} key={`${alert.title}-${index}`}>
-                      <span className="ov-attention-icon"><AttentionIcon tone={alert.tone} /></span>
-                      <div>
-                        <strong>{alert.title}</strong>
-                        <p>{alert.description}</p>
-                      </div>
-                    </li>
-                  ))}
-                </ul>
+              {firstLoad ? <CardSkeleton /> : alerts.length ? (
+                <>
+                  <ul className="ov-attention-list">
+                    {alerts.slice(0, 5).map((alert, index) => (
+                      <li className={`ov-attention-item ${alert.tone || "warning"}`} key={`${alert.title}-${index}`}>
+                        <span className="ov-attention-icon"><AttentionIcon tone={alert.tone} /></span>
+                        <div className="ov-attention-text">
+                          <strong>{alert.title}</strong>
+                          <p title={alert.description}>{alert.description}</p>
+                        </div>
+                        <Link className="ov-row-action" to="/admin/alerts">Review</Link>
+                      </li>
+                    ))}
+                  </ul>
+                  {alerts.length > 5 && (
+                    <Link className="ov-more" to="/admin/alerts">+{alerts.length - 5} more</Link>
+                  )}
+                </>
               ) : (
-                !loading && <OvEmpty>You're all caught up. Nothing needs action right now.</OvEmpty>
+                <OvEmpty>All clear. Nothing needs action right now ✓</OvEmpty>
               )}
             </OvCard>
 
             <OvCard title="Dispatch" count={tripPlans.length} to="/admin/trips">
-              {tripPlans.length ? (
+              {firstLoad ? <CardSkeleton rows={3} /> : tripPlans.length ? (
                 <div className="ov-table-shell">
                   <table className="ov-table ov-dispatch-table">
                     <thead>
@@ -358,7 +370,7 @@ export function AdminPanel() {
                       {tripPlans.slice(0, 5).map((trip) => (
                         <tr key={trip.id || trip.route}>
                           <td className="ov-strong">{trip.route}</td>
-                          <td className="ov-muted-cell">{trip.vehicle}</td>
+                          <td className="ov-muted-cell"><DispatchAssets text={trip.vehicle} /></td>
                           <td className="ov-nowrap">{trip.schedule}</td>
                           <td><OvBadge tone={trip.tone}>{trip.status}</OvBadge></td>
                         </tr>
@@ -367,14 +379,14 @@ export function AdminPanel() {
                   </table>
                 </div>
               ) : (
-                !loading && <OvEmpty>No open trips in the dispatch queue.</OvEmpty>
+                <OvEmpty>No open trips in the dispatch queue.</OvEmpty>
               )}
             </OvCard>
 
             <section className="ov-card">
               <header className="ov-card-head">
                 <div>
-                  <h2>Last 12 months</h2>
+                  <h2>Last {chartMonths.length} months</h2>
                   <p className="ov-card-sub">
                     {chartView === "jobs"
                       ? `${yearJobs} ${yearJobs === 1 ? "job" : "jobs"} booked`
@@ -389,28 +401,28 @@ export function AdminPanel() {
               {chartView === "jobs" ? (
                 <>
                   <div className="ov-legend">
-                    <span><i style={{ background: SERIES[0] }} />Completed</span>
-                    <span><i style={{ background: SERIES[1] }} />Not completed</span>
+                    <span><i style={{ background: STATUS_COLORS.success }} />Completed</span>
+                    <span><i style={{ background: STATUS_COLORS.neutral }} />Open or cancelled</span>
                   </div>
                   <ColumnChart
                     data={trendJobs}
                     height={200}
                     series={[
-                      { key: "completed", label: "Completed", color: SERIES[0] },
-                      { key: "open", label: "Not completed", color: SERIES[1] }
+                      { key: "completed", label: "Completed", color: STATUS_COLORS.success },
+                      { key: "open", label: "Open or cancelled", color: STATUS_COLORS.neutral }
                     ]}
                     formatAxis={(v) => (Number.isInteger(v) ? String(v) : "")}
-                    ariaLabel="Jobs per month for the last 12 months, completed and not completed"
+                    ariaLabel={`Jobs per month for the last ${chartMonths.length} months, completed and open or cancelled`}
                   />
                 </>
               ) : (
                 <ColumnChart
-                  data={trend}
+                  data={chartMonths}
                   height={200}
                   series={[{ key: "invoiced", label: "Invoiced", color: SERIES[0] }]}
                   formatValue={(v) => formatGbp(v)}
                   formatAxis={(v) => formatGbp(v, true)}
-                  ariaLabel="Invoiced revenue per month for the last 12 months"
+                  ariaLabel={`Invoiced revenue per month for the last ${chartMonths.length} months`}
                 />
               )}
             </section>
@@ -420,9 +432,9 @@ export function AdminPanel() {
             <OvCard title="Fleet" count={trackingBoard.length} to="/admin/tracking" linkLabel="Live map" className="ov-fleet-card">
               <StatusMeter
                 parts={[
-                  { label: "Available", value: fleetCounts.available, color: "#0ca30c" },
-                  { label: "On a job", value: fleetCounts.onJob, color: SERIES[0] },
-                  { label: "Off road", value: fleetCounts.offRoad, color: "#d03b3b" }
+                  { label: "Available", value: fleetCounts.available, color: STATUS_COLORS.success },
+                  { label: "On a job", value: fleetCounts.onJob, color: STATUS_COLORS.info },
+                  { label: "Off road", value: fleetCounts.offRoad, color: STATUS_COLORS.danger }
                 ]}
               />
               <FleetMap points={fleetMap} />
@@ -430,7 +442,10 @@ export function AdminPanel() {
                 {trackingBoard.slice(0, 4).map((truck) => (
                   <li key={truck.truck}>
                     <span className="ov-plate">{truck.truck}</span>
-                    <span className="ov-truck-driver">{truck.driver}</span>
+                    <span className="ov-truck-driver">
+                      <span className={truck.driver === "Unassigned" ? "ov-faint" : ""}>{truck.driver === "Unassigned" ? "No driver" : truck.driver}</span>
+                      {truck.location && truck.location !== "No ping" && <small title={truck.location}>{truck.location}</small>}
+                    </span>
                     <OvBadge tone={truck.tone}>{truck.status}</OvBadge>
                   </li>
                 ))}
@@ -451,7 +466,7 @@ export function AdminPanel() {
                   ))}
                 </ul>
               ) : (
-                !loading && <OvEmpty>All drivers are compliant.</OvEmpty>
+                !loading && <OvEmpty>All drivers are compliant ✓</OvEmpty>
               )}
             </OvCard>
 
@@ -462,7 +477,12 @@ export function AdminPanel() {
                     <li key={invoice.invoice}>
                       <div>
                         <strong>{invoice.client}</strong>
-                        <small>{invoice.invoice} · due {invoice.due}</small>
+                        <small>
+                          {invoice.invoice} ·{" "}
+                          <span className={dueLabel(invoice.due, invoice.status).includes("overdue") ? "ov-overdue" : ""}>
+                            {dueLabel(invoice.due, invoice.status)}
+                          </span>
+                        </small>
                       </div>
                       <div className="ov-list-end">
                         <strong>{invoice.amount}</strong>
@@ -494,19 +514,6 @@ export function AdminPanel() {
           </div>
         </div>
 
-        <details className="ov-card ov-tools">
-          <summary>
-            <span>
-              <strong>Driver chat and account settings</strong>
-              <small>Message drivers or change your admin name, email and password.</small>
-            </span>
-            <span className="ov-chevron" aria-hidden="true" />
-          </summary>
-          <div className="ov-tools-body">
-            <DriverChatWidget />
-            <AdminProfileSettings />
-          </div>
-        </details>
       </div>
     </AdminWorkspaceLayout>
   );

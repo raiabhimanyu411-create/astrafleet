@@ -4,7 +4,7 @@ import api from "../api/axios";
 import { updateDriverLocation } from "../api/driverApi";
 import { getAuthSession, saveAuthSession } from "../utils/authSession";
 import { gpsErrorMessage, positionToPayload, requestDriverGpsAccess } from "../utils/driverGps";
-import astraLogo from "../../images/Logo1.png";
+import "./HomePage.css";
 
 /* Icons use currentColor so CSS controls their colour. */
 function Svg({ size = 18, children, ...rest }) {
@@ -26,84 +26,9 @@ function Svg({ size = 18, children, ...rest }) {
   );
 }
 
-const IconRadar = () => (
-  <Svg>
-    <circle cx="12" cy="10" r="3" />
-    <path d="M12 21s-7-6.2-7-11a7 7 0 0 1 14 0c0 4.8-7 11-7 11Z" />
-  </Svg>
-);
-const IconDispatch = () => (
-  <Svg>
-    <path d="M3 7h11v9H3z" />
-    <path d="M14 10h4l3 3v3h-7" />
-    <circle cx="7" cy="18" r="2" />
-    <circle cx="17" cy="18" r="2" />
-  </Svg>
-);
-const IconShield = ({ size = 18 }) => (
-  <Svg size={size}>
-    <path d="M12 3 4 6v6c0 4.5 3.4 8.3 8 9 4.6-.7 8-4.5 8-9V6l-8-3Z" />
-    <path d="m9 12 2 2 4-4" />
-  </Svg>
-);
-const IconInvoice = () => (
-  <Svg>
-    <path d="M6 3h12v18l-3-2-3 2-3-2-3 2V3Z" />
-    <path d="M9 8h6M9 12h6M9 16h3" />
-  </Svg>
-);
-const IconLockSmall = ({ size = 13 }) => (
-  <Svg size={size}>
-    <rect x="5" y="11" width="14" height="10" rx="2" />
-    <path d="M8 11V8a4 4 0 0 1 8 0v3" />
-  </Svg>
-);
-const IconUsers = ({ size = 13 }) => (
-  <Svg size={size}>
-    <circle cx="9" cy="8" r="3.5" />
-    <path d="M2.5 20c0-3.6 2.9-6 6.5-6s6.5 2.4 6.5 6" />
-    <path d="M16 4.5a3.5 3.5 0 0 1 0 7M21.5 20c0-2.8-1.6-4.9-4-5.7" />
-  </Svg>
-);
-const IconClock = ({ size = 13 }) => (
-  <Svg size={size}>
-    <circle cx="12" cy="12" r="9" />
-    <path d="M12 7v5l3 2" />
-  </Svg>
-);
-const IconMail = () => (
-  <Svg size={17}>
-    <rect x="3" y="5" width="18" height="14" rx="2.5" />
-    <path d="m4 7 8 6 8-6" />
-  </Svg>
-);
-const IconUser = () => (
-  <Svg size={17}>
-    <circle cx="12" cy="8" r="4" />
-    <path d="M4 21c0-4 3.6-7 8-7s8 3 8 7" />
-  </Svg>
-);
-const IconPhone = () => (
-  <Svg size={17}>
-    <path d="M5 3h4l2 5-2.5 1.5a11 11 0 0 0 6 6L16 13l5 2v4a2 2 0 0 1-2 2A16 16 0 0 1 3 5a2 2 0 0 1 2-2Z" />
-  </Svg>
-);
-const IconBadge = () => (
-  <Svg size={17}>
-    <rect x="3" y="7" width="18" height="13" rx="2.5" />
-    <path d="M8 7V5a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
-  </Svg>
-);
-const IconLock = () => (
-  <Svg size={17}>
-    <rect x="4" y="10" width="16" height="11" rx="2.5" />
-    <path d="M8 10V7a4 4 0 0 1 8 0v3" />
-    <circle cx="12" cy="15.5" r="1" fill="currentColor" />
-  </Svg>
-);
-const IconArrow = () => (
-  <Svg size={18} strokeWidth="2">
-    <path d="M5 12h14M13 6l6 6-6 6" />
+const IconCheck = () => (
+  <Svg size={16} strokeWidth="2.2">
+    <path d="m5 12.5 4.5 4.5L19 7.5" />
   </Svg>
 );
 
@@ -149,38 +74,7 @@ function IconCheckCircle({ color = "currentColor" }) {
   );
 }
 
-/* Decorative orbit rings in the brand panel — echoes the logo's globe and arrows. */
-function OrbitArt() {
-  return (
-    <svg className="lp-orbit" viewBox="0 0 520 520" fill="none" aria-hidden="true">
-      <defs>
-        <linearGradient id="lpViolet" x1="0" y1="1" x2="1" y2="0">
-          <stop offset="0" stopColor="#7C3AED" stopOpacity="0" />
-          <stop offset="0.6" stopColor="#8B5CF6" stopOpacity="0.9" />
-          <stop offset="1" stopColor="#C4B5FD" />
-        </linearGradient>
-      </defs>
-      <circle cx="260" cy="260" r="250" stroke="rgba(124,58,237,0.07)" />
-      <circle cx="260" cy="260" r="190" stroke="rgba(124,58,237,0.09)" />
-      <circle cx="260" cy="260" r="130" stroke="rgba(124,58,237,0.08)" />
-      <ellipse cx="260" cy="260" rx="190" ry="70" stroke="rgba(124,58,237,0.08)" transform="rotate(-30 260 260)" />
-      <g className="lp-orbit-spin">
-        <circle cx="260" cy="260" r="190" stroke="rgba(124,58,237,0.3)" strokeDasharray="2 12" />
-        <circle cx="450" cy="260" r="4" fill="#A78BFA" />
-        <circle cx="94" cy="168" r="3" fill="#C4B5FD" />
-      </g>
-      <path d="M40 360 C 150 300, 300 230, 430 110" stroke="url(#lpViolet)" strokeWidth="6" strokeLinecap="round" />
-      <path d="M412 96 L446 96 L438 130 Z" fill="#A78BFA" transform="rotate(8 430 110)" />
-    </svg>
-  );
-}
-
-const pillars = [
-  { Icon: IconRadar, title: "Live fleet tracking", text: "Real-time GPS for every vehicle and driver" },
-  { Icon: IconDispatch, title: "Dispatch & job control", text: "Plan trips, assign loads, track proof of delivery" },
-  { Icon: IconShield, title: "Compliance & maintenance", text: "Documents, checks and service history in one place" },
-  { Icon: IconInvoice, title: "Billing & finance", text: "From completed job to invoice without re-keying" },
-];
+const trustPoints = ["Live GPS tracking", "DVSA compliance alerts", "Automated invoicing"];
 
 export function HomePage() {
   const [mode, setMode] = useState("login");
@@ -194,6 +88,7 @@ export function HomePage() {
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
   const [loading, setLoading] = useState(false);
+  const [capsLock, setCapsLock] = useState(false);
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -295,227 +190,183 @@ export function HomePage() {
 
   const isLogin = mode === "login";
 
+  // Display only: warn when Caps Lock is on while typing the password.
+  function trackCapsLock(event) {
+    if (typeof event.getModifierState === "function") setCapsLock(event.getModifierState("CapsLock"));
+  }
+
   return (
-    <div className="lp-page">
-      <div className="lp-card">
-        {/* ── Brand panel ── */}
-        <aside className="lp-left">
-          <OrbitArt />
-          <div className="lp-left-inner">
-            <img className="lp-hero-logo" src={astraLogo} alt="AstraFleet TMS" />
+    <div className="ln-page">
+      {/* ── Brand panel (hidden on mobile) ── */}
+      <aside className="ln-brand" aria-hidden="true">
+        <div className="ln-logo">
+          <span className="ln-logo-mark"><img src="/favicon.png" alt="" /></span>
+          <span>AstraFleet</span>
+        </div>
 
-            <div className="lp-eyebrow">Transport Management System</div>
-            <h1 className="lp-headline">
-              Every load. Every driver.
-              <br />
-              <span>One command centre.</span>
-            </h1>
-            <p className="lp-lede">
-              AstraFleet brings dispatch, live tracking, compliance and billing together, so your
-              operation runs on time, every time.
+        <div className="ln-brand-copy">
+          <h1>Run your fleet from<br />one control tower.</h1>
+          <p>Jobs, dispatch, live tracking and billing for UK hauliers.</p>
+        </div>
+
+        <ul className="ln-trust">
+          {trustPoints.map((point) => (
+            <li key={point}><IconCheck />{point}</li>
+          ))}
+        </ul>
+      </aside>
+
+      {/* ── Form panel ── */}
+      <main className="ln-main">
+        <div className="ln-form-wrap">
+          <div className="ln-mobile-logo">
+            <span className="ln-logo-mark"><img src="/favicon.png" alt="" /></span>
+            <span>AstraFleet</span>
+          </div>
+
+          <div className="ln-head">
+            <h2>{isLogin ? "Sign in" : "Request access"}</h2>
+            <p>
+              {isLogin
+                ? "Welcome back. Enter your details to continue."
+                : "Create your login. An administrator will approve your access."}
             </p>
-
-            <ul className="lp-pillars">
-              {pillars.map(({ Icon, title, text }) => (
-                <li className="lp-pillar" key={title}>
-                  <span className="lp-pillar-icon"><Icon /></span>
-                  <div>
-                    <strong>{title}</strong>
-                    <small>{text}</small>
-                  </div>
-                </li>
-              ))}
-            </ul>
-
-            <div className="lp-left-foot">
-              <span><IconLockSmall /> Encrypted sessions</span>
-              <span><IconUsers /> Role-based access</span>
-              <span><IconClock /> UK time, always</span>
-            </div>
           </div>
-        </aside>
 
-        {/* ── Form panel ── */}
-        <main className="lp-right">
-          <div className="lp-form-wrap">
-            <img className="lp-mobile-logo" src={astraLogo} alt="AstraFleet TMS" />
-
-            <div className="lp-form-head">
-              <span className="lp-kicker"><IconLockSmall size={11} /> {isLogin ? "Secure sign-in" : "Staff access request"}</span>
-              <h2>{isLogin ? "Welcome back" : "Request employee access"}</h2>
-              <p>
-                {isLogin
-                  ? "Sign in to your AstraFleet TMS workspace."
-                  : "Create your login. An admin will approve your access."}
-              </p>
-            </div>
-
-            <div className="lp-role-tabs" role="tablist">
-              <button
-                type="button"
-                role="tab"
-                aria-selected={isLogin}
-                className={`lp-role-tab${isLogin ? " active" : ""}`}
-                onClick={() => switchMode("login")}
-              >
-                Sign in
-              </button>
-              <button
-                type="button"
-                role="tab"
-                aria-selected={!isLogin}
-                className={`lp-role-tab${!isLogin ? " active" : ""}`}
-                onClick={() => switchMode("register")}
-              >
-                Employee register
-              </button>
-            </div>
-
-            <form className="lp-form" onSubmit={isLogin ? handleSubmit : handleRegister}>
-              {!isLogin && (
-                <>
-                  <div className="lp-field">
-                    <label htmlFor="lp-name">Full name</label>
-                    <div className="lp-input-wrap">
-                      <span className="lp-input-icon"><IconUser /></span>
-                      <input
-                        id="lp-name"
-                        type="text"
-                        autoComplete="name"
-                        placeholder="Your full name"
-                        value={name}
-                        onChange={(e) => setName(e.target.value)}
-                        required
-                      />
-                    </div>
-                  </div>
-
-                  <div className="lp-field">
-                    <label htmlFor="lp-dept">Work area</label>
-                    <div className="lp-input-wrap">
-                      <select id="lp-dept" value={department} onChange={(e) => setDepartment(e.target.value)} required>
-                        <option value="finance">Finance</option>
-                        <option value="trips">Dispatch Planning</option>
-                        <option value="jobs">Job Management</option>
-                        <option value="billing">Billing</option>
-                        <option value="tracking">Live Tracking</option>
-                        <option value="drivers">Driver Management</option>
-                        <option value="vehicles">Vehicle Management</option>
-                      </select>
-                    </div>
-                  </div>
-
-                  <div className="lp-field">
-                    <label htmlFor="lp-title">Job title</label>
-                    <div className="lp-input-wrap">
-                      <span className="lp-input-icon"><IconBadge /></span>
-                      <input
-                        id="lp-title"
-                        type="text"
-                        autoComplete="organization-title"
-                        placeholder="e.g. Finance executive"
-                        value={jobTitle}
-                        onChange={(e) => setJobTitle(e.target.value)}
-                        required
-                      />
-                    </div>
-                  </div>
-
-                  <div className="lp-field">
-                    <label htmlFor="lp-phone">Phone</label>
-                    <div className="lp-input-wrap">
-                      <span className="lp-input-icon"><IconPhone /></span>
-                      <input
-                        id="lp-phone"
-                        type="tel"
-                        autoComplete="tel"
-                        placeholder="Phone number"
-                        value={phone}
-                        onChange={(e) => setPhone(e.target.value)}
-                      />
-                    </div>
-                  </div>
-                </>
-              )}
-
-              <div className="lp-field">
-                <label htmlFor="lp-email">{isLogin ? "Email address" : "Work email"}</label>
-                <div className="lp-input-wrap">
-                  <span className="lp-input-icon"><IconMail /></span>
+          <form className="ln-form" onSubmit={isLogin ? handleSubmit : handleRegister}>
+            {!isLogin && (
+              <>
+                <div className="ln-field">
+                  <label htmlFor="lp-name">Full name</label>
                   <input
-                    id="lp-email"
-                    type="email"
-                    autoComplete="email"
-                    placeholder="name@company.com"
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
+                    id="lp-name"
+                    className="ln-input"
+                    type="text"
+                    autoComplete="name"
+                    placeholder="Your full name"
+                    value={name}
+                    onChange={(e) => setName(e.target.value)}
                     required
                   />
                 </div>
-              </div>
 
-              <div className="lp-field">
-                <div className="lp-field-row">
-                  <label htmlFor="lp-password">Password</label>
-                  {isLogin && <a className="lp-forgot" href="#">Forgot password?</a>}
+                <div className="ln-field">
+                  <label htmlFor="lp-dept">Work area</label>
+                  <select id="lp-dept" className="ln-input" value={department} onChange={(e) => setDepartment(e.target.value)} required>
+                    <option value="finance">Finance</option>
+                    <option value="trips">Dispatch planning</option>
+                    <option value="jobs">Job management</option>
+                    <option value="billing">Billing</option>
+                    <option value="tracking">Live tracking</option>
+                    <option value="drivers">Driver management</option>
+                    <option value="vehicles">Vehicle management</option>
+                  </select>
                 </div>
-                <div className="lp-input-wrap">
-                  <span className="lp-input-icon"><IconLock /></span>
+
+                <div className="ln-field">
+                  <label htmlFor="lp-title">Job title</label>
                   <input
-                    id="lp-password"
-                    type={showPass ? "text" : "password"}
-                    autoComplete={isLogin ? "current-password" : "new-password"}
-                    placeholder={isLogin ? "Enter your password" : "Create a password"}
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
+                    id="lp-title"
+                    className="ln-input"
+                    type="text"
+                    autoComplete="organization-title"
+                    placeholder="e.g. Finance executive"
+                    value={jobTitle}
+                    onChange={(e) => setJobTitle(e.target.value)}
                     required
                   />
-                  <IconEye show={showPass} onClick={() => setShowPass(!showPass)} />
                 </div>
+
+                <div className="ln-field">
+                  <label htmlFor="lp-phone">Phone <span className="ln-optional">(optional)</span></label>
+                  <input
+                    id="lp-phone"
+                    className="ln-input"
+                    type="tel"
+                    autoComplete="tel"
+                    placeholder="07700 900123"
+                    value={phone}
+                    onChange={(e) => setPhone(e.target.value)}
+                  />
+                </div>
+              </>
+            )}
+
+            <div className="ln-field">
+              <label htmlFor="lp-email">{isLogin ? "Email" : "Work email"}</label>
+              <input
+                id="lp-email"
+                className="ln-input"
+                type="email"
+                autoComplete="email"
+                autoFocus
+                placeholder="you@company.co.uk"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                required
+              />
+            </div>
+
+            <div className="ln-field">
+              <div className="ln-label-row">
+                <label htmlFor="lp-password">Password</label>
+                {isLogin && <a className="ln-link" href="#">Forgot password?</a>}
               </div>
-
-              {error && (
-                <div className="lp-alert lp-error" role="alert">
-                  <IconAlertCircle color="#AD0A0A" />
-                  <span>{error}</span>
-                </div>
-              )}
-              {success && (
-                <div className="lp-alert lp-success" role="status">
-                  <IconCheckCircle color="#026A0A" />
-                  <span>{success}</span>
-                </div>
-              )}
-
-              <button type="submit" className="lp-login-btn" disabled={loading}>
-                {loading ? (
-                  <>
-                    <span className="lp-spinner" />
-                    Please wait…
-                  </>
-                ) : (
-                  <>
-                    {isLogin ? "Sign in to AstraFleet" : "Submit for admin approval"}
-                    <IconArrow />
-                  </>
-                )}
-              </button>
-
-              <div className="lp-trust-strip">
-                <IconShield size={14} />
-                Protected by encrypted, role-based access
+              <div className="ln-password">
+                <input
+                  id="lp-password"
+                  className="ln-input"
+                  type={showPass ? "text" : "password"}
+                  autoComplete={isLogin ? "current-password" : "new-password"}
+                  placeholder={isLogin ? "Enter your password" : "Create a password"}
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  onKeyDown={trackCapsLock}
+                  onKeyUp={trackCapsLock}
+                  onBlur={() => setCapsLock(false)}
+                  aria-describedby={capsLock ? "lp-caps" : undefined}
+                  required
+                />
+                <IconEye show={showPass} onClick={() => setShowPass(!showPass)} />
               </div>
-            </form>
-          </div>
+              {capsLock && <p className="ln-caps" id="lp-caps">Caps Lock is on</p>}
+            </div>
 
-          <footer className="lp-footer">
-            <span>© {new Intl.DateTimeFormat("en-GB", { year: "numeric", timeZone: "Europe/London" }).format(new Date())} AstraFleet TMS. All rights reserved.</span>
-            <span className="lp-footer-credit">
-              Built by <strong>Devmora Technology</strong>
-            </span>
-          </footer>
-        </main>
-      </div>
+            {error && (
+              <div className="ln-alert error" role="alert">
+                <IconAlertCircle color="#C62828" />
+                <span>{error}</span>
+              </div>
+            )}
+            {success && (
+              <div className="ln-alert success" role="status">
+                <IconCheckCircle color="#1A7F37" />
+                <span>{success}</span>
+              </div>
+            )}
+
+            <button type="submit" className="ln-submit" disabled={loading}>
+              {loading && <span className="ln-spinner" aria-hidden="true" />}
+              {loading
+                ? (isLogin ? "Signing in…" : "Submitting…")
+                : (isLogin ? "Sign in" : "Submit for approval")}
+            </button>
+          </form>
+
+          <p className="ln-access">
+            {isLogin ? (
+              <>Need access? <button type="button" className="ln-link" onClick={() => switchMode("register")}>Request employee access</button></>
+            ) : (
+              <>Already have a login? <button type="button" className="ln-link" onClick={() => switchMode("login")}>Sign in</button></>
+            )}
+          </p>
+        </div>
+
+        <footer className="ln-footer">
+          <span>© {new Intl.DateTimeFormat("en-GB", { year: "numeric", timeZone: "Europe/London" }).format(new Date())} AstraFleet TMS</span>
+          <span>Built by Devmora Technology</span>
+        </footer>
+      </main>
     </div>
   );
 }

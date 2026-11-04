@@ -14,13 +14,13 @@
   --mx-text-3: #616161;
   --mx-brand: #0F6CBD;
   --mx-brand-hover: #115EA3;
-  --mx-brand-tint: #EBF3FC;
-  --mx-success: #107C10;
-  --mx-success-tint: #F1FAF1;
-  --mx-warning: #BC4B09;
+  --mx-brand-tint: #EAF3FC;
+  --mx-success: #1A7F37;
+  --mx-success-tint: #E9F7EC;
+  --mx-warning: #B45309;
   --mx-warning-tint: #FFF9F5;
-  --mx-danger: #B10E1C;
-  --mx-danger-tint: #FDF3F4;
+  --mx-danger: #C62828;
+  --mx-danger-tint: #FDECEC;
   --mx-shadow-2: 0 1px 2px rgba(0, 0, 0, 0.12), 0 0 2px rgba(0, 0, 0, 0.1);
 }
 
@@ -42,7 +42,7 @@
   background: var(--mx-surface);
   color: var(--mx-text);
   font: inherit;
-  font-size: 0.86rem;
+  font-size: 12px;
   font-weight: 600;
   text-decoration: none;
   white-space: nowrap;
@@ -76,7 +76,7 @@
   background: var(--mx-surface);
   color: var(--mx-text);
   font: inherit;
-  font-size: 0.86rem;
+  font-size: 12px;
 }
 
 .tk-input:focus { outline: none; border-bottom: 2px solid var(--mx-brand); }
@@ -99,7 +99,7 @@
   padding: 8px 12px;
   border-left: 3px solid currentColor;
   border-radius: 4px;
-  font-size: 0.84rem;
+  font-size: 12px;
   font-weight: 600;
 }
 
@@ -115,7 +115,7 @@
   color: var(--mx-text);
 }
 
-.tk-empty { margin: 0; padding: 16px; color: var(--mx-text-3); font-size: 0.86rem; }
+.tk-empty { margin: 0; padding: 16px; color: var(--mx-text-3); font-size: 12px; }
 
 .tk-plate {
   display: inline-block;
@@ -126,12 +126,12 @@
   background: #FFD200;
   color: #111;
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: 0.78rem;
+  font-size: 12px;
   font-weight: 700;
   white-space: nowrap;
 }
 
-.tk-plate.large { padding: 3px 10px; font-size: 1rem; }
+.tk-plate.large { padding: 3px 10px; font-size: 14px; }
 
 .tk-badge {
   display: inline-flex;
@@ -141,7 +141,7 @@
   border-radius: 999px;
   background: var(--mx-surface-3);
   color: var(--mx-text-2);
-  font-size: 0.78rem;
+  font-size: 12px;
   font-weight: 600;
   white-space: nowrap;
 }
@@ -167,11 +167,11 @@
 }
 
 .tk-live { display: flex; align-items: center; gap: 10px; }
-.tk-live strong { display: block; font-size: 0.95rem; }
-.tk-live small { color: var(--mx-text-3); font-size: 0.8rem; }
+.tk-live strong { display: block; font-size: 13px; }
+.tk-live small { color: var(--mx-text-3); font-size: 12px; }
 
 .tk-live-dot { width: 10px; height: 10px; border-radius: 50%; background: var(--mx-text-3); }
-.tk-live-dot.on { background: #0ca30c; animation: tk-pulse 2s ease-in-out infinite; }
+.tk-live-dot.on { background: #1A7F37; animation: tk-pulse 2s ease-in-out infinite; }
 
 @keyframes tk-pulse {
   0%, 100% { box-shadow: 0 0 0 0 rgba(12, 163, 12, 0.35); }
@@ -183,10 +183,10 @@
 }
 
 .tk-gps-health { display: grid; grid-template-columns: auto auto; align-items: baseline; gap: 2px 10px; min-width: 180px; }
-.tk-gps-health > span:first-child { color: var(--mx-text-3); font-size: 0.8rem; font-weight: 600; }
-.tk-gps-health strong { font-size: 0.95rem; }
+.tk-gps-health > span:first-child { color: var(--mx-text-3); font-size: 12px; font-weight: 600; }
+.tk-gps-health strong { font-size: 13px; }
 .tk-meter { grid-column: 1 / -1; height: 6px; overflow: hidden; border-radius: 3px; background: var(--mx-surface-3); }
-.tk-meter span { display: block; height: 100%; background: #0ca30c; }
+.tk-meter span { display: block; height: 100%; background: #1A7F37; }
 
 .tk-actions { display: flex; gap: 4px; margin-left: auto; }
 
@@ -216,12 +216,12 @@
   cursor: pointer;
 }
 
-.tk-summary-card span { overflow: hidden; color: var(--mx-text-3); font-size: 0.8rem; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
-.tk-summary-card strong { font-size: 1.25rem; font-weight: 700; }
+.tk-summary-card span { overflow: hidden; color: var(--mx-text-3); font-size: 12px; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
+.tk-summary-card strong { font-size: 16px; font-weight: 700; }
 .tk-summary-card:hover { background: var(--mx-surface-2); }
-.tk-summary-card.moving { border-left-color: #0ca30c; }
+.tk-summary-card.moving { border-left-color: #1A7F37; }
 .tk-summary-card.stopped { border-left-color: #fab219; }
-.tk-summary-card.assigned { border-left-color: #2a78d6; }
+.tk-summary-card.assigned { border-left-color: #0F6CBD; }
 .tk-summary-card.available { border-left-color: var(--mx-success); }
 .tk-summary-card.offroad { border-left-color: var(--mx-danger); }
 .tk-summary-card.offline { border-left-color: #9E9E9E; }
@@ -253,7 +253,7 @@
   background: rgba(255, 255, 255, 0.95);
   box-shadow: var(--mx-shadow-2);
   color: var(--mx-text-2);
-  font-size: 0.86rem;
+  font-size: 12px;
   font-weight: 600;
   text-align: center;
 }
@@ -265,7 +265,7 @@
   padding: 10px 16px;
   border-top: 1px solid var(--mx-border);
   color: var(--mx-text-2);
-  font-size: 0.8rem;
+  font-size: 12px;
   font-weight: 600;
 }
 
@@ -276,7 +276,7 @@
 
 .tk-selected { padding: 16px; border-bottom: 1px solid var(--mx-border); }
 .tk-selected-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
-.tk-selected-model { margin: 6px 0 12px; color: var(--mx-text-3); font-size: 0.84rem; }
+.tk-selected-model { margin: 6px 0 12px; color: var(--mx-text-3); font-size: 12px; }
 
 .tk-facts {
   display: grid;
@@ -286,16 +286,16 @@
 }
 
 .tk-facts .wide { grid-column: 1 / -1; }
-.tk-facts dt { color: var(--mx-text-3); font-size: 0.76rem; font-weight: 600; }
-.tk-facts dd { margin: 2px 0 0; overflow-wrap: anywhere; font-size: 0.88rem; font-weight: 600; }
+.tk-facts dt { color: var(--mx-text-3); font-size: 12px; font-weight: 600; }
+.tk-facts dd { margin: 2px 0 0; overflow-wrap: anywhere; font-size: 12px; font-weight: 600; }
 .tk-facts dd.warning { color: var(--mx-warning); }
 .tk-facts dd.danger { color: var(--mx-danger); }
 
-.tk-flag { margin-left: 6px; padding: 0 6px; border-radius: 4px; font-size: 0.74rem; font-weight: 700; }
+.tk-flag { margin-left: 6px; padding: 0 6px; border-radius: 4px; font-size: 12px; font-weight: 700; }
 .tk-flag.danger { background: var(--mx-danger-tint); color: var(--mx-danger); }
 
 .tk-field { display: grid; gap: 4px; margin-bottom: 12px; }
-.tk-field > span { color: var(--mx-text-2); font-size: 0.8rem; font-weight: 600; }
+.tk-field > span { color: var(--mx-text-2); font-size: 12px; font-weight: 600; }
 .tk-selected-actions { display: flex; gap: 8px; }
 
 .tk-side-list-head {
@@ -305,8 +305,8 @@
   padding: 12px 16px 8px;
 }
 
-.tk-side-list-head h2 { margin: 0; font-size: 0.92rem; font-weight: 700; }
-.tk-side-list-head span { color: var(--mx-text-3); font-size: 0.8rem; font-weight: 600; }
+.tk-side-list-head h2 { margin: 0; font-size: 13px; font-weight: 700; }
+.tk-side-list-head span { color: var(--mx-text-3); font-size: 12px; font-weight: 600; }
 
 .tk-side-list { flex: 1; min-height: 0; margin: 0; padding: 0 8px 8px; overflow-y: auto; list-style: none; }
 
@@ -331,10 +331,10 @@
 .tk-side-main,
 .tk-side-meta { display: grid; min-width: 0; }
 .tk-side-main { flex: 1; }
-.tk-side-main strong { font-size: 0.86rem; font-weight: 700; }
+.tk-side-main strong { font-size: 12px; font-weight: 700; }
 .tk-side-meta { text-align: right; }
-.tk-side-meta span { font-size: 0.8rem; font-weight: 600; white-space: nowrap; }
-.tk-side-list small { overflow: hidden; color: var(--mx-text-3); font-size: 0.76rem; text-overflow: ellipsis; white-space: nowrap; }
+.tk-side-meta span { font-size: 12px; font-weight: 600; white-space: nowrap; }
+.tk-side-list small { overflow: hidden; color: var(--mx-text-3); font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
 
 /* ── Register table + exceptions ──────────────────────────────────────────── */
 .tk-lower {
@@ -368,17 +368,17 @@
 
 .tk-search:focus-within { border-bottom: 2px solid var(--mx-brand); }
 .tk-search svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; }
-.tk-search input { flex: 1; min-width: 0; border: 0; outline: none; background: transparent; color: var(--mx-text); font: inherit; font-size: 0.86rem; }
+.tk-search input { flex: 1; min-width: 0; border: 0; outline: none; background: transparent; color: var(--mx-text); font: inherit; font-size: 12px; }
 
 .tk-table-shell { overflow-x: auto; }
-.tk-table { width: 100%; border-collapse: collapse; font-size: 0.86rem; }
+.tk-table { width: 100%; border-collapse: collapse; font-size: 12px; }
 
 .tk-table th {
   padding: 8px 12px;
   border-bottom: 1px solid var(--mx-border);
   background: var(--mx-surface-2);
   color: var(--mx-text-3);
-  font-size: 0.78rem;
+  font-size: 12px;
   font-weight: 600;
   text-align: left;
   white-space: nowrap;
@@ -399,7 +399,7 @@
   max-width: 220px;
   overflow: hidden;
   color: var(--mx-text-3);
-  font-size: 0.76rem;
+  font-size: 12px;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -411,7 +411,7 @@
   border-radius: 4px;
   background: var(--mx-brand-tint);
   color: var(--mx-brand);
-  font-size: 0.8rem;
+  font-size: 12px;
   font-weight: 600;
   white-space: nowrap;
 }
@@ -427,7 +427,7 @@
   border-radius: 4px;
   background: transparent;
   color: var(--mx-text-3);
-  font-size: 1.2rem;
+  font-size: 16px;
   cursor: pointer;
 }
 
@@ -436,7 +436,7 @@
 .tk-empty-row td { padding: 32px 12px; color: var(--mx-text-3); text-align: center; cursor: default; }
 
 .tk-card-head { display: flex; align-items: center; gap: 8px; padding: 14px 16px 10px; border-bottom: 1px solid var(--mx-border); }
-.tk-card-head h2 { margin: 0; font-size: 1rem; font-weight: 700; }
+.tk-card-head h2 { margin: 0; font-size: 14px; font-weight: 700; }
 
 .tk-count {
   min-width: 22px;
@@ -444,7 +444,7 @@
   border-radius: 999px;
   background: var(--mx-surface-3);
   color: var(--mx-text-2);
-  font-size: 0.76rem;
+  font-size: 12px;
   font-weight: 600;
   line-height: 20px;
   text-align: center;
@@ -470,8 +470,8 @@
 .tk-exceptions li.danger button { border-left-color: var(--mx-danger); }
 .tk-exceptions button:disabled { cursor: default; }
 .tk-exceptions button:hover:not(:disabled) { background: var(--mx-surface-2); }
-.tk-exceptions strong { font-size: 0.86rem; font-weight: 700; }
-.tk-exceptions small { color: var(--mx-text-3); font-size: 0.8rem; }
+.tk-exceptions strong { font-size: 12px; font-weight: 700; }
+.tk-exceptions small { color: var(--mx-text-3); font-size: 12px; }
 
 /* ── Responsive ───────────────────────────────────────────────────────────── */
 @media (max-width: 1200px) {

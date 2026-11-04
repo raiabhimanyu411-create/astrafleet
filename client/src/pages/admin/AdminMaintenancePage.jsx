@@ -513,7 +513,7 @@ function writeAttachmentPreview(blobUrl, mime, existingPreview = null) {
       html, body { height: 100%; margin: 0; background: #0F141A; font-family: system-ui, sans-serif; }
       header { height: 48px; display: flex; align-items: center; justify-content: space-between; padding: 0 14px; background: #fff; color: #0F141A; border-bottom: 1px solid #C6C6CD; box-sizing: border-box; }
       strong { font-size: 14px; }
-      a { display: inline-flex; padding: 8px 10px; border-radius: 6px; background: #0972D3; color: #fff; font-size: 13px; font-weight: 800; text-decoration: none; }
+      a { display: inline-flex; padding: 8px 10px; border-radius: 6px; background: #0F6CBD; color: #fff; font-size: 13px; font-weight: 800; text-decoration: none; }
       iframe { width: 100%; height: calc(100% - 48px); border: 0; background: #fff; }
       img { display: block; max-width: 100%; max-height: calc(100% - 48px); margin: 0 auto; object-fit: contain; background: #fff; }
     </style>
@@ -565,7 +565,7 @@ function openAttachment(dataUrl, existingPreview = null) {
             main { max-width: 520px; padding: 28px; border: 1px solid #C6C6CD; border-radius: 8px; background: #fff; box-shadow: 0 18px 50px rgba(15,23,42,.12); }
             h1 { margin: 0 0 8px; font-size: 22px; }
             p { margin: 0 0 18px; color: #424650; line-height: 1.5; }
-            a { display: inline-flex; padding: 10px 14px; border-radius: 6px; background: #0972D3; color: #fff; font-weight: 800; text-decoration: none; }
+            a { display: inline-flex; padding: 10px 14px; border-radius: 6px; background: #0F6CBD; color: #fff; font-weight: 800; text-decoration: none; }
           </style>
           <main>
             <h1>Document ready</h1>
@@ -1952,8 +1952,8 @@ const EVENT_COLORS = {
   IB:  { bg: "#0F6CBD", text: "#fff", label: "Safety inspection" },
   BT:  { bg: "#03787C", text: "#fff", label: "Brake test" },
   MOT: { bg: "#8A6100", text: "#fff", label: "MOT" },
-  TAX: { bg: "#BC4B09", text: "#fff", label: "Road tax" },
-  INS: { bg: "#107C10", text: "#fff", label: "Insurance" },
+  TAX: { bg: "#B45309", text: "#fff", label: "Road tax" },
+  INS: { bg: "#1A7F37", text: "#fff", label: "Insurance" },
   T:   { bg: "#6B3FA0", text: "#fff", label: "Tacho calibration" },
   SRV: { bg: "#616161", text: "#fff", label: "Full service" },
   VOR: { bg: "#C50F1F", text: "#fff", label: "Vehicle off road" }
@@ -2222,7 +2222,7 @@ function ExcelScheduleView({ data, onOpenVehicle }) {
     <span key="upcoming" className="excel-legend-status"><i className="excel-legend-sample" />Planned</span>,
     <span key="completed" className="excel-legend-status"><i className="excel-legend-sample completed" />Done</span>,
     <span key="forecast" className="excel-legend-status"><i className="excel-legend-sample forecast" />Forecast</span>,
-    <span key="missed" className="excel-legend-status" style={{ color: "#AD0A0A", fontWeight: 700 }}>! Missed</span>,
+    <span key="missed" className="excel-legend-status" style={{ color: "#C62828", fontWeight: 700 }}>! Missed</span>,
     <span key="divider" className="excel-legend-divider" aria-hidden="true" />,
     ...Object.entries(EVENT_COLORS).map(([code, { bg, label }]) => (
       <span key={code} className="excel-legend-chip" style={{ "--chip-accent": bg }} title={label}><i />{code}</span>
@@ -2513,7 +2513,7 @@ function ExcelScheduleView({ data, onOpenVehicle }) {
             {popover.group.map((ev) => (
               <div className="ccp-group-item" key={ev.id}>
                 <div className="ccp-row">
-                  <span className="ccp-badge" style={{ background: EVENT_COLORS[ev.code]?.bg || "#037F0C" }}>
+                  <span className="ccp-badge" style={{ background: EVENT_COLORS[ev.code]?.bg || "#1A7F37" }}>
                     {ev.code}
                   </span>
                   <span className="ccp-value">{ev.type}</span>
@@ -2570,7 +2570,7 @@ function ExcelScheduleView({ data, onOpenVehicle }) {
         ) : (
           <>
             <div className="ccp-header">
-              <span className="ccp-badge" style={{ background: EVENT_COLORS[popover.ev.code]?.bg || "#037F0C" }}>
+              <span className="ccp-badge" style={{ background: EVENT_COLORS[popover.ev.code]?.bg || "#1A7F37" }}>
                 {popover.ev.code}
               </span>
               <strong className="ccp-title">{popover.ev.type}</strong>

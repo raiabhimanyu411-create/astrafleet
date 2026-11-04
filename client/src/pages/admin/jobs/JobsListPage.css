@@ -16,13 +16,13 @@
   --mx-text-3: #616161;
   --mx-brand: #0F6CBD;
   --mx-brand-hover: #115EA3;
-  --mx-brand-tint: #EBF3FC;
-  --mx-success: #107C10;
-  --mx-success-tint: #F1FAF1;
-  --mx-warning: #BC4B09;
+  --mx-brand-tint: #EAF3FC;
+  --mx-success: #1A7F37;
+  --mx-success-tint: #E9F7EC;
+  --mx-warning: #B45309;
   --mx-warning-tint: #FFF9F5;
-  --mx-danger: #B10E1C;
-  --mx-danger-tint: #FDF3F4;
+  --mx-danger: #C62828;
+  --mx-danger-tint: #FDECEC;
   --mx-shadow-2: 0 1px 2px rgba(0, 0, 0, 0.12), 0 0 2px rgba(0, 0, 0, 0.1);
 }
 
@@ -65,7 +65,7 @@
   background: transparent;
   color: var(--mx-text-3);
   font: inherit;
-  font-size: 0.9rem;
+  font-size: 13px;
   font-weight: 500;
   white-space: nowrap;
   cursor: pointer;
@@ -95,7 +95,7 @@
   border-radius: 999px;
   background: var(--mx-surface-3);
   color: var(--mx-text-2);
-  font-size: 0.74rem;
+  font-size: 12px;
   font-weight: 600;
   line-height: 18px;
   text-align: center;
@@ -121,7 +121,7 @@
   background: var(--mx-surface);
   color: var(--mx-text);
   font: inherit;
-  font-size: 0.86rem;
+  font-size: 12px;
   font-weight: 600;
   white-space: nowrap;
   cursor: pointer;
@@ -188,7 +188,7 @@
   background: transparent;
   color: var(--mx-text);
   font: inherit;
-  font-size: 0.86rem;
+  font-size: 12px;
 }
 
 .jb-input {
@@ -200,7 +200,7 @@
   background: var(--mx-surface);
   color: var(--mx-text);
   font: inherit;
-  font-size: 0.86rem;
+  font-size: 12px;
 }
 
 .jb-input:focus { outline: none; border-bottom: 2px solid var(--mx-brand); }
@@ -220,7 +220,7 @@
   border: 0;
   background: transparent;
   color: var(--mx-text-2);
-  font-size: 1.1rem;
+  font-size: 16px;
   cursor: pointer;
 }
 
@@ -229,7 +229,7 @@
 .jb-week span {
   min-width: 112px;
   padding: 0 4px;
-  font-size: 0.86rem;
+  font-size: 12px;
   font-weight: 600;
   text-align: center;
   white-space: nowrap;
@@ -241,7 +241,7 @@
   gap: 8px;
   margin-left: auto;
   color: var(--mx-text-2);
-  font-size: 0.86rem;
+  font-size: 12px;
   white-space: nowrap;
   cursor: pointer;
 }
@@ -284,7 +284,7 @@
 .jb-attention-label {
   margin-right: 2px;
   color: var(--mx-text-3);
-  font-size: 0.8rem;
+  font-size: 12px;
   font-weight: 600;
 }
 
@@ -299,7 +299,7 @@
   background: var(--mx-surface);
   color: var(--mx-text-2);
   font: inherit;
-  font-size: 0.8rem;
+  font-size: 12px;
   font-weight: 600;
   cursor: pointer;
 }
@@ -322,7 +322,7 @@
   background: none;
   color: var(--mx-brand);
   font: inherit;
-  font-size: 0.82rem;
+  font-size: 12px;
   font-weight: 600;
   cursor: pointer;
 }
@@ -332,7 +332,7 @@
 .jb-results {
   margin-left: auto;
   color: var(--mx-text-3);
-  font-size: 0.82rem;
+  font-size: 12px;
 }
 
 /* ── List ─────────────────────────────────────────────────────────────────── */
@@ -364,7 +364,7 @@
   border-bottom: 1px solid var(--mx-border);
   background: var(--mx-surface-2);
   color: var(--mx-text-3);
-  font-size: 0.78rem;
+  font-size: 12px;
   font-weight: 600;
 }
 
@@ -410,13 +410,13 @@
 .jobs-page-shell .relay-job-header.jb-row:hover { background: var(--mx-surface-2); }
 .jobs-page-shell .relay-job-card:has(.relay-job-body) > .jb-row { background: var(--mx-brand-tint); }
 
-.jobs-page-shell .relay-chevron { color: var(--mx-text-3); font-size: 1.1rem; }
+.jobs-page-shell .relay-chevron { color: var(--mx-text-3); font-size: 16px; }
 
 .jb-cell {
   display: grid;
   gap: 2px;
   min-width: 0;
-  font-size: 0.86rem;
+  font-size: 12px;
 }
 
 .jb-cell > span,
@@ -428,7 +428,7 @@
 
 .jb-cell small {
   color: var(--mx-text-3);
-  font-size: 0.78rem;
+  font-size: 12px;
 }
 
 .jb-code {
@@ -440,7 +440,7 @@
   background: none;
   color: var(--mx-brand);
   font: inherit;
-  font-size: 0.88rem;
+  font-size: 12px;
   font-weight: 600;
   text-align: left;
   text-overflow: ellipsis;
@@ -449,7 +449,7 @@
 }
 
 .jb-code:hover { color: var(--mx-brand-hover); text-decoration: underline; }
-.jb-refs { font-size: 0.74rem !important; }
+.jb-refs { font-size: 12px !important; }
 
 .jb-route-line {
   display: flex !important;
@@ -474,7 +474,7 @@
   border-radius: 4px;
   background: var(--mx-surface-3);
   color: var(--mx-text-2);
-  font-size: 0.74rem;
+  font-size: 12px;
   font-weight: 600;
 }
 
@@ -498,7 +498,7 @@
   border-radius: 999px;
   background: var(--mx-surface-3);
   color: var(--mx-text-2);
-  font-size: 0.78rem;
+  font-size: 12px;
   font-weight: 600;
   white-space: nowrap;
 }
@@ -527,7 +527,7 @@
 .jb-flags:empty { display: none !important; }
 
 .jb-flag {
-  font-size: 0.74rem;
+  font-size: 12px;
   font-weight: 600;
   white-space: nowrap;
 }
@@ -548,7 +548,7 @@
   border: 0;
   background: none;
   color: var(--mx-danger);
-  font-size: 0.74rem;
+  font-size: 12px;
   font-weight: 600;
   text-overflow: ellipsis;
 }
@@ -590,7 +590,7 @@
   border-radius: 999px;
   background: var(--mx-danger);
   color: #fff;
-  font-size: 0.66rem;
+  font-size: 12px;
   font-weight: 700;
   line-height: 16px;
 }
@@ -612,19 +612,19 @@
 .jobs-page-shell .job-sheet-head,
 .jobs-page-shell .job-sheet-head * {
   color: var(--mx-text-3);
-  font-size: 0.78rem;
+  font-size: 12px;
   font-weight: 600;
   letter-spacing: 0;
   text-transform: none;
 }
 
-.jobs-page-shell .relay-dispatch-label { color: var(--mx-text); font-size: 0.9rem; }
+.jobs-page-shell .relay-dispatch-label { color: var(--mx-text); font-size: 13px; }
 
 .jobs-page-shell .relay-status-banner {
   border: 0;
   border-left: 3px solid currentColor;
   border-radius: 4px;
-  font-size: 0.84rem;
+  font-size: 12px;
   font-weight: 600;
 }
 
@@ -657,7 +657,7 @@
   border-radius: 4px;
   background-color: var(--mx-surface);
   color: var(--mx-text);
-  font-size: 0.86rem;
+  font-size: 12px;
   font-weight: 500;
   box-shadow: none;
 }
@@ -695,7 +695,7 @@
   border-radius: 4px;
   background: var(--mx-surface);
   color: var(--mx-text);
-  font-size: 0.86rem;
+  font-size: 12px;
   font-weight: 600;
   box-shadow: none;
 }

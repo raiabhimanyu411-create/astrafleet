@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { getSettingsSchema, updateSettings } from "../../api/settingsApi";
+import { AdminProfileSettings } from "./AdminProfileSettings";
 import { AdminWorkspaceLayout } from "./AdminWorkspaceLayout";
 import "./AdminSettingsPage.css";
 
@@ -168,6 +169,10 @@ export function AdminSettingsPage() {
             Reset all to default
           </button>
         </header>
+
+        <section className="st-account" aria-label="Your account">
+          <AdminProfileSettings />
+        </section>
 
         {loading && <p className="st-muted">Loading settings…</p>}
         {loadError && <div className="st-banner error" role="alert">{loadError}</div>}

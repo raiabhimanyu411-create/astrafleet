@@ -9,37 +9,40 @@
 ═══════════════════════════════════════════════════════════════════════════ */
 
 :where(.panel-shell) {
-  --fl-border: #E6E8EC;
-  --fl-border-strong: #D4D8DE;
-  --fl-surface: #FFFFFF;
-  --fl-surface-2: #F8F9FB;
-  --fl-surface-3: #F1F3F6;
-  --fl-text: #1F2328;
-  --fl-text-2: #3D444D;
-  --fl-text-3: #656D76;
-  --fl-brand: #0F6CBD;
-  --fl-brand-hover: #115EA3;
-  --fl-brand-tint: #EBF3FC;
-  --fl-success: #107C10;
-  --fl-success-tint: #F1FAF1;
-  --fl-warning: #BC4B09;
-  --fl-warning-tint: #FFF7F0;
-  --fl-danger: #B10E1C;
-  --fl-danger-tint: #FDF3F4;
-  --fl-shadow: 0 1px 2px rgba(16, 24, 40, 0.05);
-  --fl-ring: 0 0 0 3px rgba(15, 108, 189, 0.15);
+  /* Aliases of the global tokens in index.css, so every page shares one palette. */
+  --fl-border: var(--border);
+  --fl-border-strong: var(--border-strong);
+  --fl-surface: var(--surface);
+  --fl-surface-2: var(--surface-2);
+  --fl-surface-3: var(--surface-3);
+  --fl-text: var(--text);
+  --fl-text-2: var(--text-soft);
+  --fl-text-3: var(--muted);
+  --fl-brand: var(--primary);
+  --fl-brand-hover: var(--primary-hover);
+  --fl-brand-tint: var(--primary-soft);
+  --fl-success: var(--success);
+  --fl-success-tint: var(--success-soft);
+  --fl-warning: var(--warning);
+  --fl-warning-tint: var(--warning-soft);
+  --fl-danger: var(--danger);
+  --fl-danger-tint: var(--danger-soft);
+  --fl-info: var(--info);
+  --fl-info-tint: var(--info-soft);
+  --fl-shadow: none;
+  --fl-ring: 0 0 0 3px var(--primary-ring);
 }
 
 /* ── Page header ──────────────────────────────────────────────────────────── */
 :where(.panel-shell) .panel-header h1 {
   margin: 6px 0 4px;
-  font-size: 1.5rem;
+  font-size: 20px;
   font-weight: 700;
   letter-spacing: -0.015em;
   color: var(--fl-text);
 }
 
-:where(.panel-shell) .panel-header p { color: var(--fl-text-3); font-size: 0.9rem; }
+:where(.panel-shell) .panel-header p { color: var(--fl-text-3); font-size: 13px; }
 
 :where(.panel-shell) .section-chip {
   padding: 0;
@@ -47,7 +50,7 @@
   background: none;
   box-shadow: none;
   color: var(--fl-text-3);
-  font-size: 0.8rem;
+  font-size: 12px;
   font-weight: 600;
   letter-spacing: 0;
   text-transform: none;
@@ -64,7 +67,7 @@
 
 :where(.panel-shell) .card-label {
   color: var(--fl-text-3);
-  font-size: 0.78rem;
+  font-size: 12px;
   font-weight: 600;
 }
 
@@ -73,9 +76,9 @@
 :where(.panel-shell) .af-section {
   padding: 20px;
   border: 1px solid var(--fl-border);
-  border-radius: 10px;
+  border-radius: 12px;
   background: var(--fl-surface);
-  box-shadow: var(--fl-shadow);
+  box-shadow: none;
 }
 
 :where(.panel-shell) .content-card-link { border-top: 1px solid var(--fl-border); }
@@ -90,7 +93,7 @@
 :where(.panel-shell) .section-head h2 {
   margin: 2px 0 0;
   color: var(--fl-text);
-  font-size: 1rem;
+  font-size: 14px;
   font-weight: 650;
   letter-spacing: 0;
 }
@@ -98,7 +101,7 @@
 :where(.panel-shell) .af-section-title {
   margin: 0 0 14px;
   color: var(--fl-text);
-  font-size: 1rem;
+  font-size: 14px;
   font-weight: 650;
 }
 
@@ -108,11 +111,11 @@
 
 :where(.panel-shell) .af-label {
   color: var(--fl-text-2);
-  font-size: 0.84rem;
+  font-size: 12px;
   font-weight: 600;
 }
 
-:where(.panel-shell) .af-hint { color: var(--fl-text-3); font-size: 0.76rem; }
+:where(.panel-shell) .af-hint { color: var(--fl-text-3); font-size: 12px; }
 
 :where(.panel-shell) .af-input,
 :where(.panel-shell) .af-select {
@@ -122,7 +125,7 @@
   border-radius: 6px;
   background: var(--fl-surface);
   color: var(--fl-text);
-  font-size: 0.9rem;
+  font-size: 13px;
   box-shadow: none;
 }
 
@@ -150,7 +153,7 @@
 
 :where(.panel-shell) .af-actions { gap: 8px; padding-top: 2px; }
 :where(.panel-shell) .af-back-row { margin-bottom: 14px; }
-:where(.panel-shell) .af-back-btn { color: var(--fl-brand); font-size: 0.86rem; }
+:where(.panel-shell) .af-back-btn { color: var(--fl-brand); font-size: 12px; }
 
 /* ── Buttons ──────────────────────────────────────────────────────────────── */
 :where(.panel-shell) .af-submit-btn {
@@ -161,7 +164,7 @@
   background: var(--fl-brand);
   box-shadow: none;
   color: #fff;
-  font-size: 0.88rem;
+  font-size: 12px;
   font-weight: 600;
   letter-spacing: 0;
   transform: none;
@@ -184,7 +187,7 @@
   background: var(--fl-surface);
   box-shadow: none;
   color: var(--fl-text);
-  font-size: 0.86rem;
+  font-size: 12px;
   font-weight: 600;
 }
 
@@ -225,7 +228,7 @@
   border: 0;
   background: var(--fl-surface-3);
   color: var(--fl-text-2);
-  font-size: 0.75rem;
+  font-size: 12px;
 }
 
 :where(.panel-shell) .status-pill::before {
@@ -240,7 +243,8 @@
 :where(.panel-shell) .status-pill.success { background: var(--fl-success-tint); color: var(--fl-success); }
 :where(.panel-shell) .status-pill.warning { background: var(--fl-warning-tint); color: var(--fl-warning); }
 :where(.panel-shell) .status-pill.danger { background: var(--fl-danger-tint); color: var(--fl-danger); }
-:where(.panel-shell) .status-pill.neutral { background: var(--fl-surface-3); color: var(--fl-text-2); }
+:where(.panel-shell) .status-pill.info { background: var(--fl-info-tint); color: var(--fl-info); }
+:where(.panel-shell) .status-pill.neutral { background: var(--neutral-soft); color: var(--neutral-text); }
 
 /* ── Notices ──────────────────────────────────────────────────────────────── */
 :where(.panel-shell) .state-card {
@@ -257,8 +261,9 @@
 :where(.panel-shell) .stat-card {
   padding: 16px 18px;
   border: 1px solid var(--fl-border);
-  border-radius: 10px;
-  box-shadow: var(--fl-shadow);
+  border-radius: 12px;
+  box-shadow: none;
+  font-variant-numeric: tabular-nums;
 }
 
 :where(.panel-shell) .stat-card.tone-success,
@@ -273,12 +278,12 @@
 
 :where(.panel-shell) .stat-card strong {
   margin: 6px 0 2px;
-  font-size: 1.7rem;
+  font-size: 20px;
   font-weight: 700;
   letter-spacing: -0.02em;
 }
 
-:where(.panel-shell) .stat-card p { color: var(--fl-text-3); font-size: 0.78rem; }
+:where(.panel-shell) .stat-card p { color: var(--fl-text-3); font-size: 12px; }
 
 /* ── Detail grids: label / value pairs instead of grey tiles ──────────────── */
 :where(.panel-shell) .detail-grid { gap: 0 24px; }
@@ -294,11 +299,11 @@
 :where(.panel-shell) .detail-grid span {
   margin-bottom: 2px;
   color: var(--fl-text-3);
-  font-size: 0.78rem;
+  font-size: 12px;
   font-weight: 600;
 }
 
-:where(.panel-shell) .detail-grid strong { color: var(--fl-text); font-size: 0.9rem; font-weight: 600; }
+:where(.panel-shell) .detail-grid strong { color: var(--fl-text); font-size: 13px; font-weight: 600; }
 
 /* ── List rows ────────────────────────────────────────────────────────────── */
 :where(.panel-shell) .data-rows { gap: 0; }
@@ -318,7 +323,7 @@
 :where(.panel-shell .panel-main) table th {
   background: var(--fl-surface-2);
   color: var(--fl-text-3);
-  font-size: 0.77rem;
+  font-size: 12px;
   font-weight: 600;
 }
 
@@ -363,7 +368,7 @@
 .panel-shell .dispatch-quick-card span,
 .panel-shell .activity-quick-card span {
   color: var(--fl-text-3);
-  font-size: 0.8rem;
+  font-size: 12px;
   font-weight: 600;
   letter-spacing: 0;
 }
@@ -374,7 +379,7 @@
 .panel-shell .activity-quick-card strong {
   margin: 4px 0 2px;
   color: var(--fl-text);
-  font-size: 1.4rem;
+  font-size: 20px;
   font-weight: 700;
   line-height: 1.15;
   letter-spacing: -0.01em;
@@ -385,7 +390,7 @@
 .panel-shell .activity-quick-card p {
   overflow: hidden;
   color: var(--fl-text-3);
-  font-size: 0.74rem;
+  font-size: 12px;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -446,7 +451,7 @@
   background: none;
   box-shadow: none;
   color: var(--fl-text-3);
-  font-size: 0.9rem;
+  font-size: 13px;
   font-weight: 600;
 }
 
@@ -515,7 +520,7 @@
 
 .panel-shell .billing-register-head {
   color: var(--fl-text-3);
-  font-size: 0.77rem;
+  font-size: 12px;
   font-weight: 600;
   letter-spacing: 0;
 }
@@ -543,20 +548,20 @@
 .fl-field {
   min-width: 0;
   padding: 10px 0;
-  border-bottom: 1px solid var(--fl-border, #E6E8EC);
+  border-bottom: 1px solid var(--fl-border, #E6E9EE);
 }
 
 .fl-field-label {
   display: block;
   margin-bottom: 2px;
-  color: var(--fl-text-3, #656D76);
-  font-size: 0.78rem;
+  color: var(--fl-text-3, #59636E);
+  font-size: 12px;
   font-weight: 600;
 }
 
 .fl-field-value {
   color: var(--fl-text, #1F2328);
-  font-size: 0.9rem;
+  font-size: 13px;
   font-weight: 600;
   overflow-wrap: anywhere;
 }
@@ -565,5 +570,5 @@
   .panel-shell .billing-command-strip,
   .panel-shell .alerts-command-strip { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .panel-shell .billing-command-item strong,
-  .panel-shell .alerts-command-item strong { font-size: 1.2rem; }
+  .panel-shell .alerts-command-item strong { font-size: 16px; }
 }

@@ -5,12 +5,12 @@ import "leaflet/dist/leaflet.css";
 // Movement state → marker colour. Status colours from the shared palette; never colour alone —
 // every marker carries a tooltip with the state written out.
 export const MOVEMENT_META = {
-  "Moving": { color: "#0ca30c", tone: "success" },
+  "Moving": { color: "#1A7F37", tone: "success" },
   "Stopped On Duty": { color: "#fab219", tone: "warning" },
-  "Moving Without Duty": { color: "#d03b3b", tone: "danger" },
-  "Assigned": { color: "#2a78d6", tone: "info" },
+  "Moving Without Duty": { color: "#C62828", tone: "danger" },
+  "Assigned": { color: "#0F6CBD", tone: "info" },
   "Parked": { color: "#616161", tone: "neutral" },
-  "Off Road": { color: "#d03b3b", tone: "danger" },
+  "Off Road": { color: "#C62828", tone: "danger" },
   "Tracking Offline": { color: "#9E9E9E", tone: "neutral" }
 };
 

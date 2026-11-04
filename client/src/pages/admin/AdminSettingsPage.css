@@ -4,23 +4,23 @@
 ═══════════════════════════════════════════════════════════════════════════ */
 
 .settings-page-shell {
-  --mx-border: #E6E8EC;
+  --mx-border: #E6E9EE;
   --mx-border-strong: #D4D8DE;
   --mx-surface: #FFFFFF;
   --mx-surface-2: #F8F9FB;
   --mx-surface-3: #F1F3F6;
   --mx-text: #1F2328;
   --mx-text-2: #3D444D;
-  --mx-text-3: #656D76;
+  --mx-text-3: #59636E;
   --mx-brand: #0F6CBD;
   --mx-brand-hover: #115EA3;
-  --mx-brand-tint: #EBF3FC;
-  --mx-success: #107C10;
-  --mx-success-tint: #F1FAF1;
-  --mx-warning: #BC4B09;
-  --mx-warning-tint: #FFF7F0;
-  --mx-danger: #B10E1C;
-  --mx-danger-tint: #FDF3F4;
+  --mx-brand-tint: #EAF3FC;
+  --mx-success: #1A7F37;
+  --mx-success-tint: #E9F7EC;
+  --mx-warning: #B45309;
+  --mx-warning-tint: #FEF3E2;
+  --mx-danger: #C62828;
+  --mx-danger-tint: #FDECEC;
   --mx-shadow: 0 1px 2px rgba(16, 24, 40, 0.05);
 }
 
@@ -48,9 +48,9 @@
   padding: 4px 2px 0;
 }
 
-.st-head h1 { margin: 0; font-size: 1.6rem; font-weight: 700; letter-spacing: -0.015em; }
-.st-head p { max-width: 560px; margin: 4px 0 0; color: var(--mx-text-3); font-size: 0.9rem; line-height: 1.5; }
-.st-muted { margin: 0; color: var(--mx-text-3); font-size: 0.85rem; }
+.st-head h1 { margin: 0; font-size: 20px; font-weight: 700; letter-spacing: -0.015em; }
+.st-head p { max-width: 560px; margin: 4px 0 0; color: var(--mx-text-3); font-size: 13px; line-height: 1.5; }
+.st-muted { margin: 0; color: var(--mx-text-3); font-size: 12px; }
 
 /* ── Buttons ──────────────────────────────────────────────────────────────── */
 .st-btn {
@@ -64,7 +64,7 @@
   background: var(--mx-surface);
   color: var(--mx-text);
   font: inherit;
-  font-size: 0.86rem;
+  font-size: 12px;
   font-weight: 600;
   white-space: nowrap;
   cursor: pointer;
@@ -89,7 +89,7 @@
   background: none;
   color: var(--mx-brand);
   font: inherit;
-  font-size: 0.78rem;
+  font-size: 12px;
   font-weight: 600;
   cursor: pointer;
 }
@@ -101,7 +101,7 @@
   padding: 11px 14px;
   border: 1px solid;
   border-radius: 8px;
-  font-size: 0.86rem;
+  font-size: 12px;
   font-weight: 500;
 }
 
@@ -128,8 +128,8 @@
   border-bottom: 1px solid var(--mx-border);
 }
 
-.st-card-head h2 { margin: 0; font-size: 1rem; font-weight: 650; }
-.st-card-head p { max-width: 560px; margin: 3px 0 0; color: var(--mx-text-3); font-size: 0.83rem; line-height: 1.45; }
+.st-card-head h2 { margin: 0; font-size: 14px; font-weight: 650; }
+.st-card-head p { max-width: 560px; margin: 3px 0 0; color: var(--mx-text-3); font-size: 12px; line-height: 1.45; }
 
 .st-stat {
   display: grid;
@@ -141,8 +141,8 @@
   background: var(--mx-surface-2);
 }
 
-.st-stat span { color: var(--mx-text-3); font-size: 0.74rem; font-weight: 600; }
-.st-stat strong { font-size: 1.05rem; font-variant-numeric: tabular-nums; }
+.st-stat span { color: var(--mx-text-3); font-size: 12px; font-weight: 600; }
+.st-stat strong { font-size: 14px; font-variant-numeric: tabular-nums; }
 
 .st-row {
   display: grid;
@@ -153,8 +153,8 @@
 }
 
 .st-row + .st-row { border-top: 1px solid var(--mx-border); }
-.st-row-text label { display: block; font-size: 0.9rem; font-weight: 600; }
-.st-row-text p { margin: 3px 0 0; color: var(--mx-text-3); font-size: 0.82rem; line-height: 1.45; }
+.st-row-text label { display: block; font-size: 13px; font-weight: 600; }
+.st-row-text p { margin: 3px 0 0; color: var(--mx-text-3); font-size: 12px; line-height: 1.45; }
 
 .st-row-control { display: grid; gap: 5px; }
 
@@ -182,7 +182,7 @@
   background: transparent;
   color: var(--mx-text);
   font: inherit;
-  font-size: 0.9rem;
+  font-size: 13px;
   font-variant-numeric: tabular-nums;
   outline: none;
 }
@@ -197,7 +197,7 @@
   border-left: 1px solid var(--mx-border);
   background: var(--mx-surface-2);
   color: var(--mx-text-3);
-  font-size: 0.78rem;
+  font-size: 12px;
   line-height: 34px;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -210,7 +210,7 @@
   gap: 8px;
   min-height: 18px;
   color: var(--mx-text-3);
-  font-size: 0.76rem;
+  font-size: 12px;
 }
 
 .st-error { color: var(--mx-danger); font-weight: 600; }
@@ -230,7 +230,7 @@
   border-radius: 10px;
   background: var(--mx-surface);
   box-shadow: 0 12px 28px rgba(16, 24, 40, 0.14);
-  font-size: 0.88rem;
+  font-size: 12px;
   font-weight: 600;
 }
 
@@ -256,9 +256,9 @@
   color: #1F2328;
 }
 
-.st-modal h2 { margin: 0 0 8px; font-size: 1.1rem; }
-.st-modal p { margin: 0 0 10px; color: #3D444D; font-size: 0.88rem; line-height: 1.5; }
-.st-modal ul { margin: 0 0 12px; padding-left: 18px; font-size: 0.88rem; line-height: 1.6; }
+.st-modal h2 { margin: 0 0 8px; font-size: 16px; }
+.st-modal p { margin: 0 0 10px; color: #3D444D; font-size: 12px; line-height: 1.5; }
+.st-modal ul { margin: 0 0 12px; padding-left: 18px; font-size: 12px; line-height: 1.6; }
 .st-modal-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 16px; }
 
 /* ── Responsive ───────────────────────────────────────────────────────────── */
@@ -269,10 +269,13 @@
 }
 
 @media (max-width: 560px) {
-  .st-head h1 { font-size: 1.3rem; }
+  .st-head h1 { font-size: 20px; }
   .st-card-head,
   .st-row { padding-inline: 14px; }
   .st-savebar { bottom: 8px; }
   .st-savebar-actions { width: 100%; }
   .st-savebar-actions .st-btn { flex: 1; }
 }
+
+/* Account card, moved here from the Overview page */
+.st-account .admin-profile-card { border-radius: 12px; }

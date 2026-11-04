@@ -110,14 +110,9 @@ export function AdminWorkspaceLayout({ badge, title, description, highlights, hi
       roleLabel={isEmployee ? "Employee workspace" : "Admin workspace"}
       scopeNote={null}
       account={{ name: session?.name, role: isEmployee ? "Employee" : "Administrator", onLogout: handleLogout }}
-      headerContent={(
-        <>
-          {!isEmployee && <NotificationBell fetchUrl="/api/admin/notifications" viewAllTo="/admin/notifications" />}
-          <button className="header-action-button danger" onClick={handleLogout} type="button">
-            Logout
-          </button>
-        </>
-      )}
+      headerContent={!isEmployee
+        ? <NotificationBell fetchUrl="/api/admin/notifications" viewAllTo="/admin/notifications" />
+        : null}
       className={className}
     >
       {children}

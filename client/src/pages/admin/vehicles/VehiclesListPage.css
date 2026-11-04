@@ -16,13 +16,13 @@
   --mx-text-3: #616161;
   --mx-brand: #0F6CBD;
   --mx-brand-hover: #115EA3;
-  --mx-brand-tint: #EBF3FC;
-  --mx-success: #107C10;
-  --mx-success-tint: #F1FAF1;
-  --mx-warning: #BC4B09;
+  --mx-brand-tint: #EAF3FC;
+  --mx-success: #1A7F37;
+  --mx-success-tint: #E9F7EC;
+  --mx-warning: #B45309;
   --mx-warning-tint: #FFF9F5;
-  --mx-danger: #B10E1C;
-  --mx-danger-tint: #FDF3F4;
+  --mx-danger: #C62828;
+  --mx-danger-tint: #FDECEC;
   --mx-plate: #FFD200;
   --mx-shadow-2: 0 1px 2px rgba(0, 0, 0, 0.12), 0 0 2px rgba(0, 0, 0, 0.1);
   --mx-shadow-28: 0 14px 28px rgba(0, 0, 0, 0.18), 0 0 8px rgba(0, 0, 0, 0.12);
@@ -41,7 +41,7 @@
   background: var(--mx-surface);
   color: var(--mx-text);
   font: inherit;
-  font-size: 0.86rem;
+  font-size: 12px;
   font-weight: 600;
   white-space: nowrap;
   cursor: pointer;
@@ -86,7 +86,7 @@
   background: var(--mx-surface);
   color: var(--mx-text);
   font: inherit;
-  font-size: 0.86rem;
+  font-size: 12px;
 }
 
 .vh-input.mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; text-transform: uppercase; }
@@ -101,7 +101,7 @@
   background: none;
   color: var(--mx-brand);
   font: inherit;
-  font-size: 0.84rem;
+  font-size: 12px;
   font-weight: 600;
   cursor: pointer;
 }
@@ -114,7 +114,7 @@
   padding: 8px 12px;
   border-left: 3px solid currentColor;
   border-radius: 4px;
-  font-size: 0.84rem;
+  font-size: 12px;
 }
 
 .vh-note.banner { margin-bottom: 12px; font-weight: 600; }
@@ -134,7 +134,7 @@
   background: var(--mx-plate);
   color: #111;
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: 0.82rem;
+  font-size: 12px;
   font-weight: 700;
   letter-spacing: 0.04em;
   white-space: nowrap;
@@ -167,7 +167,7 @@
   background: transparent;
   color: var(--mx-text-3);
   font: inherit;
-  font-size: 0.9rem;
+  font-size: 13px;
   font-weight: 500;
   cursor: pointer;
 }
@@ -192,7 +192,7 @@
   border-radius: 999px;
   background: var(--mx-surface-3);
   color: var(--mx-text-2);
-  font-size: 0.74rem;
+  font-size: 12px;
   font-weight: 600;
   line-height: 18px;
   text-align: center;
@@ -231,13 +231,13 @@
 .vh-summary-card span {
   overflow: hidden;
   color: var(--mx-text-3);
-  font-size: 0.8rem;
+  font-size: 12px;
   font-weight: 600;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.vh-summary-card strong { font-size: 1.25rem; font-weight: 700; }
+.vh-summary-card strong { font-size: 16px; font-weight: 700; }
 .vh-summary-card:hover { background: var(--mx-surface-2); }
 .vh-summary-card.success { border-left-color: var(--mx-success); }
 .vh-summary-card.info { border-left-color: var(--mx-brand); }
@@ -288,7 +288,7 @@
   background: transparent;
   color: var(--mx-text);
   font: inherit;
-  font-size: 0.86rem;
+  font-size: 12px;
 }
 
 .vh-segmented {
@@ -307,7 +307,7 @@
   background: transparent;
   color: var(--mx-text-2);
   font: inherit;
-  font-size: 0.84rem;
+  font-size: 12px;
   font-weight: 600;
   cursor: pointer;
 }
@@ -318,7 +318,7 @@
   box-shadow: var(--mx-shadow-2);
 }
 
-.vh-count { margin-left: auto; color: var(--mx-text-3); font-size: 0.8rem; white-space: nowrap; }
+.vh-count { margin-left: auto; color: var(--mx-text-3); font-size: 12px; white-space: nowrap; }
 
 .vh-disclaimer {
   margin: 0;
@@ -326,7 +326,7 @@
   border-bottom: 1px solid var(--mx-border);
   background: var(--mx-surface-2);
   color: var(--mx-text-3);
-  font-size: 0.8rem;
+  font-size: 12px;
 }
 
 .vh-table-shell { overflow-x: auto; }
@@ -334,7 +334,7 @@
 .vh-table {
   width: 100%;
   border-collapse: collapse;
-  font-size: 0.86rem;
+  font-size: 12px;
 }
 
 .vh-table th {
@@ -342,7 +342,7 @@
   border-bottom: 1px solid var(--mx-border);
   background: var(--mx-surface-2);
   color: var(--mx-text-3);
-  font-size: 0.78rem;
+  font-size: 12px;
   font-weight: 600;
   letter-spacing: 0;
   text-align: left;
@@ -361,9 +361,9 @@
 .vh-table tbody tr { cursor: pointer; }
 .vh-table tbody tr:hover { background: var(--mx-surface-2); }
 .vh-table tbody tr:last-child td { border-bottom: 0; }
-.vh-table td small { display: block; color: var(--mx-text-3); font-size: 0.78rem; white-space: nowrap; }
+.vh-table td small { display: block; color: var(--mx-text-3); font-size: 12px; white-space: nowrap; }
 .vh-cell-main { display: block; white-space: nowrap; }
-.vh-open-cell { width: 1%; color: var(--mx-text-3); font-size: 1.2rem; }
+.vh-open-cell { width: 1%; color: var(--mx-text-3); font-size: 16px; }
 
 .vh-location {
   max-width: 220px;
@@ -377,7 +377,7 @@
   border-radius: 4px;
   background: var(--mx-brand-tint);
   color: var(--mx-brand);
-  font-size: 0.8rem;
+  font-size: 12px;
   font-weight: 600;
   white-space: nowrap;
 }
@@ -411,7 +411,7 @@
   border-radius: 999px;
   background: var(--mx-surface-3);
   color: var(--mx-text-2);
-  font-size: 0.78rem;
+  font-size: 12px;
   font-weight: 600;
   white-space: nowrap;
 }
@@ -438,7 +438,7 @@
   border-radius: 4px;
   background: transparent;
   color: var(--mx-text-2);
-  font-size: 1.4rem;
+  font-size: 20px;
   line-height: 1;
   cursor: pointer;
 }
@@ -489,9 +489,9 @@
   border-bottom: 1px solid var(--mx-border);
 }
 
-.vh-panel-head h2 { margin: 0; font-size: 1.15rem; font-weight: 600; }
-.vh-panel-head h2 .vh-plate { font-size: 1.05rem; padding: 3px 10px; }
-.vh-panel-head p { margin: 6px 0 0; color: var(--mx-text-3); font-size: 0.84rem; }
+.vh-panel-head h2 { margin: 0; font-size: 16px; font-weight: 600; }
+.vh-panel-head h2 .vh-plate { font-size: 14px; padding: 3px 10px; }
+.vh-panel-head p { margin: 6px 0 0; color: var(--mx-text-3); font-size: 12px; }
 .vh-head-badges { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
 
 .vh-panel-form { display: flex; flex: 1; flex-direction: column; min-height: 0; }
@@ -513,8 +513,8 @@
 .vh-figures.three { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 .vh-figures div { min-width: 0; padding: 10px 12px; }
 .vh-figures div + div { border-left: 1px solid var(--mx-border); }
-.vh-figures dt { color: var(--mx-text-3); font-size: 0.76rem; font-weight: 600; }
-.vh-figures dd { margin: 2px 0 0; overflow-wrap: anywhere; font-size: 1rem; font-weight: 600; }
+.vh-figures dt { color: var(--mx-text-3); font-size: 12px; font-weight: 600; }
+.vh-figures dd { margin: 2px 0 0; overflow-wrap: anywhere; font-size: 14px; font-weight: 600; }
 .vh-figures dd.warning { color: var(--mx-warning); }
 .vh-figures dd.danger { color: var(--mx-danger); }
 
@@ -524,8 +524,8 @@
   border-top: 1px solid var(--mx-border);
 }
 
-.vh-section h3 { margin: 0 0 12px; font-size: 0.92rem; font-weight: 600; }
-.vh-section h3 small { color: var(--mx-text-3); font-size: 0.78rem; font-weight: 500; }
+.vh-section h3 { margin: 0 0 12px; font-size: 13px; font-weight: 600; }
+.vh-section h3 small { color: var(--mx-text-3); font-size: 12px; font-weight: 500; }
 
 .vh-section-head {
   display: flex;
@@ -534,7 +534,7 @@
   gap: 8px;
 }
 
-.vh-save-state { color: var(--mx-text-3); font-size: 0.78rem; }
+.vh-save-state { color: var(--mx-text-3); font-size: 12px; }
 
 .vh-fields {
   display: grid;
@@ -544,8 +544,8 @@
 
 .vh-field { display: grid; gap: 4px; min-width: 0; }
 .vh-field.wide { grid-column: 1 / -1; }
-.vh-field > span { color: var(--mx-text-2); font-size: 0.8rem; font-weight: 600; }
-.vh-field > small { font-size: 0.76rem; }
+.vh-field > span { color: var(--mx-text-2); font-size: 12px; font-weight: 600; }
+.vh-field > small { font-size: 12px; }
 
 .vh-dates {
   margin: 0;
@@ -564,12 +564,12 @@
 }
 
 .vh-dates li + li { border-top: 1px solid var(--mx-border); }
-.vh-dates strong { display: block; font-size: 0.88rem; font-weight: 600; }
-.vh-dates small { display: block; color: var(--mx-text-3); font-size: 0.78rem; }
-.vh-dates-end { text-align: right; font-size: 0.86rem; }
+.vh-dates strong { display: block; font-size: 12px; font-weight: 600; }
+.vh-dates small { display: block; color: var(--mx-text-3); font-size: 12px; }
+.vh-dates-end { text-align: right; font-size: 12px; }
 .vh-date { width: 160px; flex: none; }
 
-.vh-hint { margin: 8px 0 0; color: var(--mx-text-3); font-size: 0.78rem; }
+.vh-hint { margin: 8px 0 0; color: var(--mx-text-3); font-size: 12px; }
 
 .vh-panel-foot {
   display: flex;
