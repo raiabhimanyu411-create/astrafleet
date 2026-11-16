@@ -572,3 +572,10 @@
   .panel-shell .billing-command-item strong,
   .panel-shell .alerts-command-item strong { font-size: 16px; }
 }
+
+/* Dispatch: first compliance reason under the "Do not dispatch" chip */
+.panel-shell .dispatch-issue-detail { display: block; max-width: 220px; margin-top: 4px; color: var(--fl-danger); font-size: 12px; line-height: 1.35; }
+
+/* Small inline text button (e.g. "Use this" next to a suggested amount) */
+.af-link-btn { padding: 0; border: 0; background: none; color: var(--primary); font: inherit; font-weight: 600; cursor: pointer; }
+.af-link-btn:hover { text-decoration: underline; }

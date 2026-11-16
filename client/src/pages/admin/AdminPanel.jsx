@@ -259,13 +259,23 @@ export function AdminPanel() {
   const yearInvoiced = chartMonths.reduce((sum, m) => sum + m.invoiced, 0);
   const firstLoad = loading && !data;
 
-  const fleetCounts = trackingBoard.reduce((acc, truck) => {
+  // Truck counts come from the server (utils/fleetCounts.js), the same numbers as Vehicles and Live
+  // tracking. The fallback below is only for an older server.
+  const summary = data?.fleetSummary;
+  const fleetCounts = summary ? {
+    available: summary.free,
+    onRoad: summary.onRoad,
+    booked: summary.booked,
+    offRoad: summary.offRoad,
+    notLegal: summary.notLegal
+  } : trackingBoard.reduce((acc, truck) => {
     const status = String(truck.status || "").replace(" ", "_");
-    if (["in_transit", "planned"].includes(status)) acc.onJob += 1;
+    if (status === "in_transit") acc.onRoad += 1;
+    else if (status === "planned") acc.booked += 1;
     else if (["maintenance", "stopped"].includes(status)) acc.offRoad += 1;
     else acc.available += 1;
     return acc;
-  }, { available: 0, onJob: 0, offRoad: 0 });
+  }, { available: 0, onRoad: 0, booked: 0, offRoad: 0 });
 
   const activeTrips = Number(statsByLabel.get("Active trips")?.value || 0);
   const delayed = Number(statsByLabel.get("Delayed deliveries")?.value || 0);
@@ -429,12 +439,14 @@ export function AdminPanel() {
           </div>
 
           <div className="ov-col">
-            <OvCard title="Fleet" count={trackingBoard.length} to="/admin/tracking" linkLabel="Live map" className="ov-fleet-card">
+            <OvCard title="Fleet" count={summary?.total ?? trackingBoard.length} to="/admin/tracking" linkLabel="Live map" className="ov-fleet-card">
               <StatusMeter
                 parts={[
                   { label: "Available", value: fleetCounts.available, color: STATUS_COLORS.success },
-                  { label: "On a job", value: fleetCounts.onJob, color: STATUS_COLORS.info },
-                  { label: "Off road", value: fleetCounts.offRoad, color: STATUS_COLORS.danger }
+                  { label: "On the road", value: fleetCounts.onRoad, color: STATUS_COLORS.info },
+                  { label: "Booked", value: fleetCounts.booked, color: STATUS_COLORS.neutral },
+                  { label: "Off road", value: fleetCounts.offRoad, color: STATUS_COLORS.danger },
+                  ...(fleetCounts.notLegal ? [{ label: "Not road-legal", value: fleetCounts.notLegal, color: STATUS_COLORS.warning }] : [])
                 ]}
               />
               <FleetMap points={fleetMap} />
@@ -452,7 +464,7 @@ export function AdminPanel() {
               </ul>
             </OvCard>
 
-            <OvCard title="Driver compliance" count={driverQueue.length} to="/admin/drivers">
+            <OvCard title="Driver compliance" count={data?.driverQueueTotal ?? driverQueue.length} to="/admin/drivers">
               {driverQueue.length ? (
                 <ul className="ov-list">
                   {driverQueue.slice(0, 4).map((driver) => (

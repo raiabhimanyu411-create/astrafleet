@@ -574,27 +574,30 @@ export function JobsListPage() {
     return true;
   }
 
-  const baseFilteredJobs = useMemo(() => {
-    const statusSet = new Set(TAB_STATUSES[tab] || []);
+  // Search / status / priority only. "Needs attention" counts use this, so they match the server
+  // numbers on Overview and Dispatch whatever tab or week is open.
+  const searchFilteredJobs = useMemo(() => {
     const query = search.trim().toLowerCase();
     return (data?.jobs || []).filter(job => {
-      if (!statusSet.has(job.status)) return false;
       if (statusFilter && job.status !== statusFilter) return false;
       if (priorityFilter && job.priority !== priorityFilter) return false;
       if (showUnassignedOnly && !isAssignmentGap(job)) return false;
-
-      if (!jobMatchesDateRange(job, tab)) return false;
-
       if (!query) return true;
       return [job.code, job.customer, job.driver, job.vehicle, job.trailer,
               job.pickupAddress, job.dropAddress, job.lane, job.routeCode, job.loadType,
               job.reference, job.loadId]
         .some(v => String(v || "").toLowerCase().includes(query));
     });
-  }, [data, tab, weekRange, selectedDate, search, showUnassignedOnly, statusFilter, priorityFilter]);
+  }, [data, search, showUnassignedOnly, statusFilter, priorityFilter]);
+
+  const baseFilteredJobs = useMemo(() => {
+    const statusSet = new Set(TAB_STATUSES[tab] || []);
+    return searchFilteredJobs.filter(job => statusSet.has(job.status) && jobMatchesDateRange(job, tab));
+  }, [searchFilteredJobs, tab, weekRange, selectedDate]);
 
   const filteredJobs = useMemo(() => {
-    return baseFilteredJobs.filter(job => {
+    // An attention filter shows every matching job, not only the ones in the open tab.
+    return (attentionFilter ? searchFilteredJobs : baseFilteredJobs).filter(job => {
       if (attentionFilter === "eta_risk" && !job.etaRisk) return false;
       if (attentionFilter === "unassigned" && !isAssignmentGap(job)) return false;
       if (attentionFilter === "pod_pending" && !isPodPending(job)) return false;
@@ -602,7 +605,7 @@ export function JobsListPage() {
       if (attentionFilter === "critical" && job.priority !== "critical") return false;
       return true;
     });
-  }, [baseFilteredJobs, attentionFilter]);
+  }, [baseFilteredJobs, searchFilteredJobs, attentionFilter]);
 
   const jobs = useMemo(() => sortJobs(filteredJobs, sortBy), [filteredJobs, sortBy]);
 
@@ -618,12 +621,12 @@ export function JobsListPage() {
   }, [data, weekRange, selectedDate]);
 
   const attentionCounts = useMemo(() => ({
-    eta_risk:    baseFilteredJobs.filter(j => j.etaRisk).length,
-    unassigned:  baseFilteredJobs.filter(isAssignmentGap).length,
-    pod_pending: baseFilteredJobs.filter(isPodPending).length,
-    blocked:     baseFilteredJobs.filter(j => j.status === "blocked").length,
-    critical:    baseFilteredJobs.filter(j => j.priority === "critical").length
-  }), [baseFilteredJobs]);
+    eta_risk:    searchFilteredJobs.filter(j => j.etaRisk).length,
+    unassigned:  searchFilteredJobs.filter(isAssignmentGap).length,
+    pod_pending: searchFilteredJobs.filter(isPodPending).length,
+    blocked:     searchFilteredJobs.filter(j => j.status === "blocked").length,
+    critical:    searchFilteredJobs.filter(j => j.priority === "critical" && ["planned", "loading", "active"].includes(j.status)).length
+  }), [searchFilteredJobs]);
 
   async function updatePlannerField(job, payload, busyKey, fallbackMessage = "Job could not be updated.") {
     const collectionPassed = job.departureRaw && job.departureRaw < ukNow();
@@ -650,7 +653,7 @@ export function JobsListPage() {
     }
     setBusyId(job.id);
     try {
-      await updateJobStatus(job.id, { status, reason });
+      await withComplianceOverride(extra => updateJobStatus(job.id, { status, reason, ...extra }));
       await load();
     } catch (err) {
       setError(err?.response?.data?.message || "Job status could not be updated.");
@@ -1033,6 +1036,8 @@ export function JobsListPage() {
                     <span className={`jb-badge ${STATUS_TONE[job.status] || "neutral"}`}>{job.status}</span>
                     <span className="jb-flags">
                       {job.priority !== "standard" && <span className={`jb-flag ${PRIORITY_TONE[job.priority] || "neutral"}`}>{job.priority}</span>}
+                      {job.missed && <span className="jb-flag danger">Missed</span>}
+                      {job.complianceIssues?.length > 0 && <span className="jb-flag danger" title={job.complianceIssues.join("\n")}>Do not dispatch</span>}
                       {hasGap && <span className="jb-flag warning">Assignment gap</span>}
                       {podPending && <span className="jb-flag warning">POD pending</span>}
                       {job.hasDriverEtaUpdate && <span className="jb-flag info">Driver ETA {job.etaTime}</span>}
@@ -1096,6 +1101,20 @@ export function JobsListPage() {
                         >
                           Reset To Planned
                         </button>
+                      </div>
+                    )}
+
+                    {/* Missed collection: still planned after its collection day */}
+                    {job.missed && !isBlocked && (
+                      <div className="relay-status-banner danger">
+                        <span>Missed · collection day {job.departure} has passed and nothing was recorded. Reschedule or cancel this job.</span>
+                      </div>
+                    )}
+
+                    {/* Truck / trailer / driver no longer legal for this job (same rules as dispatch) */}
+                    {job.complianceIssues?.length > 0 && (
+                      <div className="relay-status-banner danger">
+                        <span>Do not dispatch · {job.complianceIssues.join(" · ")}</span>
                       </div>
                     )}
 
@@ -1533,7 +1552,7 @@ export function JobsListPage() {
                               const busyElsewhere = driver.busy_trip_id && Number(driver.busy_trip_id) !== Number(job.id);
                               return (
                                 <option key={driver.id} value={driver.id} disabled={busyElsewhere}>
-                                  {driver.full_name} · {busyElsewhere ? `busy on ${driver.busy_trip_code}` : driver.shift_status}
+                                  {driver.full_name} · {busyElsewhere ? `busy on ${driver.busy_trip_code}` : driver.shift_status}{dispatchBlockLabel(driver)}
                                 </option>
                               );
                             })}

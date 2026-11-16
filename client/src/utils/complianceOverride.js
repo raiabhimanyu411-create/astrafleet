@@ -1,4 +1,4 @@
-// Sends a job / trip save. If the server says the truck or trailer must not be dispatched (MOT, insurance,
+// Sends a job / trip save. If the server says the truck, trailer or driver must not be dispatched (MOT, insurance, licence,
 // road tax, inspection or a serious defect), the admin can give a written override reason and it is sent
 // once more. Cancelling the prompt keeps the original error so the page shows why it was refused.
 export async function withComplianceOverride(send) {

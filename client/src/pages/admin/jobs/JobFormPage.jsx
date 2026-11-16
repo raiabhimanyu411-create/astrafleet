@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { createJob, estimateJobRoute, getJobById, getJobFormData, updateJob } from "../../../api/jobApi";
+import { withComplianceOverride } from "../../../utils/complianceOverride";
 import { getSettings } from "../../../api/settingsApi";
 import { AdminWorkspaceLayout } from "../AdminWorkspaceLayout";
 import { ukAddMinutes, ukInstant, ukMinutes, ukNow, formatUkWall } from '../../../utils/ukJobTime';
@@ -29,6 +30,7 @@ const emptyFields = {
   load_id: "",
   load_description: "",
   freight_amount: "",
+  planned_charges_gbp: "",
   driver_id: "",
   vehicle_id: "",
   trailer_id: "",
@@ -168,6 +170,7 @@ export function JobFormPage() {
             load_id: j.load?.loadId !== "—" ? j.load?.loadId || "" : "",
             load_description: j.load?.description !== "—" ? j.load?.description || "" : "",
             freight_amount: j.load?.freight !== "—" ? (j.load?.freight || "").replace("£", "").replace(/,/g, "") : "",
+            planned_charges_gbp: j.form?.planned_charges_gbp != null ? String(j.form.planned_charges_gbp) : "",
             driver_id: j.form?.driver_id ? String(j.form.driver_id) : "",
             vehicle_id: j.form?.vehicle_id ? String(j.form.vehicle_id) : "",
             trailer_id: j.form?.trailer_id ? String(j.form.trailer_id) : "",
@@ -301,14 +304,23 @@ export function JobFormPage() {
     : null);
   const manualTravelMins = ukMinutes(fields.loading_done_time, fields.delivery_arrival_time);
   const manualUnloadingMins = manualDeliveryMins;
-  const lastDeparture = validStops.length ? validStops.at(-1).planned_departure : fields.delivery_departure_time || (timingCalc?.unloadEnd ? ukNow(timingCalc.unloadEnd) : '');
+  // Delivery departure when left blank: the delivery arrival the user typed plus unloading time; only
+  // without a typed arrival does it come from the route estimate. Used for the total, the summary and the save.
+  const deliveryDepartureAuto = fields.delivery_departure_time
+    || (fields.delivery_arrival_time ? ukAddMinutes(fields.delivery_arrival_time, unloadingMins) : '')
+    || (timingCalc?.unloadEnd ? ukNow(timingCalc.unloadEnd) : '');
+  const lastDeparture = validStops.length ? validStops.at(-1).planned_departure : deliveryDepartureAuto;
   const estimatedTotalMins = ukMinutes(fields.planned_departure, lastDeparture);
 
   // Same fallback as the saved job: travel + loading + unloading when the schedule is not complete yet.
   const fallbackTotalMins = estimatedTravelMins != null ? loadingMins + estimatedTravelMins + unloadingMins : null;
+  const selectedVehicleMpg = (formData?.vehicles || []).find(v => String(v.id) === String(fields.vehicle_id))?.fuel_mpg ?? null;
   const costCalc = useMemo(
-    () => estimateJobCost({ distanceKm, plannedMins: nonNegative(estimatedTotalMins), fallbackMins: fallbackTotalMins, settings: sysSettings }),
-    [distanceKm, estimatedTotalMins, fallbackTotalMins, sysSettings]
+    () => estimateJobCost({
+      distanceKm, plannedMins: nonNegative(estimatedTotalMins), fallbackMins: fallbackTotalMins, settings: sysSettings,
+      vehicleMpg: selectedVehicleMpg, plannedCharges: fields.planned_charges_gbp
+    }),
+    [distanceKm, estimatedTotalMins, fallbackTotalMins, sysSettings, selectedVehicleMpg, fields.planned_charges_gbp]
   );
 
   const freightValue = parseFloat(fields.freight_amount) || 0;
@@ -374,9 +386,9 @@ export function JobFormPage() {
     const calcArrivalStr = fields.delivery_arrival_time || (submitTimingCalc?.arrival
       ? ukNow(submitTimingCalc.arrival)
       : null);
-    const calcUnloadEndStr = fields.delivery_departure_time || (submitTimingCalc?.unloadEnd
-      ? ukNow(submitTimingCalc.unloadEnd)
-      : null);
+    const calcUnloadEndStr = fields.delivery_departure_time
+      || (fields.delivery_arrival_time ? ukAddMinutes(fields.delivery_arrival_time, unloadingMins) : null)
+      || (submitTimingCalc?.unloadEnd ? ukNow(submitTimingCalc.unloadEnd) : null);
 
     const payload = {
       customer_id: fields.customer_id ? Number(fields.customer_id) : null,
@@ -391,6 +403,7 @@ export function JobFormPage() {
       load_type: "general",
       load_description: fields.load_description || null,
       freight_amount: fields.freight_amount ? Number(fields.freight_amount) : null,
+      planned_charges_gbp: fields.planned_charges_gbp === "" ? null : Number(fields.planned_charges_gbp),
       priority_level: "standard",
       driver_id: fields.driver_id ? Number(fields.driver_id) : null,
       vehicle_id: fields.vehicle_id ? Number(fields.vehicle_id) : null,
@@ -417,10 +430,10 @@ export function JobFormPage() {
 
     try {
       if (isEdit) {
-        await updateJob(id, payload);
+        await withComplianceOverride(extra => updateJob(id, { ...payload, ...extra }));
         navigate(`/admin/jobs/${id}`);
       } else {
-        const res = await createJob(payload);
+        const res = await withComplianceOverride(extra => createJob({ ...payload, ...extra }));
         navigate(`/admin/jobs/${res.data.job.id}`);
       }
     } catch (err) {
@@ -494,6 +507,12 @@ export function JobFormPage() {
                   <div className="af-input-prefix-wrap">
                     <span className="af-prefix">£</span>
                     <input className="af-input af-input-prefixed" type="number" min="0" step="0.01" placeholder="e.g. 1800.00" value={fields.freight_amount} onChange={e => set("freight_amount", e.target.value)} />
+                  </div>
+                </Field>
+                <Field label="Tolls & charges (£)">
+                  <div className="af-input-prefix-wrap">
+                    <span className="af-prefix">£</span>
+                    <input className="af-input af-input-prefixed" type="number" min="0" step="0.01" placeholder="Dartford, ULEZ/CAZ, DVS…" value={fields.planned_charges_gbp} onChange={e => set("planned_charges_gbp", e.target.value)} />
                   </div>
                 </Field>
                 <Field label="Goods / load details" required error={fieldErrors.load_description}>
@@ -693,7 +712,7 @@ export function JobFormPage() {
                     <div className="job-timing-sep">→</div>
                     <div className="job-timing-item">
                       <span className="job-timing-label">Depart drop</span>
-                      <strong>{fields.delivery_departure_time ? formatUkWall(fields.delivery_departure_time) : timingCalc ? formatUkWall(ukNow(timingCalc.unloadEnd)) : "—"}</strong>
+                      <strong>{deliveryDepartureAuto ? formatUkWall(deliveryDepartureAuto) : "—"}</strong>
                     </div>
                     <div className="job-timing-total">
                       <span className="job-timing-label">Total job time</span>
@@ -725,6 +744,24 @@ export function JobFormPage() {
                       <span>Truck ({fmtMins(costCalc.totalMins)} @ {fmtGBP(costCalc.fleetCostPerHour)}/hr)</span>
                       <strong>{fmtGBP(costCalc.fleetCost)}</strong>
                     </div>
+                    {costCalc.adblueCost > 0 && (
+                      <div className="job-economics-row">
+                        <span>AdBlue</span>
+                        <strong>{fmtGBP(costCalc.adblueCost)}</strong>
+                      </div>
+                    )}
+                    {costCalc.chargesCost > 0 && (
+                      <div className="job-economics-row">
+                        <span>Tolls & charges</span>
+                        <strong>{fmtGBP(costCalc.chargesCost)}</strong>
+                      </div>
+                    )}
+                    {costCalc.overheadCost > 0 && (
+                      <div className="job-economics-row">
+                        <span>Overheads ({sysSettings?.overhead_pct}%)</span>
+                        <strong>{fmtGBP(costCalc.overheadCost)}</strong>
+                      </div>
+                    )}
                     <div className="job-economics-row total">
                       <span>Total cost</span>
                       <strong>{fmtGBP(costCalc.totalCost)}</strong>
@@ -741,7 +778,7 @@ export function JobFormPage() {
                     )}
                   </div>
                   <p className="job-economics-hint">
-                    Estimate uses settings: fuel £{sysSettings?.fuel_price_per_litre}/L · {sysSettings?.mpg} MPG · driver £{sysSettings?.driver_rate_per_hour}/hr · fleet {fmtGBP(sysSettings?.fleet_cost_per_hour)}/hr. Tolls and other expenses are not included{selectedRoute?.toll_estimate_gbp > 0 ? ` (route toll estimate ${fmtGBP(selectedRoute.toll_estimate_gbp)})` : ""}. Same rules as the saved job.
+                    Estimate uses: fuel £{sysSettings?.fuel_price_per_litre}/L · {costCalc.mpgUsed} MPG{selectedVehicleMpg ? " (this truck)" : ""} · driver £{sysSettings?.driver_rate_per_hour}/hr · fleet {fmtGBP(sysSettings?.fleet_cost_per_hour)}/hr{costCalc.emptyMiles > 0 ? ` · ${costCalc.emptyMiles} empty return miles` : ""}. Tolls and charges are only included when entered above{selectedRoute?.toll_estimate_gbp > 0 ? ` (route toll estimate ${fmtGBP(selectedRoute.toll_estimate_gbp)})` : ""}. Same rules as the saved job.
                   </p>
                 </div>
               )}

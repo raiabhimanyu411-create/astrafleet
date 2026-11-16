@@ -675,3 +675,9 @@
   .dv-fields.three { grid-template-columns: 1fr; }
   .dv-date { width: 140px; }
 }
+
+/* Compliance (shared dispatch rules) */
+.dv-blockers { border-left: 3px solid var(--danger); background: var(--danger-soft); border-radius: 8px; padding: 12px 14px; }
+.dv-blockers h3 { color: var(--danger); }
+.dv-blockers ul { margin: 6px 0 0; padding-left: 18px; color: var(--danger); font-size: 13px; }
+.dv-docs-hint { margin: 10px 0 0; color: var(--muted); font-size: 12px; line-height: 1.45; }

@@ -39,7 +39,9 @@ export function AdminTripAssignPage() {
     dock_window: "",
     freight_amount: "",
     priority_level: "standard",
-    dispatcher_notes: ""
+    dispatcher_notes: "",
+    pickup_address: "",
+    drop_address: ""
   });
 
   const [submitting, setSubmitting] = useState(false);
@@ -64,7 +66,9 @@ export function AdminTripAssignPage() {
             dock_window: trip.form?.dock_window || "",
             freight_amount: trip.form?.freight_amount || "",
             priority_level: trip.form?.priority_level || "standard",
-            dispatcher_notes: trip.dispatcherNotes !== "—" ? trip.dispatcherNotes || "" : ""
+            dispatcher_notes: trip.dispatcherNotes !== "—" ? trip.dispatcherNotes || "" : "",
+            pickup_address: trip.form?.pickup_address || "",
+            drop_address: trip.form?.drop_address || ""
           });
         }
       })
@@ -73,7 +77,11 @@ export function AdminTripAssignPage() {
   }, [id, isEdit]);
 
   const selectedRoute = formData.routes.find(r => String(r.id) === fields.route_id);
-  const suggestedDriver = formData.drivers.find(d => d.shift_status === "ready" && d.compliance_status !== "blocked") || formData.drivers[0];
+  // Only suggest a driver who can legally be dispatched (same rules as the server); never fall back to anyone.
+  const suggestedDriver = formData.drivers.find(d => d.shift_status === "ready" && d.compliance_status !== "blocked" && !(d.dispatch_blockers || []).length);
+  // Jobs from the Jobs page carry their own addresses instead of a saved route.
+  const usesAddresses = !fields.route_id;
+  const hasSavedAddresses = isEdit && Boolean(fields.pickup_address || fields.drop_address);
   const suggestedVehicle = formData.vehicles.find(v => v.status === "available" && !(v.dispatch_blockers || []).length);
 
   function set(key, val) {
@@ -84,15 +92,21 @@ export function AdminTripAssignPage() {
     e.preventDefault();
     setSubmitError("");
 
-    if (!fields.route_id || !fields.vehicle_id || !fields.trailer_id || !fields.driver_id || !fields.planned_departure) {
-      setSubmitError("Route, truck, trailer, driver, and departure date/time are required.");
+    if (!fields.vehicle_id || !fields.trailer_id || !fields.driver_id || !fields.planned_departure) {
+      setSubmitError("Truck, trailer, driver, and departure date/time are required.");
+      return;
+    }
+    if (usesAddresses && !hasSavedAddresses && (!fields.pickup_address.trim() || !fields.drop_address.trim())) {
+      setSubmitError("Choose a saved route, or enter the collection and delivery addresses.");
       return;
     }
 
     setSubmitting(true);
     try {
       const payload = {
-        route_id: Number(fields.route_id),
+        route_id: fields.route_id ? Number(fields.route_id) : null,
+        pickup_address: usesAddresses && !hasSavedAddresses ? fields.pickup_address.trim() : undefined,
+        drop_address: usesAddresses && !hasSavedAddresses ? fields.drop_address.trim() : undefined,
         vehicle_id: Number(fields.vehicle_id),
         trailer_id: Number(fields.trailer_id),
         driver_id: Number(fields.driver_id),
@@ -149,16 +163,15 @@ export function AdminTripAssignPage() {
 
             {/* ── Section: Route ── */}
             <div className="af-section">
-              <p className="af-section-title">Select route</p>
+              <p className="af-section-title">Route</p>
               <div className="af-grid-2">
-                <Field label="Route" hint={selectedRoute ? `${Math.round(selectedRoute.distance_km * 0.621371)} mi · Est. ${selectedRoute.standard_eta_hours}h · Toll ~£${Number(selectedRoute.toll_estimate_gbp).toLocaleString("en-GB", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : null}>
+                <Field label="Saved route (optional)" hint={selectedRoute ? `${Math.round(selectedRoute.distance_km * 0.621371)} mi · Est. ${selectedRoute.standard_eta_hours}h · Toll ~£${Number(selectedRoute.toll_estimate_gbp).toLocaleString("en-GB", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : hasSavedAddresses ? "This job uses its own collection and delivery addresses." : formData.routes.length ? null : "No saved routes yet: enter the addresses below."}>
                   <select
                     className="af-select"
                     value={fields.route_id}
                     onChange={e => set("route_id", e.target.value)}
-                    required
                   >
-                    <option value="">— Select route —</option>
+                    <option value="">{hasSavedAddresses ? "— Use the job's own addresses —" : "— No saved route: use addresses —"}</option>
                     {formData.routes.map(r => (
                       <option key={r.id} value={r.id}>
                         {r.origin_hub} → {r.destination_hub} ({r.route_code})
@@ -177,6 +190,21 @@ export function AdminTripAssignPage() {
                   />
                 </Field>
               </div>
+              {usesAddresses && hasSavedAddresses && (
+                <p className="af-hint" style={{ marginTop: 10 }}>
+                  Collection: {fields.pickup_address || "—"} · Delivery: {fields.drop_address || "—"}. Change addresses on the Jobs page.
+                </p>
+              )}
+              {usesAddresses && !hasSavedAddresses && (
+                <div className="af-grid-2" style={{ marginTop: 12 }}>
+                  <Field label="Collection address (with UK postcode)">
+                    <input className="af-input" type="text" placeholder="e.g. Unit 4, Trafford Park, M17 1PG" value={fields.pickup_address} onChange={e => set("pickup_address", e.target.value)} />
+                  </Field>
+                  <Field label="Delivery address (with UK postcode)">
+                    <input className="af-input" type="text" placeholder="e.g. Hams Hall, B46 1AL" value={fields.drop_address} onChange={e => set("drop_address", e.target.value)} />
+                  </Field>
+                </div>
+              )}
             </div>
 
             {/* ── Section: Driver + Vehicle ── */}
@@ -209,7 +237,7 @@ export function AdminTripAssignPage() {
                     <option value="">— Select driver —</option>
                     {formData.drivers.map(d => (
                       <option key={d.id} value={d.id}>
-                        {d.full_name} ({d.employee_code}) · {d.shift_status}
+                        {d.full_name} ({d.employee_code}) · {d.shift_status}{dispatchBlockLabel(d)}
                       </option>
                     ))}
                   </select>

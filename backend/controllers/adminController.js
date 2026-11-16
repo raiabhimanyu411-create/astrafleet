@@ -1,8 +1,9 @@
 const db = require("../db/connection");
 const { settingNumber } = require("./settingsController");
 const { releaseTrailer, releaseVehicle } = require("../utils/assetStatus");
-const { ukNowDateTimeKey } = require("../utils/jobDateTimes");
-const { annotateDispatchBlockers, assetBlockers, checkAssetsDispatchable } = require("../utils/dispatchCompliance");
+const { addWallMinutes, dateTimeKey, ukNowDateTimeKey, wallMinutesBetween } = require("../utils/jobDateTimes");
+const { fleetCounts } = require("../utils/fleetCounts");
+const { annotateDispatchBlockers, annotateDriverBlockers, assetBlockers, checkAssetsDispatchable, driverBlockers, jobComplianceIssues, recordOverride } = require("../utils/dispatchCompliance");
 const { ensureEmployeeAuthSchema, employeeModules, parseAccessModules } = require("./authController");
 const { emitDriverChatMessage, emitDriverLocationUpdate } = require("../realtime");
 const { buildChangeSet, ensureActivitySchema, ensureSessionSchema, getActor, logActivity, requireDeleteReason, revokeUserSessions } = require("../utils/auditLogger");
@@ -176,7 +177,7 @@ async function addColumnIfMissing(table, column, definition) {
 
 async function ensureDriverOpsSchema() {
   if (driverOpsSchemaReady) return;
-  await addColumnIfMissing("trips", "driver_job_status", "VARCHAR(40) DEFAULT 'accepted'");
+  await addColumnIfMissing("trips", "driver_job_status", "VARCHAR(40) DEFAULT NULL");
   await addColumnIfMissing("trips", "delivery_notes", "TEXT DEFAULT NULL");
   await addColumnIfMissing("trips", "pod_signature_data", "LONGTEXT DEFAULT NULL");
   await addColumnIfMissing("trips", "pod_photo_data", "LONGTEXT DEFAULT NULL");
@@ -1535,6 +1536,7 @@ exports.getTracking = async (req, res) => {
         movement_state
       };
     });
+    const trackingFleet = await fleetCounts(db);
     const counts = {
       total: trackingRows.length,
       on_duty: trackingRows.filter(r => r.on_duty).length,
@@ -1542,8 +1544,9 @@ exports.getTracking = async (req, res) => {
       moving_without_duty: trackingRows.filter(r => r.movement_state === "Moving Without Duty").length,
       stopped_on_duty: trackingRows.filter(r => r.movement_state === "Stopped On Duty").length,
       assigned: trackingRows.filter(r => r.movement_state === "Assigned").length,
-      available: trackingRows.filter(r => r.status === "available" && !r.trip_id).length,
-      off_road: trackingRows.filter(r => ["maintenance", "stopped"].includes(r.status)).length,
+      // Same numbers as Overview and Vehicles (utils/fleetCounts.js): free = available, road-legal, no open job.
+      available: trackingFleet.free,
+      off_road: trackingFleet.offRoad,
       tracking_offline: trackingRows.filter(r => r.movement_state === "Tracking Offline").length
     };
 
@@ -1604,7 +1607,7 @@ exports.getTracking = async (req, res) => {
           etaRisk: r.eta_risk,
           onDuty: r.on_duty,
           movementState: r.movement_state,
-          driverJobStatus: driverStatusDisplay(r.driver_job_status),
+          driverJobStatus: r.driver_name ? driverStatusDisplay(r.driver_job_status) : "No driver",
           failedDeliveryReason: r.failed_delivery_reason || "",
           status: r.status.replace("_", " "),
           rawStatus: r.status,
@@ -2040,11 +2043,12 @@ exports.getTrips = async (req, res) => {
     );
     // Same definitions as the Jobs page: a gap is an open job with no driver or no truck; "late" is the
     // Jobs page "Running late" rule.
-    counts.eta_risk = await require("./jobController").countOpenJobsRunningLate(db);
+    const lateIds = await require("./jobController").openJobsRunningLateIds(db);
+    counts.eta_risk = lateIds.size;
     const [tripRows] = await db.query(
       `SELECT t.id, t.trip_code, t.client_name, t.dispatch_status, t.dock_window, t.eta, t.planned_departure,
               t.freight_amount_gbp, t.priority_level, t.driver_job_status, t.pickup_address, t.drop_address,
-              t.estimated_distance_km,
+              t.estimated_distance_km, t.vehicle_id, t.trailer_id, t.driver_id,
               r.origin_hub, r.destination_hub, r.distance_km, r.standard_eta_hours,
               v.registration_number,
               tr.trailer_code, tr.registration_number AS trailer_registration,
@@ -2057,6 +2061,9 @@ exports.getTrips = async (req, res) => {
        WHERE t.deleted_at IS NULL
        ORDER BY t.created_at DESC LIMIT 20`
     );
+    // Same rules as assignment: an open trip whose truck, trailer or driver is no longer legal is flagged.
+    const complianceByTrip = await jobComplianceIssues(db, tripRows.filter(r => ["planned", "loading", "active"].includes(r.dispatch_status)));
+    const isLate = r => lateIds.has(Number(r.id));
 
     const dispatchTone = { active: "success", loading: "warning", blocked: "danger", planned: "neutral", completed: "neutral" };
 
@@ -2069,7 +2076,8 @@ exports.getTrips = async (req, res) => {
       departureRaw: rawDateTime(r.planned_departure),
       eta: r.eta ? fmtTime(r.eta) : "—",
       etaRaw: rawDateTime(r.eta),
-      etaRisk: r.eta && new Date(r.eta).getTime() < Date.now() && ["planned", "loading", "active"].includes(r.dispatch_status),
+      etaRisk: isLate(r),
+      complianceIssues: complianceByTrip.get(Number(r.id)) || [],
       vehicle: r.registration_number || "Unassigned",
       trailer: r.trailer_registration || r.trailer_code || "No trailer assigned",
       driver: r.driver_name || "Unassigned",
@@ -2077,7 +2085,7 @@ exports.getTrips = async (req, res) => {
       freight: fmtAmount(r.freight_amount_gbp),
       freightValue: Number(r.freight_amount_gbp || 0),
       priority: r.priority_level || "standard",
-      driverJobStatus: driverStatusDisplay(r.driver_job_status),
+      driverJobStatus: r.driver_name ? driverStatusDisplay(r.driver_job_status) : "No driver",
       status: r.dispatch_status,
       tone: dispatchTone[r.dispatch_status] || "neutral"
     }));
@@ -2088,7 +2096,7 @@ exports.getTrips = async (req, res) => {
       warehouse: r.destination_hub || "TBD",
       window: r.dock_window,
       note: r.eta ? `ETA ${fmtTime(r.eta)}` : "ETA pending",
-      etaRisk: r.eta && new Date(r.eta).getTime() < Date.now() && ["planned", "loading", "active"].includes(r.dispatch_status),
+      etaRisk: isLate(r),
       status: r.dispatch_status === "active" ? "Slot confirmed" : r.dispatch_status === "blocked" ? "On hold" : "Pre-booked",
       tone: dispatchTone[r.dispatch_status] || "neutral"
     }));
@@ -2101,7 +2109,7 @@ exports.getTrips = async (req, res) => {
       driver: r.driver_name || "Unassigned",
       note: r.standard_eta_hours ? `${r.trailer_registration || r.trailer_code || "No trailer"} · Est. ${r.standard_eta_hours}h · ${r.distance_km || "—"} km` : r.trailer_registration || r.trailer_code || "Details TBD",
       assignmentGap: isAssignmentGap(r),
-      etaRisk: r.eta && new Date(r.eta).getTime() < Date.now() && ["planned", "loading", "active"].includes(r.dispatch_status),
+      etaRisk: isLate(r),
       status: r.dispatch_status,
       tone: dispatchTone[r.dispatch_status] || "neutral"
     }));
@@ -2146,7 +2154,7 @@ exports.getTripFormData = async (req, res) => {
     const [drivers] = await db.query(
       `SELECT id, full_name, employee_code, phone, shift_status, compliance_status
        FROM drivers
-       WHERE compliance_status != 'blocked'
+       WHERE compliance_status != 'blocked' AND archived_at IS NULL
        ORDER BY shift_status='ready' DESC, full_name ASC`
     );
     const [vehicles] = await db.query(
@@ -2167,7 +2175,7 @@ exports.getTripFormData = async (req, res) => {
     );
 
     res.json({
-      drivers,
+      drivers: await annotateDriverBlockers(db, drivers),
       vehicles: await annotateDispatchBlockers(db, "vehicle", vehicles),
       routes,
       trailers: await annotateDispatchBlockers(db, "trailer", trailers)
@@ -2337,39 +2345,57 @@ exports.createTrip = async (req, res) => {
       priority_level,
       dispatcher_notes
     } = req.body;
+    const pickupAddress = String(req.body.pickup_address || "").trim();
+    const dropAddress = String(req.body.drop_address || "").trim();
 
-    if (!route_id || !vehicle_id || !trailer_id || !driver_id || !planned_departure) {
-      return res.status(400).json({ message: "route_id, vehicle_id, trailer_id, driver_id, and planned_departure are required." });
+    // A saved route is optional: without one the trip uses its own collection / delivery addresses
+    // (as jobs created on the Jobs page do), and distance and ETA come from their postcodes.
+    if (!vehicle_id || !trailer_id || !driver_id || !planned_departure) {
+      return res.status(400).json({ message: "Truck, trailer, driver and departure date/time are required." });
+    }
+    if (!route_id && (!pickupAddress || !dropAddress)) {
+      return res.status(400).json({ message: "Choose a saved route, or enter the collection and delivery addresses." });
     }
 
-    const [[route]] = await db.query("SELECT * FROM routes WHERE id = ?", [route_id]);
-    if (!route) return res.status(404).json({ message: "Route not found." });
+    let route = null;
+    if (route_id) {
+      [[route]] = await db.query("SELECT * FROM routes WHERE id = ?", [route_id]);
+      if (!route) return res.status(404).json({ message: "Route not found." });
+    }
     const [[trailer]] = await db.query("SELECT id FROM trailers WHERE id = ?", [trailer_id]);
     if (!trailer) return res.status(404).json({ message: "Trailer not found." });
-    const complianceBlock = await checkAssetsDispatchable(db, req, { vehicleId: vehicle_id, trailerId: trailer_id });
+    const complianceBlock = await checkAssetsDispatchable(db, req, { vehicleId: vehicle_id, trailerId: trailer_id, driverId: driver_id });
     if (complianceBlock) return res.status(complianceBlock.status).json(complianceBlock.body);
 
-    const etaMs = new Date(planned_departure).getTime() + route.standard_eta_hours * 3600 * 1000;
-    const eta = new Date(etaMs);
-
-    const tripCode = `${route.route_code}-${Date.now().toString().slice(-5)}`;
+    const eta = route ? new Date(new Date(planned_departure).getTime() + route.standard_eta_hours * 3600 * 1000) : null;
+    const tripCode = route
+      ? `${route.route_code}-${Date.now().toString().slice(-5)}`
+      : `DSP-${Date.now().toString().slice(-7)}`;
 
     const [result] = await db.query(
       `INSERT INTO trips
          (trip_code, route_id, vehicle_id, trailer_id, driver_id, client_name, dispatch_status,
-          priority_level, planned_departure, eta, dock_window, pod_status, freight_amount_gbp, dispatcher_notes, driver_job_status)
-       VALUES (?, ?, ?, ?, ?, ?, 'planned', ?, ?, ?, ?, 'pending', ?, ?, 'accepted')`,
+          priority_level, planned_departure, eta, dock_window, pod_status, freight_amount_gbp, dispatcher_notes, driver_job_status,
+          pickup_address, drop_address)
+       VALUES (?, ?, ?, ?, ?, ?, 'planned', ?, ?, ?, ?, 'pending', ?, ?, 'accepted', ?, ?)`,
       [
-        tripCode, route_id, vehicle_id, trailer_id, driver_id,
+        tripCode, route_id || null, vehicle_id, trailer_id, driver_id,
         client_name || "Internal dispatch",
         priority_level || "standard",
         planned_departure,
         eta,
         dock_window || null,
         freight_amount || null,
-        dispatcher_notes || null
+        dispatcher_notes || null,
+        route ? null : pickupAddress,
+        route ? null : dropAddress
       ]
     );
+    if (!route) {
+      // Distance, travel time and delivery arrival from the postcodes; never blocks the save.
+      await require("./jobController").refreshJobRouteEstimate(db, result.insertId)
+        .catch(error => console.error("[Dispatch] Route estimate failed:", error.message));
+    }
 
     await db.query(
       `UPDATE vehicles
@@ -2391,6 +2417,9 @@ exports.createTrip = async (req, res) => {
       [result.insertId]
     );
 
+    if (String(req.body.compliance_override_reason || "").trim().length >= 5) {
+      await recordOverride(db, result.insertId, String(req.body.compliance_override_reason).trim());
+    }
     await logActivity(req, {
       module: "trips",
       action: "create",
@@ -2426,27 +2455,40 @@ exports.updateTrip = async (req, res) => {
       dispatcher_notes
     } = req.body;
 
-    if (!route_id || !vehicle_id || !trailer_id || !driver_id || !planned_departure) {
-      return res.status(400).json({ message: "route_id, vehicle_id, trailer_id, driver_id, and planned_departure are required." });
+    if (!vehicle_id || !trailer_id || !driver_id || !planned_departure) {
+      return res.status(400).json({ message: "Truck, trailer, driver and departure date/time are required." });
     }
 
     const [[existing]] = await conn.query("SELECT * FROM trips WHERE id = ? AND deleted_at IS NULL", [id]);
     if (!existing) return res.status(404).json({ message: "Trip not found." });
 
-    const [[route]] = await conn.query("SELECT * FROM routes WHERE id = ?", [route_id]);
-    if (!route) return res.status(404).json({ message: "Route not found." });
+    // Jobs created on the Jobs page have their own addresses and no saved route: keep using those.
+    let route = null;
+    if (route_id) {
+      [[route]] = await conn.query("SELECT * FROM routes WHERE id = ?", [route_id]);
+      if (!route) return res.status(404).json({ message: "Route not found." });
+    } else if (!existing.pickup_address && !existing.drop_address && !existing.route_id) {
+      return res.status(400).json({ message: "This trip has no route or addresses. Choose a saved route or edit the job on the Jobs page." });
+    }
     const [[trailer]] = await conn.query("SELECT id FROM trailers WHERE id = ?", [trailer_id]);
     if (!trailer) return res.status(404).json({ message: "Trailer not found." });
     // Only a newly chosen truck / trailer is checked, so other edits to an existing trip still save.
     const complianceBlock = await checkAssetsDispatchable(conn, req, {
       vehicleId: String(vehicle_id) !== String(existing.vehicle_id || "") ? vehicle_id : null,
       trailerId: String(trailer_id) !== String(existing.trailer_id || "") ? trailer_id : null,
+      driverId: String(driver_id) !== String(existing.driver_id || "") ? driver_id : null,
       jobId: existing.id
     });
     if (complianceBlock) return res.status(complianceBlock.status).json(complianceBlock.body);
 
-    const etaMs = new Date(planned_departure).getTime() + route.standard_eta_hours * 3600 * 1000;
-    const eta = new Date(etaMs);
+    // With a route the ETA comes from it; without one the existing ETA moves with the departure time.
+    let eta = existing.eta || null;
+    if (route) {
+      eta = new Date(new Date(planned_departure).getTime() + route.standard_eta_hours * 3600 * 1000);
+    } else if (existing.eta && existing.planned_departure) {
+      const shiftMins = wallMinutesBetween(dateTimeKey(existing.planned_departure), dateTimeKey(planned_departure));
+      if (shiftMins) eta = addWallMinutes(dateTimeKey(existing.eta), shiftMins);
+    }
 
     await conn.beginTransaction();
 
@@ -2464,16 +2506,16 @@ exports.updateTrip = async (req, res) => {
          driver_job_status=IF(? = 1, 'accepted', driver_job_status)
        WHERE id=? AND deleted_at IS NULL`,
       [
-        route_id,
+        route ? route_id : existing.route_id || null,
         vehicle_id,
         trailer_id,
         driver_id,
-        client_name || "Internal dispatch",
+        client_name || existing.client_name || "Internal dispatch",
         priority_level || "standard",
         planned_departure,
         eta,
         dock_window || null,
-        freight_amount || 0,
+        freight_amount === "" || freight_amount == null ? null : freight_amount,
         dispatcher_notes || null,
         String(existing.driver_id || "") !== String(driver_id || "") && driver_id ? 1 : 0,
         id
@@ -2599,7 +2641,9 @@ exports.getTripById = async (req, res) => {
         dock_window: trip.dock_window || "",
         freight_amount: trip.freight_amount_gbp,
         priority_level: trip.priority_level,
-        client_name: trip.client_name || ""
+        client_name: trip.client_name || "",
+        pickup_address: trip.pickup_address || "",
+        drop_address: trip.drop_address || ""
       },
       dispatcherNotes: trip.dispatcher_notes || "—",
       route: {
@@ -2704,7 +2748,88 @@ exports.getNotifications = async (req, res) => {
        ORDER BY created_at DESC LIMIT 6`
     );
 
+    // Compliance: trucks / trailers that may not go out, and drivers who may not be dispatched
+    // (same rules as dispatch). Covers MOT, insurance, road tax, PMI and serious defects.
+    const [fleetIdRows] = await db.query("SELECT id FROM vehicles");
+    const [trailerIdRows] = await db.query("SELECT id FROM trailers");
+    const [driverIdRows] = await db.query("SELECT id FROM drivers WHERE archived_at IS NULL");
+    const vehicleProblems = [...(await assetBlockers(db, "vehicle", fleetIdRows.map(r => r.id))).entries()];
+    const trailerProblems = [...(await assetBlockers(db, "trailer", trailerIdRows.map(r => r.id))).entries()];
+    const driverProblems = [...(await driverBlockers(db, driverIdRows.map(r => r.id))).entries()];
+    const [openJobRows] = await db.query(
+      `SELECT id, trip_code, vehicle_id, trailer_id, driver_id, planned_departure, dispatch_status, actual_departure
+       FROM trips WHERE deleted_at IS NULL AND dispatch_status IN ('planned','loading','active')`
+    );
+    const jobProblems = await jobComplianceIssues(db, openJobRows);
+    const todayKey = ukNowDateTimeKey().slice(0, 10);
+    const missedJobs = openJobRows.filter(r => ["planned", "loading"].includes(r.dispatch_status) && !r.actual_departure
+      && r.planned_departure && String(r.planned_departure).slice(0, 10) < todayKey);
+    const [uninvoicedRows] = await db.query(
+      `SELECT t.id, t.trip_code FROM trips t
+       WHERE t.deleted_at IS NULL AND t.dispatch_status='completed'
+         AND NOT EXISTS (SELECT 1 FROM invoices i WHERE i.trip_id=t.id AND i.deleted_at IS NULL)
+       ORDER BY t.id DESC`
+    );
+    const reasonKey = reasons => reasons.join("|").replace(/[^a-z0-9|]/gi, "").slice(0, 80);
+    const complianceNotifications = [
+      ...vehicleProblems.map(([id, item]) => ({
+        id: `legal-vehicle-${id}-${reasonKey(item.all)}`,
+        type: "danger",
+        title: `Not road-legal: ${item.registration}`,
+        body: `${item.all.join(", ")}. Do not dispatch until fixed.`,
+        link: "/admin/maintenance",
+        source: "Fleet compliance",
+        createdAt: null
+      })),
+      ...trailerProblems.map(([id, item]) => ({
+        id: `legal-trailer-${id}-${reasonKey(item.all)}`,
+        type: "danger",
+        title: `Trailer not road-legal: ${item.registration}`,
+        body: `${item.all.join(", ")}. Do not dispatch until fixed.`,
+        link: "/admin/maintenance",
+        source: "Fleet compliance",
+        createdAt: null
+      })),
+      ...(driverProblems.length ? [{
+        id: `driver-compliance-${driverProblems.length}-${reasonKey(driverProblems.map(([id]) => String(id)))}`,
+        type: "danger",
+        title: `${driverProblems.length} driver${driverProblems.length === 1 ? "" : "s"} cannot be dispatched`,
+        body: driverProblems.slice(0, 3).map(([, item]) => `${item.name}: ${item.all[0]}`).join(" · ") + (driverProblems.length > 3 ? " …" : ""),
+        link: "/admin/drivers",
+        source: "Driver compliance",
+        createdAt: null
+      }] : []),
+      ...openJobRows.filter(r => jobProblems.has(Number(r.id))).slice(0, 10).map(r => ({
+        id: `job-compliance-${r.id}-${reasonKey(jobProblems.get(Number(r.id)))}`,
+        type: "danger",
+        title: `Do not dispatch: ${r.trip_code}`,
+        body: jobProblems.get(Number(r.id)).join(" · "),
+        link: `/admin/jobs/${r.id}`,
+        source: "Dispatch compliance",
+        createdAt: null
+      })),
+      ...(missedJobs.length ? [{
+        id: `missed-jobs-${missedJobs.map(r => r.id).join("-").slice(0, 80)}`,
+        type: "warning",
+        title: `${missedJobs.length} job${missedJobs.length === 1 ? "" : "s"} missed the collection day`,
+        body: `${missedJobs.slice(0, 5).map(r => r.trip_code).join(", ")}${missedJobs.length > 5 ? "…" : ""} — still planned. Reschedule or cancel.`,
+        link: "/admin/jobs",
+        source: "Dispatch",
+        createdAt: null
+      }] : []),
+      ...(uninvoicedRows.length ? [{
+        id: `uninvoiced-${uninvoicedRows.map(r => r.id).join("-").slice(0, 80)}`,
+        type: "warning",
+        title: `${uninvoicedRows.length} completed job${uninvoicedRows.length === 1 ? "" : "s"} not invoiced`,
+        body: `${uninvoicedRows.slice(0, 5).map(r => r.trip_code).join(", ")}${uninvoicedRows.length > 5 ? "…" : ""}`,
+        link: "/admin/billing",
+        source: "Billing",
+        createdAt: null
+      }] : [])
+    ];
+
     const notifications = [
+      ...complianceNotifications,
       ...employeeRows.map(r => ({
         id: `employee-${r.id}`,
         type: "info",
@@ -3100,20 +3225,23 @@ exports.getOverview = async (req, res) => {
     await ensureEmployeeAuthSchema();
     await ensureSoftDeleteSchema();
 
-    // "Available" means it can be put on a job right now: same rules as the job assignment lists.
-    const [[drivers]] = await db.query(
-      `SELECT COUNT(*) AS total,
-              COALESCE(SUM(shift_status='ready' AND compliance_status='clear' AND NOT EXISTS (
-                SELECT 1 FROM trips t WHERE t.driver_id=drivers.id AND t.deleted_at IS NULL
-                  AND t.dispatch_status IN ('planned','loading','active'))),0) AS available
-       FROM drivers WHERE archived_at IS NULL`
+    // "Available" means it can be put on a job right now: the shared dispatch rules
+    // (utils/dispatchCompliance.js), so Overview, Drivers, Vehicles and Dispatch show the same numbers.
+    const [driverRows] = await db.query(
+      `SELECT id, full_name, employee_code, shift_status, compliance_status,
+              EXISTS (SELECT 1 FROM trips t WHERE t.driver_id=drivers.id AND t.deleted_at IS NULL
+                AND t.dispatch_status IN ('planned','loading','active')) AS busy
+       FROM drivers WHERE archived_at IS NULL
+       ORDER BY compliance_status='blocked' DESC, compliance_status='review' DESC, full_name ASC`
     );
-    const [vehicleRows] = await db.query("SELECT id, status FROM vehicles");
-    const vehicleBlockers = await assetBlockers(db, "vehicle", vehicleRows.map(row => row.id));
-    const vehicles = {
-      total: vehicleRows.length,
-      available: vehicleRows.filter(row => row.status === "available" && !vehicleBlockers.has(Number(row.id))).length
+    const driverBlockerMap = await driverBlockers(db, driverRows.map(row => row.id));
+    const drivers = {
+      total: driverRows.length,
+      available: driverRows.filter(row => row.shift_status === "ready" && !Number(row.busy) && !driverBlockerMap.has(Number(row.id))).length
     };
+    // Truck counts: the same function as Vehicles and Live tracking (utils/fleetCounts.js).
+    const fleet = await fleetCounts(db);
+    const vehicles = { total: fleet.total, available: fleet.free };
     const [[trips]] = await db.query(
       `SELECT COUNT(*) AS total,
               COALESCE(SUM(dispatch_status IN ('loading','active')),0) AS active,
@@ -3143,13 +3271,9 @@ exports.getOverview = async (req, res) => {
        ORDER BY approval_status='pending' DESC, created_at DESC
        LIMIT 6`
     );
-    const [driverQueueRows] = await db.query(
-      `SELECT full_name, employee_code, shift_status, compliance_status, onboarding_status
-       FROM drivers
-       WHERE compliance_status != 'clear' OR shift_status != 'ready' OR onboarding_status IN ('new','docs_pending')
-       ORDER BY compliance_status='blocked' DESC, compliance_status='review' DESC, full_name ASC
-       LIMIT 6`
-    );
+    // Drivers who cannot be dispatched, with the first reason (same list as the Drivers page).
+    const blockedDriverRows = driverRows.filter(row => driverBlockerMap.has(Number(row.id)));
+    const driverQueueRows = blockedDriverRows.slice(0, 6);
     const [tripPlanRows] = await db.query(
       `SELECT t.id, t.trip_code, t.dispatch_status, t.planned_departure, t.priority_level,
               r.origin_hub, r.destination_hub,
@@ -3161,8 +3285,11 @@ exports.getOverview = async (req, res) => {
        LEFT JOIN vehicles v ON t.vehicle_id = v.id
        LEFT JOIN trailers tr ON t.trailer_id = tr.id
        LEFT JOIN drivers d ON t.driver_id = d.id
-       WHERE t.dispatch_status != 'completed' AND t.deleted_at IS NULL
-       ORDER BY FIELD(t.priority_level, 'critical', 'priority', 'standard'), t.planned_departure ASC
+       WHERE t.deleted_at IS NULL
+         AND (t.dispatch_status IN ('planned','loading','active')
+              OR (t.dispatch_status = 'blocked' AND t.planned_departure >= DATE_SUB(CURDATE(), INTERVAL 7 DAY)))
+       ORDER BY t.dispatch_status IN ('loading','active') DESC, t.planned_departure ASC,
+                FIELD(t.priority_level, 'critical', 'priority', 'standard')
        LIMIT 6`
     );
     const [financeRows] = await db.query(
@@ -3313,13 +3440,19 @@ exports.getOverview = async (req, res) => {
         access: parseAccessModules(e.access_modules),
         tone: e.approval_status === "active" ? "success" : e.approval_status === "rejected" ? "danger" : "warning"
       })),
-      driverQueue: driverQueueRows.map(d => ({
-        name: d.full_name,
-        assignment: `${d.employee_code} · ${d.shift_status.replace("_", " ")}`,
-        compliance: d.compliance_status,
-        status: d.onboarding_status.replace("_", " "),
-        tone: complianceTone[d.compliance_status] || "neutral"
-      })),
+      // One status per driver plus the main reason ("Licence expired"), not two statuses.
+      driverQueue: driverQueueRows.map(d => {
+        const item = driverBlockerMap.get(Number(d.id));
+        const reasons = item?.all || [];
+        return {
+          name: d.full_name,
+          assignment: reasons.length > 1 ? `${reasons[0]} (+${reasons.length - 1} more)` : reasons[0] || d.employee_code,
+          compliance: item?.hard.length ? "blocked" : "review",
+          tone: item?.hard.length ? "danger" : "warning"
+        };
+      }),
+      driverQueueTotal: blockedDriverRows.length,
+      fleetSummary: { total: fleet.total, free: fleet.free, onRoad: fleet.onRoad, booked: fleet.booked, offRoad: fleet.offRoad, notLegal: fleet.notLegal },
       tripPlans: tripPlanRows.map(t => ({
         id: t.id,
         route: t.origin_hub && t.destination_hub ? `${t.origin_hub} → ${t.destination_hub}` : t.trip_code,

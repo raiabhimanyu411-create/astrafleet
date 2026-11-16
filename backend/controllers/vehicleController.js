@@ -2,6 +2,8 @@ const db = require("../db/connection");
 const { ukDaysUntil } = require("../utils/maintenanceDates");
 const { buildChangeSet, logActivity } = require("../utils/auditLogger");
 const { settingNumber } = require("./settingsController");
+const { assetBlockers } = require("../utils/dispatchCompliance");
+const { fleetCounts } = require("../utils/fleetCounts");
 
 const vehicleColumns = [
   ["make", "make VARCHAR(80) DEFAULT NULL"],
@@ -233,6 +235,34 @@ function combinedModelName(make, model, modelName) {
 }
 
 // UK plates are stored without spaces in upper case, so "mx22 kht" and "MX22KHT" are the same vehicle.
+// Number fields a person types: reject impossible values with a clear message instead of letting the
+// database refuse them (which used to come back as a bare "Vehicle create error" 500).
+const NUMBER_LIMITS = {
+  capacity_tonnes: { label: "Capacity", unit: "tonnes", min: 0, max: 100 },
+  year_of_manufacture: { label: "Year of manufacture", min: 1950, max: 2100, integer: true },
+  odometer_reading: { label: "Odometer", unit: "km", min: 0, max: 5000000 },
+  inspection_frequency_weeks: { label: "Inspection frequency", unit: "weeks", min: 1, max: 52, integer: true },
+  fuel_mpg: { label: "Fuel economy", unit: "mpg", min: 0.1, max: 60 }
+};
+
+function numberFieldError(values) {
+  for (const [column, rule] of Object.entries(NUMBER_LIMITS)) {
+    const raw = values[column];
+    if (raw === undefined || raw === null || raw === "") continue;
+    const value = Number(raw);
+    const range = `${rule.min}–${rule.max}${rule.unit ? ` ${rule.unit}` : ""}`;
+    if (!Number.isFinite(value) || value < rule.min || value > rule.max || (rule.integer && !Number.isInteger(value))) {
+      return `${rule.label} must be ${rule.integer ? "a whole number " : ""}between ${range}.`;
+    }
+  }
+  return null;
+}
+
+// A value the database cannot store is the user's input, not a server fault.
+function inputErrorStatus(err) {
+  return ["ER_WARN_DATA_OUT_OF_RANGE", "ER_DATA_TOO_LONG", "ER_TRUNCATED_WRONG_VALUE", "ER_TRUNCATED_WRONG_VALUE_FOR_FIELD", "WARN_DATA_TRUNCATED"].includes(err?.code);
+}
+
 function normalizeRegistration(value) {
   return String(value || "").toUpperCase().replace(/\s+/g, "").trim();
 }
@@ -335,7 +365,7 @@ exports.listVehicles = async (req, res) => {
                  SUM(dispatch_status IN ('planned','loading','active')) AS open_trips,
                  MAX(created_at) AS last_trip_at
           FROM trips
-          WHERE vehicle_id IS NOT NULL
+          WHERE vehicle_id IS NOT NULL AND deleted_at IS NULL
           GROUP BY vehicle_id
        ) trip ON trip.vehicle_id = v.id
        LEFT JOIN (
@@ -374,16 +404,32 @@ exports.listVehicles = async (req, res) => {
                  AND t.dispatch_status IN ('planned','loading','active') ORDER BY t.id DESC LIMIT 1) AS current_job
        FROM trailers tr ORDER BY tr.created_at DESC`
     );
-    const complianceAssessments = rows.map(vehicleComplianceAssessment);
+    // "Can it go out?" comes from the shared dispatch rules (utils/dispatchCompliance.js), so this page,
+    // Dispatch, Maintenance and Overview always agree. The local assessment only adds "due soon" warnings.
+    const blockersById = await assetBlockers(db, "vehicle", rows.map(v => v.id));
+    const complianceOf = (v) => {
+      const local = vehicleComplianceAssessment(v);
+      const blockers = blockersById.get(Number(v.id))?.all || [];
+      if (!blockers.length) {
+        // Not blocked by the dispatch rules: never show red here.
+        return local.tone === "danger" ? { tone: "warning", status: "Review due", reasons: local.reasons } : local;
+      }
+      const extra = local.reasons.filter(reason => !reason.endsWith("expired") && !reason.endsWith("missing"));
+      return { tone: "danger", status: "Do not dispatch", reasons: [...blockers, ...extra], blockers };
+    };
+    const complianceAssessments = rows.map(complianceOf);
     const blockedVehicles = complianceAssessments.filter((assessment) => assessment.tone === "danger").length;
     const reviewVehicles = complianceAssessments.filter((assessment) => assessment.tone === "warning").length;
+    // Same numbers as Overview and Live tracking (utils/fleetCounts.js).
+    const fleet = await fleetCounts(db);
+    const readyVehicles = fleet.free;
 
     res.json({
       stats: [
         { label: "Total vehicles", value: counts.total, description: "All fleet assets.", change: "Live from database", tone: "neutral" },
-        { label: "Available", value: counts.available, description: "Ready for assignment.", change: "Fleet ready", tone: "success" },
-        { label: "In transit", value: counts.in_transit, description: "Currently on road.", change: "Live fleet", tone: "warning" },
-        { label: "Maintenance", value: Number(counts.maintenance) + Number(counts.stopped), description: "Unavailable or stopped.", change: "Workshop queue", tone: "danger" }
+        { label: "Available", value: readyVehicles, description: "Free and road-legal (MOT, tax, insurance, inspection, no serious defect).", change: "Fleet ready", tone: "success" },
+        { label: "On a job", value: fleet.onJob, description: "Planned, loading or on the road.", change: "Live fleet", tone: "warning" },
+        { label: "Maintenance", value: fleet.offRoad, description: "Off road (VOR): maintenance or stopped.", change: "Workshop queue", tone: "danger" }
       ],
       fleetHealth: [
         { label: "Blocked compliance", value: blockedVehicles, description: "Expired, missing core records, or critical defects.", change: "Do not dispatch", tone: blockedVehicles ? "danger" : "success" },
@@ -403,8 +449,8 @@ exports.listVehicles = async (req, res) => {
         currentJob: t.current_job || null,
         since: fmtDate(t.created_at)
       })),
-      vehicles: rows.map(v => {
-        const compliance = vehicleComplianceAssessment(v);
+      vehicles: rows.map((v, index) => {
+        const compliance = complianceAssessments[index];
         return {
         id: v.id,
         registrationNumber: v.registration_number,
@@ -415,7 +461,11 @@ exports.listVehicles = async (req, res) => {
         truckType: v.truck_type,
         status: v.status,
         statusTone: statusTone[v.status] || "neutral",
+        // Status says "available" but the truck may not legally go out: the page shows this instead.
+        roadLegal: compliance.tone !== "danger" && !["maintenance", "stopped"].includes(v.status),
+        dispatchBlockers: compliance.blockers || [],
         fuelType: v.fuel_type || "—",
+        fuelMpg: v.fuel_mpg != null ? Number(v.fuel_mpg) : null,
         capacityTonnes: v.capacity_tonnes || "—",
         yearOfManufacture: v.year_of_manufacture || "—",
         colour: v.colour || "—",
@@ -457,8 +507,8 @@ exports.listVehicles = async (req, res) => {
         nextServiceDaysLeft: daysUntil(v.service_effective_due),
         nextServiceTone: expiryTone(v.service_effective_due),
         lastServiceDone: fmtDate(v.service_last_done),
-        totalTrips: v.total_trips,
-        openTrips: v.open_trips,
+        totalTrips: Number(v.total_trips || 0),
+        openTrips: Number(v.open_trips || 0),
         openDefects: Number(v.open_defects || 0),
         criticalDefects: Number(v.critical_defects || 0),
         lastActivity: fmtDate(v.last_trip_at || v.created_at),
@@ -519,8 +569,16 @@ exports.getVehicleById = async (req, res) => {
     const defectStatusTone = { open: "danger", in_progress: "warning", resolved: "success" };
     const resultTone       = { pass: "success", advisory: "warning", fail: "danger" };
 
-    const tones = [expiryTone(v.mot_expiry), expiryTone(v.insurance_expiry), expiryTone(v.road_tax_expiry), expiryTone(v.permit_expiry), expiryTone(v.pollution_expiry), expiryTone(v.fitness_expiry)];
-    const complianceTone = tones.includes("danger") ? "danger" : tones.includes("warning") || tones.includes("neutral") ? "warning" : "success";
+    // Same rules as the Vehicles list and dispatch: missing or expired MOT / insurance / road tax, overdue
+    // inspection, serious defect or VOR = red. Amber only for a real date that is coming up; a date
+    // that was never entered is not "expiring soon".
+    const dispatchBlockers = (await assetBlockers(db, "vehicle", [v.id])).get(Number(v.id))?.all || [];
+    const datedTones = [v.mot_expiry, v.insurance_expiry, v.road_tax_expiry, v.permit_expiry, v.pollution_expiry, v.fitness_expiry]
+      .filter(Boolean)
+      .map(expiryTone);
+    const complianceTone = dispatchBlockers.length
+      ? "danger"
+      : datedTones.includes("danger") || datedTones.includes("warning") ? "warning" : "success";
     const latestMaintenance = (types) => maintenance.find(record =>
       types.includes(String(record.service_type || "").trim().toLowerCase())
     );
@@ -539,6 +597,7 @@ exports.getVehicleById = async (req, res) => {
     };
 
     res.json({
+      dispatchBlockers,
       id: v.id,
       registrationNumber: v.registration_number,
       fleetCode: v.fleet_code,
@@ -652,6 +711,8 @@ exports.createVehicle = async (req, res) => {
     } = req.body;
     const finalModelName = combinedModelName(make, model, model_name);
     const registration = normalizeRegistration(registration_number);
+    const numberError = numberFieldError(req.body);
+    if (numberError) return res.status(400).json({ message: numberError });
 
     if (!registration || !truck_type) {
       return res.status(400).json({ message: "Registration number and vehicle type are required." });
@@ -668,7 +729,7 @@ exports.createVehicle = async (req, res) => {
       [
         registration, finalFleetCode, make || null, model || null, finalModelName || truck_type, truck_type,
         status || "available",
-        fuel_type || null, capacity_tonnes || null, year_of_manufacture || null, colour || null,
+        String(fuel_type || "diesel").toLowerCase(), capacity_tonnes || null, year_of_manufacture || null, colour || null,
         mot_expiry || null, insurance_expiry || null, road_tax_expiry || null,
         permit_expiry || null, pollution_expiry || null, fitness_expiry || null,
         odometer_reading || null, next_service_due || null,
@@ -689,6 +750,7 @@ exports.createVehicle = async (req, res) => {
     if (err.code === "ER_DUP_ENTRY") {
       return res.status(409).json({ message: "Registration number or fleet code already exists." });
     }
+    if (inputErrorStatus(err)) return res.status(400).json({ message: "One of the values is too large or not valid. Check capacity, year, odometer and the other number fields." });
     res.status(500).json({ message: "Vehicle create error", error: err.message });
   }
 };
@@ -708,6 +770,8 @@ exports.createTrolley = async (req, res) => {
     if (!registration || !trailer_type) {
       return res.status(400).json({ message: "Trailer registration and type are required." });
     }
+    const numberError = numberFieldError({ capacity_tonnes });
+    if (numberError) return res.status(400).json({ message: numberError });
     if (!TRAILER_STATUSES.includes(status)) return res.status(400).json({ message: "Invalid trailer status." });
 
     const finalCode = String(trailer_code || "").trim() || nextTrolleyCode(registration);
@@ -730,6 +794,7 @@ exports.createTrolley = async (req, res) => {
     if (err.code === "ER_DUP_ENTRY") {
       return res.status(409).json({ message: "Trailer code or registration already exists." });
     }
+    if (inputErrorStatus(err)) return res.status(400).json({ message: "One of the values is too large or not valid. Check capacity, year, odometer and the other number fields." });
     res.status(500).json({ message: "Trailer create error", error: err.message });
   }
 };
@@ -747,6 +812,8 @@ exports.updateVehicle = async (req, res) => {
       mot_expiry, insurance_expiry, road_tax_expiry, permit_expiry, pollution_expiry, fitness_expiry,
       odometer_reading, next_service_due, current_location, company_name, inspection_frequency_weeks
     } = req.body;
+    const numberError = numberFieldError(req.body);
+    if (numberError) return res.status(400).json({ message: numberError });
     const finalModelName = combinedModelName(make, model, model_name);
     const registration = normalizeRegistration(registration_number) || existing.registration_number;
 
@@ -761,7 +828,7 @@ exports.updateVehicle = async (req, res) => {
       [
         registration, fleet_code || existing.fleet_code, make || null, model || null, finalModelName, truck_type || existing.truck_type,
         status || "available",
-        fuel_type || null, capacity_tonnes || null, year_of_manufacture || null, colour || null,
+        String(fuel_type || existing.fuel_type || "diesel").toLowerCase(), capacity_tonnes || null, year_of_manufacture || null, colour || null,
         mot_expiry || null, insurance_expiry || null, road_tax_expiry || null,
         permit_expiry || null, pollution_expiry || null, fitness_expiry || null, odometer_reading || null,
         next_service_due || null, current_location || null,
@@ -784,6 +851,7 @@ exports.updateVehicle = async (req, res) => {
     if (err.code === "ER_DUP_ENTRY") {
       return res.status(409).json({ message: "Registration number or fleet code already exists." });
     }
+    if (inputErrorStatus(err)) return res.status(400).json({ message: "One of the values is too large or not valid. Check capacity, year, odometer and the other number fields." });
     res.status(500).json({ message: "Vehicle update error", error: err.message });
   }
 };
@@ -817,7 +885,8 @@ exports.updateVehicleInline = async (req, res) => {
       odometerReading: "odometer_reading",
       nextServiceDue: "next_service_due",
       companyName: "company_name",
-      inspectionFrequencyWeeks: "inspection_frequency_weeks"
+      inspectionFrequencyWeeks: "inspection_frequency_weeks",
+      fuelMpg: "fuel_mpg"
     };
     const validStatus = ["available", "planned", "in_transit", "maintenance", "stopped"];
     const updates = [];
@@ -835,9 +904,11 @@ exports.updateVehicleInline = async (req, res) => {
       if (["fleetCode", "truckType"].includes(field) && !String(value || "").trim()) {
         return res.status(400).json({ message: field === "fleetCode" ? "Fleet code cannot be empty." : "Vehicle type cannot be empty." });
       }
-      if (["capacityTonnes", "odometerReading", "yearOfManufacture", "inspectionFrequencyWeeks"].includes(field) && value !== "" && value != null && !Number.isFinite(Number(value))) {
+      if (["capacityTonnes", "odometerReading", "yearOfManufacture", "inspectionFrequencyWeeks", "fuelMpg"].includes(field) && value !== "" && value != null && !Number.isFinite(Number(value))) {
         return res.status(400).json({ message: "Enter a number." });
       }
+      const inlineError = numberFieldError({ [column]: value });
+      if (inlineError) return res.status(400).json({ message: inlineError });
       updates.push(`${column} = ?`);
       values.push(value === "" ? null : value);
     }
@@ -873,6 +944,7 @@ exports.updateVehicleInline = async (req, res) => {
     if (err.code === "ER_DUP_ENTRY") {
       return res.status(409).json({ message: "Registration number or fleet code already exists." });
     }
+    if (inputErrorStatus(err)) return res.status(400).json({ message: "One of the values is too large or not valid. Check capacity, year, odometer and the other number fields." });
     res.status(500).json({ message: "Vehicle inline update error", error: err.message });
   }
 };
@@ -1136,6 +1208,9 @@ exports.updateTrolleyInline = async (req, res) => {
         return res.status(400).json({ message: "Registration, code and type cannot be empty." });
       }
       if (field === "status" && !TRAILER_STATUSES.includes(value)) return res.status(400).json({ message: "Invalid trailer status." });
+      if (field === "capacityTonnes" && numberFieldError({ capacity_tonnes: value })) {
+        return res.status(400).json({ message: numberFieldError({ capacity_tonnes: value }) });
+      }
       if (field === "capacityTonnes" && value !== "" && value != null && !Number.isFinite(Number(value))) {
         return res.status(400).json({ message: "Enter capacity in tonnes." });
       }
@@ -1157,6 +1232,7 @@ exports.updateTrolleyInline = async (req, res) => {
     res.json({ message: "Trailer updated." });
   } catch (err) {
     if (err.code === "ER_DUP_ENTRY") return res.status(409).json({ message: "Trailer code or registration already exists." });
+    if (inputErrorStatus(err)) return res.status(400).json({ message: "One of the values is too large or not valid. Check capacity, year, odometer and the other number fields." });
     res.status(500).json({ message: "Trailer update error", error: err.message });
   }
 };

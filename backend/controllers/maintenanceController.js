@@ -1140,6 +1140,20 @@ async function nextJobNumber() {
   return `MJ-${year}-${String(Number(row.maxNum || 0) + 1).padStart(4, "0")}`;
 }
 
+// Final (actual) cost can't be less than the parts + labour already entered for the job. An empty final
+// cost stays empty: it means the actual cost is not known yet, so it is never filled in automatically.
+function maintenanceCostError({ parts_cost_gbp, labour_cost_gbp, final_cost_gbp }) {
+  const money = value => (value === null || value === undefined || value === "" ? null : Number(value));
+  const parts = money(parts_cost_gbp) || 0;
+  const labour = money(labour_cost_gbp) || 0;
+  const final = money(final_cost_gbp);
+  if ([parts, labour, final ?? 0].some(value => !Number.isFinite(value) || value < 0)) return "Costs must be positive amounts.";
+  if (final !== null && final + 0.005 < parts + labour) {
+    return `Final cost £${final.toFixed(2)} is less than parts + labour (£${(parts + labour).toFixed(2)}). Enter the full final cost, or correct the parts and labour.`;
+  }
+  return null;
+}
+
 function cleanJobPayload(body) {
   const encodedAsset = String(body.asset_id || body.assetId || body.vehicle_id || body.vehicleId || "");
   const [encodedType, encodedId] = encodedAsset.includes(":") ? encodedAsset.split(":") : [body.asset_type || body.assetType || "vehicle", encodedAsset];
@@ -3226,6 +3240,16 @@ exports.getMaintenancePortal = async (_req, res) => {
       }))
     ];
 
+    // Assets marked available that the shared dispatch rules would refuse (not counted as "off road").
+    const notRoadLegal = [];
+    for (const [type, list] of [["vehicle", plannerRows], ["trailer", trailerPlannerRows]]) {
+      const blockers = await require("../utils/dispatchCompliance").assetBlockers(db, type, list.map((row) => row.id));
+      for (const row of list) {
+        const item = blockers.get(Number(row.id));
+        if (item && !item.hard.length) notRoadLegal.push({ assetType: type, id: row.id, registration: item.registration, reasons: item.soft });
+      }
+    }
+
     res.json({
       header: {
         badge: "Maintenance planner",
@@ -3241,6 +3265,7 @@ exports.getMaintenancePortal = async (_req, res) => {
         { label: "Overdue", value: overdue + jobs.filter((job) => job.daysLeft < 0 && !["completed", "cancelled"].includes(job.status)).length, description: "Service, inspection, or job past due.", change: "Immediate action", tone: overdue ? "danger" : "success" },
         { label: "Booked this week", value: jobs.filter((job) => job.status === "booked" && job.daysLeft >= 0 && job.daysLeft <= 7).length, description: "Confirmed workshop bookings.", change: "Workshop", tone: "warning" },
         { label: "Vehicles off road", value: plannerRows.filter((row) => ["maintenance", "stopped"].includes(row.status)).length, description: "Maintenance or stopped status.", change: "Availability", tone: "danger" },
+        { label: "Not road-legal", value: notRoadLegal.length, description: "On the road status but must not be dispatched (MOT, insurance, road tax, PMI or serious defect).", change: "Do not dispatch", tone: notRoadLegal.length ? "danger" : "success", items: notRoadLegal },
         { label: "Monthly spend", value: fmtAmount(monthlySpend), description: "Estimated and actual this month.", change: "Cost control", tone: "neutral" }
       ],
       health: [
@@ -3527,7 +3552,8 @@ exports.createJob = async (req, res) => {
     const job = cleanJobPayload(req.body);
     const dateError = dateFieldError(job.due_date, "Due date", { required: !job.service_date })
       || dateFieldError(job.service_date, "Date completed", { future: false })
-      || dateFieldError(job.bill_date, "Bill date", { future: false });
+      || dateFieldError(job.bill_date, "Bill date", { future: false })
+      || maintenanceCostError(job);
     if (dateError) return res.status(400).json({ message: dateError });
     if (job.status === "completed" && requiresComplianceCompletion(job.service_type)) {
       return res.status(409).json({ message: complianceCompletionMessage(job.service_type) });
@@ -3626,7 +3652,8 @@ exports.createBulkJobs = async (req, res) => {
   try {
     const base = cleanJobPayload(req.body);
     const baseDateError = dateFieldError(base.service_date, "Last completed date", { required: true, future: false })
-      || dateFieldError(base.bill_date, "Bill date", { future: false });
+      || dateFieldError(base.bill_date, "Bill date", { future: false })
+      || maintenanceCostError(base);
     if (baseDateError) return res.status(400).json({ message: baseDateError });
     const items = Array.isArray(req.body.items) ? req.body.items : [];
     const itemSpecificFields = [
@@ -3804,7 +3831,8 @@ exports.updateJob = async (req, res) => {
     const job = cleanJobPayload(req.body);
     const dateError = dateFieldError(job.due_date, "Due date", { required: !job.service_date })
       || dateFieldError(job.service_date, "Date completed", { future: false })
-      || dateFieldError(job.bill_date, "Bill date", { future: false });
+      || dateFieldError(job.bill_date, "Bill date", { future: false })
+      || maintenanceCostError(job);
     if (dateError) return res.status(400).json({ message: dateError });
     if (job.status === "completed" && requiresComplianceCompletion(job.service_type)) {
       return res.status(409).json({ message: complianceCompletionMessage(job.service_type) });
@@ -4090,7 +4118,12 @@ exports.completeJob = async (req, res) => {
     }
 
     const serviceDate = req.body.service_date || req.body.serviceDate || job.service_date || ukDateKey();
-    const serviceDateError = dateFieldError(serviceDate, "Date completed", { required: true, future: false });
+    const serviceDateError = dateFieldError(serviceDate, "Date completed", { required: true, future: false })
+      || maintenanceCostError({
+        parts_cost_gbp: job.parts_cost_gbp,
+        labour_cost_gbp: job.labour_cost_gbp,
+        final_cost_gbp: optionalMoney(req.body.final_cost_gbp ?? req.body.finalCostGbp ?? job.final_cost_gbp)
+      });
     if (serviceDateError) return res.status(400).json({ message: serviceDateError });
 
     await applyCompletedMaintenance(job, {

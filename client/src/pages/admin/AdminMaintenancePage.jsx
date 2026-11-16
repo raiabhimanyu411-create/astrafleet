@@ -34,6 +34,12 @@ import "./AdminMaintenancePage.css";
 import { MaintenanceDocumentThumbnail } from "./MaintenanceDocumentThumbnail";
 import { documentSubmission, filterMaintenanceDocuments, formatUkDateTime } from "./maintenanceDocuments";
 
+// The client plans inspections by week number: the inspection week counts as week 1, so a 6-week
+// cycle is due in week 6 (the Monday 5 weeks later). Calculation unchanged; the label says so.
+function weekCycleLabel(weeks) {
+  return `${weeks}-week cycle · due in week ${weeks} (inspection week = week 1)`;
+}
+
 const DEFAULT_ROAD_TAX_INTERVAL_MONTHS = 6;
 const UK_TIME_ZONE = "Europe/London";
 const UK_DATE_FORMATTER = new Intl.DateTimeFormat("en-GB", {
@@ -74,8 +80,8 @@ const statusOptions = ["planned", "booked", "in_progress", "completed", "cancell
 const priorityOptions = ["low", "normal", "high", "critical"];
 const severityOptions = ["low", "medium", "high", "critical"];
 const allMaintenanceItems = [
-  { value: "Brake test", label: "Brake test", interval: "Every 6 weeks", days: 42, trailerOk: false },
-  { value: "Safety inspection", label: "Safety inspection", interval: "Every 6 weeks", days: 42, trailerOk: true },
+  { value: "Brake test", label: "Brake test", interval: weekCycleLabel(6), days: 42, trailerOk: false },
+  { value: "Safety inspection", label: "Safety inspection", interval: weekCycleLabel(6), days: 42, trailerOk: true },
   { value: "MOT", label: "MOT", interval: "Every 12 months", months: 12, trailerOk: true },
   { value: "Tacho Calibration", label: "Tacho Calibration", interval: "Every 2 years", months: 24, trailerOk: false },
   { value: "Road Tax", label: "Road Tax", interval: "Every 6 or 12 months", roadTax: true, trailerOk: false },
@@ -111,7 +117,7 @@ function getMaintenanceItems(assetType) {
   return assetType === "trailer"
     ? allMaintenanceItems
         .filter((item) => item.trailerOk)
-        .map((item) => item.value === "Safety inspection" ? { ...item, interval: `Every ${trailerWeeks} weeks`, days: trailerWeeks * 7 } : item)
+        .map((item) => item.value === "Safety inspection" ? { ...item, interval: weekCycleLabel(trailerWeeks), days: trailerWeeks * 7 } : item)
     : allMaintenanceItems;
 }
 const maintenanceItems = allMaintenanceItems;
@@ -476,7 +482,7 @@ function nextDueForItem(serviceType, serviceDate, roadTaxIntervalMonths, assetTy
   if (item.roadTax) return addMonthsToKey(serviceDate, normalizeRoadTaxIntervalMonths(roadTaxIntervalMonths));
   if (item.days) {
     const frequencyWeeks = assetType === "trailer"
-      ? 10
+      ? Math.max(2, Number(maintenanceIntervals.trailerInspectionWeeks || 10))
       : Math.max(2, Number(inspectionFrequencyWeeks || 6));
     return inspectionDueWeekKey(serviceDate, frequencyWeeks);
   }
@@ -770,6 +776,10 @@ function JobModal({ vehicles, defects, editingJob, initialForm, onClose, onSaved
 
   const selectedItem = availableItems.find((item) => item.value === form.service_type);
   const selectedVehicle = vehicles.find((vehicle) => vehicle.assetId === form.vehicle_id);
+  const hasItemDetails = Boolean(form.estimated_cost_gbp !== "" || form.labour_cost_gbp !== ""
+    || form.parts_cost_gbp !== "" || form.final_cost_gbp !== "" || form.bill_attachment_data
+    || form.bill_number || form.bill_date || form.bill_amount_gbp !== "" || (form.bill_notes || "").trim()
+    || (form.parts_required || "").trim() || (form.notes || "").trim() || (form.completion_notes || "").trim());
   const bulkRows = availableItems.map((item) => {
     const nextDue = nextDueForItem(
       item.value,
@@ -838,9 +848,11 @@ function JobModal({ vehicles, defects, editingJob, initialForm, onClose, onSaved
           <Field label="Vehicle / Trailer">
             <select className="af-select" value={form.vehicle_id} onChange={(e) => {
               set("vehicle_id", e.target.value);
+              // Keep only the items already ticked that apply to this asset; nothing is ticked automatically
+              // (costs and paperwork belong to exactly one item, so selecting all would block them).
               const newAssetType = e.target.value.startsWith("trailer:") ? "trailer" : "vehicle";
-              const newItems = getMaintenanceItems(newAssetType);
-              setSelectedServices(newItems.map((i) => i.value));
+              const allowed = new Set(getMaintenanceItems(newAssetType).map((i) => i.value));
+              setSelectedServices((current) => current.filter((value) => allowed.has(value)));
             }} required>
               <option value="">Select Vehicle or Trailer</option>
               {vehicles.filter((v) => v.assetType !== "trailer").map((v) => <option key={v.assetId} value={v.assetId}>{v.label}</option>)}
@@ -918,6 +930,20 @@ function JobModal({ vehicles, defects, editingJob, initialForm, onClose, onSaved
           )}
           <Field label="Final Cost" autoFilled={isAutoFilled("final_cost_gbp")}>
             <input className="af-input" type="number" min="0" step="0.01" value={form.final_cost_gbp} onChange={(e) => set("final_cost_gbp", e.target.value)} />
+            {(() => {
+              // Parts + labour is a suggestion only: the actual final cost stays the user's entry.
+              const partsLabour = (Number(form.parts_cost_gbp) || 0) + (Number(form.labour_cost_gbp) || 0);
+              if (!partsLabour) return null;
+              const tooLow = form.final_cost_gbp !== "" && Number(form.final_cost_gbp) + 0.005 < partsLabour;
+              return (
+                <span className={`af-hint${tooLow ? " af-field-error" : ""}`}>
+                  {tooLow ? "Less than " : ""}Parts + labour = £{partsLabour.toFixed(2)}
+                  {Number(form.final_cost_gbp) !== partsLabour && (
+                    <> · <button type="button" className="af-link-btn" onClick={() => set("final_cost_gbp", partsLabour.toFixed(2))}>Use this</button></>
+                  )}
+                </span>
+              );
+            })()}
           </Field>
           {(!editingJob || form.service_type === "Full Service") && (
             <>
@@ -938,8 +964,17 @@ function JobModal({ vehicles, defects, editingJob, initialForm, onClose, onSaved
                 <span className="card-label">Maintenance Items</span>
                 <h2>Select Once, Save All Due Dates</h2>
               </div>
-              <StatusPill tone="neutral">{selectedServices.length} selected</StatusPill>
+              <div className="maintenance-bulk-actions">
+                <button type="button" className="af-link-btn" onClick={() => setSelectedServices(availableItems.map((item) => item.value))}>Select all</button>
+                <button type="button" className="af-link-btn" disabled={!selectedServices.length} onClick={() => setSelectedServices([])}>Clear</button>
+                <StatusPill tone="neutral">{selectedServices.length} selected</StatusPill>
+              </div>
             </div>
+            {selectedServices.length > 1 && hasItemDetails && (
+              <p className="af-field-error maintenance-bulk-warning" role="alert">
+                Costs, notes, bills and paperwork belong to one item. Select only the item they are for, or clear those fields to save due dates for all selected items.
+              </p>
+            )}
             <div className="maintenance-bulk-list">
               {bulkRows.map((item) => (
                 <label className={`maintenance-bulk-row${item.selected ? " selected" : ""}`} key={item.value}>
@@ -2851,8 +2886,16 @@ export function AdminMaintenancePage() {
       value: findStat(data?.stats, "Vehicles off road")?.value ?? 0,
       note: "Vehicles unavailable because of maintenance or stopped status",
       tone: Number(findStat(data?.stats, "Vehicles off road")?.value || 0) > 0 ? "danger" : "success"
+    },
+    {
+      key: "notlegal",
+      label: "Not road-legal",
+      value: findStat(data?.stats, "Not road-legal")?.value ?? 0,
+      note: "Not off road, but must not be dispatched: MOT, insurance, road tax, PMI or serious defect",
+      tone: Number(findStat(data?.stats, "Not road-legal")?.value || 0) > 0 ? "danger" : "success"
     }
   ];
+  const notRoadLegalItems = findStat(data?.stats, "Not road-legal")?.items || [];
 
   const offRoadItems = (data?.plannerRows || []).filter((row) => ["maintenance", "stopped"].includes(row.status));
 
@@ -2925,7 +2968,7 @@ export function AdminMaintenancePage() {
       {statPanel && (
         <div className="maintenance-stat-panel">
           <div className="section-head">
-            <h3>Off Road Vehicles</h3>
+            <h3>{statPanel === "notlegal" ? "Not road-legal" : "Off Road Vehicles"}</h3>
             <button className="header-action-button" type="button" onClick={() => setStatPanel(null)}>Close</button>
           </div>
           <div className="maintenance-stat-panel-list">
@@ -2975,6 +3018,30 @@ export function AdminMaintenancePage() {
                   );
                 })}
                 {offRoadItems.length === 0 && <p className="finance-empty">No vehicles off road.</p>}
+              </>
+            )}
+            {statPanel === "notlegal" && (
+              <>
+                {notRoadLegalItems.map((item) => (
+                  <div
+                    key={`legal-${item.assetType}-${item.id}`}
+                    className="maintenance-stat-panel-item"
+                    role="button"
+                    tabIndex={0}
+                    onClick={() => openVehicleDetail({ vehicleId: item.id }, item.assetType)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" || e.key === " ") {
+                        e.preventDefault();
+                        openVehicleDetail({ vehicleId: item.id }, item.assetType);
+                      }
+                    }}
+                  >
+                    <strong>{item.registration}</strong>
+                    <span>{item.assetType === "trailer" ? "Trailer" : "Truck"}</span>
+                    <p className="maintenance-vor-overdue">{item.reasons.join(" · ")}</p>
+                  </div>
+                ))}
+                {notRoadLegalItems.length === 0 && <p className="finance-empty">Every truck and trailer is road-legal.</p>}
               </>
             )}
           </div>

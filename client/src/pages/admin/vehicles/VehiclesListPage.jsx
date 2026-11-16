@@ -103,9 +103,20 @@ function TextField({ label, value, onSave, type = "text", disabled, mono, transf
   );
 }
 
+// Free, road-legal and not already on a job. Same rule as the server "Available" count and Overview.
+function isFreeToDispatch(v) {
+  return v.status === "available" && v.roadLegal !== false && Number(v.openTrips || 0) === 0;
+}
+
+// A truck marked "available" that fails a legal check is shown as "Not road-legal", never "Available".
+function displayStatus(v) {
+  if (v.status === "available" && v.roadLegal === false) return { label: "Not road-legal", tone: "danger" };
+  return statusMeta(VEHICLE_STATUS, v.status);
+}
+
 function VehiclePanel({ vehicle: v, busy, onClose, onInline, onDelete, navigate }) {
   usePanelKeys(onClose);
-  const status = statusMeta(VEHICLE_STATUS, v.status);
+  const status = displayStatus(v);
   const save = field => value => onInline(v, field, value);
 
   const legalDates = [
@@ -140,6 +151,7 @@ function VehiclePanel({ vehicle: v, busy, onClose, onInline, onDelete, navigate 
             <div><dt>Total jobs</dt><dd>{v.totalTrips}</dd></div>
             <div><dt>Open defects</dt><dd className={v.openDefects ? (v.criticalDefects ? "danger" : "warning") : ""}>{v.openDefects}{v.criticalDefects ? ` (${v.criticalDefects} critical)` : ""}</dd></div>
             <div><dt>Odometer</dt><dd>{v.odometerReading}</dd></div>
+            <div><dt>Fuel economy</dt><dd>{v.fuelMpg ? `${v.fuelMpg} mpg` : "Settings average"}</dd></div>
           </dl>
 
           {(v.complianceReasons || []).length > 0 && (
@@ -176,6 +188,7 @@ function VehiclePanel({ vehicle: v, busy, onClose, onInline, onDelete, navigate 
                 <TextField label="Current location" value={blank(v.currentLocation)} onSave={save("currentLocation")} />
               </div>
               <TextField label="Odometer (km)" type="number" value={v.odometerReadingRaw} onSave={save("odometerReading")} />
+              <TextField label="Fuel economy (mpg, blank = Settings average)" type="number" value={v.fuelMpg ?? ""} onSave={save("fuelMpg")} />
               <label className="vh-field">
                 <span>Next service due</span>
                 <input
@@ -395,10 +408,10 @@ export function VehiclesListPage() {
   const allTrailers = useMemo(() => data?.trailers || [], [data]);
 
   const vehicleCounts = useMemo(() => ({
-    available: allVehicles.filter(v => v.status === "available" && Number(v.openTrips || 0) === 0).length,
-    onJob: allVehicles.filter(v => Number(v.openTrips || 0) > 0 || ["planned", "in_transit"].includes(v.status)).length,
+    available: allVehicles.filter(isFreeToDispatch).length,
+    onJob: allVehicles.filter(v => Number(v.openTrips || 0) > 0).length,
     workshop: allVehicles.filter(v => ["maintenance", "stopped"].includes(v.status)).length,
-    compliance: allVehicles.filter(v => v.complianceRisk).length,
+    compliance: allVehicles.filter(v => v.complianceTone === "danger").length,
     defects: allVehicles.filter(v => Number(v.openDefects || 0) > 0).length
   }), [allVehicles]);
 
@@ -407,7 +420,7 @@ export function VehiclesListPage() {
     { key: "available", label: "Free to dispatch", value: vehicleCounts.available, tone: "success" },
     { key: "on_job", label: "On a job", value: vehicleCounts.onJob, tone: "info" },
     { key: "workshop", label: "Off road", value: vehicleCounts.workshop, tone: vehicleCounts.workshop ? "warning" : "neutral" },
-    { key: "compliance", label: "Compliance risk", value: vehicleCounts.compliance, tone: vehicleCounts.compliance ? "danger" : "neutral" },
+    { key: "compliance", label: "Do not dispatch", value: vehicleCounts.compliance, tone: vehicleCounts.compliance ? "danger" : "neutral" },
     { key: "defects", label: "Open defects", value: vehicleCounts.defects, tone: vehicleCounts.defects ? "danger" : "neutral" }
   ];
 
@@ -419,10 +432,10 @@ export function VehiclesListPage() {
   const vehicles = useMemo(() => {
     const query = search.trim().toLowerCase();
     return allVehicles.filter(v => {
-      if (filter === "available" && !(v.status === "available" && Number(v.openTrips || 0) === 0)) return false;
-      if (filter === "on_job" && !(Number(v.openTrips || 0) > 0 || ["planned", "in_transit"].includes(v.status))) return false;
+      if (filter === "available" && !isFreeToDispatch(v)) return false;
+      if (filter === "on_job" && !(Number(v.openTrips || 0) > 0)) return false;
       if (filter === "workshop" && !["maintenance", "stopped"].includes(v.status)) return false;
-      if (filter === "compliance" && !v.complianceRisk) return false;
+      if (filter === "compliance" && v.complianceTone !== "danger") return false;
       if (filter === "defects" && Number(v.openDefects || 0) === 0) return false;
       if (typeFilter && v.truckType !== typeFilter) return false;
       if (!query) return true;
@@ -709,7 +722,7 @@ export function VehiclesListPage() {
               </thead>
               <tbody>
                 {vehicles.map(v => {
-                  const status = statusMeta(VEHICLE_STATUS, v.status);
+                  const status = displayStatus(v);
                   const otherCerts = [
                     ["Permit", v.permitExpiry, v.permitDaysLeft],
                     ["RPC", v.pollutionExpiry, v.pollutionDaysLeft],

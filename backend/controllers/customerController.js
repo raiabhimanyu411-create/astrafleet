@@ -1,4 +1,17 @@
 const db = require("../db/connection");
+const { normalizePhone, normalizePersonName } = require("../utils/ukContact");
+
+// Phone numbers must be valid (saved as "07911 123456"); all-caps / all-lower contact names are tidied.
+function tidyCustomerContact(body, keys) {
+  if (!body) return null;
+  if (Object.hasOwn(body, keys.phone)) {
+    const result = normalizePhone(body[keys.phone]);
+    if (result.error) return result.error;
+    body[keys.phone] = result.value;
+  }
+  if (Object.hasOwn(body, keys.contact) && body[keys.contact]) body[keys.contact] = normalizePersonName(body[keys.contact]);
+  return null;
+}
 const { buildChangeSet, logActivity } = require("../utils/auditLogger");
 
 function fmtDate(d) {
@@ -87,7 +100,7 @@ exports.listCustomers = async (req, res) => {
        FROM customers c
        LEFT JOIN (
           SELECT customer_id, COUNT(*) AS total_trips, MAX(created_at) AS last_trip_at
-          FROM trips GROUP BY customer_id
+          FROM trips WHERE deleted_at IS NULL GROUP BY customer_id
        ) t ON t.customer_id = c.id
        LEFT JOIN (
           SELECT t.customer_id,
@@ -186,6 +199,8 @@ exports.updateCustomerStatus = async (req, res) => {
 exports.updateCustomerInline = async (req, res) => {
   try {
     await ensureCustomerSchema();
+    const contactError = tidyCustomerContact(req.body, { phone: "phone", contact: "contactName" });
+    if (contactError) return res.status(400).json({ message: contactError });
     const { id } = req.params;
     const [[existing]] = await db.query(`SELECT * FROM customers WHERE id = ?`, [id]);
     if (!existing) return res.status(404).json({ message: "Customer not found." });
@@ -326,6 +341,8 @@ exports.getCustomerById = async (req, res) => {
 exports.createCustomer = async (req, res) => {
   try {
     await ensureCustomerSchema();
+    const contactError = tidyCustomerContact(req.body, { phone: "phone", contact: "contact_name" });
+    if (contactError) return res.status(400).json({ message: contactError });
     const {
       company_name, contact_name, email, phone,
       address, billing_address, saved_pickup_addresses, saved_drop_addresses,
@@ -382,6 +399,8 @@ exports.createCustomer = async (req, res) => {
 exports.updateCustomer = async (req, res) => {
   try {
     await ensureCustomerSchema();
+    const contactError = tidyCustomerContact(req.body, { phone: "phone", contact: "contact_name" });
+    if (contactError) return res.status(400).json({ message: contactError });
     const { id } = req.params;
     const {
       company_name, contact_name, email, phone,

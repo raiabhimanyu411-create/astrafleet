@@ -7,6 +7,7 @@ const { ROOM_MODULES, canJoinAdminRoom, canJoinDriverRoom } = require("./utils/s
 const { getSettingsMap } = require("./controllers/settingsController");
 const adminRoutes = require("./routes/adminRoutes");
 const cors = require("cors");
+const helmet = require("helmet");
 const panelRoutes = require("./routes/panelRoutes");
 const authRoutes = require("./routes/authRoutes");
 const customerRoutes = require("./routes/customerRoutes");
@@ -27,6 +28,34 @@ const corsOptions = process.env.CORS_ORIGIN
   ? { origin: process.env.CORS_ORIGIN.split(",").map((origin) => origin.trim()) }
   : { origin: true };
 
+// Security headers: HSTS, nosniff, frame-ancestors / X-Frame-Options, referrer policy, and no
+// "X-Powered-By: Express". The CSP lists only what the web app really loads (Google Fonts, OpenStreetMap
+// tiles, blob: document previews, the PDF worker, socket.io).
+app.disable("x-powered-by");
+// Behind nginx: trust the one proxy hop in front of Node so req.ip is the real client address
+// (activity log / sessions). Set TRUST_PROXY=0 when Node is exposed directly.
+app.set("trust proxy", process.env.TRUST_PROXY === undefined ? 1 : Number(process.env.TRUST_PROXY) || false);
+app.use(helmet({
+  contentSecurityPolicy: process.env.NODE_ENV === "production" ? {
+    useDefaults: true,
+    directives: {
+      "default-src": ["'self'"],
+      "script-src": ["'self'"],
+      "style-src": ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
+      "font-src": ["'self'", "data:", "https://fonts.gstatic.com"],
+      "img-src": ["'self'", "data:", "blob:", "https://*.openstreetmap.org"],
+      "connect-src": ["'self'", "ws:", "wss:"],
+      "worker-src": ["'self'", "blob:"],
+      "frame-src": ["'self'", "blob:", "data:"],
+      "object-src": ["'none'"],
+      "frame-ancestors": ["'none'"],
+      "upgrade-insecure-requests": null
+    }
+  } : false,
+  crossOriginResourcePolicy: { policy: "same-site" },
+  crossOriginEmbedderPolicy: false,
+  strictTransportSecurity: { maxAge: 31536000, includeSubDomains: true }
+}));
 app.use(cors(corsOptions));
 app.use(express.json({ limit: process.env.JSON_BODY_LIMIT || "25mb" }));
 
@@ -120,6 +149,12 @@ if (require.main === module) {
     .catch((error) => console.error("[UK time] Conversion check failed:", error.message))
     // Load admin Settings before serving, so the first maintenance refresh uses the saved intervals.
     .then(() => getSettingsMap().catch((error) => console.error("[Settings] load failed, using defaults:", error.message)))
+    // Columns the shared compliance / costing rules need, then one-time tidy-ups (customer links on
+    // free-text jobs, cost-rate snapshots on old completed jobs). Never blocks startup.
+    .then(() => require("./utils/complianceSchema").ensureComplianceSchema()
+      .then(() => require("./controllers/jobController").ensureJobCostSchema())
+      .then(() => require("./utils/dataConsistency").runDataConsistency())
+      .catch((error) => console.error("[Startup] compliance / data checks failed:", error.message)))
     .finally(() => {
       httpServer.listen(PORT, () => {
         console.log(`Astra Fleet backend listening on http://localhost:${PORT}`);
