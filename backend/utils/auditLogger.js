@@ -134,7 +134,9 @@ function buildChangeSet(before = {}, after = {}, keys = []) {
 
 function requestMeta(req) {
   return {
-    ip: req.headers["x-forwarded-for"]?.split(",")[0]?.trim() || req.socket?.remoteAddress || null,
+    // req.ip honours "trust proxy" (server.js): the client address nginx passes on, which a client
+    // cannot fake. "::ffff:" is the IPv4-in-IPv6 prefix Node adds.
+    ip: String(req.ip || req.socket?.remoteAddress || "").replace(/^::ffff:/, "") || null,
     userAgent: String(req.headers["user-agent"] || "").slice(0, 255) || null
   };
 }

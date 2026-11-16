@@ -36,7 +36,7 @@ test("every point in order with planned and actual times, GPS vs driver source",
     { point_key: "72", event_type: "enter", occurred_at: "2026-07-15 07:20:00", applied: 0, note: "Stop not next" }
   ];
   const { routeProgress, geofenceEvents } = await buildRouteProgress(trip, stops, null);
-  assert.deepEqual(routeProgress.map(p => p.label), ["Pickup", "Drop 1", "Drop 2", "Return point"]);
+  assert.deepEqual(routeProgress.map(p => p.label), ["Collection", "Drop 1", "Drop 2", "Return point"]);
   assert.deepEqual(routeProgress.map(p => p.status), ["completed", "completed", "arrived", "pending"]);
   const [pickup, drop1, drop2, back] = routeProgress;
   assert.equal(pickup.actualArrival, "15 Jul 2026, 06:05");
@@ -61,7 +61,7 @@ test("geofence departure from Drop 1 wins over the completion tap", async () => 
 
 test("jobs from before the driver app still show, using the status-event pickup arrival", async () => {
   failWith = "ER_NO_SUCH_TABLE";
-  const { routeProgress, geofenceEvents } = await buildRouteProgress({ ...trip, pickup_arrived_at: undefined }, [], "2026-07-15 06:07:00");
+  const { routeProgress, geofenceEvents } = await buildRouteProgress({ ...trip, pickup_arrived_at: undefined }, [], [{ status: "arrived_pickup", created_at: "2026-07-15 06:07:00" }]);
   assert.equal(routeProgress.length, 2);
   assert.equal(routeProgress[0].actualArrival, "15 Jul 2026, 06:07");
   assert.equal(routeProgress[0].arrivalSource, "Driver");

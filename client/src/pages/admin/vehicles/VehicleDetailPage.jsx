@@ -224,10 +224,17 @@ export function VehicleDetailPage() {
                       {data.fleetCode}
                     </span>
                     <StatusPill tone={data.statusTone}>{data.status.replace("_", " ")}</StatusPill>
-                    <StatusPill tone={data.complianceTone}>
-                      {data.complianceTone === "danger" ? "Compliance issue" : data.complianceTone === "warning" ? "Expiry soon" : "Compliance OK"}
-                    </StatusPill>
+                    <span title={(data.dispatchBlockers || []).join("\n") || undefined}>
+                      <StatusPill tone={data.complianceTone}>
+                        {data.complianceTone === "danger" ? "Do not dispatch" : data.complianceTone === "warning" ? "Expiry soon" : "Compliance OK"}
+                      </StatusPill>
+                    </span>
                   </div>
+                  {(data.dispatchBlockers || []).length > 0 && (
+                    <p style={{ margin: "8px 0 0", color: "var(--danger)", fontSize: 13 }}>
+                      {data.dispatchBlockers.join(" · ")}
+                    </p>
+                  )}
                 </div>
                 <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "flex-start" }}>
                   {["available", "maintenance", "stopped"].map(s => (

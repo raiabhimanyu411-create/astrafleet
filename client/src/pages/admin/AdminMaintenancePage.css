@@ -4125,3 +4125,7 @@
      so the view tabs could not scroll and "History & Docs" was unreachable on phones. */
   .maintenance-page-shell.panel-shell { grid-template-columns: minmax(0, 1fr); }
 }
+
+/* Maintenance items: select all / clear, and the one-item warning */
+.maintenance-bulk-actions { display: inline-flex; align-items: center; gap: 12px; }
+.maintenance-bulk-warning { margin: 0 0 10px; font-size: 13px; }

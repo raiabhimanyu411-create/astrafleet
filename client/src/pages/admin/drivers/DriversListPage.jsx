@@ -15,7 +15,7 @@ const ONBOARDING_LABEL = { new: "New", docs_pending: "Documents pending", approv
 // Licence and medical expiry are required columns, so they can be changed but not cleared.
 const DOCUMENTS = [
   { field: "licenceExpiry", raw: "licenceExpiryRaw", label: "Driving licence", required: true },
-  { field: "medicalExpiry", raw: "medicalExpiryRaw", label: "Medical", required: true },
+  { field: "medicalExpiry", raw: "medicalExpiryRaw", label: "D4 medical", required: true },
   { field: "cpcExpiry", raw: "cpcExpiryRaw", label: "Driver CPC" },
   { field: "tachoExpiry", raw: "tachoExpiryRaw", label: "Tacho card" }
 ];
@@ -169,13 +169,21 @@ function DriverPanel({ driver: d, busy, onClose, onInline, onArchive, onDelete, 
             </section>
           )}
 
+          {!d.archived && (d.dispatchBlockers || []).length > 0 && (
+            <section className="dv-section dv-blockers" role="note">
+              <h3>Cannot be dispatched</h3>
+              <ul>{d.dispatchBlockers.map(reason => <li key={reason}>{reason}</li>)}</ul>
+            </section>
+          )}
+
           <section className="dv-section">
             <h3>Documents</h3>
             <ul className="dv-docs">
               {DOCUMENTS.map(doc => {
-                const raw = d[doc.raw] && d[doc.raw] < "2099-01-01" ? d[doc.raw] : "";
+                const raw = d[doc.raw] && d[doc.raw] < "2090-01-01" ? d[doc.raw] : "";
                 const days = daysFromToday(raw);
-                const tone = !raw ? "neutral" : days < 0 ? "danger" : days < 30 ? "danger" : days < 90 ? "warning" : "success";
+                // A date that is not recorded blocks dispatch, so it shows red, not grey.
+                const tone = !raw ? "danger" : days < 0 ? "danger" : days < 30 ? "danger" : days < 90 ? "warning" : "success";
                 return (
                   <li key={doc.field}>
                     <div>
@@ -197,7 +205,43 @@ function DriverPanel({ driver: d, busy, onClose, onInline, onArchive, onDelete, 
                   </li>
                 );
               })}
+              <li>
+                <div>
+                  <strong>DVLA licence check</strong>
+                  <small className={`dv-tone ${!d.dvlaCheckRaw ? "danger" : daysFromToday(d.dvlaCheckRaw) < -183 ? "danger" : "success"}`}>
+                    {!d.dvlaCheckRaw ? "Not recorded" : daysFromToday(d.dvlaCheckRaw) < -183 ? `Overdue · last ${d.dvlaCheck}` : `Checked ${d.dvlaCheck}`}
+                  </small>
+                </div>
+                <input
+                  className="dv-input dv-date"
+                  type="date"
+                  aria-label="DVLA licence check date"
+                  defaultValue={d.dvlaCheckRaw || ""}
+                  max={UK_TODAY}
+                  disabled={d.archived}
+                  onBlur={e => { if (e.target.value !== (d.dvlaCheckRaw || "")) onInline(d, "dvlaCheck", e.target.value); }}
+                />
+              </li>
+              <li>
+                <div>
+                  <strong>Penalty points</strong>
+                  <small className={`dv-tone ${d.penaltyPoints == null ? "neutral" : Number(d.penaltyPoints) >= 12 ? "danger" : Number(d.penaltyPoints) >= 6 ? "warning" : "success"}`}>
+                    {d.penaltyPoints == null ? "Not recorded" : `${d.penaltyPoints} point${Number(d.penaltyPoints) === 1 ? "" : "s"}`}
+                  </small>
+                </div>
+                <input
+                  className="dv-input dv-date"
+                  type="number"
+                  min="0"
+                  max="30"
+                  aria-label="Penalty points"
+                  defaultValue={d.penaltyPoints ?? ""}
+                  disabled={d.archived}
+                  onBlur={e => { if (e.target.value !== String(d.penaltyPoints ?? "")) onInline(d, "penaltyPoints", e.target.value); }}
+                />
+              </li>
             </ul>
+            <p className="dv-docs-hint">D4 medical: every 5 years from age 45, every year from 65. Driver CPC and tacho card: every 5 years. Check the licence with DVLA at least every 6 months.</p>
           </section>
         </div>
 
@@ -267,28 +311,28 @@ export function DriversListPage() {
   const unreadTotal = activeDrivers.reduce((sum, d) => sum + Number(d.unreadMessages || 0), 0);
 
   const counts = useMemo(() => ({
-    ready: activeDrivers.filter(d => d.shiftStatus === "ready" && d.complianceStatus === "clear").length,
+    ready: activeDrivers.filter(d => d.dispatchReady).length,
     onTrip: activeDrivers.filter(d => d.shiftStatus === "on_trip").length,
-    attention: activeDrivers.filter(d => d.complianceStatus !== "clear").length,
-    docs: activeDrivers.filter(d => d.nextExpiry && d.nextExpiry.days < 90).length
+    attention: activeDrivers.filter(d => (d.dispatchBlockers || []).length > 0).length,
+    docs: activeDrivers.filter(d => d.docRisk).length
   }), [activeDrivers]);
 
   const summaryCards = [
     { key: "", label: "Active drivers", value: activeDrivers.length, tone: "neutral" },
     { key: "ready", label: "Ready to dispatch", value: counts.ready, tone: "success" },
     { key: "on_trip", label: "On a job", value: counts.onTrip, tone: "info" },
-    { key: "attention", label: "Compliance review", value: counts.attention, tone: counts.attention ? "warning" : "neutral" },
-    { key: "docs", label: "Documents due", value: counts.docs, tone: counts.docs ? "danger" : "neutral" }
+    { key: "attention", label: "Cannot dispatch", value: counts.attention, tone: counts.attention ? "danger" : "neutral" },
+    { key: "docs", label: "Documents due or missing", value: counts.docs, tone: counts.docs ? "danger" : "neutral" }
   ];
 
   const drivers = useMemo(() => {
     const query = search.trim().toLowerCase();
     return (showArchived ? allDrivers.filter(d => d.archived) : activeDrivers).filter(d => {
       if (!showArchived) {
-        if (filter === "ready" && !(d.shiftStatus === "ready" && d.complianceStatus === "clear")) return false;
+        if (filter === "ready" && !d.dispatchReady) return false;
         if (filter === "on_trip" && d.shiftStatus !== "on_trip") return false;
-        if (filter === "attention" && d.complianceStatus === "clear") return false;
-        if (filter === "docs" && !(d.nextExpiry && d.nextExpiry.days < 90)) return false;
+        if (filter === "attention" && !(d.dispatchBlockers || []).length) return false;
+        if (filter === "docs" && !d.docRisk) return false;
       }
       if (!query) return true;
       return [d.fullName, d.employeeCode, d.phone, d.email, d.assignedVehicle]

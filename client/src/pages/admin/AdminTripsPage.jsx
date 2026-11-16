@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { withComplianceOverride } from "../../utils/complianceOverride";
 import { useNavigate } from "react-router-dom";
 import { createRoute, deleteRoute, getRoutes, updateRoute, updateAdminTripStatus } from "../../api/adminApi";
 import { getRealtimeSocket } from "../../api/realtime";
@@ -333,7 +334,7 @@ export function AdminTripsPage() {
     setActionError("");
     setBusyId(trip.id);
     try {
-      await updateAdminTripStatus(trip.id, { status: nextStatus });
+      await withComplianceOverride(extra => updateAdminTripStatus(trip.id, { status: nextStatus, ...extra }));
       refetch(false);
     } catch (err) {
       setActionError(err?.response?.data?.message || "Trip status could not be updated.");
@@ -504,9 +505,13 @@ export function AdminTripsPage() {
                   <td><StatusPill tone={item.tone}>{item.status}</StatusPill></td>
                   <td>
                     {item.status === "blocked" && <StatusPill tone="danger">Blocked</StatusPill>}
+                    {item.complianceIssues?.length > 0 && (
+                      <span title={item.complianceIssues.join("\n")}><StatusPill tone="danger">Do not dispatch</StatusPill></span>
+                    )}
                     {item.status !== "blocked" && item.etaRisk && <StatusPill tone="danger">ETA risk</StatusPill>}
                     {item.status !== "blocked" && !item.etaRisk && item.assignmentGap && <StatusPill tone="warning">Unassigned</StatusPill>}
-                    {!item.assignmentGap && !item.etaRisk && item.status !== "blocked" && <StatusPill tone="success">Clear</StatusPill>}
+                    {!item.assignmentGap && !item.etaRisk && item.status !== "blocked" && !item.complianceIssues?.length && <StatusPill tone="success">Clear</StatusPill>}
+                    {item.complianceIssues?.length > 0 && <small className="dispatch-issue-detail">{item.complianceIssues[0]}{item.complianceIssues.length > 1 ? ` +${item.complianceIssues.length - 1} more` : ""}</small>}
                   </td>
                   <td>
                     <div className="dispatch-table-actions">

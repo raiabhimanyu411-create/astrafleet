@@ -16,6 +16,8 @@ const pool = mysql.createPool({
   // different database default collation.
   charset: "utf8mb4_unicode_ci",
   dateStrings: true,
+  // DECIMAL columns and SUM() come back as numbers, not strings ("11" vs 11), so every API sends numbers.
+  decimalNumbers: true,
   waitForConnections: true,
   connectionLimit: 10,
 });

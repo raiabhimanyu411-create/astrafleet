@@ -7,6 +7,22 @@ const bcrypt = require("bcrypt");
 const { buildChangeSet, logActivity, revokeUserSessions } = require("../utils/auditLogger");
 const { attachJobCoordinates } = require("../utils/postcodeGeo");
 const { snapshotCostSettings } = require("../utils/jobCostSettings");
+const { driverBlockers, checkJobStartable } = require("../utils/dispatchCompliance");
+const { ensureComplianceSchema } = require("../utils/complianceSchema");
+const { normalizePhone, normalizePersonName } = require("../utils/ukContact");
+
+// Valid phone numbers only (saved as "07911 123456"); "amrik singh" / "TADEUSZ NOWAK" are tidied.
+function tidyDriverContact(body, keys) {
+  if (!body) return null;
+  for (const [key, label] of [[keys.phone, "Phone"], [keys.emergency, "Emergency contact phone"]]) {
+    if (!key || !Object.hasOwn(body, key)) continue;
+    const result = normalizePhone(body[key], label);
+    if (result.error) return result.error;
+    body[key] = result.value;
+  }
+  if (keys.name && body[keys.name]) body[keys.name] = normalizePersonName(body[keys.name]);
+  return null;
+}
 const { dateTimeKey, fmtUkDateTime, fmtUkTime, isDateTimeKey, ukNowDateTimeKey, wallMinutesBetween, addWallMinutes } = require("../utils/jobDateTimes");
 
 function fmtDate(d) {
@@ -113,7 +129,7 @@ const driverStatusTone = {
 };
 
 const tripColumnDefinitions = {
-  driver_job_status: "VARCHAR(40) DEFAULT 'accepted'",
+  driver_job_status: "VARCHAR(40) DEFAULT NULL",
   delivery_notes: "TEXT DEFAULT NULL",
   pod_signature_data: "LONGTEXT DEFAULT NULL",
   pod_photo_data: "LONGTEXT DEFAULT NULL",
@@ -162,6 +178,7 @@ async function addColumnIfMissing(table, column, definition) {
 
 async function ensureDriverOpsSchema() {
   if (driverOpsSchemaReady) return;
+  await ensureComplianceSchema();
   await addColumnIfMissing("drivers", "assigned_vehicle_id", "INT DEFAULT NULL");
   await addColumnIfMissing("drivers", "address", "TEXT DEFAULT NULL");
   await addColumnIfMissing("drivers", "postcode", "VARCHAR(20) DEFAULT NULL");
@@ -793,6 +810,12 @@ exports.updateMyJobStatus = async (req, res) => {
     if (status === "failed_delivery") dispatchStatus = "blocked";
     if (status === "declined") dispatchStatus = "blocked";
 
+    // Truck, trailer and driver must still be legal when the job starts. Drivers cannot override;
+    // the office can approve an override, which is then remembered on the job.
+    if (["loading", "active"].includes(dispatchStatus) && !["loading", "active"].includes(job.dispatch_status)) {
+      const startBlock = await checkJobStartable(db, req, job.id, { allowOverride: false });
+      if (startBlock) return res.status(startBlock.status).json(startBlock.body);
+    }
     if (dispatchStatus) {
       updates.push("dispatch_status=?");
       values.push(dispatchStatus);
@@ -1440,13 +1463,33 @@ exports.sendMyMessage = async (req, res) => {
       [driver.id, driver.full_name, body.trim().slice(0, 1000), tripId || null]
     );
 
-    await createControlRoomAlert({
-      title: `Driver message: ${driver.full_name}`,
-      description: body.trim().slice(0, 200),
-      severity: "medium",
-      driverId: driver.id,
-      tripId: tripId || null
-    });
+    // One open alert per driver for unanswered messages: a new message updates it instead of adding
+    // another alert, so a chatty conversation does not fill the alert queue.
+    const [[openMessageAlert]] = await db.query(
+      `SELECT id FROM control_room_alerts
+       WHERE driver_id=? AND alert_status <> 'resolved' AND title LIKE 'Driver message%'
+       ORDER BY id DESC LIMIT 1`,
+      [driver.id]
+    );
+    if (openMessageAlert) {
+      const [[unread]] = await db.query(
+        `SELECT COUNT(*) AS n FROM driver_messages WHERE driver_id=? AND sender_role='driver' AND is_read=0`,
+        [driver.id]
+      );
+      const count = Math.max(1, Number(unread.n || 0));
+      await db.query(
+        `UPDATE control_room_alerts SET title=?, description=?, trip_id=COALESCE(?, trip_id), updated_at=NOW() WHERE id=?`,
+        [`Driver message${count > 1 ? `s (${count} unread)` : ""}: ${driver.full_name}`.slice(0, 160), body.trim().slice(0, 200), tripId || null, openMessageAlert.id]
+      );
+    } else {
+      await createControlRoomAlert({
+        title: `Driver message: ${driver.full_name}`,
+        description: body.trim().slice(0, 200),
+        severity: "medium",
+        driverId: driver.id,
+        tripId: tripId || null
+      });
+    }
 
     const [[created]] = await db.query(`SELECT * FROM driver_messages WHERE id=?`, [result.insertId]);
     const message = {
@@ -1697,6 +1740,9 @@ exports.listDrivers = async (req, res) => {
           OR tacho_card_expiry < CURDATE()
         ), 0) as expired_docs,
         COALESCE(SUM(
+          license_expiry IS NULL OR medical_expiry IS NULL OR cpc_expiry IS NULL OR tacho_card_expiry IS NULL
+        ), 0) as missing_docs,
+        COALESCE(SUM(
           license_expiry BETWEEN CURDATE() AND DATE_ADD(CURDATE(), INTERVAL 90 DAY)
           OR medical_expiry BETWEEN CURDATE() AND DATE_ADD(CURDATE(), INTERVAL 90 DAY)
           OR cpc_expiry BETWEEN CURDATE() AND DATE_ADD(CURDATE(), INTERVAL 90 DAY)
@@ -1710,6 +1756,7 @@ exports.listDrivers = async (req, res) => {
       `SELECT d.id, d.employee_code, d.full_name, d.phone, d.home_depot,
               d.license_number, d.license_expiry, d.medical_expiry,
               d.cpc_number, d.cpc_expiry, d.tacho_card_number, d.tacho_card_expiry,
+              d.dvla_check_date, d.penalty_points,
               d.onboarding_status, d.shift_status, d.compliance_status,
               d.assigned_vehicle_id, d.salary_gbp, d.commission_rate, d.internal_score,
               d.created_at, d.archived_at, d.user_id,
@@ -1744,18 +1791,26 @@ exports.listDrivers = async (req, res) => {
 
     const complianceTone = { clear: "success", review: "warning", blocked: "danger" };
     const shiftTone      = { ready: "success", on_trip: "warning", rest: "neutral", review: "danger" };
+    // Same rules the server uses when a driver is put on a job (utils/dispatchCompliance.js).
+    const blockersById = await driverBlockers(db, rows.filter(r => !r.archived_at).map(r => r.id));
+    const blockersOf = r => blockersById.get(Number(r.id))?.all || [];
+    const isReady = r => !r.archived_at && r.shift_status === "ready" && !blockersOf(r).length && !Number(r.open_trips || 0);
+    const active = rows.filter(r => !r.archived_at);
+    const readyCount = active.filter(isReady).length;
+    const blockedCount = active.filter(r => blockersOf(r).length).length;
+    const canSeePay = req.sessionUser?.role === "admin";
 
     res.json({
       stats: [
-        { label: "Total drivers", value: counts.total, description: "All registered drivers.", change: "Live from database", tone: "neutral" },
-        { label: "Ready for dispatch", value: counts.ready, description: "Available for new jobs.", change: "Dispatch ready", tone: "success" },
-        { label: "On trip", value: counts.on_trip, description: "Currently assigned on road.", change: "Live fleet", tone: "warning" },
-        { label: "Blocked / review", value: Number(counts.blocked) + Number(counts.review), description: "Compliance needs attention.", change: "Ops review", tone: "danger" }
+        { label: "Total drivers", value: Number(counts.total), description: "All registered drivers.", change: "Live from database", tone: "neutral" },
+        { label: "Ready for dispatch", value: readyCount, description: "Ready shift, no open job, all documents valid.", change: "Dispatch ready", tone: "success" },
+        { label: "On trip", value: Number(counts.on_trip), description: "Currently assigned on road.", change: "Live fleet", tone: "warning" },
+        { label: "Blocked / review", value: blockedCount, description: "Cannot be dispatched without fixing records or an override.", change: "Ops review", tone: blockedCount ? "danger" : "success" }
       ],
       driverHealth: [
-        { label: "Expired docs", value: counts.expired_docs, description: "Licence, medical, CPC, or tacho expired.", change: "Stop dispatch", tone: counts.expired_docs ? "danger" : "success" },
-        { label: "Expiring docs", value: counts.expiring_docs, description: "Documents expiring within 90 days.", change: "Renewal queue", tone: counts.expiring_docs ? "warning" : "success" },
-        { label: "Onboarding queue", value: counts.onboarding, description: "New or docs-pending drivers.", change: "Admin check", tone: counts.onboarding ? "warning" : "success" },
+        { label: "Expired or missing docs", value: Number(counts.expired_docs) + Number(counts.missing_docs), description: "Licence, medical, CPC or tacho expired or not recorded.", change: "Stop dispatch", tone: Number(counts.expired_docs) + Number(counts.missing_docs) ? "danger" : "success" },
+        { label: "Expiring docs", value: Number(counts.expiring_docs), description: "Documents expiring within 90 days.", change: "Renewal queue", tone: counts.expiring_docs ? "warning" : "success" },
+        { label: "Onboarding queue", value: Number(counts.onboarding), description: "New or docs-pending drivers.", change: "Admin check", tone: counts.onboarding ? "warning" : "success" },
         { label: "Unread messages", value: rows.reduce((sum, r) => sum + Number(r.unread_messages || 0), 0), description: "Driver messages needing reply.", change: "Support desk", tone: rows.some(r => Number(r.unread_messages || 0) > 0) ? "danger" : "success" }
       ],
       drivers: rows.map(r => ({
@@ -1784,17 +1839,24 @@ exports.listDrivers = async (req, res) => {
         complianceStatus: r.compliance_status,
         complianceTone: complianceTone[r.compliance_status] || "neutral",
         assignedVehicle: r.assigned_vehicle || "—",
-        salary: fmtAmount(r.salary_gbp),
-        commissionRate: r.commission_rate != null ? `${Number(r.commission_rate)}%` : "—",
+        // Pay is personal data (UK GDPR): only admins receive it.
+        salary: canSeePay ? fmtAmount(r.salary_gbp) : null,
+        commissionRate: canSeePay ? (r.commission_rate != null ? `${Number(r.commission_rate)}%` : "—") : null,
+        dvlaCheck: fmtDate(r.dvla_check_date),
+        dvlaCheckRaw: rawDate(r.dvla_check_date),
+        penaltyPoints: r.penalty_points ?? null,
+        dispatchBlockers: blockersOf(r),
+        dispatchReady: isReady(r),
         internalScore: r.internal_score ?? "—",
-        totalTrips: r.total_trips,
-        openTrips: r.open_trips,
-        totalDocs: r.total_docs,
+        totalTrips: Number(r.total_trips),
+        openTrips: Number(r.open_trips),
+        totalDocs: Number(r.total_docs),
         unreadMessages: Number(r.unread_messages || 0),
         lastMessageAt: fmtDateTime(r.last_message_at),
+        // Missing dates count as a risk too: "not recorded" is never "safe".
         docRisk: [r.license_expiry, r.medical_expiry, r.cpc_expiry, r.tacho_card_expiry].some(date => {
           const days = daysUntil(date);
-          return days !== null && days < 90;
+          return days === null || days < 90;
         }),
         nextExpiry: nextDocumentExpiry(r),
         hasLogin: Boolean(r.user_id),
@@ -1812,6 +1874,8 @@ exports.listDrivers = async (req, res) => {
 exports.updateDriverInline = async (req, res) => {
   try {
     await ensureDriverOpsSchema();
+    const contactError = tidyDriverContact(req.body, { phone: "phone", name: "fullName" });
+    if (contactError) return res.status(400).json({ message: contactError });
     const { id } = req.params;
     const [[existing]] = await db.query(`SELECT * FROM drivers WHERE id = ?`, [id]);
     if (!existing) return res.status(404).json({ message: "Driver not found." });
@@ -1825,6 +1889,8 @@ exports.updateDriverInline = async (req, res) => {
       medicalExpiry: "medical_expiry",
       cpcExpiry: "cpc_expiry",
       tachoExpiry: "tacho_card_expiry",
+      dvlaCheck: "dvla_check_date",
+      penaltyPoints: "penalty_points",
       onboardingStatus: "onboarding_status",
       shiftStatus: "shift_status",
       complianceStatus: "compliance_status",
@@ -1845,7 +1911,11 @@ exports.updateDriverInline = async (req, res) => {
         return res.status(400).json({ message: `Invalid ${clientField} value.` });
       }
       if (column === "internal_score") value = value === "" || value == null ? null : Number(value);
-      if (["license_expiry", "medical_expiry", "cpc_expiry", "tacho_card_expiry"].includes(column)) value = value || null;
+      if (["license_expiry", "medical_expiry", "cpc_expiry", "tacho_card_expiry", "dvla_check_date"].includes(column)) value = value || null;
+      if (column === "penalty_points") {
+        value = value === "" || value == null ? null : Number(value);
+        if (value !== null && (!Number.isInteger(value) || value < 0 || value > 30)) return res.status(400).json({ message: "Penalty points must be a whole number from 0 to 30." });
+      }
       if (["phone", "home_depot"].includes(column)) value = value || null;
       if (column === "full_name") {
         value = String(value || "").trim();
@@ -1931,8 +2001,10 @@ exports.getDriverById = async (req, res) => {
       complianceStatus: d.compliance_status,
       complianceTone: complianceTone[d.compliance_status] || "neutral",
       assignedVehicleId: d.assigned_vehicle_id,
-      salaryGbp: d.salary_gbp,
-      commissionRate: d.commission_rate,
+      salaryGbp: req.sessionUser?.role === "admin" ? d.salary_gbp : null,
+      commissionRate: req.sessionUser?.role === "admin" ? d.commission_rate : null,
+      dvlaCheckDate: d.dvla_check_date ? String(d.dvla_check_date).slice(0, 10) : null,
+      penaltyPoints: d.penalty_points ?? null,
       internalScore: d.internal_score,
       accidentIncidentRecord: d.accident_incident_record,
       penaltyDeductionRecord: d.penalty_deduction_record,
@@ -2007,6 +2079,8 @@ exports.getDriverById = async (req, res) => {
 
 // POST /api/drivers
 exports.createDriver = async (req, res) => {
+  const contactError = tidyDriverContact(req.body, { phone: "phone", emergency: "emergency_contact_phone", name: "full_name" });
+  if (contactError) return res.status(400).json({ message: contactError });
   const fullName = String(req.body.full_name || "").trim();
   const loginEmail = String(req.body.email || "").trim().toLowerCase();
   const loginPassword = String(req.body.password || "");
@@ -2049,8 +2123,9 @@ exports.createDriver = async (req, res) => {
 
     employee_code = employee_code || await nextDriverCode(conn);
     license_number = license_number || "Pending";
-    license_expiry = license_expiry || "2099-12-31";
-    medical_expiry = medical_expiry || "2099-12-31";
+    // A missing date stays empty ("not recorded"), which blocks dispatch until it is filled in.
+    license_expiry = license_expiry || null;
+    medical_expiry = medical_expiry || null;
 
     let userId = null;
 
@@ -2085,13 +2160,21 @@ exports.createDriver = async (req, res) => {
         tacho_card_number || null, tacho_card_expiry || null,
         emergency_contact_name || null, emergency_contact_phone || null,
         bank_sort_code || null, bank_account_number || null,
-        assigned_vehicle_id || null, salary_gbp || null, commission_rate || null, internal_score || null,
+        assigned_vehicle_id || null,
+        req.sessionUser?.role === "admin" ? salary_gbp || null : null,
+        req.sessionUser?.role === "admin" ? commission_rate || null : null,
+        internal_score || null,
         accident_incident_record || null, penalty_deduction_record || null,
         onboarding_status || "new",
         "review",
         compliance_status || "review"
       ]
     );
+    const licenceCheck = await saveLicenceCheck(conn, result.insertId, req.body);
+    if (licenceCheck) {
+      await conn.rollback();
+      return res.status(400).json({ message: licenceCheck });
+    }
 
     await conn.commit();
     await logActivity(req, {
@@ -2143,10 +2226,33 @@ async function updateDriverLogin(driver, body) {
   return { message: "Driver login created." };
 }
 
+// DVLA licence check date and penalty points (only fields that were sent). Returns an error message or null.
+async function saveLicenceCheck(conn, driverId, body) {
+  const updates = [];
+  const values = [];
+  if (Object.hasOwn(body, "dvla_check_date")) {
+    const value = body.dvla_check_date || null;
+    if (value && !/^\d{4}-\d{2}-\d{2}$/.test(String(value))) return "DVLA check date must be a valid date.";
+    updates.push("dvla_check_date=?");
+    values.push(value);
+  }
+  if (Object.hasOwn(body, "penalty_points")) {
+    const raw = body.penalty_points;
+    const value = raw === "" || raw == null ? null : Number(raw);
+    if (value !== null && (!Number.isInteger(value) || value < 0 || value > 30)) return "Penalty points must be a whole number from 0 to 30.";
+    updates.push("penalty_points=?");
+    values.push(value);
+  }
+  if (updates.length) await conn.query(`UPDATE drivers SET ${updates.join(", ")} WHERE id=?`, [...values, driverId]);
+  return null;
+}
+
 // PUT /api/drivers/:id
 exports.updateDriver = async (req, res) => {
   try {
     await ensureDriverOpsSchema();
+    const contactError = tidyDriverContact(req.body, { phone: "phone", emergency: "emergency_contact_phone", name: "full_name" });
+    if (contactError) return res.status(400).json({ message: contactError });
     const { id } = req.params;
     const [[existing]] = await db.query(`SELECT * FROM drivers WHERE id = ?`, [id]);
     if (!existing) return res.status(404).json({ message: "Driver not found." });
@@ -2196,8 +2302,9 @@ exports.updateDriver = async (req, res) => {
         bank_sort_code ?? existing.bank_sort_code ?? null,
         bank_account_number ?? existing.bank_account_number ?? null,
         assigned_vehicle_id ?? existing.assigned_vehicle_id ?? null,
-        salary_gbp ?? existing.salary_gbp ?? null,
-        commission_rate ?? existing.commission_rate ?? null,
+        // Only admins see or change pay (UK GDPR); employees keep the stored value.
+        req.sessionUser?.role === "admin" ? salary_gbp ?? existing.salary_gbp ?? null : existing.salary_gbp ?? null,
+        req.sessionUser?.role === "admin" ? commission_rate ?? existing.commission_rate ?? null : existing.commission_rate ?? null,
         internal_score ?? existing.internal_score ?? null,
         accident_incident_record ?? existing.accident_incident_record ?? null,
         penalty_deduction_record ?? existing.penalty_deduction_record ?? null,
@@ -2207,6 +2314,9 @@ exports.updateDriver = async (req, res) => {
         id
       ]
     );
+
+    const licenceCheck = await saveLicenceCheck(db, id, req.body);
+    if (licenceCheck) return res.status(400).json({ message: licenceCheck });
 
     const loginResult = await updateDriverLogin(existing, req.body);
     if (loginResult.error) return res.status(loginResult.status).json({ message: loginResult.error });

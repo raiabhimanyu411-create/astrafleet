@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { addJobStop, cancelJob, deleteJob, deleteJobStop, getJobById, updateJobStatus } from "../../../api/jobApi";
+import { withComplianceOverride } from "../../../utils/complianceOverride";
 import { subscribeJobUpdates } from "../../../api/realtime";
 import { DeleteReasonModal } from "../../../components/DeleteReasonModal";
 import { JobDeleteModal } from "./JobDeleteModal";
@@ -188,7 +189,7 @@ export function JobDetailPage() {
   async function handleStatusChange(nextStatus) {
     setUpdating(true);
     try {
-      await updateJobStatus(id, { status: nextStatus });
+      await withComplianceOverride(extra => updateJobStatus(id, { status: nextStatus, ...extra }));
       load();
     } catch {
       alert("Could not update status. Please try again.");
@@ -500,7 +501,7 @@ export function JobDetailPage() {
                 )}
                 {!data.driver && !data.vehicle && !data.trailer && (
                   <div style={{ display: "flex", justifyContent: "center" }}>
-                    <button className="header-action-button" type="button" onClick={() => navigate(`/admin/jobs/${id}/edit`)}>
+                    <button className="header-action-button" type="button" onClick={() => navigate(`/admin/trips/${id}/edit`)}>
                       Assign driver, truck & trailer →
                     </button>
                   </div>

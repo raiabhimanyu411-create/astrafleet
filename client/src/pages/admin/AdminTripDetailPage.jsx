@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { withComplianceOverride } from "../../utils/complianceOverride";
 import { useNavigate, useParams } from "react-router-dom";
 import { deleteAdminTrip, getAdminTripById, updateAdminTripStatus } from "../../api/adminApi";
 import { DeleteReasonModal } from "../../components/DeleteReasonModal";
@@ -40,7 +41,7 @@ export function AdminTripDetailPage() {
   async function handleStatus(status) {
     setActionError("");
     try {
-      await updateAdminTripStatus(id, { status });
+      await withComplianceOverride(extra => updateAdminTripStatus(id, { status, ...extra }));
       loadTrip();
     } catch (err) {
       setActionError(err?.response?.data?.message || "Trip status could not be updated.");

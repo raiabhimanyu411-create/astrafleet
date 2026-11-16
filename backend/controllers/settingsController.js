@@ -9,15 +9,21 @@ const SETTINGS = [
   { key: "fuel_price_per_litre", group: "costing", label: "Fuel price", unit: "£ per litre", default: 1.40, min: 0, max: 10, positive: true,
     help: "Diesel price used to estimate fuel cost on a job." },
   { key: "mpg", group: "costing", label: "Fuel economy", unit: "miles per gallon", default: 11.5, min: 0, max: 100, positive: true,
-    help: "Average miles per gallon for your trucks." },
+    help: "Average miles per gallon for trucks without their own figure. Set each truck's own mpg on the Vehicles page (artics are usually 7–9 mpg)." },
   { key: "driver_rate_per_hour", group: "costing", label: "Driver cost", unit: "£ per hour", default: 20, min: 0, max: 1000,
     help: "What one driver hour costs the business." },
   { key: "fleet_cost_per_hour", group: "costing", label: "Truck running cost", unit: "£ per hour", default: 12.05, min: 0, max: 1000,
     help: "Truck cost per hour (lease, tyres, wear) on top of fuel." },
+  { key: "adblue_cost_per_mile", group: "costing", label: "AdBlue", unit: "£ per mile", default: 0, min: 0, max: 5,
+    help: "AdBlue cost per mile driven (Euro 6 trucks use about 5% of their diesel volume). 0 = not counted." },
+  { key: "empty_running_pct", group: "costing", label: "Empty running", unit: "% of loaded miles", default: 0, min: 0, max: 200,
+    help: "Extra empty miles to get back (return trip). Added to fuel, AdBlue and time. 0 = not counted; 100 = full empty return." },
+  { key: "overhead_pct", group: "costing", label: "Overheads", unit: "% on top of cost", default: 0, min: 0, max: 200,
+    help: "Office, insurance, O-licence and admin costs as a share of job cost. 0 = not counted." },
   { key: "margin_pct", group: "costing", label: "Profit margin", unit: "%", default: 29, min: 0, max: 500,
     help: "Added on top of cost to suggest a job price." },
   { key: "avg_speed_mph", group: "costing", label: "Average speed", unit: "mph", default: 40, min: 0, max: 90, positive: true,
-    help: "Used to estimate driving time when a route has no time." },
+    help: "HGV average speed for route times. Road-router times faster than this are slowed down to it (UK HGVs are limited to 56 mph; 40–45 mph is a realistic average)." },
 
   // ── Invoices ──
   { key: "invoice_vat_rate", group: "invoices", label: "Default VAT rate", unit: "%", default: 20, options: [20, 5, 0],
@@ -47,7 +53,7 @@ const SETTINGS = [
 ];
 
 const GROUPS = [
-  { key: "costing", title: "Job costing", description: "Used to estimate cost and suggest a price on new jobs. Finished jobs keep the rates they were completed with." },
+  { key: "costing", title: "Job costing", description: "Used to estimate cost and suggest a price. Each job keeps the rates that applied when it was booked. Tolls, Dartford Crossing, ULEZ / Clean Air Zone and DVS charges are entered per job." },
   { key: "invoices", title: "Invoices", description: "Starting values on a new invoice." },
   { key: "reminders", title: "Reminders", description: "When dates start showing as due soon." },
   { key: "maintenance", title: "Maintenance intervals", description: "Saving a change here recalculates the next due date of every truck and trailer from its last completed check.", caution: true }

@@ -5,7 +5,8 @@ import { StateNotice } from "./StateNotice";
 import { SeverityIcon } from "./SeverityIcon";
 import { StatusPill } from "./StatusPill";
 
-const toneLabel = { danger: "Critical", warning: "Warning", info: "Info" };
+// "Urgent", not "Critical": Critical is an alert severity on the Alerts page, a different count.
+const toneLabel = { danger: "Urgent", warning: "Warning", info: "Info" };
 const tonePill = { danger: "danger", warning: "warning", info: "neutral" };
 
 function formatNotificationDate(value) {
@@ -181,7 +182,7 @@ export function NotificationCenter({
             ["all", "All"],
             ["unread", "Unread"],
             ["priority", "Priority"],
-            ["danger", "Critical"]
+            ["danger", "Urgent"]
           ].map(([key, label]) => (
             <button className={`notification-filter-btn${filter === key ? " active" : ""}`} key={key} onClick={() => setFilter(key)} type="button">
               {label}<span>{counts[key]}</span>

@@ -44,3 +44,29 @@ test("drivers' hours: 45 min break after each 4.5 h of driving", () => {
   assert.equal(__test.breakMinsFor(540), 45);
   assert.equal(__test.breakMinsFor(541), 90);
 });
+
+test("preview and saved job agree with AdBlue, empty running, overheads, tolls and truck mpg", async () => {
+  const { estimateJobCost } = await clientCost();
+  const settings = { ...SETTINGS, avg_speed_mph: 40, adblue_cost_per_mile: 0.03, empty_running_pct: 50, overhead_pct: 10 };
+  const input = { distanceKm: 300, plannedMins: 420, settings, vehicleMpg: 8, plannedCharges: 19.5 };
+  const server = __test.calcJobEconomics(input);
+  const preview = estimateJobCost(input);
+  for (const key of ["fuelCost", "adblueCost", "chargesCost", "overheadCost", "driverCost", "fleetCost", "totalCost", "suggestedPrice", "totalMins"]) {
+    assert.equal(preview[key], server[key], key);
+  }
+  assert.equal(server.mpgUsed, 8);
+  assert.ok(server.emptyMiles > 90 && server.emptyMiles < 94);
+});
+
+test("P&L ignores recorded time over 3x the plan (job closed weeks later)", () => {
+  const e = __test.calcJobEconomics({ distanceKm: 23.5, plannedMins: 120, actualMins: 26724, settings: SETTINGS });
+  assert.equal(e.durationSource, "planned");
+  assert.equal(e.actualTimeRejected, true);
+  assert.equal(e.totalMins, 120);
+});
+
+test("HGV route time is never faster than the average speed", () => {
+  // 100 km a car does in 60 min; at 40 mph an HGV needs about 93 min.
+  assert.equal(__test.hgvMins(3600, 100000, 40), 93);
+  assert.equal(__test.hgvMins(7200, 100000, 40), 120);
+});
